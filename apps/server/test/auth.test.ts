@@ -56,6 +56,7 @@ beforeAll(async () => {
   services = createServices({
     databaseUrl: container.getConnectionUri(),
     ledgerKey: parseLedgerKey('d'.repeat(64)),
+    tokenPepper: 'f'.repeat(64),
     poolMax: 4,
   });
   await runMigrations(services.database.db, migrationsFolder);

@@ -22,7 +22,6 @@ declare module 'fastify' {
  * with requireUser whether anonymity is acceptable.
  */
 export function registerAuthContext(app: FastifyInstance, services: Services): void {
-  app.decorateRequest('humanAuth', null);
   app.addHook('onRequest', async (request) => {
     // Static assets and the SPA shell never need the session; avoid a query per asset.
     if (!request.url.startsWith('/v1/')) return;

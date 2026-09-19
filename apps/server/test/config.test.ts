@@ -6,6 +6,7 @@ const base = {
   KNOVERGE_DATABASE_URL: 'postgres://u:p@localhost:5432/db',
   KNOVERGE_LEDGER_KEY: 'ab'.repeat(32),
   KNOVERGE_SESSION_SECRET: 'cd'.repeat(32),
+  KNOVERGE_TOKEN_PEPPER: 'ef'.repeat(32),
 };
 
 describe('loadConfig', () => {
@@ -63,6 +64,8 @@ describe('loadConfig', () => {
   it('requires a session secret and derives cookie security from the base url', () => {
     const { KNOVERGE_SESSION_SECRET: _s, ...withoutSecret } = base;
     expect(() => loadConfig(withoutSecret)).toThrow(/KNOVERGE_SESSION_SECRET/);
+    const { KNOVERGE_TOKEN_PEPPER: _p, ...withoutPepper } = base;
+    expect(() => loadConfig(withoutPepper)).toThrow(/KNOVERGE_TOKEN_PEPPER/);
     expect(loadConfig(base).cookieSecure).toBe(false);
     expect(loadConfig({ ...base, KNOVERGE_BASE_URL: 'https://kn.example.com' }).cookieSecure).toBe(
       true,

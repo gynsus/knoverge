@@ -7,10 +7,13 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
+import { registerActorDecorators } from './plugins/actor-decorators.ts';
+import { registerAgentContext } from './plugins/agent-context.ts';
 import { registerAuthContext } from './plugins/auth-context.ts';
 import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
 import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
+import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerOpenApi } from './routes/openapi.ts';
 import type { Services } from './services.ts';
@@ -86,11 +89,14 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   if (options.services && options.security) {
     await registerSecurity(app, options.security);
     await registerOpenApi(app, options.version);
+    registerActorDecorators(app);
     registerAuthContext(app, options.services);
+    registerAgentContext(app, options.services);
     registerAuthRoutes(app, {
       services: options.services,
       cookieSecure: options.security.cookieSecure,
     });
+    registerAdminAgentRoutes(app, options.services);
   }
 
   if (options.webDist) {

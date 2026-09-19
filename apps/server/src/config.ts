@@ -19,6 +19,9 @@ const EnvSchema = z.object({
   KNOVERGE_SESSION_SECRET: z
     .string()
     .regex(/^[0-9a-fA-F]{64,}$/, 'KNOVERGE_SESSION_SECRET must be hex, at least 32 bytes'),
+  KNOVERGE_TOKEN_PEPPER: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64,}$/, 'KNOVERGE_TOKEN_PEPPER must be hex, at least 32 bytes'),
   KNOVERGE_BASE_URL: z.string().url().default('http://localhost:3000'),
   KNOVERGE_WEB_DIST: z.string().min(1).optional(),
   KNOVERGE_AUTO_MIGRATE: z
@@ -43,6 +46,8 @@ export interface Config {
   ledgerKey: LedgerKey;
   /** Signs cookies (CSRF). */
   sessionSecret: string;
+  /** Peppers agent credential hashes. */
+  tokenPepper: string;
   baseUrl: URL;
   /** Secure cookies when the public base URL is https. */
   cookieSecure: boolean;
@@ -91,6 +96,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
     ledgerKey,
     sessionSecret: e.KNOVERGE_SESSION_SECRET,
+    tokenPepper: e.KNOVERGE_TOKEN_PEPPER,
     baseUrl: new URL(e.KNOVERGE_BASE_URL),
     cookieSecure: new URL(e.KNOVERGE_BASE_URL).protocol === 'https:',
     webDist: e.KNOVERGE_WEB_DIST === undefined ? undefined : resolve(e.KNOVERGE_WEB_DIST),
