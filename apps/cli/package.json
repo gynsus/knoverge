@@ -15,6 +15,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@knoverge/contracts": "workspace:*",
+    "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",
     "commander": "catalog:",
     "drizzle-orm": "catalog:",
