@@ -32,3 +32,4 @@ export { createUserRepository } from './repositories/users.ts';
 export { createActorRepository, createWorkspaceRepository } from './repositories/workspaces.ts';
 export * as schema from './schema/index.ts';
 export { asTx, createUnitOfWork, type DrizzleTx } from './unit-of-work.ts';
+export * from './locks.ts';

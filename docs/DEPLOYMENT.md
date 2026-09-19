@@ -118,7 +118,9 @@ KNOVERGE_ATTACHMENT_MAX_MB    (later milestone)
 
 The server must start with LLM/embedding providers disabled.
 
-The four secrets (`SESSION_SECRET`, `TOKEN_PEPPER`, `LEDGER_KEY`, `ENCRYPTION_KEY`) must be generated once, kept out of the database, and backed up separately. `knoverge bootstrap` can generate them into `.env` when absent. Losing the ledger key makes historical ledger verification impossible; the knowledge itself is unaffected.
+The three secrets (`KNOVERGE_SESSION_SECRET`, `KNOVERGE_TOKEN_PEPPER`, `KNOVERGE_LEDGER_KEY`) must be generated once, kept out of the database, and backed up separately. Generate each with `openssl rand -hex 32`. Nothing generates them for you: the server refuses to start without them, on purpose, so that an installation cannot come up with a secret somebody else can guess.
+
+Losing the ledger key makes historical ledger verification impossible; the knowledge itself is unaffected.
 
 ## 7. Initial bootstrap
 
@@ -230,7 +232,7 @@ docker compose exec knoverge knoverge db migrate
 
 The server does not crash when PostgreSQL is unreachable at start. It listens immediately, answers `/health/live`, reports `/health/ready` as `degraded` (HTTP 503), and retries the database bootstrap (migrations, job runner) with exponential backoff up to 30 seconds between attempts until it succeeds.
 
-When several application containers share one database (for example a `web` and a `worker` role), enable auto-migration on exactly one of them or run `knoverge db migrate` before starting them; two processes applying the same migration at the same moment is not supported.
+When several application containers share one database (for example a `web` and a `worker` role), they may all start with auto-migration on. Migration runs hold an advisory lock, so the second container waits for the first and then finds nothing left to apply. Running `knoverge db migrate` beforehand is still the clearer choice for a scheduled upgrade, because it separates the schema change from the restart.
 
 Upgrade path:
 

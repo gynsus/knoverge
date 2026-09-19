@@ -9,7 +9,11 @@ Use:
 - Git-store integration tests (temporary repositories);
 - HTTP API integration tests;
 - MCP integration tests through the MCP SDK client;
-- end-to-end browser tests for critical review flows (Playwright).
+- end-to-end browser tests for critical review flows (Playwright; see "What is not set up yet" below).
+
+### What is not set up yet
+
+There is no Playwright harness in the repository, so no change is held up waiting for one. A user interface change is covered by component tests and by the HTTP integration tests behind it until the harness exists.
 
 ## 2. Mandatory domain tests
 

@@ -69,24 +69,84 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Smoke test
+      - name: Degraded start without a database
         run: |
-          docker run -d --name knoverge-smoke -p 3000:3000 \
+          docker run -d --name knoverge-degraded -p 3000:3000 \
             -e KNOVERGE_DATABASE_URL=postgres://nobody:nobody@127.0.0.1:1/none \
             -e KNOVERGE_LEDGER_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
             -e KNOVERGE_SESSION_SECRET=1111111111111111111111111111111111111111111111111111111111111111 \
             -e KNOVERGE_TOKEN_PEPPER=2222222222222222222222222222222222222222222222222222222222222222 \
             knoverge:ci
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:3000/health/live; then
-              echo
-              curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">' && echo 'web bundle served'
-              # Without a database the server must stay up and report readiness as degraded.
+            if curl -fsS http://127.0.0.1:3000/health/live >/dev/null; then
               code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health/ready)
-              test "$code" = "503" && echo 'readiness degraded without database' || { echo "unexpected readiness status $code"; exit 1; }
+              test "$code" = "503" || { echo "expected 503, got $code"; exit 1; }
+              echo 'stays up and reports degraded, as designed'
+              docker rm -f knoverge-degraded >/dev/null
               exit 0
             fi
             sleep 1
           done
-          docker logs knoverge-smoke
+          docker logs knoverge-degraded
           exit 1
+
+      - name: Start PostgreSQL
+        run: |
+          docker network create knoverge-ci
+          docker run -d --name knoverge-db --network knoverge-ci \
+            -e POSTGRES_DB=knoverge -e POSTGRES_USER=knoverge -e POSTGRES_PASSWORD=knoverge \
+            pgvector/pgvector:pg17
+          for i in $(seq 1 30); do
+            docker exec knoverge-db pg_isready -U knoverge -d knoverge >/dev/null 2>&1 && exit 0
+            sleep 2
+          done
+          echo 'database did not become ready'; exit 1
+
+      - name: Working stack
+        run: |
+          set -euo pipefail
+          docker run -d --name knoverge-app --network knoverge-ci -p 3000:3000 \
+            -e KNOVERGE_DATABASE_URL=postgres://knoverge:knoverge@knoverge-db:5432/knoverge \
+            -e KNOVERGE_LEDGER_KEY=0000000000000000000000000000000000000000000000000000000000000000 \
+            -e KNOVERGE_SESSION_SECRET=1111111111111111111111111111111111111111111111111111111111111111 \
+            -e KNOVERGE_TOKEN_PEPPER=2222222222222222222222222222222222222222222222222222222222222222 \
+            knoverge:ci
+
+          # Readiness only reports ok once the migrations in the image have applied.
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health/ready || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          test "$code" = "200" || { docker logs knoverge-app; echo "never became ready"; exit 1; }
+          echo 'migrations applied and every probe is ok'
+
+          # The command line in the image talks to the same database.
+          docker exec knoverge-app knoverge db status
+          docker exec -e KNOVERGE_BOOTSTRAP_PASSWORD='correct horse battery staple' knoverge-app \
+            knoverge bootstrap --email owner@example.com --name CI \
+              --workspace-slug ci --workspace-name CI
+          docker exec knoverge-app knoverge workspace list | grep -q ci
+          docker exec knoverge-app knoverge ledger verify
+
+          # The page is served, and so is the bundle it asks for: fetching only
+          # index.html would pass while every asset returned 404.
+          html=$(curl -fsS http://127.0.0.1:3000/)
+          echo "$html" | grep -q '<div id="root">'
+          for asset in $(echo "$html" | grep -o '/assets/[A-Za-z0-9._-]*' | sort -u); do
+            curl -fsS -o /dev/null "http://127.0.0.1:3000$asset" || { echo "missing asset $asset"; exit 1; }
+            echo "asset ok: $asset"
+          done
+
+          # Signing in exercises the schema, the session cookie and the ledger.
+          csrf=$(curl -fsS -c /tmp/jar http://127.0.0.1:3000/v1/auth/csrf | sed 's/.*"token":"\([^"]*\)".*/\1/')
+          code=$(curl -s -o /tmp/login -w '%{http_code}' -b /tmp/jar -c /tmp/jar \
+            -H "content-type: application/json" -H "x-csrf-token: $csrf" \
+            -d '{"email":"owner@example.com","password":"correct horse battery staple"}' \
+            http://127.0.0.1:3000/v1/auth/login)
+          test "$code" = "200" || { cat /tmp/login; echo "login failed with $code"; exit 1; }
+          echo 'sign-in works end to end'
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs knoverge-app || true

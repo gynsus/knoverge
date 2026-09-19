@@ -10,6 +10,8 @@ import type {
 } from '@knoverge/core';
 import { and, asc, desc, eq, max, ne, or, sql } from 'drizzle-orm';
 
+import { LOCK_TAXONOMY } from '../locks.ts';
+
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
 import { categories, categoryAliases, taxonomyVersions } from '../schema/categories.ts';
@@ -206,7 +208,9 @@ export function createTaxonomyVersionRepository(db: Database): TaxonomyVersionRe
     async bump(tx: Tx, workspaceId: WorkspaceId, at: Date) {
       const t = asTx(tx);
       // Serialise version allocation per workspace, as for the ledger sequence.
-      await t.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`taxonomy:${workspaceId}`}))`);
+      await t.execute(
+        sql`SELECT pg_advisory_xact_lock(${LOCK_TAXONOMY}, hashtext(${workspaceId}))`,
+      );
       const [current] = await t
         .select({ version: taxonomyVersions.version })
         .from(taxonomyVersions)

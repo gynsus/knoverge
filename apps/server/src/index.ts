@@ -21,6 +21,9 @@ function createLogger(level: string, nodeEnv: string): pino.Logger {
   return pino({ level });
 }
 
+/** Shorter than the ten seconds Docker allows between SIGTERM and SIGKILL. */
+const SHUTDOWN_DEADLINE_MS = 8_000;
+
 async function main(): Promise<void> {
   let config;
   try {
@@ -65,10 +68,24 @@ async function main(): Promise<void> {
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     logger.info({ signal }, 'shutting down');
     stopping.abort();
-    await app.close();
-    await jobs?.stop();
-    await database.close();
-    process.exit(0);
+    try {
+      // Bounded, because closing the pool waits for in-flight queries and a
+      // migration can be one of them. Docker sends SIGKILL ten seconds after
+      // SIGTERM, and being killed in the middle of a migration is worse than
+      // abandoning the wait for it.
+      await Promise.race([
+        (async () => {
+          await app.close();
+          await jobs?.stop();
+          await database.close();
+        })(),
+        new Promise((resolve) => setTimeout(resolve, SHUTDOWN_DEADLINE_MS).unref()),
+      ]);
+    } catch (error) {
+      logger.error({ err: error }, 'shutdown did not complete cleanly');
+    } finally {
+      process.exit(0);
+    }
   };
   process.once('SIGTERM', (s) => void shutdown(s));
   process.once('SIGINT', (s) => void shutdown(s));

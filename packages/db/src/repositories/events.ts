@@ -2,6 +2,8 @@ import type { EventId, WorkspaceId } from '@knoverge/contracts';
 import type { EventRecord, EventRepository, LedgerHead, Tx } from '@knoverge/core';
 import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
 
+import { LOCK_LEDGER } from '../locks.ts';
+
 import type { Database } from '../client.ts';
 import { events } from '../schema/events.ts';
 import { asTx } from '../unit-of-work.ts';
@@ -23,7 +25,7 @@ export function createEventRepository(db: Database): EventRepository {
     async lockAndGetHead(tx: Tx, workspaceId: WorkspaceId): Promise<LedgerHead | null> {
       const t = asTx(tx);
       // Serialises appends per workspace for the rest of the transaction (ADR 0007).
-      await t.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${workspaceId}))`);
+      await t.execute(sql`SELECT pg_advisory_xact_lock(${LOCK_LEDGER}, hashtext(${workspaceId}))`);
       const head = await t
         .select({ sequence: events.sequence, eventHash: events.eventHash })
         .from(events)

@@ -32,11 +32,12 @@ nvm use
 corepack enable
 pnpm install
 cp .env.example .env
-echo "KNOVERGE_LEDGER_KEY=$(openssl rand -hex 32)" >> .env
-echo "KNOVERGE_SESSION_SECRET=$(openssl rand -hex 32)" >> .env
-echo "KNOVERGE_TOKEN_PEPPER=$(openssl rand -hex 32)" >> .env
+# Fill in the four empty values rather than appending duplicates of them.
+for key in KNOVERGE_LEDGER_KEY KNOVERGE_SESSION_SECRET KNOVERGE_TOKEN_PEPPER KNOVERGE_POSTGRES_PASSWORD; do
+  sed -i.bak "s|^$key=.*|$key=$(openssl rand -hex 32)|" .env
+done && rm -f .env.bak
 docker compose up -d postgres
-pnpm dev            # server on http://localhost:3000
+pnpm dev            # API on :3000, web interface on http://localhost:5173
 ```
 
 Turborepo sends anonymous telemetry by default; disable it once with `pnpm turbo telemetry disable`. CI and the Docker build already run with it disabled.
@@ -124,7 +125,9 @@ Do not commit copied proprietary code or model outputs with unclear licensing pr
 
 ## Reporting security issues
 
-Do not open a public issue for a vulnerability. Use the contact described in `SECURITY.md` at the repository root (to be added before public release).
+Do not open a public issue for a vulnerability. Until the repository is public and a root `SECURITY.md` names a contact, report it privately through GitHub's "Report a vulnerability" on the Security tab, or to the repository owner directly.
+
+`docs/SECURITY.md` is the threat model and design document, not a reporting address.
 
 ## Pre-release checklist
 

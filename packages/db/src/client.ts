@@ -3,7 +3,12 @@ import { Pool } from 'pg';
 
 import * as schema from './schema/index.ts';
 
-export type Database = NodePgDatabase<typeof schema>;
+/**
+ * The Drizzle instance, including the pool it was built on. Drizzle exposes the
+ * pool as `$client` but leaves it off the generic type, and the migration
+ * runner needs a connection of its own to hold its lock.
+ */
+export type Database = NodePgDatabase<typeof schema> & { $client: Pool };
 
 export interface DatabaseHandle {
   pool: Pool;

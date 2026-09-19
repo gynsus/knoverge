@@ -8,10 +8,24 @@ WORKDIR /app
 # ---- build: install every workspace, build apps, prune to production deps ----
 FROM base AS build
 ENV TURBO_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1
+# Manifests first, then install, then sources. Editing a source file must not
+# invalidate the install layer: with the sources copied first, every change to
+# any file reinstalls every dependency.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc turbo.json tsconfig.base.json ./
+COPY apps/cli/package.json apps/cli/
+COPY apps/server/package.json apps/server/
+COPY apps/web/package.json apps/web/
+COPY packages/auth/package.json packages/auth/
+COPY packages/contracts/package.json packages/contracts/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+COPY packages/git-store/package.json packages/git-store/
+COPY packages/intelligence/package.json packages/intelligence/
+COPY packages/policy/package.json packages/policy/
+COPY packages/search/package.json packages/search/
+RUN pnpm install --frozen-lockfile
 COPY apps ./apps
 COPY packages ./packages
-RUN pnpm install --frozen-lockfile
 RUN pnpm build
 RUN pnpm --filter @knoverge/server --prod deploy --legacy /out/server \
  && pnpm --filter @knoverge/cli --prod deploy --legacy /out/cli
