@@ -1,5 +1,5 @@
 {
-  "id": "d18b9dfc-1978-4535-9772-5d298adefefc",
+  "id": "d16fd2e4-faed-4527-a037-3bab0e419d6b",
   "prevId": "0f3e7108-91fe-4ef8-97be-d89a0b5db40a",
   "version": "7",
   "dialect": "postgresql",
@@ -719,6 +719,13 @@
           "type": "bigint",
           "primaryKey": false,
           "notNull": true
+        },
+        "hash_version": {
+          "name": "hash_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         },
         "event_type": {
           "name": "event_type",
