@@ -38,6 +38,40 @@ CREATE TABLE "agents" (
 	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "categories" (
+	"id" varchar(40) PRIMARY KEY NOT NULL,
+	"workspace_id" varchar(40) NOT NULL,
+	"parent_id" varchar(40),
+	"slug" varchar(64) NOT NULL,
+	"path" varchar(1024) NOT NULL,
+	"name" varchar(120) NOT NULL,
+	"description" text,
+	"inclusion_guidance" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"exclusion_guidance" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"status" varchar(16) DEFAULT 'active' NOT NULL,
+	"merged_into_category_id" varchar(40),
+	"created_by_actor_id" varchar(40) NOT NULL,
+	"approved_by_actor_id" varchar(40),
+	"created_at" timestamp with time zone NOT NULL,
+	"updated_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "category_aliases" (
+	"id" varchar(40) PRIMARY KEY NOT NULL,
+	"category_id" varchar(40) NOT NULL,
+	"workspace_id" varchar(40) NOT NULL,
+	"alias" varchar(120) NOT NULL,
+	"normalised_alias" varchar(120) NOT NULL,
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "taxonomy_versions" (
+	"workspace_id" varchar(40) NOT NULL,
+	"version" bigint NOT NULL,
+	"git_commit_hash" varchar(64),
+	"created_at" timestamp with time zone NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "events" (
 	"id" varchar(40) PRIMARY KEY NOT NULL,
 	"workspace_id" varchar(40) NOT NULL,
@@ -129,6 +163,10 @@ ALTER TABLE "actors" ADD CONSTRAINT "actors_user_id_users_id_fk" FOREIGN KEY ("u
 ALTER TABLE "agent_credentials" ADD CONSTRAINT "agent_credentials_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agents" ADD CONSTRAINT "agents_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "agents" ADD CONSTRAINT "agents_actor_id_actors_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."actors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "categories" ADD CONSTRAINT "categories_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "category_aliases" ADD CONSTRAINT "category_aliases_category_id_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."categories"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "category_aliases" ADD CONSTRAINT "category_aliases_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "taxonomy_versions" ADD CONSTRAINT "taxonomy_versions_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idempotency_records" ADD CONSTRAINT "idempotency_records_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "human_sessions" ADD CONSTRAINT "human_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -139,6 +177,11 @@ CREATE UNIQUE INDEX "actors_workspace_system_idx" ON "actors" USING btree ("work
 CREATE INDEX "agent_credentials_agent_idx" ON "agent_credentials" USING btree ("agent_id");--> statement-breakpoint
 CREATE INDEX "agents_workspace_idx" ON "agents" USING btree ("workspace_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "agents_workspace_name_idx" ON "agents" USING btree ("workspace_id","name");--> statement-breakpoint
+CREATE UNIQUE INDEX "categories_workspace_path_idx" ON "categories" USING btree ("workspace_id","path");--> statement-breakpoint
+CREATE INDEX "categories_workspace_parent_idx" ON "categories" USING btree ("workspace_id","parent_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "category_aliases_workspace_alias_idx" ON "category_aliases" USING btree ("workspace_id","normalised_alias");--> statement-breakpoint
+CREATE INDEX "category_aliases_category_idx" ON "category_aliases" USING btree ("category_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "taxonomy_versions_workspace_version_idx" ON "taxonomy_versions" USING btree ("workspace_id","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "events_workspace_sequence_idx" ON "events" USING btree ("workspace_id","sequence");--> statement-breakpoint
 CREATE INDEX "events_workspace_object_idx" ON "events" USING btree ("workspace_id","object_type","object_id");--> statement-breakpoint
 CREATE INDEX "events_workspace_type_idx" ON "events" USING btree ("workspace_id","event_type");--> statement-breakpoint
