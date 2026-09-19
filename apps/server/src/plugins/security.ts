@@ -56,10 +56,28 @@ export async function registerSecurity(
       path: '/',
     },
   });
+}
 
+/**
+ * Per-actor rate limiting. Registered after the authentication hooks so the key
+ * can be the caller rather than the address: several agents behind one proxy get
+ * their own budgets, and one noisy caller cannot spend everyone else's.
+ *
+ * Route-level `config.rateLimit` overrides this default, as login and bootstrap do.
+ */
+export async function registerRateLimits(
+  app: FastifyInstance,
+  options: { max?: number; timeWindow?: string } = {},
+): Promise<void> {
   await app.register(fastifyRateLimit, {
-    global: false,
-    // Per-route limits are declared in route config; bearer-token limits arrive with agents.
+    global: true,
+    max: options.max ?? 600,
+    timeWindow: options.timeWindow ?? '1 minute',
+    keyGenerator: (request) => {
+      if (request.agentAuth) return `agent:${request.agentAuth.agent.id}`;
+      if (request.humanAuth) return `user:${request.humanAuth.user.id}`;
+      return `ip:${request.ip}`;
+    },
   });
 }
 

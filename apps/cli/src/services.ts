@@ -70,7 +70,6 @@ export function createServices() {
     uow,
     users,
     workspaces,
-    workspaceRepository: repositories.workspaces,
     memberships: repositories.memberships,
     actors: repositories.actors,
     ledger,

@@ -83,6 +83,8 @@ export function createServices(config: ServicesConfig) {
     grants: repositories.grants,
     rules: repositories.policyRules,
     categories: repositories.categories,
+    actors: repositories.actors,
+    authorization,
     ledger,
   });
   const taxonomy = new TaxonomyService({
@@ -104,7 +106,6 @@ export function createServices(config: ServicesConfig) {
     uow,
     users,
     workspaces,
-    workspaceRepository: repositories.workspaces,
     memberships: repositories.memberships,
     actors: repositories.actors,
     ledger,

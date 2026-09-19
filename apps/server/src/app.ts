@@ -11,7 +11,7 @@ import { registerActorDecorators } from './plugins/actor-decorators.ts';
 import { registerAgentContext } from './plugins/agent-context.ts';
 import { registerAuthContext } from './plugins/auth-context.ts';
 import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
-import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
+import { registerRateLimits, registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
@@ -42,6 +42,8 @@ export interface AppOptions {
   /** Domain services; when present the API routes and security plugins are registered. */
   services?: Services;
   security?: SecurityOptions;
+  /** Overrides the default per-actor rate limit; tests raise it. */
+  rateLimit?: { max?: number; timeWindow?: string };
 }
 
 const API_PREFIXES = ['/v1/', '/mcp', '/health/'];
@@ -95,6 +97,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerActorDecorators(app);
     registerAuthContext(app, options.services);
     registerAgentContext(app, options.services);
+    // After the context hooks, so the limiter can key on the resolved caller.
+    await registerRateLimits(app, options.rateLimit ?? {});
     registerAuthRoutes(app, {
       services: options.services,
       cookieSecure: options.security.cookieSecure,

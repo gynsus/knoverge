@@ -10,21 +10,34 @@ import type { Services } from '../services.ts';
 
 export const WORKSPACE_HEADER = 'x-knoverge-workspace';
 
-const ROLE_RANK: Record<MembershipRole, number> = { viewer: 0, reviewer: 1, admin: 2, owner: 3 };
+/**
+ * Optional provenance headers are telemetry, not authority. They are trimmed to
+ * printable ASCII and to the width of their ledger column, so a long or odd
+ * header cannot fail a write or smuggle anything into an event.
+ */
+const PROVENANCE_LIMITS = { client: 64, provider: 64, model: 128 } as const;
 
-function contextMeta(request: FastifyRequest) {
-  const header = (name: string): string | undefined => {
-    const value = request.headers[name];
-    return Array.isArray(value) ? value[0] : value;
-  };
+function sanitise(value: string | string[] | undefined, max: number): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (raw === undefined) return undefined;
+  const cleaned = raw
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim()
+    .slice(0, max);
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
+function contextMeta(
+  request: FastifyRequest,
+): Omit<ActorContext, 'workspaceId' | 'actorId' | 'actorType'> {
+  const client = sanitise(request.headers['x-knoverge-client'], PROVENANCE_LIMITS.client);
+  const provider = sanitise(request.headers['x-knoverge-provider'], PROVENANCE_LIMITS.provider);
+  const model = sanitise(request.headers['x-knoverge-model'], PROVENANCE_LIMITS.model);
   return {
     requestId: request.id,
-    ...(header('x-knoverge-session-id')
-      ? { sessionId: header('x-knoverge-session-id') as string }
-      : {}),
-    ...(header('x-knoverge-client') ? { client: header('x-knoverge-client') as string } : {}),
-    ...(header('x-knoverge-provider') ? { provider: header('x-knoverge-provider') as string } : {}),
-    ...(header('x-knoverge-model') ? { model: header('x-knoverge-model') as string } : {}),
+    ...(client ? { client } : {}),
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
   };
 }
 
@@ -55,6 +68,10 @@ export async function resolveWorkspaceActor(
         actorId: agent.actorId,
         actorType: 'agent',
         agentId: agent.id,
+        // An agent's session is the client's own conversation id, when it sends one.
+        ...(sanitise(request.headers['x-knoverge-session-id'], 128)
+          ? { sessionId: sanitise(request.headers['x-knoverge-session-id'], 128) as string }
+          : {}),
         ...meta,
       },
       role: undefined,
@@ -90,24 +107,13 @@ export async function resolveWorkspaceActor(
       workspaceId: membership.workspaceId,
       actorId: membership.actorId,
       actorType: 'human',
+      // The real session, never a header: a caller must not choose its own attribution.
+      sessionId: human.session.id,
       ...meta,
     },
     role: membership.role,
     standing: { role: membership.role },
   };
-}
-
-/** Requires a human caller with at least the given workspace role. */
-export async function requireRole(
-  services: Services,
-  request: FastifyRequest,
-  minimum: MembershipRole,
-): Promise<WorkspaceActor> {
-  const actor = await resolveWorkspaceActor(services, request);
-  if (actor.role === undefined || ROLE_RANK[actor.role] < ROLE_RANK[minimum]) {
-    throw new DomainError('FORBIDDEN', `this action requires the ${minimum} role`);
-  }
-  return actor;
 }
 
 /**
