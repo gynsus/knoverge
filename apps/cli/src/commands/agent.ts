@@ -1,10 +1,11 @@
-import { AgentId, TrustTier } from '@knoverge/contracts';
+import { AgentId, CredentialId, TrustTier } from '@knoverge/contracts';
 import { Command } from 'commander';
 
 import { emit, field, parseOrFail, withServices } from '../run.ts';
 import { systemActorContext } from '../workspace-actor.ts';
 
 const AGENT_ID = 'must be an agent id, as `agent list` prints in the first column';
+const CREDENTIAL_ID = 'must be a credential id, as `agent token list` prints in the first column';
 
 /** A credential that expires in no days, or in NaN days, is worse than none. */
 function parseDays(value: string): number {
@@ -157,7 +158,10 @@ export function agentCommand(): Command {
     .action(async (opts: { credential: string; workspace?: string }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        const changed = await services.agents.revokeCredential(actor, opts.credential);
+        const changed = await services.agents.revokeCredential(
+          actor,
+          parseOrFail(CredentialId, opts.credential, `--credential ${CREDENTIAL_ID}`),
+        );
         console.log(
           changed
             ? `revoked credential ${opts.credential}`

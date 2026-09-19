@@ -171,7 +171,7 @@ export class AgentService {
 
     const now = this.clock.now();
     await this.o.uow.run(async (tx) => {
-      await this.o.agents.update(tx, agent.id, patch);
+      await this.o.agents.update(tx, actor.workspaceId, agent.id, patch);
       // Disabling an agent takes its credentials out of service immediately.
       const revoked =
         patch.status === 'disabled'

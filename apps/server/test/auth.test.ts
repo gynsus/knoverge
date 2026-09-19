@@ -407,3 +407,33 @@ describe('what a rejection tells the caller', () => {
     expect(cleared).toContain('knoverge_csrf');
   });
 });
+
+describe('the generated API description', () => {
+  it('describes failure, authentication and the shared headers', async () => {
+    const res = await app.inject({ method: 'GET', url: '/v1/openapi.json' });
+    expect(res.statusCode).toBe(200);
+    const doc = res.json() as {
+      components: { securitySchemes: Record<string, unknown>; schemas: Record<string, unknown> };
+      security: unknown[];
+      paths: Record<
+        string,
+        Record<string, { responses: Record<string, unknown>; parameters?: { name: string }[] }>
+      >;
+    };
+    // A client generated from a document with only 200 responses cannot handle
+    // a refusal, and one with no security scheme cannot authenticate at all.
+    expect(Object.keys(doc.components.securitySchemes)).toEqual(['session', 'agentToken']);
+    expect(doc.security).toHaveLength(2);
+    expect(doc.components.schemas['ApiError']).toBeDefined();
+
+    const login = doc.paths['/v1/auth/login']?.['post'];
+    expect(login).toBeDefined();
+    for (const status of ['400', '401', '403', '404', '409', '429', '500']) {
+      expect(Object.keys(login!.responses)).toContain(status);
+    }
+    const headers = (login!.parameters ?? []).map((p) => p.name);
+    expect(headers).toContain('X-Knoverge-Workspace');
+    expect(headers).toContain('Idempotency-Key');
+    expect(headers).toContain('X-Request-Id');
+  });
+});
