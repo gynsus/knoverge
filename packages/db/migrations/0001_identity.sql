@@ -76,6 +76,7 @@ CREATE TABLE "events" (
 	"id" varchar(40) PRIMARY KEY NOT NULL,
 	"workspace_id" varchar(40) NOT NULL,
 	"sequence" bigint NOT NULL,
+	"hash_version" integer DEFAULT 1 NOT NULL,
 	"event_type" varchar(64) NOT NULL,
 	"actor_id" varchar(40) NOT NULL,
 	"agent_id" varchar(40),

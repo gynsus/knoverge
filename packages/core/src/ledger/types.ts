@@ -24,6 +24,8 @@ export interface EventInput {
 
 export interface EventRecord {
   id: EventId;
+  /** Which field set the hash covers. See ADR 0007. */
+  hashVersion: number;
   workspaceId: WorkspaceId;
   sequence: number;
   eventType: EventType;

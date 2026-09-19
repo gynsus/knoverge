@@ -1,5 +1,14 @@
 import { sql } from 'drizzle-orm';
-import { bigint, index, jsonb, pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { id, json, timestampTz } from './common.ts';
 import { workspaces } from './workspaces.ts';
@@ -16,6 +25,8 @@ export const events = pgTable(
       .notNull()
       .references(() => workspaces.id),
     sequence: bigint('sequence', { mode: 'number' }).notNull(),
+    /** Which field set event_hash covers, so old rows keep verifying. */
+    hashVersion: integer('hash_version').notNull().default(1),
     eventType: varchar('event_type', { length: 64 }).notNull(),
     actorId: id('actor_id').notNull(),
     agentId: id('agent_id'),

@@ -192,6 +192,43 @@ describe('event ledger in PostgreSQL', () => {
     expect(result).toMatchObject({ ok: false, brokenAt: 1, reason: 'event hash mismatch' });
   });
 
+  it('keeps verifying after a column is added to the table', async () => {
+    // Its own workspace: an earlier test deliberately breaks the shared chain.
+    const ws = await service.create({ slug: 'column-probe', name: 'Column probe', requestId: 'r' });
+    expect((await ledger.verify(ws.id)).ok).toBe(true);
+    // The hash covers an explicit field list, so a later migration must not
+    // invalidate the history of every workspace.
+    await handle.db.execute(sql`ALTER TABLE events ADD COLUMN probe text`);
+    try {
+      expect(await ledger.verify(ws.id)).toEqual({ ok: true, count: 1 });
+    } finally {
+      await handle.db.execute(sql`ALTER TABLE events DROP COLUMN probe`);
+    }
+  });
+
+  it('hashes metadata as the database stores it', async () => {
+    const ws = await service.create({ slug: 'metadata-probe', name: 'Metadata', requestId: 'r' });
+    const systemActor = await createActorRepository(handle.db).findSystemActor(ws.id);
+    await createUnitOfWork(handle.db).run((tx) =>
+      ledger.append(
+        tx,
+        ws.id,
+        { actorId: systemActor!.id, requestId: 'req' },
+        {
+          eventType: 'agent.created',
+          objectType: 'agent',
+          objectId: 'ag_metadata',
+          // jsonb drops an undefined value; hashing it as null would make the
+          // stored row fail verification.
+          metadata: { kept: 'yes', dropped: undefined, nested: { also: undefined, here: 1 } },
+        },
+      ),
+    );
+    const rows = await createEventRepository(handle.db).listAfter(ws.id, 0, 10);
+    expect(rows.at(-1)?.metadata).toEqual({ kept: 'yes', nested: { here: 1 } });
+    expect((await ledger.verify(ws.id)).ok).toBe(true);
+  });
+
   it('round-trips every stored column through the repository', async () => {
     const [first] = await createEventRepository(handle.db).listAfter(workspaceId, 1, 1);
     const record: EventRecord = first!;

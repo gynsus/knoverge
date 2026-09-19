@@ -52,6 +52,7 @@ export class EventLedger {
     const prevEventHash = head?.eventHash ?? genesisHash(this.key);
     const unhashed: Omit<EventRecord, 'eventHash'> = {
       id: newId('evt') as EventId,
+      hashVersion: HASH_VERSION,
       workspaceId,
       sequence,
       eventType: input.eventType,
@@ -71,7 +72,7 @@ export class EventLedger {
       proposalId: input.proposalId ?? null,
       sourceReferenceId: input.sourceReferenceId ?? null,
       categoryIds: input.categoryIds ?? [],
-      metadata: input.metadata ?? {},
+      metadata: jsonSafe(input.metadata ?? {}),
       prevEventHash,
       createdAt: this.clock.now(),
     };
@@ -117,7 +118,68 @@ export class EventLedger {
   }
 }
 
-/** The stored columns that participate in the hash, as a plain object. */
+/**
+ * The exact field set the hash covers, in one place.
+ *
+ * It is an explicit list rather than a spread of the row: a migration that adds
+ * a column must not silently change the hash of every event ever written, which
+ * would make historical verification fail. A change to this list is a new
+ * version, and each event records the version it was hashed with, so old events
+ * keep verifying.
+ */
+export const HASH_VERSION = 1;
+
+const HASHERS: Record<number, (event: Omit<EventRecord, 'eventHash'>) => Record<string, unknown>> =
+  {
+    1: (e) => ({
+      v: 1,
+      id: e.id,
+      workspace_id: e.workspaceId,
+      sequence: e.sequence,
+      event_type: e.eventType,
+      actor_id: e.actorId,
+      agent_id: e.agentId,
+      request_id: e.requestId,
+      session_id: e.sessionId,
+      client: e.client,
+      provider: e.provider,
+      model: e.model,
+      object_type: e.objectType,
+      object_id: e.objectId,
+      before_revision_id: e.beforeRevisionId,
+      before_content_hash: e.beforeContentHash,
+      after_revision_id: e.afterRevisionId,
+      after_content_hash: e.afterContentHash,
+      proposal_id: e.proposalId,
+      source_reference_id: e.sourceReferenceId,
+      category_ids: e.categoryIds,
+      metadata: e.metadata,
+      prev_event_hash: e.prevEventHash,
+      created_at: e.createdAt,
+    }),
+  };
+
 function hashable(event: Omit<EventRecord, 'eventHash'>): Record<string, unknown> {
-  return { ...event };
+  const hasher = HASHERS[event.hashVersion];
+  if (!hasher) {
+    throw new Error(`unknown event hash version ${event.hashVersion}`);
+  }
+  return hasher(event);
+}
+
+/**
+ * Drops undefined values so that what is hashed matches what jsonb stores:
+ * canonical JSON would write them as null, while the database omits the key.
+ */
+function jsonSafe(value: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([, v]) => v !== undefined)
+      .map(([k, v]) => [
+        k,
+        v !== null && typeof v === 'object' && !Array.isArray(v)
+          ? jsonSafe(v as Record<string, unknown>)
+          : v,
+      ]),
+  );
 }
