@@ -1,0 +1,118 @@
+import type { ActorId, WorkspaceId } from '@knoverge/contracts';
+import { describe, expect, it } from 'vitest';
+
+import {
+  EventLedger,
+  computeEventHash,
+  genesisHash,
+  parseLedgerKey,
+  type EventRecord,
+  type EventRepository,
+  type Tx,
+} from '../src/index.ts';
+
+const key = parseLedgerKey('a'.repeat(64));
+const otherKey = parseLedgerKey('b'.repeat(64));
+const ws = 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T3' as WorkspaceId;
+const tx = {} as Tx;
+
+class MemoryEvents implements EventRepository {
+  rows: EventRecord[] = [];
+  async lockAndGetHead() {
+    const last = this.rows.at(-1);
+    return last ? { sequence: last.sequence, eventHash: last.eventHash } : null;
+  }
+  async insert(_tx: Tx, record: EventRecord) {
+    this.rows.push(record);
+  }
+  async listAfter(_ws: WorkspaceId, after: number, limit: number) {
+    return this.rows.filter((r) => r.sequence > after).slice(0, limit);
+  }
+}
+
+function ledgerWith(events: EventRepository) {
+  return new EventLedger({ key, events, clock: { now: () => new Date('2026-09-19T00:00:00Z') } });
+}
+
+async function appendThree(ledger: EventLedger) {
+  const actor = { actorId: 'act_1' as ActorId, requestId: 'req' };
+  await ledger.append(tx, ws, actor, {
+    eventType: 'workspace.created',
+    objectType: 'workspace',
+    objectId: ws,
+  });
+  await ledger.append(tx, ws, actor, {
+    eventType: 'user.created',
+    objectType: 'user',
+    objectId: 'usr_1',
+  });
+  await ledger.append(tx, ws, actor, {
+    eventType: 'membership.created',
+    objectType: 'membership',
+    objectId: 'm_1',
+  });
+}
+
+describe('parseLedgerKey', () => {
+  it('requires hex and at least 32 bytes', () => {
+    expect(() => parseLedgerKey('zz')).toThrow(/hex/);
+    expect(() => parseLedgerKey('ab'.repeat(16))).toThrow(/32 bytes/);
+    expect(parseLedgerKey('ab'.repeat(32)).bytes).toHaveLength(32);
+  });
+});
+
+describe('EventLedger', () => {
+  it('chains events with gapless sequences from the genesis hash', async () => {
+    const events = new MemoryEvents();
+    await appendThree(ledgerWith(events));
+    expect(events.rows.map((r) => r.sequence)).toEqual([1, 2, 3]);
+    expect(events.rows[0]?.prevEventHash).toBe(genesisHash(key));
+    expect(events.rows[1]?.prevEventHash).toBe(events.rows[0]?.eventHash);
+    expect(events.rows[2]?.prevEventHash).toBe(events.rows[1]?.eventHash);
+  });
+
+  it('verifies an intact chain', async () => {
+    const events = new MemoryEvents();
+    const ledger = ledgerWith(events);
+    await appendThree(ledger);
+    await expect(ledger.verify(ws, 2)).resolves.toEqual({ ok: true, count: 3 });
+  });
+
+  it('detects a modified event', async () => {
+    const events = new MemoryEvents();
+    const ledger = ledgerWith(events);
+    await appendThree(ledger);
+    events.rows[1] = { ...events.rows[1]!, objectId: 'usr_tampered' };
+    const result = await ledger.verify(ws);
+    expect(result).toMatchObject({ ok: false, brokenAt: 2, reason: 'event hash mismatch' });
+  });
+
+  it('detects a recomputed chain made with a different key', async () => {
+    const events = new MemoryEvents();
+    await appendThree(new EventLedger({ key: otherKey, events }));
+    const result = await ledgerWith(events).verify(ws);
+    expect(result).toMatchObject({ ok: false, brokenAt: 1 });
+  });
+
+  it('detects a deleted event', async () => {
+    const events = new MemoryEvents();
+    const ledger = ledgerWith(events);
+    await appendThree(ledger);
+    events.rows.splice(1, 1);
+    expect(await ledger.verify(ws)).toMatchObject({
+      ok: false,
+      brokenAt: 3,
+      reason: 'sequence gap',
+    });
+  });
+
+  it('hashes the canonical record so key order does not matter', () => {
+    const prev = genesisHash(key);
+    expect(computeEventHash(key, prev, { a: 1, b: 2 })).toBe(
+      computeEventHash(key, prev, { b: 2, a: 1 }),
+    );
+    expect(computeEventHash(key, prev, { a: 1 })).not.toBe(
+      computeEventHash(otherKey, prev, { a: 1 }),
+    );
+  });
+});
