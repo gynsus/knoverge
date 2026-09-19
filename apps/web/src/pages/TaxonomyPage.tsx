@@ -9,13 +9,60 @@ import { Field } from '../components/Field.tsx';
 
 const TAXONOMY_KEY = ['taxonomy'] as const;
 
+/** Everything a category carries that a person can edit. */
+interface Draft {
+  name: string;
+  slug: string;
+  description: string;
+  inclusion: string;
+  exclusion: string;
+  aliases: string;
+}
+
+const emptyDraft: Draft = {
+  name: '',
+  slug: '',
+  description: '',
+  inclusion: '',
+  exclusion: '',
+  aliases: '',
+};
+
+function draftOf(category: CategorySummary): Draft {
+  return {
+    name: category.name,
+    slug: category.slug,
+    description: category.description ?? '',
+    inclusion: category.inclusion_guidance.join('\n'),
+    exclusion: category.exclusion_guidance.join('\n'),
+    aliases: category.aliases.join(', '),
+  };
+}
+
+/** One guidance line per line, blanks dropped. */
+function splitLines(value: string): string[] {
+  return value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+}
+
+function splitCommas(value: string): string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+}
+
 export function TaxonomyPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
   const [name, setName] = useState('');
   const [parentPath, setParentPath] = useState('');
   const [selected, setSelected] = useState<CategorySummary | null>(null);
-  const [renameTo, setRenameTo] = useState('');
+  // Every editable field of a category, not only its name. Guidance and
+  // aliases are what make a curated taxonomy useful, and neither was reachable.
+  const [draft, setDraft] = useState<Draft>(emptyDraft);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const lastTrigger = useRef<HTMLButtonElement | null>(null);
 
@@ -40,9 +87,17 @@ export function TaxonomyPage() {
       await refresh();
     },
   });
-  const rename = useMutation({
+  const save = useMutation({
     mutationFn: (category: CategorySummary) =>
-      adminApi.taxonomy.update({ category_id: category.id, name: renameTo }),
+      adminApi.taxonomy.update({
+        category_id: category.id,
+        name: draft.name,
+        slug: draft.slug,
+        description: draft.description || null,
+        inclusion_guidance: splitLines(draft.inclusion),
+        exclusion_guidance: splitLines(draft.exclusion),
+        aliases: splitCommas(draft.aliases),
+      }),
     onSuccess: async () => {
       setSelected(null);
       await refresh();
@@ -97,7 +152,7 @@ export function TaxonomyPage() {
                 onClick={(event) => {
                   lastTrigger.current = event.currentTarget;
                   setSelected(category);
-                  setRenameTo(category.name);
+                  setDraft(draftOf(category));
                 }}
               >
                 {category.name}
@@ -116,22 +171,69 @@ export function TaxonomyPage() {
             {selected.name}
           </h3>
           <Field label={t('taxonomy.rename')}>
-            <input value={renameTo} onChange={(e) => setRenameTo(e.target.value)} maxLength={120} />
+            <input
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              maxLength={120}
+            />
+          </Field>
+          <Field label={t('taxonomy.slug')} hint={t('taxonomy.slug_hint')}>
+            <input
+              value={draft.slug}
+              onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+              maxLength={64}
+            />
+          </Field>
+          <Field label={t('taxonomy.description')}>
+            <input
+              value={draft.description}
+              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              maxLength={2000}
+            />
+          </Field>
+          <Field label={t('taxonomy.inclusion')} hint={t('taxonomy.guidance_hint')}>
+            <textarea
+              rows={3}
+              value={draft.inclusion}
+              onChange={(e) => setDraft({ ...draft, inclusion: e.target.value })}
+            />
+          </Field>
+          <Field label={t('taxonomy.exclusion')} hint={t('taxonomy.guidance_hint')}>
+            <textarea
+              rows={3}
+              value={draft.exclusion}
+              onChange={(e) => setDraft({ ...draft, exclusion: e.target.value })}
+            />
+          </Field>
+          <Field label={t('taxonomy.aliases')} hint={t('taxonomy.aliases_hint')}>
+            <input
+              value={draft.aliases}
+              onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
+            />
+          </Field>
+          <Field label={t('taxonomy.move_to')} hint={t('taxonomy.parent_hint')}>
+            <select
+              value={selected.parent_id ?? ''}
+              onChange={(e) =>
+                move.mutate({ category: selected, parentId: e.target.value || null })
+              }
+              disabled={move.isPending}
+            >
+              <option value="">{t('taxonomy.no_parent')}</option>
+              {categories
+                // A category cannot move into its own subtree, and the server
+                // refuses it, so it is not offered.
+                .filter((c) => c.id !== selected.id && !c.path.startsWith(`${selected.path}/`))
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.path}
+                  </option>
+                ))}
+            </select>
           </Field>
           <p>
-            <button
-              type="button"
-              onClick={() => rename.mutate(selected)}
-              disabled={rename.isPending}
-            >
+            <button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
               {t('taxonomy.save')}
-            </button>{' '}
-            <button
-              type="button"
-              onClick={() => move.mutate({ category: selected, parentId: null })}
-              disabled={move.isPending || selected.parent_id === null}
-            >
-              {t('taxonomy.promote')}
             </button>{' '}
             <button
               type="button"
@@ -144,7 +246,7 @@ export function TaxonomyPage() {
               {t('common.close')}
             </button>
           </p>
-          <ErrorNotice error={rename.error ?? move.error ?? archive.error} />
+          <ErrorNotice error={save.error ?? move.error ?? archive.error} />
         </section>
       )}
 

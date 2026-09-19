@@ -93,70 +93,83 @@
     "POLICY_REQUIRES_REVIEW": "Saved for review."
   },
   "agents": {
-    "title": "Agents",
-    "intro": "Register the AI agents that may connect to this workspace and issue their tokens.",
-    "empty": "No agents yet.",
-    "new": "Register an agent",
-    "create": "Register agent",
-    "name": "Name",
     "client_type": "Client",
     "client_type_hint": "For example claude-code or cursor. Optional.",
-    "trust_tier": "Trust tier",
-    "status": "Status",
-    "credentials": "Active tokens",
-    "manage": "Manage",
-    "issue_token": "Issue token",
-    "disable": "Disable agent",
-    "revoke": "Revoke",
-    "token_once": "Copy this token now. It is shown once and cannot be recovered.",
-    "hide_token": "Hide token",
+    "create": "Register agent",
     "credential": "Token",
     "credential_state": "State",
+    "credentials": "Active tokens",
+    "disable": "Disable agent",
+    "disable_hint": "Disabling an agent revokes every credential it holds.",
+    "empty": "No agents yet.",
+    "enable": "Enable agent",
+    "hide_token": "Hide token",
+    "intro": "Register the AI agents that may connect to this workspace and issue their tokens.",
+    "issue_token": "Issue token",
     "last_used": "Last used",
+    "manage": "Manage",
+    "name": "Name",
     "never_used": "Never",
+    "new": "Register an agent",
     "no_credentials": "No tokens issued yet.",
-    "tiers": {
-      "read_only": "Read only",
-      "propose": "Propose",
-      "trusted": "Trusted"
+    "revoke": "Revoke",
+    "states": {
+      "active": "Active",
+      "revoked": "Revoked",
+      "expired": "Expired"
     },
+    "status": "Status",
+    "statuses": {
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "tier_change_hint": "Changes what a new or existing token may do.",
     "tier_hints": {
       "read_only": "May read and search, and propose nothing.",
       "propose": "May propose changes; every write is reviewed.",
       "trusted": "May write directly where a policy rule allows it; otherwise reviewed."
     },
-    "statuses": {
-      "active": "Active",
-      "disabled": "Disabled"
+    "tiers": {
+      "read_only": "Read only",
+      "propose": "Propose",
+      "trusted": "Trusted"
     },
-    "states": {
-      "active": "Active",
-      "revoked": "Revoked",
-      "expired": "Expired"
-    }
+    "title": "Agents",
+    "token_once": "Copy this token now. It is shown once and cannot be recovered.",
+    "trust_tier": "Trust tier"
   },
   "taxonomy": {
-    "title": "Taxonomy",
-    "intro": "The curated category tree of this workspace.",
-    "version": "version {{version}}",
-    "empty": "No categories yet.",
-    "new": "Add a category",
+    "aliases": "Other names",
+    "aliases_hint": "Separated by commas. Used when matching a category by name.",
+    "archive": "Archive",
     "create": "Add category",
+    "description": "Description",
+    "empty": "No categories yet.",
+    "exclusion": "What does not belong here",
+    "guidance_hint": "One line per point. Shown to agents deciding where something belongs.",
+    "inclusion": "What belongs here",
+    "intro": "The curated category tree of this workspace.",
+    "move_to": "Move under",
     "name": "Name",
     "name_hint": "The identifier is derived from the name.",
+    "new": "Add a category",
+    "no_parent": "No parent (top level)",
     "parent": "Parent",
-    "no_parent": "None (top level)",
+    "parent_hint": "Moving a category takes everything under it along.",
+    "promote": "Move to top level",
     "rename": "Name",
     "save": "Save",
-    "promote": "Move to top level",
-    "archive": "Archive",
+    "slug": "Slug",
+    "slug_hint": "The path segment. Changing it moves this category and everything under it.",
     "statuses": {
       "proposed": "Proposed",
       "active": "Active",
       "merged": "Merged",
       "archived": "Archived",
       "rejected": "Rejected"
-    }
+    },
+    "title": "Taxonomy",
+    "version": "version {{version}}"
   },
   "policy": {
     "action": "Action",
