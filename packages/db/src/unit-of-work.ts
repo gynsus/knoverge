@@ -1,7 +1,7 @@
 import type { Tx, UnitOfWork } from '@knoverge/core';
 import { sql } from 'drizzle-orm';
 
-import { LOCK_NAMED } from './locks.ts';
+import { LOCK_NAMED, LOCK_WORKSPACE_WRITE } from './locks.ts';
 import type { ExtractTablesWithRelations } from 'drizzle-orm';
 import type { PgTransaction } from 'drizzle-orm/pg-core';
 import type { NodePgQueryResultHKT } from 'drizzle-orm/node-postgres';
@@ -45,9 +45,10 @@ async function withRetry<T>(run: () => Promise<T>): Promise<T> {
 /**
  * Lock order, to be kept by every transaction that takes more than one:
  *
- *   1. named locks from runExclusive (for example first-run setup)
- *   2. the taxonomy version lock of a workspace
- *   3. the event ledger lock of a workspace
+ *   1. the workspace write lock, held across a whole canonical write
+ *   2. named locks from runExclusive (for example first-run setup)
+ *   3. the taxonomy version lock of a workspace
+ *   4. the event ledger lock of a workspace
  *
  * Taking them in another order can deadlock two transactions against each other.
  * A deadlock or serialisation failure is retried a few times before it reaches
@@ -65,5 +66,31 @@ export function createUnitOfWork(db: Database): UnitOfWork {
           return fn(tx as unknown as Tx);
         }),
       ),
+    async withWorkspaceLock(workspaceId, fn) {
+      // A connection of its own, held for the whole write. The callback opens
+      // its own transactions on other connections and commits to Git in
+      // between, so a transaction-scoped lock would be gone before the commit.
+      // Not retried: the callback may have committed to Git, and a commit
+      // cannot be undone by running the callback again.
+      const gate = await db.$client.connect();
+      try {
+        await gate.query('SELECT pg_advisory_lock($1, hashtext($2))', [
+          LOCK_WORKSPACE_WRITE,
+          workspaceId,
+        ]);
+        try {
+          return await fn();
+        } finally {
+          await gate
+            .query('SELECT pg_advisory_unlock($1, hashtext($2))', [
+              LOCK_WORKSPACE_WRITE,
+              workspaceId,
+            ])
+            .catch(() => undefined);
+        }
+      } finally {
+        gate.release();
+      }
+    },
   };
 }

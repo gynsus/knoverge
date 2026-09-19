@@ -104,3 +104,16 @@ not from the membership role: the server gates on the permission, and a second
 copy of the rule in the browser drifts from it. A reviewer granted an action
 explicitly would otherwise be shown a control they are entitled to use, and a
 viewer would be shown forms whose every submission is refused.
+
+## Writing to PostgreSQL and Git together
+
+`packages/core/src/operations` holds the primitive every canonical write goes
+through: `CrossStoreWriter` runs the order `docs/ARCHITECTURE.md` section 4
+fixes, and `RecoveryService` finishes or abandons a write that was interrupted.
+
+The lock is `UnitOfWork.withWorkspaceLock`, which is session-scoped on a
+connection of its own because the write spans three transactions and a Git
+commit. `runExclusive` keeps its transaction-scoped meaning for single
+transaction work such as first-run setup. ADR 0012 records why, including why
+a process that dies leaves an operation row rather than a lock nobody can
+release.

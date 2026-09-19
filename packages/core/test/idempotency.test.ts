@@ -16,6 +16,7 @@ const NOW = new Date('2026-09-19T12:00:00Z');
 const uow: UnitOfWork = {
   run: (fn) => fn({} as Tx),
   runExclusive: (_key, fn) => fn({} as Tx),
+  withWorkspaceLock: (_workspaceId, fn) => fn(),
 };
 const actor: ActorContext = {
   workspaceId: 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T3' as WorkspaceId,

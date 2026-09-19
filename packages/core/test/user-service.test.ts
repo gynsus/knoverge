@@ -17,6 +17,7 @@ const clock = { now: () => NOW };
 const uow: UnitOfWork = {
   run: (fn) => fn({} as Tx),
   runExclusive: (_key, fn) => fn({} as Tx),
+  withWorkspaceLock: (_workspaceId, fn) => fn(),
 };
 
 /** Password hashing stub: reversible, so tests stay fast and deterministic. */
