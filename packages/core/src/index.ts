@@ -1,4 +1,21 @@
 export type { ActorContext } from './actor-context.ts';
+export type {
+  AgentPatch,
+  AgentRecord,
+  AgentRepository,
+  CredentialRecord,
+  CredentialRepository,
+  ResolvedCredential,
+} from './agents/repository.ts';
+export {
+  AgentService,
+  TOKEN_PREFIX,
+  type AgentServiceOptions,
+  type CreateAgentInput,
+  type IssueCredentialInput,
+  type IssuedCredential,
+  type UpdateAgentInput,
+} from './agents/service.ts';
 export { DomainError, type DomainErrorOptions } from './errors.ts';
 export {
   BootstrapService,
