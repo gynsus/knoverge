@@ -34,9 +34,12 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       try {
         await asTx(tx).insert(categories).values(category);
       } catch (err) {
-        rethrowUniqueViolation(err, `a category already exists at ${category.path}`, {
-          path: category.path,
-        });
+        rethrowUniqueViolation(
+          err,
+          `a category already exists at ${category.path}`,
+          { path: category.path },
+          'CATEGORY_CONFLICT',
+        );
       }
     },
     async update(tx: Tx, id: CategoryId, patch: CategoryPatch) {
@@ -46,7 +49,12 @@ export function createCategoryRepository(db: Database): CategoryRepository {
           .set(patch as Partial<typeof categories.$inferInsert>)
           .where(eq(categories.id, id));
       } catch (err) {
-        rethrowUniqueViolation(err, 'a category already exists at this path');
+        rethrowUniqueViolation(
+          err,
+          'a category already exists at this path',
+          undefined,
+          'CATEGORY_CONFLICT',
+        );
       }
     },
     async findById(workspaceId: WorkspaceId, id: CategoryId) {
@@ -103,7 +111,7 @@ export function createCategoryRepository(db: Database): CategoryRepository {
           ),
         )
         .returning({ id: categories.id });
-      return rows.length;
+      return rows.map((r) => r.id as CategoryId);
     },
     async rewritePaths(
       tx: Tx,
@@ -113,21 +121,34 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       at: Date,
     ) {
       // One statement for the whole subtree, so no intermediate state is visible.
-      const rows = await asTx(tx)
-        .update(categories)
-        .set({
-          // Explicit casts: the driver sends both values as untyped parameters.
-          path: sql`${newPath}::text || substring(${categories.path} from ${oldPath.length + 1}::int)`,
-          updatedAt: at,
-        })
-        .where(
-          and(
-            eq(categories.workspaceId, workspaceId),
-            or(eq(categories.path, oldPath), sql`${categories.path} LIKE ${`${oldPath}/%`}`),
-          ),
-        )
-        .returning({ id: categories.id });
-      return rows.length;
+      try {
+        const rows = await asTx(tx)
+          .update(categories)
+          .set({
+            // Explicit casts: the driver sends both values as untyped parameters.
+            path: sql`${newPath}::text || substring(${categories.path} from ${oldPath.length + 1}::int)`,
+            updatedAt: at,
+          })
+          .where(
+            and(
+              eq(categories.workspaceId, workspaceId),
+              or(eq(categories.path, oldPath), sql`${categories.path} LIKE ${`${oldPath}/%`}`),
+            ),
+          )
+          .returning({ id: categories.id });
+        return rows.map((r) => r.id as CategoryId);
+      } catch (err) {
+        // The path is only ever written here, so this is where a concurrent
+        // rename or move collides. Without it the caller would see a 500.
+        rethrowUniqueViolation(
+          err,
+          `a category already exists at ${newPath}`,
+          {
+            path: newPath,
+          },
+          'CATEGORY_CONFLICT',
+        );
+      }
     },
   };
 }
