@@ -1,0 +1,31 @@
+name: Proposed change
+description: A capability Knoverge does not have, or one that should work differently.
+labels: ['enhancement']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and where Knoverge gets in the way. Describe the situation, not the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: What should happen instead. If you have thought about alternatives, say what you rejected and why.
+    validations:
+      required: true
+  - type: textarea
+    id: architecture
+    attributes:
+      label: Does it fit the architecture
+      description: |
+        `CLAUDE.md` lists ten rules that changes must not break, among them: canonical content stays readable without the application, every material write is attributable, the event ledger is append-only, and the core runs without an LLM. Say which of them your proposal touches, if any.
+  - type: checkboxes
+    id: milestone
+    attributes:
+      label: Before you file
+      options:
+        - label: I checked `docs/IMPLEMENTATION_PLAN.md` and this is not already a planned milestone.
+          required: true

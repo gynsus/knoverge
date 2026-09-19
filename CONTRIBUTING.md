@@ -125,17 +125,15 @@ Do not commit copied proprietary code or model outputs with unclear licensing pr
 
 ## Reporting security issues
 
-Do not open a public issue for a vulnerability. Until the repository is public and a root `SECURITY.md` names a contact, report it privately through GitHub's "Report a vulnerability" on the Security tab, or to the repository owner directly.
+Do not open a public issue for a vulnerability. `SECURITY.md` at the repository root says how to report one privately and what to expect.
 
-`docs/SECURITY.md` is the threat model and design document, not a reporting address.
+`docs/SECURITY.md` is a different document: the threat model and the design of the authorisation system. It has no reporting address.
 
 ## Pre-release checklist
 
-Before the repository is made public:
+In place: the Apache 2.0 `LICENSE`, `CODE_OF_CONDUCT.md`, a root `SECURITY.md` with a private reporting channel, issue and pull request templates, and CI running lint, typecheck, tests and the container build on every pull request.
 
-- `LICENSE` (Apache 2.0) present;
-- `CODE_OF_CONDUCT.md` present;
-- root `SECURITY.md` with a vulnerability-reporting contact;
-- issue and pull request templates;
-- CI running lint, typecheck, and tests;
-- English and Russian message catalogues complete for the shipped UI.
+Still to do before the repository is made public:
+
+- English and Russian message catalogues complete for the whole shipped interface, not only the parts built so far;
+- a tagged release, so `SECURITY.md` can name a supported version rather than `main`.
