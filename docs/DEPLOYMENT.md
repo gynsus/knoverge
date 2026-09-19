@@ -95,6 +95,7 @@ KNOVERGE_DATA_DIR
 KNOVERGE_WEB_DIST             built web bundle directory; set in the image, unset in development
 KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
 KNOVERGE_SESSION_SECRET       signs browser cookies; required; hex, at least 32 bytes
+KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at least 32 bytes
 KNOVERGE_BASE_URL             public URL; cookies are Secure when https (default http://localhost:3000)
 KNOVERGE_TOKEN_PEPPER         (Milestone 1, agent credentials)
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
@@ -151,6 +152,17 @@ Agents
 ```
 
 Token is displayed once.
+
+Or from the command line:
+
+```bash
+docker compose exec knoverge knoverge agent create --name "Claude Code - Mac mini" --client-type claude-code
+docker compose exec knoverge knoverge agent token issue --agent ag_...
+docker compose exec knoverge knoverge agent list
+docker compose exec knoverge knoverge agent token revoke --credential cred_...
+```
+
+Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 
 Connection examples for common MCP clients (Claude Code, Cursor, generic Streamable HTTP client, stdio bridge) are provided after implementation:
 

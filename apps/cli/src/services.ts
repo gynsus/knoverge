@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from '@knoverge/auth';
 import {
+  AgentService,
   BootstrapService,
   EventLedger,
   SessionService,
@@ -28,6 +29,7 @@ export function createServices() {
   const database = createDatabase({ connectionString: required('KNOVERGE_DATABASE_URL'), max: 2 });
   const uow = createUnitOfWork(database.db);
   const repositories = createRepositories(database.db);
+  const tokenPepper = required('KNOVERGE_TOKEN_PEPPER');
   const ledger = new EventLedger({
     key: parseLedgerKey(required('KNOVERGE_LEDGER_KEY')),
     events: repositories.events,
@@ -41,6 +43,14 @@ export function createServices() {
     uow,
     sessions: repositories.sessions,
     tokens: { generate: generateOpaqueToken, hash: hashToken },
+  });
+  const agents = new AgentService({
+    uow,
+    agents: repositories.agents,
+    credentials: repositories.credentials,
+    actors: repositories.actors,
+    ledger,
+    tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
   });
   const workspaces = new WorkspaceService({
     uow,
@@ -60,6 +70,8 @@ export function createServices() {
   return {
     repositories,
     ledger,
+    agents,
+    uow,
     users,
     sessions,
     workspaces,

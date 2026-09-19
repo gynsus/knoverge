@@ -34,6 +34,7 @@ pnpm install
 cp .env.example .env
 echo "KNOVERGE_LEDGER_KEY=$(openssl rand -hex 32)" >> .env
 echo "KNOVERGE_SESSION_SECRET=$(openssl rand -hex 32)" >> .env
+echo "KNOVERGE_TOKEN_PEPPER=$(openssl rand -hex 32)" >> .env
 docker compose up -d postgres
 pnpm dev            # server on http://localhost:3000
 ```
