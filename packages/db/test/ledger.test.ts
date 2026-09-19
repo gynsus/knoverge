@@ -38,6 +38,7 @@ let systemActorId: ActorId;
 beforeAll(async () => {
   container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
   handle = createDatabase({ connectionString: container.getConnectionUri(), max: 8 });
+  handle.pool.on('error', () => undefined);
   await runMigrations(handle.db, migrationsFolder);
   const events = createEventRepository(handle.db);
   const workspaces = createWorkspaceRepository(handle.db);
@@ -50,7 +51,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await handle?.close();
+  await handle?.close().catch(() => undefined);
   await container?.stop();
 });
 
