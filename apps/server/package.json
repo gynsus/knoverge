@@ -1,0 +1,32 @@
+{
+  "name": "@knoverge/server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Knoverge server: HTTP API, MCP endpoint, web bundle and background worker",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env --import tsx --watch src/index.ts",
+    "start": "node --env-file-if-exists=../../.env dist/index.js",
+    "build": "tsup",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@knoverge/contracts": "workspace:*",
+    "fastify": "catalog:",
+    "pg": "catalog:",
+    "pino": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "catalog:",
+    "pino-pretty": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
