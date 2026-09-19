@@ -75,7 +75,11 @@ jobs:
             -e KNOVERGE_DATABASE_URL=postgres://nobody:nobody@127.0.0.1:1/none \
             knoverge:ci
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:3000/health/live; then echo; exit 0; fi
+            if curl -fsS http://127.0.0.1:3000/health/live; then
+              echo
+              curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">' && echo 'web bundle served'
+              exit 0
+            fi
             sleep 1
           done
           docker logs knoverge-smoke

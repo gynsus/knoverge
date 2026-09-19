@@ -14,6 +14,7 @@ const EnvSchema = z.object({
       'KNOVERGE_DATABASE_URL must be a postgres:// URL',
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
+  KNOVERGE_WEB_DIST: z.string().min(1).optional(),
   KNOVERGE_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   KNOVERGE_TRUST_PROXY: z
     .enum(['true', 'false'])
@@ -28,6 +29,8 @@ export interface Config {
   role: 'all' | 'web' | 'worker';
   databaseUrl: string;
   dataDir: string;
+  /** Directory with the built web bundle; undefined disables static serving. */
+  webDist: string | undefined;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   trustProxy: boolean;
   nodeEnv: 'development' | 'test' | 'production';
@@ -59,6 +62,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
+    webDist: e.KNOVERGE_WEB_DIST === undefined ? undefined : resolve(e.KNOVERGE_WEB_DIST),
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
     nodeEnv: e.NODE_ENV,

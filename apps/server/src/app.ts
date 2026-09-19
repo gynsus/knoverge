@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import fastifyStatic from '@fastify/static';
+
 import type { ReadyResponse } from '@knoverge/contracts';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
@@ -21,7 +23,11 @@ export interface AppOptions {
   probes: ReadinessProbes;
   loggerInstance?: FastifyBaseLogger;
   trustProxy?: boolean;
+  /** Built web bundle to serve at '/', with SPA fallback for unknown paths. */
+  webDist?: string;
 }
+
+const API_PREFIXES = ['/v1/', '/mcp', '/health/'];
 
 /**
  * Builds the Fastify instance. Transport only: no domain logic lives here.
@@ -53,6 +59,35 @@ export function buildApp(options: AppOptions): FastifyInstance {
     reply.code(healthy ? 200 : 503);
     return body;
   });
+
+  if (options.webDist) {
+    void app.register(fastifyStatic, {
+      root: options.webDist,
+      prefix: '/',
+      wildcard: false,
+      index: ['index.html'],
+      cacheControl: false,
+      setHeaders: (res, filePath) => {
+        // Hashed assets under /assets are immutable; index.html must always be revalidated.
+        const cache = filePath.includes('/assets/')
+          ? 'public, max-age=31536000, immutable'
+          : 'no-cache';
+        void res.header('cache-control', cache);
+      },
+    });
+    app.setNotFoundHandler((request, reply) => {
+      const path = request.url.split('?')[0] ?? request.url;
+      const isApi = API_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
+      if (request.method === 'GET' && !isApi) {
+        return reply
+          .header('cache-control', 'no-cache')
+          .sendFile('index.html', options.webDist as string, { cacheControl: false });
+      }
+      return reply
+        .code(404)
+        .send({ code: 'NOT_FOUND', message: 'Route not found', retryable: false });
+    });
+  }
 
   return app;
 }

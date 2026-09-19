@@ -21,9 +21,11 @@ FROM base AS runtime
 ENV NODE_ENV=production \
     KNOVERGE_PORT=3000 \
     KNOVERGE_HOST=0.0.0.0 \
-    KNOVERGE_DATA_DIR=/data
+    KNOVERGE_DATA_DIR=/data \
+    KNOVERGE_WEB_DIST=/app/web
 COPY --from=build --chown=node:node /out/server /app/server
 COPY --from=build --chown=node:node /out/cli /app/cli
+COPY --from=build --chown=node:node /app/apps/web/dist /app/web
 RUN ln -s /app/cli/dist/index.js /usr/local/bin/knoverge \
  && chmod +x /app/cli/dist/index.js \
  && mkdir -p /data && chown node:node /data
