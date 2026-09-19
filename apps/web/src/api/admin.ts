@@ -1,4 +1,5 @@
 import type {
+  AddMemberRequest,
   AgentResponse,
   AgentsResponse,
   CategoryResponse,
@@ -12,8 +13,12 @@ import type {
   PolicyRulesResponse,
   SessionsResponse,
   TaxonomyListResponse,
+  MembersResponse,
   UpdateAgentRequest,
   UpdateCategoryRequest,
+  UpdateMemberRequest,
+  UpdateWorkspaceRequest,
+  WorkspaceResponse,
 } from '@knoverge/contracts';
 
 import { apiGet, apiPost } from './client.ts';
@@ -48,6 +53,17 @@ export const adminApi = {
     rules: (signal?: AbortSignal) => apiGet<PolicyRulesResponse>('/v1/admin/policy.rules', signal),
     deleteRule: (ruleId: string) =>
       apiPost<OkResponse>('/v1/admin/policy.rules.delete', { rule_id: ruleId }),
+  },
+  workspace: {
+    get: (signal?: AbortSignal) => apiGet<WorkspaceResponse>('/v1/workspace.get', signal),
+    update: (body: UpdateWorkspaceRequest) =>
+      apiPost<OkResponse>('/v1/admin/workspace.update', body),
+    members: (signal?: AbortSignal) => apiGet<MembersResponse>('/v1/admin/members.list', signal),
+    addMember: (body: AddMemberRequest) => apiPost<MembersResponse>('/v1/admin/members.add', body),
+    updateMember: (body: UpdateMemberRequest) =>
+      apiPost<OkResponse>('/v1/admin/members.update', body),
+    removeMember: (userId: string) =>
+      apiPost<OkResponse>('/v1/admin/members.remove', { user_id: userId }),
   },
   account: {
     sessions: (signal?: AbortSignal) => apiGet<SessionsResponse>('/v1/auth/sessions', signal),
