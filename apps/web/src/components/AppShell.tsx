@@ -19,6 +19,9 @@ export function AppShell() {
   const me = auth.state.kind === 'authenticated' ? auth.state.me : null;
   return (
     <div className="shell">
+      <a className="skip-link" href="#main">
+        {t('nav.skip_to_content')}
+      </a>
       <header className="topbar">
         <div>
           <h1>{t('app.name')}</h1>
@@ -45,7 +48,7 @@ export function AppShell() {
           ))}
         </nav>
       )}
-      <main>
+      <main id="main" tabIndex={-1}>
         <Outlet />
       </main>
     </div>

@@ -1,6 +1,6 @@
 import type { CategorySummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
@@ -16,6 +16,15 @@ export function TaxonomyPage() {
   const [parentPath, setParentPath] = useState('');
   const [selected, setSelected] = useState<CategorySummary | null>(null);
   const [renameTo, setRenameTo] = useState('');
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const lastTrigger = useRef<HTMLButtonElement | null>(null);
+
+  // The detail panel appears below the tree, so without moving focus a keyboard
+  // or screen reader user is left where they were with nothing to tell them.
+  useEffect(() => {
+    if (selected) detailHeading.current?.focus();
+    else lastTrigger.current?.focus();
+  }, [selected]);
 
   const taxonomy = useQuery({
     queryKey: TAXONOMY_KEY,
@@ -81,14 +90,12 @@ export function TaxonomyPage() {
         {categories.length === 0 && taxonomy.isSuccess && <p>{t('taxonomy.empty')}</p>}
         <ul className="tree">
           {categories.map((category) => (
-            <li
-              key={category.id}
-              style={{ marginLeft: `${(category.path.split('/').length - 1) * 16}px` }}
-            >
+            <li key={category.id} data-depth={Math.min(category.path.split('/').length - 1, 6)}>
               <button
                 type="button"
                 className="link"
-                onClick={() => {
+                onClick={(event) => {
+                  lastTrigger.current = event.currentTarget;
                   setSelected(category);
                   setRenameTo(category.name);
                 }}
@@ -105,7 +112,9 @@ export function TaxonomyPage() {
 
       {selected && (
         <section className="card" aria-labelledby="category-detail-title">
-          <h3 id="category-detail-title">{selected.name}</h3>
+          <h3 id="category-detail-title" tabIndex={-1} ref={detailHeading}>
+            {selected.name}
+          </h3>
           <Field label={t('taxonomy.rename')}>
             <input value={renameTo} onChange={(e) => setRenameTo(e.target.value)} maxLength={120} />
           </Field>

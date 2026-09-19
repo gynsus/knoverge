@@ -142,7 +142,11 @@ describe('sign in', () => {
     await user.type(screen.getByLabelText('Email'), 'owner@example.com');
     await user.type(screen.getByLabelText('Password'), 'wrong password!!');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+    // One code stands for three different failures (wrong password, expired
+    // session, wrong current password), so the text names none of them.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Please sign in again, or check the details you entered.',
+    );
   });
 
   it('signs in, shows the home page and signs out', async () => {

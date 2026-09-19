@@ -187,9 +187,12 @@ describe('agents page', () => {
     await user.click(await screen.findByRole('button', { name: 'Manage' }));
     await user.click(screen.getByRole('button', { name: 'Issue token' }));
 
-    const notice = await screen.findByRole('alert');
-    expect(within(notice).getByText(token)).toBeInTheDocument();
-    expect(notice).toHaveTextContent('shown once');
+    // The instruction is announced; the secret itself is deliberately outside
+    // the live region, so a screen reader does not read the token aloud.
+    const announced = await screen.findByRole('status');
+    expect(announced).toHaveTextContent('shown once');
+    expect(within(announced).queryByText(token)).not.toBeInTheDocument();
+    expect(screen.getByText(token)).toBeInTheDocument();
 
     expect(screen.getByText('01J8Z3M4Q9V0')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Hide token' }));
@@ -354,6 +357,38 @@ describe('workspace page', () => {
       role: 'reviewer',
       initial_password: 'a long enough passphrase',
     });
+  });
+
+  it('holds a role change until it is applied, and confirms a removal', async () => {
+    const members = [...MEMBERS];
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/admin/members.list': () => json({ members }),
+      'POST /v1/admin/members.update': () => json({ ok: true }),
+      'POST /v1/admin/members.remove': () => json({ ok: true }),
+    });
+    renderApp('/workspace');
+    const user = userEvent.setup();
+    const select = await screen.findByLabelText(`Role of ${MEMBERS[0]!.display_name}`);
+
+    // Choosing a role changes nothing on its own: it used to be committed on
+    // the change event, and the control then reverted while the call was in
+    // flight.
+    await user.selectOptions(select, 'viewer');
+    expect(select).toHaveValue('viewer');
+    expect(calls.find((c) => c.url === '/v1/admin/members.update')).toBeUndefined();
+
+    await user.click(screen.getByRole('button', { name: 'Apply role' }));
+    expect(calls.find((c) => c.url === '/v1/admin/members.update')?.body).toMatchObject({
+      role: 'viewer',
+    });
+
+    // Removal asks first, and does nothing until the second press.
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+    expect(calls.find((c) => c.url === '/v1/admin/members.remove')).toBeUndefined();
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(calls.find((c) => c.url === '/v1/admin/members.remove')).toBeUndefined();
   });
 
   it('hides member management from a member who cannot administer', async () => {

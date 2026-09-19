@@ -38,6 +38,16 @@ export default tseslint.config(
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       // Every visible string goes through the message catalogue (docs/I18N.md).
       'i18next/no-literal-string': ['error', { mode: 'jsx-text-only' }],
+      // That rule checks text children only, so the strings a screen reader
+      // speaks but nobody sees would otherwise bypass the catalogue.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            'JSXAttribute[name.name=/^(aria-label|alt|placeholder|title|aria-valuetext|aria-roledescription|aria-placeholder)$/] > Literal',
+          message: 'A string a reader hears goes through the catalogue: use t(...).',
+        },
+      ],
     },
   },
   prettier,

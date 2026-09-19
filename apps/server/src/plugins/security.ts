@@ -26,7 +26,10 @@ export async function registerSecurity(
       directives: {
         'default-src': ["'self'"],
         'script-src': ["'self'"],
-        'style-src': ["'self'", "'unsafe-inline'"],
+        // No 'unsafe-inline': the interface carries no inline style attribute
+        // and no style element, so allowing them would widen the policy for
+        // nothing. A change that needs one must add a nonce instead.
+        'style-src': ["'self'"],
         'img-src': ["'self'", 'data:'],
         'font-src': ["'self'"],
         'connect-src': ["'self'"],
