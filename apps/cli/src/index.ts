@@ -5,6 +5,7 @@ import { agentCommand } from './commands/agent.ts';
 import { bootstrapCommand } from './commands/bootstrap.ts';
 import { dbCommand } from './commands/db.ts';
 import { ledgerCommand } from './commands/ledger.ts';
+import { taxonomyCommand } from './commands/taxonomy.ts';
 import { workspaceCommand } from './commands/workspace.ts';
 
 const program = new Command();
@@ -19,6 +20,7 @@ program.addCommand(bootstrapCommand());
 program.addCommand(dbCommand());
 program.addCommand(workspaceCommand());
 program.addCommand(ledgerCommand());
+program.addCommand(taxonomyCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(err instanceof Error ? err.message : String(err));

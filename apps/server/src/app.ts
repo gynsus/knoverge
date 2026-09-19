@@ -15,6 +15,7 @@ import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
+import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerOpenApi } from './routes/openapi.ts';
 import type { Services } from './services.ts';
 
@@ -97,6 +98,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       cookieSecure: options.security.cookieSecure,
     });
     registerAdminAgentRoutes(app, options.services);
+    registerTaxonomyRoutes(app, options.services);
   }
 
   if (options.webDist) {
