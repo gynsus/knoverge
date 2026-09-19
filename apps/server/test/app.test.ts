@@ -47,6 +47,25 @@ describe('GET /health/ready', () => {
     expect(body.checks.database.error).toBe('connection refused');
   });
 
+  it('includes optional probes and degrades when one fails', async () => {
+    const res = await app({
+      ...probes(ok, ok),
+      migrations: async () => ({ status: 'failed', error: '1 pending migration(s): 0001_x' }),
+      jobs: async () => ok,
+    }).inject({ method: 'GET', url: '/health/ready' });
+    expect(res.statusCode).toBe(503);
+    const body = ReadyResponse.parse(res.json());
+    expect(body.checks.migrations?.status).toBe('failed');
+    expect(body.checks.jobs?.status).toBe('ok');
+  });
+
+  it('omits optional probes that are not configured', async () => {
+    const res = await app(probes(ok, ok)).inject({ method: 'GET', url: '/health/ready' });
+    const body = ReadyResponse.parse(res.json());
+    expect(body.checks.migrations).toBeUndefined();
+    expect(body.checks.jobs).toBeUndefined();
+  });
+
   it('returns 503 when the data directory probe fails', async () => {
     const res = await app(probes(ok, failed)).inject({ method: 'GET', url: '/health/ready' });
     expect(res.statusCode).toBe(503);

@@ -15,6 +15,10 @@ const EnvSchema = z.object({
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
   KNOVERGE_WEB_DIST: z.string().min(1).optional(),
+  KNOVERGE_AUTO_MIGRATE: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
   KNOVERGE_LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
   KNOVERGE_TRUST_PROXY: z
     .enum(['true', 'false'])
@@ -31,6 +35,8 @@ export interface Config {
   dataDir: string;
   /** Directory with the built web bundle; undefined disables static serving. */
   webDist: string | undefined;
+  /** Apply pending migrations on start. Disable when an operator runs `knoverge db migrate`. */
+  autoMigrate: boolean;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   trustProxy: boolean;
   nodeEnv: 'development' | 'test' | 'production';
@@ -63,6 +69,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
     webDist: e.KNOVERGE_WEB_DIST === undefined ? undefined : resolve(e.KNOVERGE_WEB_DIST),
+    autoMigrate: e.KNOVERGE_AUTO_MIGRATE,
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
     nodeEnv: e.NODE_ENV,

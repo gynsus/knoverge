@@ -17,7 +17,9 @@
     "version": "Version {{version}}",
     "check": {
       "database": "Database",
-      "data_dir": "Data directory"
+      "data_dir": "Data directory",
+      "migrations": "Database migrations",
+      "jobs": "Job runner"
     },
     "check_status": {
       "ok": "OK",

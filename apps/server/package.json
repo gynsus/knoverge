@@ -16,8 +16,11 @@
   "dependencies": {
     "@fastify/static": "catalog:",
     "@knoverge/contracts": "workspace:*",
+    "@knoverge/db": "workspace:*",
+    "drizzle-orm": "catalog:",
     "fastify": "catalog:",
     "pg": "catalog:",
+    "pg-boss": "catalog:",
     "pino": "catalog:",
     "zod": "catalog:"
   },

@@ -14,6 +14,14 @@ describe('loadConfig', () => {
     expect(c.dataDir).not.toMatch(/^\./);
     expect(c.logLevel).toBe('info');
     expect(c.trustProxy).toBe(false);
+    expect(c.autoMigrate).toBe(true);
+    expect(c.webDist).toBeUndefined();
+  });
+
+  it('parses auto-migrate and web dist', () => {
+    const c = loadConfig({ ...base, KNOVERGE_AUTO_MIGRATE: 'false', KNOVERGE_WEB_DIST: 'web' });
+    expect(c.autoMigrate).toBe(false);
+    expect(c.webDist).toMatch(/[\\/]web$/);
   });
 
   it('parses overrides', () => {

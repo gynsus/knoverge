@@ -23,14 +23,16 @@ export function StatusPage() {
             <small>{t('status.version', { version: query.data.version })}</small>
           </p>
           <ul>
-            {Object.entries(query.data.checks).map(([name, check]) => (
-              <li key={name}>
-                {t(`status.check.${name}`)}: {t(`status.check_status.${check.status}`)}
-                {check.latency_ms !== undefined && (
-                  <> ({t('status.latency', { count: check.latency_ms })})</>
-                )}
-              </li>
-            ))}
+            {Object.entries(query.data.checks).map(([name, check]) =>
+              check === undefined ? null : (
+                <li key={name}>
+                  {t(`status.check.${name}`)}: {t(`status.check_status.${check.status}`)}
+                  {check.latency_ms !== undefined && (
+                    <> ({t('status.latency', { count: check.latency_ms })})</>
+                  )}
+                </li>
+              ),
+            )}
           </ul>
         </>
       )}

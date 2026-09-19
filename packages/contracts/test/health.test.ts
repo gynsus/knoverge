@@ -15,6 +15,20 @@ describe('ReadyResponse', () => {
     expect(parsed.status).toBe('ok');
   });
 
+  it('accepts optional migrations and jobs checks', () => {
+    const parsed = ReadyResponse.parse({
+      status: 'degraded',
+      version: '0.0.0',
+      checks: {
+        database: { status: 'ok' },
+        data_dir: { status: 'ok' },
+        migrations: { status: 'failed', error: '1 pending' },
+        jobs: { status: 'ok', latency_ms: 4 },
+      },
+    });
+    expect(parsed.checks.migrations?.status).toBe('failed');
+  });
+
   it('rejects an unknown check status', () => {
     const result = ReadyResponse.safeParse({
       status: 'ok',
