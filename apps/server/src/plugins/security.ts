@@ -91,7 +91,14 @@ export async function registerRateLimits(
  */
 export function csrfUnlessBearer(app: FastifyInstance): onRequestHookHandler {
   return function csrfForBrowsers(request, reply, done) {
-    if (request.agentAuth) {
+    // The header being present is what matters, not whether it resolved. A
+    // browser never attaches Authorization on its own, so the protection is
+    // unchanged; but keying on the resolved agent meant an expired or revoked
+    // token was answered with FORBIDDEN by the CSRF hook, before the route
+    // could say UNAUTHENTICATED. An agent could not tell "rotate your token"
+    // from "you may not do this", and was told not to retry either way.
+    const authorization = request.headers.authorization;
+    if (request.agentAuth || authorization?.toLowerCase().startsWith('bearer ')) {
       done();
       return;
     }

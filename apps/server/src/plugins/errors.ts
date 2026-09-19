@@ -44,10 +44,19 @@ export function registerErrorHandler(app: FastifyInstance): void {
       body = { code: 'RATE_LIMITED', message: 'too many requests', retryable: true };
     } else if ('statusCode' in error && error.statusCode === 403) {
       body = { code: 'FORBIDDEN', message: 'request rejected', retryable: false };
-    } else if ('statusCode' in error && error.statusCode === 400) {
-      body = { code: 'VALIDATION_ERROR', message: error.message, retryable: false };
     } else if ('statusCode' in error && error.statusCode === 413) {
       body = { code: 'VALIDATION_ERROR', message: 'request body too large', retryable: false };
+    } else if (
+      'statusCode' in error &&
+      typeof error.statusCode === 'number' &&
+      error.statusCode >= 400 &&
+      error.statusCode < 500
+    ) {
+      // Anything the framework rejected before the handler is the caller's
+      // mistake. Listing the codes one by one left the gaps as server faults:
+      // a POST with no content-type is a 415, which answered INTERNAL_ERROR
+      // with retryable true, telling the client to keep trying.
+      body = { code: 'VALIDATION_ERROR', message: error.message, retryable: false };
     } else {
       request.log.error({ err: error }, 'unhandled error');
       body = { code: 'INTERNAL_ERROR', message: 'internal error', retryable: true };

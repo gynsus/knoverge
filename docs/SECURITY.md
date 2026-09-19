@@ -281,7 +281,13 @@ A rule that decides whether a write may happen is read inside the transaction th
 
 ## 9a. Cross-site request forgery
 
-CSRF protection applies to cookie-authenticated browser requests. A request authenticated with a bearer token carries no ambient authority and is not forgeable this way, so agents are not asked for a token they cannot obtain.
+CSRF protection applies to cookie-authenticated browser requests. A request that carries an `Authorization: Bearer` header is exempt: a browser never attaches that header on its own, so such a request is not forgeable this way, and an agent is not asked for a token it cannot obtain.
+
+The exemption is decided by the header being present, not by the credential resolving. Deciding it on the resolved agent meant an expired or revoked token was refused by the CSRF hook before the route could answer, so the agent was told `FORBIDDEN` and not to retry, when the correct instruction was to get a new token.
+
+The secret cookie is signed and cleared on sign-out, so the next person on that browser starts with their own.
+
+Known limitation: the token is not bound to the session, so it is a double-submit pair. An attacker who can write a cookie for this host, from a sibling subdomain or over plain HTTP, could plant a matching pair. Binding the token to the user would require every client to fetch a new token after signing in, and the deployment guidance is TLS with no untrusted sibling subdomain, so the pair stands for now. It is recorded here rather than left unsaid.
 
 ## 10. Prompt injection boundary
 
