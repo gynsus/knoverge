@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 
@@ -30,7 +30,7 @@ export function SetupPage() {
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
-  const update = (field: keyof typeof form) => (event: { target: { value: string } }) => {
+  const update = (field: keyof typeof form) => (event: ChangeEvent<HTMLInputElement>) => {
     const value = event.target.value;
     setForm((prev) => ({
       ...prev,
