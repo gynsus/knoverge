@@ -1,32 +1,10 @@
 import { AgentId, TrustTier } from '@knoverge/contracts';
-import { DomainError } from '@knoverge/core';
 import { Command } from 'commander';
 
-import { createServices } from '../services.ts';
+import { emit, field, parseOrFail, withServices } from '../run.ts';
 import { systemActorContext } from '../workspace-actor.ts';
 
-async function withServices<T>(
-  fn: (s: ReturnType<typeof createServices>) => Promise<T>,
-): Promise<void> {
-  const services = createServices();
-  try {
-    await fn(services);
-  } catch (err) {
-    if (err instanceof DomainError) {
-      console.error(`${err.code}: ${err.message}`);
-      process.exitCode = 1;
-      return;
-    }
-    if (err instanceof Error) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  } finally {
-    await services.close();
-  }
-}
+const AGENT_ID = 'must be an agent id, as `agent list` prints in the first column';
 
 export function agentCommand(): Command {
   const cmd = new Command('agent').description('Agent identities and credentials');
@@ -48,8 +26,11 @@ export function agentCommand(): Command {
         workspace?: string;
       }) => {
         await withServices(async (services) => {
-          const tier = TrustTier.safeParse(opts.trustTier);
-          if (!tier.success) throw new Error('trust tier must be read_only, propose or trusted');
+          const tier = parseOrFail(
+            TrustTier,
+            opts.trustTier,
+            '--trust-tier must be read_only, propose or trusted',
+          );
           const actor = await systemActorContext(services, opts.workspace);
           const agent = await services.agents.create(
             actor,
@@ -58,7 +39,7 @@ export function agentCommand(): Command {
               name: opts.name,
               description: opts.description,
               clientType: opts.clientType,
-              trustTier: tier.data,
+              trustTier: tier,
             },
           );
           console.log(`created agent ${agent.id} (${agent.name}, ${agent.trustTier})`);
@@ -70,15 +51,35 @@ export function agentCommand(): Command {
     .command('list')
     .description('List agents')
     .option('--workspace <slug|id>')
-    .action(async (opts: { workspace?: string }) => {
+    .option('--json', 'print the result as JSON')
+    .action(async (opts: { workspace?: string; json?: boolean }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        for (const agent of await services.agents.list(actor.workspaceId)) {
-          const active = await services.agents.countActiveCredentials(agent.id);
-          console.log(
-            `${agent.id}\t${agent.status}\t${agent.trustTier}\t${active} credential(s)\t${agent.name}`,
-          );
-        }
+        const agents = await services.agents.list(actor.workspaceId);
+        // The same field names the HTTP API uses.
+        const rows = await Promise.all(
+          agents.map(async (agent) => ({
+            id: agent.id,
+            actor_id: agent.actorId,
+            name: agent.name,
+            description: agent.description,
+            client_type: agent.clientType,
+            trust_tier: agent.trustTier,
+            status: agent.status,
+            active_credentials: await services.agents.countActiveCredentials(agent.id),
+          })),
+        );
+        emit(opts.json ?? false, { agents: rows }, () =>
+          rows.map((agent) =>
+            [
+              agent.id,
+              agent.status,
+              agent.trust_tier,
+              String(agent.active_credentials),
+              field(agent.name),
+            ].join('\t'),
+          ),
+        );
       });
     });
 
@@ -94,7 +95,7 @@ export function agentCommand(): Command {
           actor,
           {},
           {
-            agentId: AgentId.parse(opts.agent),
+            agentId: parseOrFail(AgentId, opts.agent, `--agent ${AGENT_ID}`),
             status: 'disabled',
           },
         );
@@ -121,7 +122,7 @@ export function agentCommand(): Command {
         await withServices(async (services) => {
           const actor = await systemActorContext(services, opts.workspace);
           const issued = await services.agents.issueCredential(actor, {
-            agentId: AgentId.parse(opts.agent),
+            agentId: parseOrFail(AgentId, opts.agent, `--agent ${AGENT_ID}`),
             label: opts.label,
             ...(opts.expiresInDays ? { expiresInDays: Number(opts.expiresInDays) } : {}),
           });
@@ -141,8 +142,12 @@ export function agentCommand(): Command {
     .action(async (opts: { credential: string; workspace?: string }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        await services.agents.revokeCredential(actor, opts.credential);
-        console.log(`revoked credential ${opts.credential}`);
+        const changed = await services.agents.revokeCredential(actor, opts.credential);
+        console.log(
+          changed
+            ? `revoked credential ${opts.credential}`
+            : `credential ${opts.credential} was already revoked`,
+        );
       });
     });
 
@@ -151,21 +156,30 @@ export function agentCommand(): Command {
     .description('List credentials of an agent')
     .requiredOption('--agent <id>')
     .option('--workspace <slug|id>')
-    .action(async (opts: { agent: string; workspace?: string }) => {
+    .option('--json', 'print the result as JSON')
+    .action(async (opts: { agent: string; workspace?: string; json?: boolean }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
         const credentials = await services.agents.listCredentials(
           actor.workspaceId,
-          AgentId.parse(opts.agent),
+          parseOrFail(AgentId, opts.agent, `--agent ${AGENT_ID}`),
         );
-        for (const c of credentials) {
-          const state = c.revokedAt
+        const rows = credentials.map((c) => ({
+          id: c.id,
+          token_prefix: c.tokenPrefix,
+          label: c.label,
+          expires_at: c.expiresAt?.toISOString() ?? null,
+          revoked_at: c.revokedAt?.toISOString() ?? null,
+          last_used_at: c.lastUsedAt?.toISOString() ?? null,
+          state: c.revokedAt
             ? 'revoked'
             : c.expiresAt && c.expiresAt <= new Date()
               ? 'expired'
-              : 'active';
-          console.log(`${c.id}\t${state}\t${c.tokenPrefix}\t${c.label ?? ''}`);
-        }
+              : 'active',
+        }));
+        emit(opts.json ?? false, { credentials: rows }, () =>
+          rows.map((c) => [c.id, c.state, c.token_prefix, field(c.label)].join('\t')),
+        );
       });
     });
 

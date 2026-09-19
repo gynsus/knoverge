@@ -179,6 +179,14 @@ docker compose exec knoverge knoverge taxonomy list
 
 Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`.
 
+### Reading command line output from a script
+
+Every listing writes tab-separated rows to standard output and nothing else. Headers, counts and failure detail go to standard error, so `knoverge taxonomy list > categories.tsv` gives you rows and only rows. `--tree` indents names to show the hierarchy, which is for reading, not for parsing.
+
+`--json` prints the whole result as one object, using the same field names as the HTTP API. `ledger verify` exits 1 when any workspace is broken, and `db status` exits 1 when migrations are pending, so both can gate a deployment step.
+
+Commands ask only for the secrets they use. `workspace list` needs the database URL alone; `ledger verify` needs the ledger key as well; issuing a credential needs the token pepper.
+
 Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 
 Connection examples for common MCP clients (Claude Code, Cursor, generic Streamable HTTP client, stdio bridge) are provided after implementation:

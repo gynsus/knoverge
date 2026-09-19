@@ -40,7 +40,7 @@ export function dbCommand(): Command {
     });
 
   db.command('status')
-    .description('Show applied and pending migrations')
+    .description('Show applied and pending migrations; exits 1 when any are pending')
     .action(async () => {
       await withDatabase(async (handle) => {
         const status = await getMigrationStatus(handle.db, defaultMigrationsFolder());

@@ -68,3 +68,42 @@ describe('command surface', () => {
     ]);
   });
 });
+
+describe('output a script can read', () => {
+  const listCommands = [
+    ['agent', 'list'],
+    ['taxonomy', 'list'],
+    ['workspace', 'list'],
+    ['ledger', 'verify'],
+  ] as const;
+
+  it('offers --json wherever a command prints a list', () => {
+    for (const [parent, child] of listCommands) {
+      const command = commands
+        .find((c) => c.name() === parent)!
+        .commands.find((c) => c.name() === child)!;
+      const options = command.options.map((o) => o.long);
+      expect(options, `${parent} ${child}`).toContain('--json');
+    }
+  });
+
+  it('accepts a slug or an id wherever a command takes a workspace', () => {
+    for (const [parent, child] of listCommands) {
+      const command = commands
+        .find((c) => c.name() === parent)!
+        .commands.find((c) => c.name() === child)!;
+      const workspace = command.options.find((o) => o.long === '--workspace');
+      if (!workspace) continue;
+      // ledger verify used to take an id only, unlike every other command.
+      expect(workspace.flags, `${parent} ${child}`).toContain('<slug|id>');
+    }
+  });
+
+  it('says what an identifier option expects, rather than printing a schema', async () => {
+    const { parseOrFail } = await import('../src/run.ts');
+    const { AgentId } = await import('@knoverge/contracts');
+    expect(() => parseOrFail(AgentId, 'not-an-id', '--agent must be an agent id')).toThrowError(
+      '--agent must be an agent id',
+    );
+  });
+});

@@ -24,75 +24,132 @@ function required(name: string): string {
   return value;
 }
 
+/** Builds a value the first time it is asked for, and keeps it. */
+function lazy<T>(build: () => T): () => T {
+  let value: T | undefined;
+  let built = false;
+  return () => {
+    if (!built) {
+      value = build();
+      built = true;
+    }
+    return value as T;
+  };
+}
+
 /**
- * Composition root for CLI commands: database, repositories, ledger, services.
+ * Composition root for command line commands.
+ *
+ * Secrets are resolved when something needs them, not when the process starts.
+ * `knoverge workspace list` is one SELECT and needs neither the ledger key nor
+ * the token pepper; demanding them anyway turned an ordinary listing into a
+ * configuration error.
  */
 export function createServices() {
   const database = createDatabase({ connectionString: required('KNOVERGE_DATABASE_URL'), max: 2 });
   const uow = createUnitOfWork(database.db);
   const repositories = createRepositories(database.db);
-  const tokenPepper = required('KNOVERGE_TOKEN_PEPPER');
-  const ledger = new EventLedger({
-    key: parseLedgerKey(required('KNOVERGE_LEDGER_KEY')),
-    events: repositories.events,
+
+  const ledger = lazy(
+    () =>
+      new EventLedger({
+        key: parseLedgerKey(required('KNOVERGE_LEDGER_KEY')),
+        events: repositories.events,
+      }),
+  );
+  const users = lazy(
+    () =>
+      new UserService({
+        uow,
+        users: repositories.users,
+        passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },
+      }),
+  );
+  const sessions = lazy(
+    () =>
+      new SessionService({
+        uow,
+        sessions: repositories.sessions,
+        tokens: { generate: generateOpaqueToken, hash: hashToken },
+      }),
+  );
+  const authorization = lazy(
+    () =>
+      new AuthorizationService({
+        uow,
+        grants: repositories.grants,
+        rules: repositories.policyRules,
+        categories: repositories.categories,
+        ledger: ledger(),
+      }),
+  );
+  const agents = lazy(() => {
+    const tokenPepper = required('KNOVERGE_TOKEN_PEPPER');
+    return new AgentService({
+      uow,
+      agents: repositories.agents,
+      credentials: repositories.credentials,
+      actors: repositories.actors,
+      ledger: ledger(),
+      tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
+      authorization: authorization(),
+    });
   });
-  const users = new UserService({
-    uow,
-    users: repositories.users,
-    passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },
-  });
-  const sessions = new SessionService({
-    uow,
-    sessions: repositories.sessions,
-    tokens: { generate: generateOpaqueToken, hash: hashToken },
-  });
-  const authorization = new AuthorizationService({
-    uow,
-    grants: repositories.grants,
-    rules: repositories.policyRules,
-    categories: repositories.categories,
-    ledger,
-  });
-  const agents = new AgentService({
-    uow,
-    agents: repositories.agents,
-    credentials: repositories.credentials,
-    actors: repositories.actors,
-    ledger,
-    tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
-    authorization,
-  });
-  const taxonomy = new TaxonomyService({
-    uow,
-    categories: repositories.categories,
-    aliases: repositories.aliases,
-    versions: repositories.taxonomyVersions,
-    ledger,
-  });
-  const workspaces = new WorkspaceService({
-    uow,
-    workspaces: repositories.workspaces,
-    actors: repositories.actors,
-    ledger,
-  });
-  const bootstrap = new BootstrapService({
-    uow,
-    users,
-    workspaces,
-    memberships: repositories.memberships,
-    actors: repositories.actors,
-    ledger,
-  });
+  const taxonomy = lazy(
+    () =>
+      new TaxonomyService({
+        uow,
+        categories: repositories.categories,
+        aliases: repositories.aliases,
+        versions: repositories.taxonomyVersions,
+        ledger: ledger(),
+      }),
+  );
+  const workspaces = lazy(
+    () =>
+      new WorkspaceService({
+        uow,
+        workspaces: repositories.workspaces,
+        actors: repositories.actors,
+        ledger: ledger(),
+      }),
+  );
+  const bootstrap = lazy(
+    () =>
+      new BootstrapService({
+        uow,
+        users: users(),
+        workspaces: workspaces(),
+        memberships: repositories.memberships,
+        actors: repositories.actors,
+        ledger: ledger(),
+      }),
+  );
+
   return {
     repositories,
-    ledger,
-    agents,
-    taxonomy,
     uow,
-    users,
-    sessions,
-    workspaces,
-    bootstrap,
+    get ledger() {
+      return ledger();
+    },
+    get agents() {
+      return agents();
+    },
+    get taxonomy() {
+      return taxonomy();
+    },
+    get users() {
+      return users();
+    },
+    get sessions() {
+      return sessions();
+    },
+    get workspaces() {
+      return workspaces();
+    },
+    get bootstrap() {
+      return bootstrap();
+    },
     close: () => database.close(),
   };
 }

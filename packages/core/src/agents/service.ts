@@ -283,11 +283,12 @@ export class AgentService {
     return { credential, token };
   }
 
-  async revokeCredential(actor: ActorContext, credentialId: string): Promise<void> {
+  /** Returns false when the credential was already revoked and nothing changed. */
+  async revokeCredential(actor: ActorContext, credentialId: string): Promise<boolean> {
     const credential = await this.o.credentials.findById(credentialId);
     if (!credential) throw new DomainError('NOT_FOUND', 'credential not found');
     const agent = await this.require(actor.workspaceId, credential.agentId);
-    if (credential.revokedAt) return;
+    if (credential.revokedAt) return false;
     const now = this.clock.now();
     await this.o.uow.run(async (tx) => {
       await this.o.credentials.revoke(tx, credential.id, now);
@@ -298,6 +299,7 @@ export class AgentService {
         metadata: { agent_id: agent.id, token_prefix: credential.tokenPrefix },
       });
     });
+    return true;
   }
 
   /**
