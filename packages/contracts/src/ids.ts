@@ -25,6 +25,7 @@ export const ID_PREFIXES = {
   attachment: 'att',
   webhook: 'hook',
   policyRule: 'rule',
+  permissionGrant: 'grant',
   searchChunk: 'chunk',
 } as const;
 
