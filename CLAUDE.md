@@ -420,7 +420,9 @@ Full rules: `docs/WORKFLOW.md`. Summary:
 - Commits: Conventional Commits, `git commit -s` with the maintainer's identity, no other attribution trailers. PR descriptions carry no tool attribution lines.
 - Rebase on `origin/main` before the PR; never merge `main` into the branch; `--force-with-lease` only.
 - Never merge a PR unless the owner says so.
-- Finish every task with the end-of-task report from `docs/WORKFLOW.md` section 21.
+- Every PR is self-contained: green checks, no half-wired code, tests and docs included, even for a partial milestone.
+- Never bypass hooks or checks (`--no-verify`, custom `core.hooksPath`).
+- Finish every task with the end-of-task report from `docs/WORKFLOW.md` section 22.
 
 ## Implementation behaviour
 

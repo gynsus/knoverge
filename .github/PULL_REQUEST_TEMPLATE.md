@@ -17,6 +17,7 @@
 ## Compatibility
 
 <!-- Changes to MCP contracts, HTTP contracts, database schema, Git workspace format, configuration, permissions, migrations. Write "None" if not applicable. -->
+<!-- Before v0.1.0: state whether the migration baseline was regenerated ("Migration baseline regenerated: yes/no"). -->
 
 ## Documentation
 
