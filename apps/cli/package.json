@@ -15,7 +15,10 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "commander": "catalog:"
+    "@knoverge/db": "workspace:*",
+    "commander": "catalog:",
+    "drizzle-orm": "catalog:",
+    "pg": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
