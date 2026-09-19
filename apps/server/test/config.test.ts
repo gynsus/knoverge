@@ -5,6 +5,7 @@ import { ConfigError, loadConfig } from '../src/config.ts';
 const base = {
   KNOVERGE_DATABASE_URL: 'postgres://u:p@localhost:5432/db',
   KNOVERGE_LEDGER_KEY: 'ab'.repeat(32),
+  KNOVERGE_SESSION_SECRET: 'cd'.repeat(32),
 };
 
 describe('loadConfig', () => {
@@ -57,6 +58,15 @@ describe('loadConfig', () => {
     expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'zz' })).toThrow(/hex/);
     expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'ab'.repeat(8) })).toThrow(/32 bytes/);
     expect(loadConfig(base).ledgerKey.bytes).toHaveLength(32);
+  });
+
+  it('requires a session secret and derives cookie security from the base url', () => {
+    const { KNOVERGE_SESSION_SECRET: _s, ...withoutSecret } = base;
+    expect(() => loadConfig(withoutSecret)).toThrow(/KNOVERGE_SESSION_SECRET/);
+    expect(loadConfig(base).cookieSecure).toBe(false);
+    expect(loadConfig({ ...base, KNOVERGE_BASE_URL: 'https://kn.example.com' }).cookieSecure).toBe(
+      true,
+    );
   });
 
   it('rejects a non-postgres database url', () => {

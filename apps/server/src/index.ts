@@ -1,10 +1,11 @@
-import { createDatabase, defaultMigrationsFolder, runMigrations } from '@knoverge/db';
+import { defaultMigrationsFolder, runMigrations } from '@knoverge/db';
 import pino from 'pino';
 
 import pkg from '../package.json' with { type: 'json' };
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
 import { createJobs } from './jobs.ts';
+import { createServices } from './services.ts';
 import { runUntilSuccess } from './startup.ts';
 import {
   createDatabaseProbe,
@@ -33,18 +34,21 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger(config.logLevel, config.nodeEnv);
-  const database = createDatabase({ connectionString: config.databaseUrl, max: 10 });
+  const services = createServices({ databaseUrl: config.databaseUrl, ledgerKey: config.ledgerKey });
+  const database = services.database;
   database.pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
 
   const migrationsFolder = defaultMigrationsFolder();
   const runsWorker = config.role === 'all' || config.role === 'worker';
   const jobs = runsWorker ? createJobs(config.databaseUrl, logger) : undefined;
 
-  const app = buildApp({
+  const app = await buildApp({
     version: pkg.version,
     loggerInstance: logger,
     trustProxy: config.trustProxy,
     ...(config.webDist ? { webDist: config.webDist } : {}),
+    services,
+    security: { sessionSecret: config.sessionSecret, cookieSecure: config.cookieSecure },
     probes: {
       database: createDatabaseProbe(database.pool),
       dataDir: createDataDirProbe(config.dataDir),
