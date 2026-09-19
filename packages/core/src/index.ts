@@ -1,5 +1,35 @@
 export type { ActorContext } from './actor-context.ts';
 export { DomainError, type DomainErrorOptions } from './errors.ts';
+export {
+  BootstrapService,
+  addMember,
+  type BootstrapInput,
+  type BootstrapResult,
+  type BootstrapServiceOptions,
+} from './identity/bootstrap-service.ts';
+export type { PasswordHasher, TokenService } from './identity/ports.ts';
+export type {
+  MembershipRecord,
+  MembershipRepository,
+  MembershipWithWorkspace,
+  SessionRecord,
+  SessionRepository,
+  UserRecord,
+  UserRepository,
+} from './identity/repository.ts';
+export {
+  SESSION_TTL_MS,
+  SessionService,
+  type IssuedSession,
+  type SessionServiceOptions,
+} from './identity/session-service.ts';
+export {
+  LOCKOUT_MS,
+  MAX_FAILED_LOGINS,
+  UserService,
+  type CreateUserInput,
+  type UserServiceOptions,
+} from './identity/user-service.ts';
 export { ID_PREFIXES, newId, type IdPrefix } from './ids.ts';
 export { canonicalJson } from './ledger/canonical-json.ts';
 export {
