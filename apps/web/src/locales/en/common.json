@@ -29,18 +29,20 @@
     "refresh": "Refresh"
   },
   "common": {
+    "cancel": "Cancel",
+    "close": "Close",
     "loading": "Loading...",
-    "working": "Working...",
-    "close": "Close"
+    "working": "Working..."
   },
   "nav": {
+    "agents": "Agents",
+    "home": "Overview",
     "label": "Sections",
     "logout": "Sign out",
-    "home": "Overview",
-    "taxonomy": "Taxonomy",
-    "agents": "Agents",
     "policy": "Policy",
     "settings": "Settings",
+    "skip_to_content": "Skip to content",
+    "taxonomy": "Taxonomy",
     "workspace": "Workspace"
   },
   "fields": {
@@ -73,7 +75,7 @@
     "viewer": "Viewer"
   },
   "errors": {
-    "UNAUTHENTICATED": "Invalid email or password.",
+    "UNAUTHENTICATED": "Please sign in again, or check the details you entered.",
     "FORBIDDEN": "This action is not allowed.",
     "NOT_FOUND": "Not found.",
     "VALIDATION_ERROR": "Please check the highlighted fields.",
@@ -185,26 +187,29 @@
     "revoke": "Sign out"
   },
   "workspace": {
-    "title": "Workspace",
-    "name": "Name",
-    "description": "Description",
+    "add": "Add member",
+    "add_member": "Add a member",
+    "add_member_intro": "Add an existing account by email, or create one by giving it a password to pass on.",
+    "apply_role": "Apply role",
+    "confirm": "Remove",
+    "confirm_remove": "Remove {{name}} from this workspace?",
     "default_language": "Default content language",
     "default_language_hint": "Used for knowledge items that do not state their own language.",
+    "description": "Description",
+    "display_name_hint": "Only used when creating a new account.",
     "identifier": "Identifier",
+    "initial_password": "Initial password",
+    "initial_password_hint": "Required for a new account. Ask the person to change it after signing in.",
+    "last_seen": "Last signed in",
+    "members": "Members",
+    "name": "Name",
+    "never_signed_in": "Never",
+    "person": "Person",
+    "remove": "Remove",
+    "role": "Role",
+    "role_of": "Role of {{name}}",
     "save": "Save",
     "saved": "Workspace updated.",
-    "members": "Members",
-    "person": "Person",
-    "role": "Role",
-    "last_seen": "Last signed in",
-    "never_signed_in": "Never",
-    "remove": "Remove",
-    "role_of": "Role of {{name}}",
-    "add_member": "Add a member",
-    "add": "Add member",
-    "add_member_intro": "Add an existing account by email, or create one by giving it a password to pass on.",
-    "display_name_hint": "Only used when creating a new account.",
-    "initial_password": "Initial password",
-    "initial_password_hint": "Required for a new account. Ask the person to change it after signing in."
+    "title": "Workspace"
   }
 }

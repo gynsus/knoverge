@@ -1,6 +1,6 @@
 import type { AgentId } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
@@ -10,7 +10,7 @@ import { Field } from '../components/Field.tsx';
 const AGENTS_KEY = ['admin', 'agents'] as const;
 
 function CredentialList({ agentId }: { agentId: string }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const key = ['admin', 'credentials', agentId] as const;
   const query = useQuery({
@@ -30,48 +30,57 @@ function CredentialList({ agentId }: { agentId: string }) {
   if (query.data.credentials.length === 0) return <p>{t('agents.no_credentials')}</p>;
 
   return (
-    <table>
-      <thead>
-        <tr>
-          <th scope="col">{t('agents.credential')}</th>
-          <th scope="col">{t('agents.credential_state')}</th>
-          <th scope="col">{t('agents.last_used')}</th>
-          <th scope="col" />
-        </tr>
-      </thead>
-      <tbody>
-        {query.data.credentials.map((credential) => {
-          const expired =
-            credential.expires_at !== null && new Date(credential.expires_at) <= new Date();
-          const state = credential.revoked_at ? 'revoked' : expired ? 'expired' : 'active';
-          return (
-            <tr key={credential.id}>
-              <td>
-                <code>{credential.token_prefix}</code> {credential.label ?? ''}
-              </td>
-              <td>{t(`agents.states.${state}`)}</td>
-              <td>
-                {credential.last_used_at
-                  ? new Date(credential.last_used_at).toLocaleString()
-                  : t('agents.never_used')}
-              </td>
-              <td>
-                {state === 'active' && (
-                  <button type="button" onClick={() => revoke.mutate(credential.id)}>
-                    {t('agents.revoke')}
-                  </button>
-                )}
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <>
+      <ErrorNotice error={revoke.error} />
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">{t('agents.credential')}</th>
+            <th scope="col">{t('agents.credential_state')}</th>
+            <th scope="col">{t('agents.last_used')}</th>
+            <th scope="col" />
+          </tr>
+        </thead>
+        <tbody>
+          {query.data.credentials.map((credential) => {
+            const expired =
+              credential.expires_at !== null && new Date(credential.expires_at) <= new Date();
+            const state = credential.revoked_at ? 'revoked' : expired ? 'expired' : 'active';
+            return (
+              <tr key={credential.id}>
+                <td>
+                  <code>{credential.token_prefix}</code> {credential.label ?? ''}
+                </td>
+                <td>{t(`agents.states.${state}`)}</td>
+                <td>
+                  {credential.last_used_at
+                    ? new Date(credential.last_used_at).toLocaleString(i18n.language)
+                    : t('agents.never_used')}
+                </td>
+                <td>
+                  {state === 'active' && (
+                    <button
+                      type="button"
+                      onClick={() => revoke.mutate(credential.id)}
+                      disabled={revoke.isPending}
+                    >
+                      {t('agents.revoke')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </>
   );
 }
 
 export function AgentsPage() {
   const { t } = useTranslation();
+  const detailHeading = useRef<HTMLHeadingElement>(null);
+  const lastTrigger = useRef<HTMLButtonElement | null>(null);
   const client = useQueryClient();
   const [name, setName] = useState('');
   const [clientType, setClientType] = useState('');
@@ -111,6 +120,13 @@ export function AgentsPage() {
       adminApi.agents.update({ agent_id: agentId, status: 'disabled' }),
     onSuccess: refresh,
   });
+
+  // The panel appears below the table, so without this a keyboard or screen
+  // reader user is left where they were and has to hunt for what opened.
+  useEffect(() => {
+    if (expanded) detailHeading.current?.focus();
+    else lastTrigger.current?.focus();
+  }, [expanded]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -154,7 +170,11 @@ export function AgentsPage() {
                   <td>
                     <button
                       type="button"
-                      onClick={() => setExpanded(expanded === agent.id ? null : agent.id)}
+                      aria-expanded={expanded === agent.id}
+                      onClick={(event) => {
+                        lastTrigger.current = event.currentTarget;
+                        setExpanded(expanded === agent.id ? null : agent.id);
+                      }}
                     >
                       {t('agents.manage')}
                     </button>
@@ -168,14 +188,16 @@ export function AgentsPage() {
 
       {expanded && (
         <section className="card" aria-labelledby="agent-detail-title">
-          <h3 id="agent-detail-title">
+          <h3 id="agent-detail-title" tabIndex={-1} ref={detailHeading}>
             {agents.data?.agents.find((a) => a.id === expanded)?.name ?? ''}
           </h3>
           {issuedToken?.agentId === expanded && (
-            <div className="notice" role="alert">
-              <p>
+            <div className="notice">
+              <p role="status">
                 <strong>{t('agents.token_once')}</strong>
               </p>
+              {/* Outside the live region: an assertive announcement would read
+                  the secret out loud, and it is the instruction that matters. */}
               <pre>
                 <code>{issuedToken.token}</code>
               </pre>

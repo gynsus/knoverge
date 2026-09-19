@@ -36,6 +36,11 @@ export function createI18n(initialLocale?: Locale) {
     instance.on('languageChanged', (lng) => {
       document.documentElement.lang = lng;
     });
+    // init() emits languageChanged before this handler exists, so the first
+    // language has to be applied here. Without it a Russian page is announced
+    // as English until the reader touches the switcher, which decides the voice
+    // a screen reader uses and how the text is hyphenated.
+    document.documentElement.lang = instance.resolvedLanguage ?? 'en';
   }
   return instance;
 }

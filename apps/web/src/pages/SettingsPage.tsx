@@ -10,7 +10,7 @@ import { useAuth } from '../auth/use-auth.ts';
 const SESSIONS_KEY = ['account', 'sessions'] as const;
 
 export function SettingsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const auth = useAuth();
   const [current, setCurrent] = useState('');
@@ -101,14 +101,18 @@ export function SettingsPage() {
             <tbody>
               {sessions.data.sessions.map((session) => (
                 <tr key={session.id}>
-                  <td>{new Date(session.created_at).toLocaleString()}</td>
+                  <td>{new Date(session.created_at).toLocaleString(i18n.language)}</td>
                   <td>
                     <span>{session.user_agent ?? t('settings.unknown_client')}</span>
                     {session.current && <> {t('settings.this_session')}</>}
                   </td>
                   <td>
                     {!session.current && (
-                      <button type="button" onClick={() => revoke.mutate(session.id)}>
+                      <button
+                        type="button"
+                        onClick={() => revoke.mutate(session.id)}
+                        disabled={revoke.isPending}
+                      >
                         {t('settings.revoke')}
                       </button>
                     )}
@@ -118,6 +122,7 @@ export function SettingsPage() {
             </tbody>
           </table>
         )}
+        <ErrorNotice error={revoke.error} />
       </section>
     </>
   );

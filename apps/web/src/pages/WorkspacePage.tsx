@@ -18,16 +18,26 @@ function MemberRow({
   member: MemberSummary;
   onChanged: () => Promise<void>;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // A role change is held here until it is applied. Two reasons: the select is
+  // controlled by server data, so without it the control visibly reverts to the
+  // old role while the change is in flight; and changing what somebody may do
+  // should not happen on a stray keystroke over a dropdown.
+  const [pendingRole, setPendingRole] = useState<MembershipRole | null>(null);
+  const [confirmingRemoval, setConfirmingRemoval] = useState(false);
   const update = useMutation({
     mutationFn: (role: MembershipRole) =>
       adminApi.workspace.updateMember({ user_id: member.user_id, role }),
-    onSuccess: onChanged,
+    onSuccess: async () => {
+      await onChanged();
+      setPendingRole(null);
+    },
   });
   const remove = useMutation({
     mutationFn: () => adminApi.workspace.removeMember(member.user_id),
     onSuccess: onChanged,
   });
+  const role = pendingRole ?? member.role;
   return (
     <tr>
       <td>
@@ -35,27 +45,53 @@ function MemberRow({
       </td>
       <td>
         <select
-          value={member.role}
+          value={role}
           aria-label={t('workspace.role_of', { name: member.display_name })}
-          onChange={(e) => update.mutate(e.target.value as MembershipRole)}
+          onChange={(e) => setPendingRole(e.target.value as MembershipRole)}
           disabled={update.isPending}
         >
-          {ROLES.map((role) => (
-            <option key={role} value={role}>
-              {t(`roles.${role}`)}
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {t(`roles.${r}`)}
             </option>
           ))}
         </select>
+        {pendingRole !== null && pendingRole !== member.role && (
+          <>
+            <button
+              type="button"
+              onClick={() => update.mutate(pendingRole)}
+              disabled={update.isPending}
+            >
+              {update.isPending ? t('common.working') : t('workspace.apply_role')}
+            </button>{' '}
+            <button type="button" onClick={() => setPendingRole(null)}>
+              {t('common.cancel')}
+            </button>
+          </>
+        )}
       </td>
       <td>
         {member.last_login_at
-          ? new Date(member.last_login_at).toLocaleDateString()
+          ? new Date(member.last_login_at).toLocaleDateString(i18n.language)
           : t('workspace.never_signed_in')}
       </td>
       <td>
-        <button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
-          {t('workspace.remove')}
-        </button>
+        {confirmingRemoval ? (
+          <>
+            <span>{t('workspace.confirm_remove', { name: member.display_name })}</span>{' '}
+            <button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
+              {remove.isPending ? t('common.working') : t('workspace.confirm')}
+            </button>{' '}
+            <button type="button" onClick={() => setConfirmingRemoval(false)}>
+              {t('common.cancel')}
+            </button>
+          </>
+        ) : (
+          <button type="button" onClick={() => setConfirmingRemoval(true)}>
+            {t('workspace.remove')}
+          </button>
+        )}
         <ErrorNotice error={update.error ?? remove.error} />
       </td>
     </tr>
