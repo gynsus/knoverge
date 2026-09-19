@@ -22,7 +22,9 @@ Two credential types are accepted on `/v1`:
 
 Humans may call the same RPC endpoints as agents. Their actor is the human actor of their workspace membership.
 
-Workspace selection for humans: header `X-Knoverge-Workspace: ws_...`. Agent tokens are bound to one workspace and ignore the header.
+Workspace selection for humans: header `X-Knoverge-Workspace: ws_...`. It may be omitted when the user belongs to exactly one workspace. Agent tokens are bound to one workspace and ignore the header.
+
+Agent tokens have the form `knv_<credential prefix>_<secret>`. The server stores only a peppered SHA-256 hash and reveals the token once, when it is issued.
 
 ## 3. Context headers
 
@@ -82,16 +84,18 @@ Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus
 Require the corresponding workspace role or permission.
 
 ```text
+POST /v1/admin/agents.create
+POST /v1/admin/agents.update
+GET  /v1/admin/agents.list
+GET  /v1/admin/agents.credentials?agent_id=ag_...
+POST /v1/admin/agents.credentials.issue     returns the token once
+POST /v1/admin/agents.credentials.revoke
+
 POST /v1/admin/workspaces.create
 POST /v1/admin/workspaces.update
 POST /v1/admin/members.invite
 POST /v1/admin/members.update
 POST /v1/admin/members.remove
-POST /v1/admin/agents.create
-POST /v1/admin/agents.update
-POST /v1/admin/agents.disable
-POST /v1/admin/agents.credentials.issue     returns the token once
-POST /v1/admin/agents.credentials.revoke
 POST /v1/admin/permissions.grant
 POST /v1/admin/permissions.revoke
 POST /v1/admin/policy.rules.upsert

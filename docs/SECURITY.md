@@ -78,7 +78,10 @@ MVP:
 - expiration optional but supported;
 - immediate revocation;
 - last-used timestamp;
-- rotation: issue a new credential, revoke the old one, both audited.
+- rotation: issue a new credential, revoke the old one, both audited;
+- disabling an agent revokes every credential it holds in the same transaction;
+- authentication failures are indistinguishable to the caller, whether the token is unknown, revoked, expired or belongs to a disabled agent;
+- successful authentication updates `last_used_at` and `last_seen_at` and is logged, but is not a ledger event (ADR 0007).
 
 Do not use one global MCP token for all agents.
 
