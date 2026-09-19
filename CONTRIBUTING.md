@@ -19,6 +19,10 @@ Everything in the repository is written in English: code, comments, commit messa
 
 User-facing interface text is translatable through message catalogues. See `docs/I18N.md` for how to add or update a translation.
 
+## Workflow
+
+Branching, commits, pull requests and verification rules are defined in [docs/WORKFLOW.md](docs/WORKFLOW.md). `main` is protected; all changes arrive through pull requests.
+
 ## Development
 
 Expected commands will be standardised during Milestone 0.
@@ -66,10 +70,10 @@ A PR that changes behaviour should include:
 
 Contributions are accepted under the [Developer Certificate of Origin](https://developercertificate.org/) 1.1.
 
-Sign off each commit:
+Sign off each commit and follow Conventional Commits:
 
 ```bash
-git commit -s
+git commit -s -m "feat(server): add workspace bootstrap flow"
 ```
 
 No separate contributor licence agreement is required.

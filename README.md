@@ -409,4 +409,5 @@ Thank you.
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - local/server installation
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) - build sequence
 - [docs/TESTING.md](docs/TESTING.md) - required tests
+- [docs/WORKFLOW.md](docs/WORKFLOW.md) - branching, commits, pull requests
 - [docs/adr/](docs/adr/) - architecture decision records
