@@ -102,8 +102,9 @@ POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
 POST /v1/admin/taxonomy.create
 POST /v1/admin/taxonomy.update
-POST /v1/admin/taxonomy.merge
+POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
+POST /v1/admin/taxonomy.merge              (arrives with knowledge items, Milestone 2)
 POST /v1/admin/knowledge.restore
 POST /v1/admin/knowledge.rename_slug
 POST /v1/admin/embedding_profile.set

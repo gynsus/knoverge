@@ -17,6 +17,7 @@ ag_    agent
 cred_  agent credential
 sess_  human session
 cat_   category
+alias_ category alias
 kn_    knowledge item
 rev_   knowledge revision
 src_   source reference
