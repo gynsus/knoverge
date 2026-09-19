@@ -270,6 +270,46 @@ describe('explicit grants', () => {
   });
 });
 
+describe('scoped reads', () => {
+  it('shows a branch-scoped reader its branch instead of refusing everything', async () => {
+    const parent = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Visible branch' })).json(),
+    ).category;
+    const child = CategoryResponse.parse(
+      (
+        await admin.post('/v1/admin/taxonomy.create', {
+          name: 'Visible child',
+          parent_path: parent.path,
+        })
+      ).json(),
+    ).category;
+    const { agent, token } = await newAgent('Scoped reader', 'read_only');
+
+    // Before the grant the tier lets it read the whole tree.
+    const before = await asAgent(token, { method: 'GET', url: '/v1/taxonomy.list' });
+    expect(TaxonomyListResponse.parse(before.json()).categories.length).toBeGreaterThan(2);
+
+    // A scoped allow narrows the action instead of adding to the tier baseline.
+    await admin.post('/v1/admin/permissions.grant', {
+      actor_id: agent.actor_id,
+      action: 'taxonomy.read',
+      scope: { categories: [{ category_id: parent.id, include_descendants: true }] },
+    });
+    const res = await asAgent(token, { method: 'GET', url: '/v1/taxonomy.list' });
+    expect(res.statusCode, res.body).toBe(200);
+    const visible = TaxonomyListResponse.parse(res.json()).categories.map((c) => c.id);
+    expect(visible).toEqual(expect.arrayContaining([parent.id, child.id]));
+    expect(visible).toHaveLength(2);
+
+    // An unrestricted reader still sees the whole tree.
+    const everything = await asAgent((await newAgent('Unrestricted reader')).token, {
+      method: 'GET',
+      url: '/v1/taxonomy.list',
+    });
+    expect(TaxonomyListResponse.parse(everything.json()).categories.length).toBeGreaterThan(2);
+  });
+});
+
 describe('policy rules', () => {
   it('keeps a trusted agent on review until a scoped rule says otherwise', async () => {
     const { agent } = await newAgent('Trusted writer', 'trusted');
