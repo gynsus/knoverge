@@ -170,6 +170,84 @@ describe('agent administration', () => {
     expect(list.agents.map((a) => a.name)).toContain('Claude Code - Mac mini');
   });
 
+  it('replays a retried creation instead of reporting a duplicate name', async () => {
+    const admin = owner();
+    const body = {
+      name: 'Retried agent',
+      client_type: 'claude-code',
+      idempotency_key: 'create-agent-1',
+    };
+    const first = await admin.post('/v1/admin/agents.create', body);
+    expect(first.statusCode, first.body).toBe(200);
+    const second = await admin.post('/v1/admin/agents.create', body);
+    expect(second.statusCode, second.body).toBe(200);
+    expect(AgentResponse.parse(second.json()).agent.id).toBe(
+      AgentResponse.parse(first.json()).agent.id,
+    );
+
+    const list = AgentsResponse.parse((await admin.get('/v1/admin/agents.list')).json());
+    expect(list.agents.filter((a) => a.name === 'Retried agent')).toHaveLength(1);
+  });
+
+  it('refuses a key reused for a different request', async () => {
+    const admin = owner();
+    await admin.post('/v1/admin/agents.create', {
+      name: 'Key owner',
+      idempotency_key: 'create-agent-2',
+    });
+    const res = await admin.post('/v1/admin/agents.create', {
+      name: 'Different agent',
+      idempotency_key: 'create-agent-2',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/different request/);
+  });
+
+  it('accepts the key in a header as well as in the body', async () => {
+    const admin = owner();
+    const body = { name: 'Header keyed agent' };
+    const first = await admin.request({
+      method: 'POST',
+      url: '/v1/admin/agents.create',
+      payload: body,
+      headers: { 'idempotency-key': 'create-agent-3' },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const second = await admin.request({
+      method: 'POST',
+      url: '/v1/admin/agents.create',
+      payload: body,
+      headers: { 'idempotency-key': 'create-agent-3' },
+    });
+    expect(second.statusCode).toBe(200);
+    expect(AgentResponse.parse(second.json()).agent.id).toBe(
+      AgentResponse.parse(first.json()).agent.id,
+    );
+  });
+
+  it('issues a fresh credential on every call, because the response carries a secret', async () => {
+    const admin = owner();
+    const agent = AgentResponse.parse(
+      (await admin.post('/v1/admin/agents.create', { name: 'Not idempotent' })).json(),
+    ).agent;
+    const body = { agent_id: agent.id, idempotency_key: 'issue-credential-1' };
+    const first = IssueCredentialResponse.parse(
+      (await admin.post('/v1/admin/agents.credentials.issue', body)).json(),
+    );
+    const second = IssueCredentialResponse.parse(
+      (await admin.post('/v1/admin/agents.credentials.issue', body)).json(),
+    );
+    expect(second.credential.id).not.toBe(first.credential.id);
+    // And the token is nowhere in the idempotency table.
+    const stored = await services.database.db.execute<{ row: string }>(
+      sql`SELECT response::text AS row FROM idempotency_records`,
+    );
+    for (const { row } of stored.rows) {
+      expect(row).not.toContain(first.token);
+      expect(row).not.toContain(second.token);
+    }
+  });
+
   it('validates the body', async () => {
     const admin = owner();
     const res = await admin.post('/v1/admin/agents.create', { name: '', trust_tier: 'superuser' });

@@ -9,6 +9,20 @@ import type { FastifyRequest } from 'fastify';
 import type { Services } from '../services.ts';
 
 export const WORKSPACE_HEADER = 'x-knoverge-workspace';
+export const IDEMPOTENCY_HEADER = 'idempotency-key';
+
+/** Reads the idempotency key from its header or from the body field of the same name. */
+export function idempotencyKey(request: FastifyRequest): string | undefined {
+  const header = request.headers[IDEMPOTENCY_HEADER];
+  const fromHeader = Array.isArray(header) ? header[0] : header;
+  if (fromHeader !== undefined) return fromHeader;
+  const body = request.body;
+  if (body && typeof body === 'object' && 'idempotency_key' in body) {
+    const value = (body as { idempotency_key?: unknown }).idempotency_key;
+    if (typeof value === 'string') return value;
+  }
+  return undefined;
+}
 
 /**
  * Optional provenance headers are telemetry, not authority. They are trimmed to

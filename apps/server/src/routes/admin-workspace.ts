@@ -13,7 +13,11 @@ import { DomainError } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requirePermission, resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import {
+  idempotencyKey,
+  requirePermission,
+  resolveWorkspaceActor,
+} from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -90,14 +94,23 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'workspace.admin');
-      await services.members.add(actor.context, {
-        email: request.body.email,
-        role: request.body.role,
-        displayName: request.body.display_name,
-        initialPassword: request.body.initial_password,
-      });
-      const members = await services.members.list(actor.context.workspaceId);
-      return { members: members.map(memberSummary) };
+      const result = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        // The password is part of the request but never of the stored response.
+        { ...request.body, initial_password: undefined },
+        async () => {
+          await services.members.add(actor.context, {
+            email: request.body.email,
+            role: request.body.role,
+            displayName: request.body.display_name,
+            initialPassword: request.body.initial_password,
+          });
+          const members = await services.members.list(actor.context.workspaceId);
+          return { members: members.map(memberSummary) };
+        },
+      );
+      return result.value;
     },
   );
 

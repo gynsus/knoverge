@@ -12,7 +12,7 @@ import type { CategoryWithAliases } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requirePermission } from '../plugins/actor-context.ts';
+import { idempotencyKey, requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -75,16 +75,24 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
     async (request) => {
       const actor = await requirePermission(services, request, 'taxonomy.manage');
       const body = request.body;
-      const result = await services.taxonomy.create(actor.context, {
-        name: body.name,
-        parentPath: body.parent_path,
-        slug: body.slug,
-        description: body.description,
-        inclusionGuidance: body.inclusion_guidance,
-        exclusionGuidance: body.exclusion_guidance,
-        aliases: body.aliases,
-      });
-      return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        body,
+        async () => {
+          const result = await services.taxonomy.create(actor.context, {
+            name: body.name,
+            parentPath: body.parent_path,
+            slug: body.slug,
+            description: body.description,
+            inclusionGuidance: body.inclusion_guidance,
+            exclusionGuidance: body.exclusion_guidance,
+            aliases: body.aliases,
+          });
+          return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
+        },
+      );
+      return replayable.value;
     },
   );
 

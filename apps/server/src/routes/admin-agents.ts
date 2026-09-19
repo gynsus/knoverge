@@ -16,7 +16,7 @@ import type { AgentRecord, CredentialRecord } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requirePermission } from '../plugins/actor-context.ts';
+import { idempotencyKey, requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -73,13 +73,21 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'agent.manage');
-      const agent = await services.agents.create(actor.context, {
-        name: request.body.name,
-        description: request.body.description,
-        clientType: request.body.client_type,
-        trustTier: request.body.trust_tier,
-      });
-      return { agent: await agentSummary(services, agent) };
+      const result = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        request.body,
+        async () => {
+          const agent = await services.agents.create(actor.context, {
+            name: request.body.name,
+            description: request.body.description,
+            clientType: request.body.client_type,
+            trustTier: request.body.trust_tier,
+          });
+          return { agent: await agentSummary(services, agent) };
+        },
+      );
+      return result.value;
     },
   );
 
@@ -125,6 +133,8 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
       onRequest: csrfUnlessBearer(app),
       schema: { body: IssueCredentialRequest, response: { 200: IssueCredentialResponse } },
     },
+    // Deliberately not idempotent: the response carries the token once, and
+    // storing it to replay would mean keeping a live credential in the clear.
     async (request) => {
       const actor = await requirePermission(services, request, 'agent.manage');
       const issued = await services.agents.issueCredential(actor.context, {
