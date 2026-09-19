@@ -6,6 +6,7 @@ import {
   createTaxonomyVersionRepository,
 } from './categories.ts';
 import { createEventRepository } from './events.ts';
+import { createIdempotencyRepository } from './idempotency.ts';
 import { createPermissionGrantRepository, createPolicyRuleRepository } from './policy.ts';
 import { createMembershipRepository } from './memberships.ts';
 import { createSessionRepository } from './sessions.ts';
@@ -21,6 +22,7 @@ export function createRepositories(db: Database) {
     categories: createCategoryRepository(db),
     aliases: createAliasRepository(db),
     taxonomyVersions: createTaxonomyVersionRepository(db),
+    idempotency: createIdempotencyRepository(db),
     grants: createPermissionGrantRepository(db),
     policyRules: createPolicyRuleRepository(db),
     workspaces: createWorkspaceRepository(db),

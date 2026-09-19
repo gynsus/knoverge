@@ -29,6 +29,8 @@ export type AgentSummary = z.infer<typeof AgentSummary>;
 
 export const CreateAgentRequest = z.object({
   name: AgentName,
+  /** Retry-safe: the same key with the same body returns the first result. */
+  idempotency_key: z.string().optional(),
   description: z.string().trim().max(2000).optional(),
   client_type: ClientType.optional(),
   trust_tier: TrustTier.default('propose'),

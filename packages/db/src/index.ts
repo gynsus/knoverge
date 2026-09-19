@@ -20,6 +20,7 @@ export {
   createTaxonomyVersionRepository,
 } from './repositories/categories.ts';
 export { createEventRepository } from './repositories/events.ts';
+export { createIdempotencyRepository } from './repositories/idempotency.ts';
 export {
   createPermissionGrantRepository,
   createPolicyRuleRepository,
