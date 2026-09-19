@@ -28,6 +28,12 @@ import type {
 
 export const TOKEN_PREFIX = 'knv';
 
+/**
+ * Minimum gap between last-used and last-seen writes. Without it every
+ * authenticated read would cost two extra updates.
+ */
+export const TOUCH_INTERVAL_MS = 60_000;
+
 export interface AgentServiceOptions {
   uow: UnitOfWork;
   agents: AgentRepository;
@@ -162,6 +168,9 @@ export class AgentService {
         objectId: agent.id,
         metadata: {
           changed: Object.keys(patch).sort(),
+          // Security-relevant values are recorded in full; none of them is a secret.
+          ...(patch.trustTier ? { trust_tier: patch.trustTier } : {}),
+          ...(patch.status ? { status: patch.status } : {}),
           ...(revoked ? { revoked_credentials: revoked } : {}),
         },
       });
@@ -265,11 +274,16 @@ export class AgentService {
     if (resolved.credential.revokedAt) return null;
     if (resolved.credential.expiresAt && resolved.credential.expiresAt <= now) return null;
     if (resolved.agent.status !== 'active') return null;
-    // Operational timestamps, not ledger events (ADR 0007, section 9).
-    await Promise.all([
-      this.o.credentials.touchLastUsed(resolved.credential.id, now),
-      this.o.agents.touchLastSeen(resolved.agent.id, now),
-    ]);
+    // Operational timestamps, not ledger events (ADR 0007, section 9), and
+    // throttled so a busy agent does not write on every request.
+    const writes: Promise<void>[] = [];
+    if (isStale(resolved.credential.lastUsedAt, now)) {
+      writes.push(this.o.credentials.touchLastUsed(resolved.credential.id, now));
+    }
+    if (isStale(resolved.agent.lastSeenAt, now)) {
+      writes.push(this.o.agents.touchLastSeen(resolved.agent.id, now));
+    }
+    await Promise.all(writes);
     return resolved;
   }
 
@@ -278,4 +292,8 @@ export class AgentService {
     if (!agent) throw new DomainError('NOT_FOUND', 'agent not found');
     return agent;
   }
+}
+
+function isStale(last: Date | null, now: Date): boolean {
+  return last === null || now.getTime() - last.getTime() >= TOUCH_INTERVAL_MS;
 }

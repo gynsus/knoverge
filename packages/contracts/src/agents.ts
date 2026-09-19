@@ -63,6 +63,9 @@ export const CredentialSummary = z.object({
 });
 export type CredentialSummary = z.infer<typeof CredentialSummary>;
 
+export const ListCredentialsQuery = z.object({ agent_id: AgentId });
+export type ListCredentialsQuery = z.infer<typeof ListCredentialsQuery>;
+
 export const IssueCredentialRequest = z.object({
   agent_id: AgentId,
   label: z.string().trim().max(120).optional(),
