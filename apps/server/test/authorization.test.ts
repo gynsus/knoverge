@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   AgentResponse,
+  CategoryResponse,
   ErrorCode,
   IssueCredentialResponse,
   MembersResponse,
@@ -297,6 +298,53 @@ describe('rate limiting', () => {
     } finally {
       await limited.close();
     }
+  });
+});
+
+describe('a grant cannot take authority away from a person', () => {
+  it('refuses a scoped grant for an action the role already carries', async () => {
+    // Storing it would silently narrow the owner and lock them out of the very
+    // endpoint needed to undo it.
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const theOwner = members.members.find((m) => m.role === 'owner')!;
+    const category = CategoryResponse.parse(
+      (await owner.post('/v1/admin/taxonomy.create', { name: 'Scope bait' })).json(),
+    ).category;
+
+    const res = await admin.post('/v1/admin/permissions.grant', {
+      actor_id: theOwner.actor_id,
+      action: 'policy.manage',
+      scope: { categories: [{ category_id: category.id }] },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/deny grant/);
+    expect((await owner.get('/v1/admin/policy.rules')).statusCode).toBe(200);
+  });
+
+  it('leaves a role untouched even when an unscoped grant is stored', async () => {
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const theOwner = members.members.find((m) => m.role === 'owner')!;
+    const granted = await admin.post('/v1/admin/permissions.grant', {
+      actor_id: theOwner.actor_id,
+      action: 'policy.manage',
+    });
+    expect(granted.statusCode, granted.body).toBe(200);
+    expect((await owner.get('/v1/admin/policy.rules')).statusCode).toBe(200);
+    expect((await owner.get('/v1/admin/members.list')).statusCode).toBe(200);
+  });
+
+  it('still lets a deny grant restrict a person', async () => {
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const self = members.members.find((m) => m.email === ADMIN.email)!;
+    const res = await owner.post('/v1/admin/permissions.grant', {
+      actor_id: self.actor_id,
+      action: 'taxonomy.manage',
+      effect: 'deny',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Denied' })).statusCode).toBe(
+      403,
+    );
   });
 });
 

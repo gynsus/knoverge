@@ -115,11 +115,15 @@ export class AuthorizationService {
 
   private async grantsFor(actor: ActorContext, standing: ActorStanding): Promise<Grant[]> {
     const stored = await this.o.grants.listForActor(actor.workspaceId, actor.actorId);
-    // An explicit allow replaces the baseline for that action rather than
-    // adding to it. Otherwise a role or tier that already allows the action
-    // everywhere would make a scoped grant meaningless, and restricting an
-    // agent to one branch would be impossible to express.
-    const narrowed = new Set(stored.filter((g) => g.effect === 'allow').map((g) => g.action));
+    // For an agent, an explicit allow replaces the tier baseline for that
+    // action, which is how an agent is restricted to one branch. A person's
+    // role is the statement of their authority and is never replaced: someone
+    // else's grant must not be able to take away what a role confers. Narrowing
+    // a person's access is what a deny grant is for.
+    const narrowed =
+      standing.role === undefined
+        ? new Set(stored.filter((g) => g.effect === 'allow').map((g) => g.action))
+        : new Set<string>();
     return [
       ...this.implicitGrants(actor, standing).filter((g) => !narrowed.has(g.action)),
       ...stored.map<Grant>((g) => ({

@@ -146,7 +146,8 @@ trusted     propose permissions plus knowledge.write; direct writes still
 A trust tier is not stored as grants: it is the baseline a request is evaluated against. Three rules decide the outcome:
 
 - an explicit `deny` beats everything, including a role or tier, so a narrow deny carves an exception out of a broad allow;
-- an explicit `allow` for an action **replaces** the baseline for that action rather than adding to it, so granting one branch restricts the actor to that branch. Without this a tier that already allows the action everywhere would make a scoped grant meaningless;
+- for an **agent**, an explicit `allow` for an action replaces the trust tier baseline for that action, which is how an agent is restricted to one branch. Without this a tier that already allows the action everywhere would make a scoped grant meaningless;
+- for a **person**, a role is the statement of their authority and is never replaced by someone else's grant. A scoped allow for an action the role already carries is refused, because storing it would silently narrow them; restricting a person is what a deny grant is for;
 - otherwise the baseline decides.
 
 A listing endpoint asks whether the actor holds the action anywhere, then filters its results to the scopes that cover them, so a branch-scoped reader sees its branch instead of being refused outright.

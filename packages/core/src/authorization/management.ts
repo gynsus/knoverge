@@ -7,9 +7,10 @@ import type {
   PolicySubject,
   ScopeSelector,
 } from '@knoverge/contracts';
-import { EMPTY_SCOPE } from '@knoverge/policy';
+import { EMPTY_SCOPE, ROLE_PERMISSIONS } from '@knoverge/policy';
 
 import type { ActorContext } from '../actor-context.ts';
+import type { MembershipRepository } from '../identity/repository.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
 import type { ActorStanding, AuthorizationService } from './service.ts';
 import { DomainError } from '../errors.ts';
@@ -32,6 +33,7 @@ export interface AuthorizationAdminOptions {
   rules: PolicyRuleRepository;
   categories: CategoryRepository;
   actors: ActorRepository;
+  memberships: MembershipRepository;
   authorization: AuthorizationService;
   ledger: EventLedger;
   clock?: Clock;
@@ -110,6 +112,7 @@ export class AuthorizationAdminService {
       if (subject.type === 'agent' && HUMAN_ONLY_ACTIONS.has(input.action)) {
         throw new DomainError('FORBIDDEN', `${input.action} cannot be granted to an agent`);
       }
+      await this.refuseConfusingScope(actor, subject, input);
     }
     const record: PermissionGrantRecord = {
       id: newId('grant'),
@@ -204,6 +207,30 @@ export class AuthorizationAdminService {
         metadata: { change: 'deleted', action: removed.action, effect: removed.effect },
       });
     });
+  }
+
+  /**
+   * A scoped allow narrows an agent but does nothing to a person, whose role
+   * already carries the action. Refusing it is clearer than storing a grant
+   * that has no effect, and points at the deny grant that does restrict.
+   */
+  private async refuseConfusingScope(
+    actor: ActorContext,
+    subject: { type: string; userId: string | null },
+    input: GrantInput,
+  ): Promise<void> {
+    const scoped =
+      (input.scope?.categories.length ?? 0) > 0 ||
+      (input.scope?.types.length ?? 0) > 0 ||
+      (input.scope?.languages.length ?? 0) > 0;
+    if (!scoped || subject.type !== 'human' || subject.userId === null) return;
+    const membership = await this.o.memberships.find(actor.workspaceId, subject.userId as never);
+    if (membership && ROLE_PERMISSIONS[membership.role].includes(input.action)) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `the ${membership.role} role already allows ${input.action} everywhere; use a deny grant to restrict it`,
+      );
+    }
   }
 
   /** Rejects scopes that name categories from another workspace or none at all. */
