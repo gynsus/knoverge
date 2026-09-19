@@ -1,3 +1,6 @@
-// Drizzle schema. Domain tables arrive with Milestone 1 (DATA_MODEL.md).
-// The first migration only installs the PostgreSQL extensions the system relies on.
-export {};
+// Drizzle schema. Tables follow docs/DATA_MODEL.md; each milestone adds its own file.
+export * from './actors.ts';
+export * from './events.ts';
+export * from './idempotency.ts';
+export * from './users.ts';
+export * from './workspaces.ts';
