@@ -143,6 +143,10 @@ export class UserService {
     return this.users.findById(id);
   }
 
+  findByEmail(email: string): Promise<UserRecord | null> {
+    return this.users.findByEmail(email.trim().toLowerCase());
+  }
+
   count(): Promise<number> {
     return this.users.count();
   }

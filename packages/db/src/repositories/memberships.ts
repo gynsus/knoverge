@@ -1,15 +1,16 @@
 import type { ActorId, UserId, WorkspaceId } from '@knoverge/contracts';
 import type {
+  MemberWithUser,
   MembershipRecord,
   MembershipRepository,
   MembershipWithWorkspace,
   Tx,
 } from '@knoverge/core';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
-import { workspaceMemberships } from '../schema/users.ts';
+import { users, workspaceMemberships } from '../schema/users.ts';
 import { workspaces } from '../schema/workspaces.ts';
 import { asTx } from '../unit-of-work.ts';
 
@@ -44,6 +45,63 @@ export function createMembershipRepository(db: Database): MembershipRepository {
         workspaceSlug: r.slug,
         workspaceName: r.name,
       }));
+    },
+    async updateRole(
+      tx: Tx,
+      workspaceId: WorkspaceId,
+      userId: UserId,
+      role: MembershipRecord['role'],
+    ) {
+      const rows = await asTx(tx)
+        .update(workspaceMemberships)
+        .set({ role })
+        .where(
+          and(
+            eq(workspaceMemberships.workspaceId, workspaceId),
+            eq(workspaceMemberships.userId, userId),
+          ),
+        )
+        .returning({ id: workspaceMemberships.id });
+      return rows.length > 0;
+    },
+    async remove(tx: Tx, workspaceId: WorkspaceId, userId: UserId) {
+      const rows = await asTx(tx)
+        .delete(workspaceMemberships)
+        .where(
+          and(
+            eq(workspaceMemberships.workspaceId, workspaceId),
+            eq(workspaceMemberships.userId, userId),
+          ),
+        )
+        .returning();
+      return rows[0] ? toRecord(rows[0]) : null;
+    },
+    async listForWorkspace(workspaceId: WorkspaceId): Promise<MemberWithUser[]> {
+      const rows = await db
+        .select({ membership: workspaceMemberships, user: users })
+        .from(workspaceMemberships)
+        .innerJoin(users, eq(users.id, workspaceMemberships.userId))
+        .where(eq(workspaceMemberships.workspaceId, workspaceId))
+        .orderBy(asc(workspaceMemberships.createdAt));
+      return rows.map((r) => ({
+        ...toRecord(r.membership),
+        email: r.user.email,
+        displayName: r.user.displayName,
+        status: r.user.status as MemberWithUser['status'],
+        lastLoginAt: r.user.lastLoginAt,
+      }));
+    },
+    async countByRole(workspaceId: WorkspaceId, role: MembershipRecord['role']) {
+      const [row] = await db
+        .select({ n: count() })
+        .from(workspaceMemberships)
+        .where(
+          and(
+            eq(workspaceMemberships.workspaceId, workspaceId),
+            eq(workspaceMemberships.role, role),
+          ),
+        );
+      return row?.n ?? 0;
     },
     async find(workspaceId: WorkspaceId, userId: UserId) {
       const rows = await db

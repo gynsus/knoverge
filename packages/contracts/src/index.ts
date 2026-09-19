@@ -7,3 +7,4 @@ export * from './identity.ts';
 export * from './ids.ts';
 export * from './policy.ts';
 export * from './taxonomy.ts';
+export * from './workspaces.ts';

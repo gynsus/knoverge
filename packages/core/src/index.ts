@@ -45,6 +45,7 @@ export {
 } from './identity/bootstrap-service.ts';
 export type { PasswordHasher, TokenService } from './identity/ports.ts';
 export type {
+  MemberWithUser,
   MembershipRecord,
   MembershipRepository,
   MembershipWithWorkspace,
@@ -103,9 +104,16 @@ export type { Tx, UnitOfWork } from './ports/unit-of-work.ts';
 export type {
   ActorRecord,
   ActorRepository,
+  WorkspacePatch,
   WorkspaceRecord,
   WorkspaceRepository,
 } from './workspace/repository.ts';
+export {
+  MemberService,
+  type AddMemberInput,
+  type MemberServiceOptions,
+  type UpdateWorkspaceInput,
+} from './workspace/members.ts';
 export {
   SYSTEM_ACTOR_NAME,
   WorkspaceService,

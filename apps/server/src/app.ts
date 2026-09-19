@@ -15,6 +15,7 @@ import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
+import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerOpenApi } from './routes/openapi.ts';
@@ -100,6 +101,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     });
     registerAdminAgentRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
+    registerAdminWorkspaceRoutes(app, options.services);
     registerTaxonomyRoutes(app, options.services);
   }
 

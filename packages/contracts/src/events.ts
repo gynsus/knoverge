@@ -5,6 +5,7 @@ import { z } from 'zod';
  */
 export const EventType = z.enum([
   'workspace.created',
+  'workspace.updated',
   'user.created',
   'membership.created',
   'membership.updated',

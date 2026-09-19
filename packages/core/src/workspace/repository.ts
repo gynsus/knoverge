@@ -14,8 +14,13 @@ export interface WorkspaceRecord {
   updatedAt: Date;
 }
 
+export type WorkspacePatch = Partial<
+  Pick<WorkspaceRecord, 'name' | 'description' | 'defaultLanguage' | 'updatedAt'>
+>;
+
 export interface WorkspaceRepository {
   insert(tx: Tx, workspace: WorkspaceRecord): Promise<void>;
+  update(tx: Tx, id: WorkspaceId, patch: WorkspacePatch): Promise<void>;
   findBySlug(slug: string): Promise<WorkspaceRecord | null>;
   findById(id: WorkspaceId): Promise<WorkspaceRecord | null>;
   list(): Promise<WorkspaceRecord[]>;

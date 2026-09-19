@@ -71,8 +71,24 @@ export interface MembershipWithWorkspace extends MembershipRecord {
   workspaceName: string;
 }
 
+export interface MemberWithUser extends MembershipRecord {
+  email: string;
+  displayName: string;
+  status: UserStatus;
+  lastLoginAt: Date | null;
+}
+
 export interface MembershipRepository {
   insert(tx: Tx, membership: MembershipRecord): Promise<void>;
+  updateRole(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    userId: UserId,
+    role: MembershipRole,
+  ): Promise<boolean>;
+  remove(tx: Tx, workspaceId: WorkspaceId, userId: UserId): Promise<MembershipRecord | null>;
   listForUser(userId: UserId): Promise<MembershipWithWorkspace[]>;
+  listForWorkspace(workspaceId: WorkspaceId): Promise<MemberWithUser[]>;
+  countByRole(workspaceId: WorkspaceId, role: MembershipRole): Promise<number>;
   find(workspaceId: WorkspaceId, userId: UserId): Promise<MembershipRecord | null>;
 }
