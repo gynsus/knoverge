@@ -134,3 +134,20 @@ export {
   type MaintenanceOptions,
   type MaintenanceResult,
 } from './maintenance/service.ts';
+export type {
+  OperationPatch,
+  OperationRecord,
+  OperationRepository,
+  OperationState,
+  OperationType,
+} from './operations/repository.ts';
+export {
+  CrossStoreWriter,
+  type CrossStoreOptions,
+  type CrossStoreWrite,
+} from './operations/service.ts';
+export {
+  RecoveryService,
+  type RecoveryOptions,
+  type RecoveryReport,
+} from './operations/recovery.ts';

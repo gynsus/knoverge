@@ -22,6 +22,13 @@
       "when": 1789855459547,
       "tag": "0002_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789856052385,
+      "tag": "0003_operations",
+      "breakpoints": true
     }
   ]
 }

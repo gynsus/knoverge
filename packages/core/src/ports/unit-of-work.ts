@@ -13,4 +13,17 @@ export interface UnitOfWork {
    * check-then-act cannot be expressed as a unique constraint.
    */
   runExclusive<T>(key: string, fn: (tx: Tx) => Promise<T>): Promise<T>;
+  /**
+   * Runs fn holding the workspace's write lock, across as many transactions as
+   * fn opens and across work outside the database entirely.
+   *
+   * A canonical write commits to Git and then to PostgreSQL, so the lock has to
+   * outlive a transaction; runExclusive's lock is released when its transaction
+   * ends. This one is session-scoped on a connection of its own, and a process
+   * that dies loses the connection and the lock with it, which is what leaves
+   * the operation row for recovery rather than a lock nobody can release.
+   *
+   * It needs a spare connection, so the pool must allow at least two.
+   */
+  withWorkspaceLock<T>(workspaceId: string, fn: () => Promise<T>): Promise<T>;
 }

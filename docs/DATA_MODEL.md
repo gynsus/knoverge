@@ -585,12 +585,23 @@ Operation
 - state: pending | git_committed | db_committed | failed | recovered
 - actor_id
 - object_ids_json
-- intended_payload_hash
+- intended_payload_hash nullable
 - git_commit_hash nullable
+- taxonomy_version nullable
+- request_id
+- session_id nullable
+- agent_id nullable
+- client nullable
+- provider nullable
+- model nullable
 - error_json nullable
 - created_at
 - updated_at
 ```
+
+The request context columns are not decoration. Recovery rebuilds a ledger event for an operation that reached Git but not PostgreSQL, and rule 3 requires an event to record the request, the session, the client and the model alongside the actor. The Git trailers carry the workspace, the actor, the agent, the proposal and the changes; they do not carry the rest, so a recovered event would otherwise record less than an ordinary one.
+
+A commit hash and the state agree by constraint: `pending` and `failed` have none, and `git_committed`, `db_committed` and `recovered` have one.
 
 ## 24. Agent sync state
 
