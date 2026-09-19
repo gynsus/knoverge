@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { DisplayName, Email, Password } from './auth.ts';
 import { LanguageTag, MembershipRole, UserStatus } from './identity.ts';
+import { PermissionAction } from './policy.ts';
 import { ActorId, UserId, WorkspaceId } from './ids.ts';
 
 export const WorkspaceSummary = z.object({
@@ -11,12 +12,23 @@ export const WorkspaceSummary = z.object({
   description: z.string().nullable(),
   default_language: LanguageTag,
   created_at: z.iso.datetime(),
-  /** The calling user's role in this workspace. */
-  role: MembershipRole,
+  /** The caller's role, when the caller is a person. An agent has none. */
+  role: MembershipRole.nullable(),
 });
 export type WorkspaceSummary = z.infer<typeof WorkspaceSummary>;
 
-export const WorkspaceResponse = z.object({ workspace: WorkspaceSummary });
+export const WorkspaceResponse = z.object({
+  workspace: WorkspaceSummary,
+  /**
+   * What the caller may do in this workspace, after roles, tiers and grants.
+   *
+   * An interface that decides from the role instead is a second copy of the
+   * policy engine and drifts from it: a reviewer explicitly granted an action
+   * would still be shown a disabled control, and a viewer would be shown forms
+   * whose every submission is refused.
+   */
+  permissions: z.array(PermissionAction),
+});
 export type WorkspaceResponse = z.infer<typeof WorkspaceResponse>;
 
 export const UpdateWorkspaceRequest = z.object({

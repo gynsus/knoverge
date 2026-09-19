@@ -84,7 +84,7 @@ Browser flow: call `GET /v1/auth/csrf` once, send the returned token in the `x-c
 
 Every endpoint is gated by a permission rather than by a role. `GET /v1/taxonomy.list` needs `taxonomy.read`, the taxonomy mutations need `taxonomy.manage`, agent administration needs `agent.manage`, permissions and policy rules need `policy.manage`, and workspace settings and membership need `workspace.admin`. The CSRF cookie is signed with `KNOVERGE_SESSION_SECRET`; the session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` when `KNOVERGE_BASE_URL` is https, and lives 30 days.
 
-Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus a per-account lockout of 15 minutes after 10 failed passwords (`RATE_LIMITED`).
+Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus a per-account lockout of 15 minutes after 10 failed passwords. The lockout answers `UNAUTHENTICATED`, exactly as a wrong password does, so it is not an oracle for whether an address has an account (`docs/SECURITY.md` section 7).
 
 ## 6. Admin endpoints
 

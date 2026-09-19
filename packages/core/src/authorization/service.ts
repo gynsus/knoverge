@@ -1,6 +1,6 @@
+import { PermissionAction } from '@knoverge/contracts';
 import type {
   MembershipRole,
-  PermissionAction,
   PolicyActionName,
   PolicyEffect,
   TrustTier,
@@ -40,6 +40,9 @@ export interface AuthorizationServiceOptions {
   categories: CategoryRepository;
   ledger: EventLedger;
 }
+
+/** Every action the permission model defines, in a stable order. */
+const ALL_PERMISSION_ACTIONS: readonly PermissionAction[] = PermissionAction.options;
 
 /** How long the same refusal is recorded only once. */
 export const DENIAL_REPEAT_MS = 60_000;
@@ -127,6 +130,18 @@ export class AuthorizationService {
    * call would give somebody a set of permissions at once (a membership role or
    * an agent's trust tier), the caller must already hold every action in it.
    */
+  /**
+   * Every action the actor holds somewhere in this workspace.
+   *
+   * The web interface shows and hides controls from this, so that what it
+   * offers and what the server allows are one answer rather than two.
+   */
+  async heldActions(actor: ActorContext, standing: ActorStanding): Promise<PermissionAction[]> {
+    if (actor.actorType === 'system') return [...ALL_PERMISSION_ACTIONS];
+    const grants = await this.grantsFor(actor, standing);
+    return ALL_PERMISSION_ACTIONS.filter((action) => holdsAction(grants, action));
+  }
+
   async missingAction(
     actor: ActorContext,
     standing: ActorStanding,
