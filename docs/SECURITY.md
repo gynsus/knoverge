@@ -172,7 +172,7 @@ allow_direct
 require_review
 ```
 
-Rules are stored in PostgreSQL (`PolicyRule`) and edited in the UI:
+Rules are stored in PostgreSQL (`PolicyRule`) and edited in the web interface, on the policy page:
 
 ```json
 {
