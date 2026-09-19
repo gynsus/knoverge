@@ -37,6 +37,11 @@ X-Knoverge-Model
 Idempotency-Key       (alternative to idempotency_key in the body)
 ```
 
+A mutation that accepts a key replays the first response when the same key arrives with the same body, and refuses the same key with a different body. Keys are scoped to the actor and kept for a day. Issuing an agent credential is deliberately not idempotent: its response carries the token once, and storing it to replay would mean keeping a live credential in the clear.
+
+```text
+```
+
 ## 4. Errors
 
 HTTP status maps from the error code:
