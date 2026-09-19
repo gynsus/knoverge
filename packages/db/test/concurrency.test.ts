@@ -48,6 +48,10 @@ const context = (requestId: string): ActorContext => ({ ...actor, requestId });
 beforeAll(async () => {
   container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
   handle = createDatabase({ connectionString: container.getConnectionUri(), max: 16 });
+  // Stopping the container terminates whatever connections are still idle, and
+  // the pool reports that as an error nobody is awaiting. It is teardown, not a
+  // failure, so it is absorbed here rather than failing the run.
+  handle.pool.on('error', () => undefined);
   await runMigrations(handle.db, migrationsFolder);
   repositories = createRepositories(handle.db);
   const uow = createUnitOfWork(handle.db);
@@ -118,7 +122,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await handle?.close();
+  await handle?.close().catch(() => undefined);
   await container?.stop();
 });
 
