@@ -3,6 +3,7 @@ import type {
   ActorRecord,
   ActorRepository,
   Tx,
+  WorkspacePatch,
   WorkspaceRecord,
   WorkspaceRepository,
 } from '@knoverge/core';
@@ -28,6 +29,12 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
           slug: workspace.slug,
         });
       }
+    },
+    async update(tx: Tx, id: WorkspaceId, patch: WorkspacePatch) {
+      await asTx(tx)
+        .update(workspaces)
+        .set(patch as Partial<typeof workspaces.$inferInsert>)
+        .where(eq(workspaces.id, id));
     },
     async findBySlug(slug: string) {
       const rows = await db.select().from(workspaces).where(eq(workspaces.slug, slug)).limit(1);
