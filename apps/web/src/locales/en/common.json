@@ -27,5 +27,52 @@
     },
     "latency": "{{count}} ms",
     "refresh": "Refresh"
+  },
+  "common": {
+    "loading": "Loading...",
+    "working": "Working..."
+  },
+  "nav": {
+    "label": "Account",
+    "logout": "Sign out"
+  },
+  "fields": {
+    "display_name": "Your name",
+    "email": "Email",
+    "password": "Password",
+    "password_hint": "At least 12 characters. Length matters more than symbols.",
+    "workspace_name": "Workspace name",
+    "workspace_slug": "Workspace identifier",
+    "workspace_slug_hint": "Lower-case letters, digits and hyphens; used in URLs and the repository."
+  },
+  "setup": {
+    "title": "Set up Knoverge",
+    "intro": "Create the first administrator account and the first workspace. This page disappears once setup is complete.",
+    "administrator": "Administrator",
+    "workspace": "First workspace",
+    "submit": "Create administrator and workspace"
+  },
+  "login": {
+    "title": "Sign in",
+    "submit": "Sign in"
+  },
+  "home": {
+    "workspaces": "Your workspaces"
+  },
+  "roles": {
+    "owner": "Owner",
+    "admin": "Administrator",
+    "reviewer": "Reviewer",
+    "viewer": "Viewer"
+  },
+  "errors": {
+    "UNAUTHENTICATED": "Invalid email or password.",
+    "FORBIDDEN": "This action is not allowed.",
+    "NOT_FOUND": "Not found.",
+    "VALIDATION_ERROR": "Please check the highlighted fields.",
+    "RATE_LIMITED": "Too many attempts. Please wait a few minutes and try again.",
+    "INTERNAL_ERROR": "The server reported an error. Please try again.",
+    "NETWORK": "The server could not be reached.",
+    "UNKNOWN": "Something went wrong."
   }
 }

@@ -12,7 +12,7 @@ export function StatusPage() {
   });
 
   return (
-    <section aria-labelledby="status-title">
+    <section className="card" aria-labelledby="status-title">
       <h2 id="status-title">{t('status.title')}</h2>
       {query.isPending && <p role="status">{t('status.loading')}</p>}
       {query.isError && <p role="alert">{t('status.error')}</p>}

@@ -6,6 +6,7 @@ import { BrowserRouter } from 'react-router';
 
 import { App } from './App.tsx';
 import { createI18n } from './i18n.ts';
+import './index.css';
 
 const i18n = createI18n();
 const queryClient = new QueryClient();

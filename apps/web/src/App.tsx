@@ -1,21 +1,25 @@
-import { useTranslation } from 'react-i18next';
 import { Route, Routes } from 'react-router';
 
-import { LanguageSwitcher } from './components/LanguageSwitcher.tsx';
-import { StatusPage } from './pages/StatusPage.tsx';
+import { AnonymousOnly, RequireAuth } from './auth/guards.tsx';
+import { AppShell } from './components/AppShell.tsx';
+import { HomePage } from './pages/HomePage.tsx';
+import { LoginPage } from './pages/LoginPage.tsx';
+import { SetupPage } from './pages/SetupPage.tsx';
 
 export function App() {
-  const { t } = useTranslation();
   return (
-    <main>
-      <header>
-        <h1>{t('app.name')}</h1>
-        <p>{t('app.tagline')}</p>
-        <LanguageSwitcher />
-      </header>
-      <Routes>
-        <Route path="/" element={<StatusPage />} />
-      </Routes>
-    </main>
+    <Routes>
+      <Route element={<AppShell />}>
+        <Route element={<AnonymousOnly page="setup" />}>
+          <Route path="/setup" element={<SetupPage />} />
+        </Route>
+        <Route element={<AnonymousOnly page="login" />}>
+          <Route path="/login" element={<LoginPage />} />
+        </Route>
+        <Route element={<RequireAuth />}>
+          <Route path="/" element={<HomePage />} />
+        </Route>
+      </Route>
+    </Routes>
   );
 }
