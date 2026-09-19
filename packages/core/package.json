@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@knoverge/contracts": "workspace:*",
+    "@knoverge/policy": "workspace:*",
     "ulid": "catalog:"
   },
   "devDependencies": {
