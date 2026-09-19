@@ -41,12 +41,21 @@ Turborepo sends anonymous telemetry by default; disable it once with `pnpm turbo
 Checks:
 
 ```bash
-pnpm lint           # eslint + prettier
+pnpm lint           # eslint + prettier + locale catalogue parity
 pnpm typecheck
-pnpm test
+pnpm test           # integration tests start PostgreSQL through Testcontainers; Docker must be running
 pnpm build
 pnpm check          # all of the above except build
 ```
+
+Database migrations live in `packages/db/migrations` and are applied by the server on start (`KNOVERGE_AUTO_MIGRATE`) or by `knoverge db migrate`.
+
+```bash
+pnpm --filter @knoverge/db migrations:generate          # diff the Drizzle schema into a new migration
+pnpm --filter @knoverge/db migrations:custom --name x   # empty migration for hand-written SQL
+```
+
+Review the generated SQL before committing. See `docs/WORKFLOW.md` section 9 for the migration policy.
 
 Full stack in Docker:
 

@@ -93,6 +93,7 @@ KNOVERGE_ROLE                 all | web | worker
 KNOVERGE_DATABASE_URL
 KNOVERGE_DATA_DIR
 KNOVERGE_WEB_DIST             built web bundle directory; set in the image, unset in development
+KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
 KNOVERGE_SESSION_SECRET
 KNOVERGE_TOKEN_PEPPER
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; never stored in the database
@@ -188,7 +189,16 @@ Restore order:
 
 Docker releases use versioned image tags.
 
-Database schema uses migrations, run automatically on start unless `KNOVERGE_AUTO_MIGRATE=false`.
+Database schema uses migrations, run automatically on start unless `KNOVERGE_AUTO_MIGRATE=false`. With auto-migration disabled, run them explicitly:
+
+```bash
+docker compose exec knoverge knoverge db status
+docker compose exec knoverge knoverge db migrate
+```
+
+`/health/ready` reports `degraded` while migrations are pending.
+
+When several application containers share one database (for example a `web` and a `worker` role), enable auto-migration on exactly one of them or run `knoverge db migrate` before starting them; two processes applying the same migration at the same moment is not supported.
 
 Upgrade path:
 
