@@ -104,3 +104,75 @@ button:disabled {
 .error {
   color: var(--error);
 }
+
+.account {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.mainnav {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.mainnav a {
+  padding: 8px 12px;
+  color: var(--fg);
+  text-decoration: none;
+  border-bottom: 2px solid transparent;
+}
+.mainnav a[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+}
+th,
+td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.field {
+  margin: 8px 0;
+}
+.field small {
+  display: block;
+}
+.tree {
+  list-style: none;
+  padding: 0;
+}
+.tree li {
+  padding: 2px 0;
+}
+button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.notice {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 12px 0;
+}
+pre {
+  overflow-x: auto;
+  background: var(--bg);
+  padding: 8px;
+  border-radius: 4px;
+}
