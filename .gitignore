@@ -27,3 +27,6 @@ playwright-report/
 .idea/
 .DS_Store
 Thumbs.db
+
+# pnpm
+.pnpm-debug.log

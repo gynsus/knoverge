@@ -1,0 +1,23 @@
+{
+  "name": "@knoverge/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Public Zod schemas and shared contract types for Knoverge",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
