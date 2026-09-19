@@ -25,16 +25,34 @@ Branching, commits, pull requests and verification rules are defined in [docs/WO
 
 ## Development
 
-Expected commands will be standardised during Milestone 0.
-
-Target:
+Prerequisites: Node.js from `.nvmrc` (use `nvm use`), corepack (`corepack enable`), Docker.
 
 ```bash
+nvm use
+corepack enable
 pnpm install
-pnpm dev
-pnpm test
-pnpm lint
+cp .env.example .env
+docker compose up -d postgres
+pnpm dev            # server on http://localhost:3000
+```
+
+Turborepo sends anonymous telemetry by default; disable it once with `pnpm turbo telemetry disable`. CI and the Docker build already run with it disabled.
+
+Checks:
+
+```bash
+pnpm lint           # eslint + prettier
 pnpm typecheck
+pnpm test
+pnpm build
+pnpm check          # all of the above except build
+```
+
+Full stack in Docker:
+
+```bash
+docker compose up --build
+curl http://localhost:3000/health/ready
 ```
 
 ## Architecture changes

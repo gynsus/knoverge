@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+.git
+.env
+.env.*
+data
+docs
+*.md
+!README.md
