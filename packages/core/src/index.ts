@@ -1,4 +1,22 @@
 export type { ActorContext } from './actor-context.ts';
+export {
+  AuthorizationAdminService,
+  type AuthorizationAdminOptions,
+  type GrantInput,
+  type RuleInput,
+} from './authorization/management.ts';
+export type {
+  PermissionGrantRecord,
+  PermissionGrantRepository,
+  PolicyRuleRecord,
+  PolicyRuleRepository,
+} from './authorization/repository.ts';
+export {
+  AuthorizationService,
+  type ActorStanding,
+  type AuthorizationDecision,
+  type AuthorizationServiceOptions,
+} from './authorization/service.ts';
 export type {
   AgentPatch,
   AgentRecord,

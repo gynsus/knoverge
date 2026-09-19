@@ -23,6 +23,7 @@
   "dependencies": {
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
+    "@knoverge/policy": "workspace:*",
     "drizzle-orm": "catalog:",
     "pg": "catalog:"
   },

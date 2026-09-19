@@ -20,6 +20,10 @@ export {
   createTaxonomyVersionRepository,
 } from './repositories/categories.ts';
 export { createEventRepository } from './repositories/events.ts';
+export {
+  createPermissionGrantRepository,
+  createPolicyRuleRepository,
+} from './repositories/policy.ts';
 export { createRepositories, type Repositories } from './repositories/index.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
 export { createSessionRepository } from './repositories/sessions.ts';
