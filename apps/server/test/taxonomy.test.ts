@@ -214,6 +214,57 @@ describe('updating and moving', () => {
     expect(paths).not.toContain('source/moving');
   });
 
+  it('reports a path collision as a conflict, not an internal error', async () => {
+    // The path is written by the subtree rewrite, so the collision surfaces there.
+    const first = await create({ name: 'Collision one' });
+    await create({ name: 'Collision two' });
+    const res = await admin.post('/v1/admin/taxonomy.update', {
+      category_id: first.category.id,
+      slug: 'collision-two',
+    });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('CATEGORY_CONFLICT');
+  });
+
+  it('leaves a prefix-sharing sibling untouched when renaming', async () => {
+    const root = await create({ name: 'Prefix' });
+    await create({ name: 'Prefix archive' });
+    await create({ name: 'Child', parent_path: root.category.path });
+    const res = await admin.post('/v1/admin/taxonomy.update', {
+      category_id: root.category.id,
+      slug: 'prefix-renamed',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const list = TaxonomyListResponse.parse((await admin.get('/v1/taxonomy.list')).json());
+    const paths = list.categories.map((c) => c.path);
+    expect(paths).toContain('prefix-renamed');
+    expect(paths).toContain('prefix-renamed/child');
+    expect(paths).toContain('prefix-archive');
+  });
+
+  it('records the categories the move actually touched', async () => {
+    const source = await create({ name: 'Event source' });
+    const moving = await create({ name: 'Event moving', parent_path: source.category.path });
+    const leaf = await create({ name: 'Event leaf', parent_path: moving.category.path });
+    const target = await create({ name: 'Event target' });
+    const res = await admin.post('/v1/admin/taxonomy.move', {
+      category_id: moving.category.id,
+      new_parent_id: target.category.id,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const events = await services.repositories.events.listAfter(
+      source.category.workspace_id,
+      0,
+      1000,
+    );
+    const moved = events.filter((e) => e.eventType === 'category.moved').at(-1)!;
+    expect(moved.categoryIds).toEqual(
+      expect.arrayContaining([moving.category.id, leaf.category.id]),
+    );
+    expect(moved.categoryIds).toHaveLength(2);
+    expect(moved.metadata).toMatchObject({ moved_categories: 2 });
+  });
+
   it('refuses a move into its own subtree', async () => {
     const root = await create({ name: 'Cycle root' });
     const child = await create({ name: 'Cycle child', parent_path: root.category.path });

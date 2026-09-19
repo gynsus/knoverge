@@ -50,13 +50,17 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
     async (request) => {
       const actor = await requirePermission(services, request, 'taxonomy.read');
       const query = request.query;
+      // The version is read first: reporting an older version with newer
+      // categories is safe, the other way round makes a caching client stop
+      // asking for changes it has not seen.
+      const version = await services.taxonomy.currentVersion(actor.context.workspaceId);
       const categories = await services.taxonomy.list(actor.context.workspaceId, {
         rootPath: query.root_path,
         depth: query.depth,
         includeArchived: query.include_archived,
       });
       return {
-        taxonomy_version: await services.taxonomy.currentVersion(actor.context.workspaceId),
+        taxonomy_version: version,
         categories: categories.map((c) => summary(c, query.include_guidance)),
       };
     },
