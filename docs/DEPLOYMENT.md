@@ -198,6 +198,8 @@ docker compose exec knoverge knoverge db migrate
 
 `/health/ready` reports `degraded` while migrations are pending.
 
+The server does not crash when PostgreSQL is unreachable at start. It listens immediately, answers `/health/live`, reports `/health/ready` as `degraded` (HTTP 503), and retries the database bootstrap (migrations, job runner) with exponential backoff up to 30 seconds between attempts until it succeeds.
+
 When several application containers share one database (for example a `web` and a `worker` role), enable auto-migration on exactly one of them or run `knoverge db migrate` before starting them; two processes applying the same migration at the same moment is not supported.
 
 Upgrade path:
