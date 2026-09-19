@@ -16,7 +16,8 @@ import type { AgentRecord, CredentialRecord } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requireRole } from '../plugins/actor-context.ts';
+import { requirePermission } from '../plugins/actor-context.ts';
+import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
 function credentialSummary(credential: CredentialRecord): CredentialSummary {
@@ -49,7 +50,7 @@ async function agentSummary(services: Services, agent: AgentRecord): Promise<Age
 }
 
 /**
- * Agent administration. Requires the admin role; agents cannot manage agents.
+ * Agent administration. Requires agent.manage, which no agent trust tier holds.
  */
 export function registerAdminAgentRoutes(app: FastifyInstance, services: Services): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -58,7 +59,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
     '/v1/admin/agents.list',
     { schema: { response: { 200: AgentsResponse } } },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       const agents = await services.agents.list(actor.context.workspaceId);
       return { agents: await Promise.all(agents.map((a) => agentSummary(services, a))) };
     },
@@ -67,11 +68,11 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
   r.post(
     '/v1/admin/agents.create',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: CreateAgentRequest, response: { 200: AgentResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       const agent = await services.agents.create(actor.context, {
         name: request.body.name,
         description: request.body.description,
@@ -85,11 +86,11 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
   r.post(
     '/v1/admin/agents.update',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: UpdateAgentRequest, response: { 200: AgentResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       const body = request.body;
       const agent = await services.agents.update(actor.context, {
         agentId: body.agent_id,
@@ -109,7 +110,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
       schema: { querystring: ListCredentialsQuery, response: { 200: CredentialsResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       const credentials = await services.agents.listCredentials(
         actor.context.workspaceId,
         request.query.agent_id,
@@ -121,11 +122,11 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
   r.post(
     '/v1/admin/agents.credentials.issue',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: IssueCredentialRequest, response: { 200: IssueCredentialResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       const issued = await services.agents.issueCredential(actor.context, {
         agentId: request.body.agent_id,
         label: request.body.label,
@@ -138,11 +139,11 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
   r.post(
     '/v1/admin/agents.credentials.revoke',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: RevokeCredentialRequest, response: { 200: OkResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'agent.manage');
       await services.agents.revokeCredential(actor.context, request.body.credential_id);
       return { ok: true as const };
     },

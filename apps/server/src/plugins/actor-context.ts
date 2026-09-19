@@ -1,5 +1,7 @@
-import type { ActorContext } from '@knoverge/core';
+import type { ActorContext, ActorStanding } from '@knoverge/core';
 import { DomainError } from '@knoverge/core';
+import type { PermissionAction } from '@knoverge/contracts';
+import type { Target } from '@knoverge/policy';
 import type { MembershipRole, WorkspaceId } from '@knoverge/contracts';
 import { WorkspaceId as WorkspaceIdSchema } from '@knoverge/contracts';
 import type { FastifyRequest } from 'fastify';
@@ -30,6 +32,8 @@ export interface WorkspaceActor {
   context: ActorContext;
   /** Present for human callers; agents have no membership role. */
   role: MembershipRole | undefined;
+  /** What the caller holds before explicit grants: a role or a trust tier. */
+  standing: ActorStanding;
 }
 
 /**
@@ -54,6 +58,7 @@ export async function resolveWorkspaceActor(
         ...meta,
       },
       role: undefined,
+      standing: { trustTier: agent.trustTier },
     };
   }
 
@@ -88,6 +93,7 @@ export async function resolveWorkspaceActor(
       ...meta,
     },
     role: membership.role,
+    standing: { role: membership.role },
   };
 }
 
@@ -101,5 +107,20 @@ export async function requireRole(
   if (actor.role === undefined || ROLE_RANK[actor.role] < ROLE_RANK[minimum]) {
     throw new DomainError('FORBIDDEN', `this action requires the ${minimum} role`);
   }
+  return actor;
+}
+
+/**
+ * Resolves the actor and refuses the request unless the permission applies.
+ * A refusal is recorded as a command.denied event by the authorization service.
+ */
+export async function requirePermission(
+  services: Services,
+  request: FastifyRequest,
+  action: PermissionAction,
+  target: Target = {},
+): Promise<WorkspaceActor> {
+  const actor = await resolveWorkspaceActor(services, request);
+  await services.authorization.require(actor.context, actor.standing, action, target);
   return actor;
 }

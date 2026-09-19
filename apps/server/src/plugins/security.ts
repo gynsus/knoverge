@@ -2,7 +2,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, onRequestHookHandler } from 'fastify';
 
 export interface SecurityOptions {
   /** Hex secret used to sign the CSRF cookie. */
@@ -61,4 +61,19 @@ export async function registerSecurity(
     global: false,
     // Per-route limits are declared in route config; bearer-token limits arrive with agents.
   });
+}
+
+/**
+ * CSRF applies to cookie-authenticated browsers only. A bearer token carries no
+ * ambient authority, so an agent request is not forgeable this way and must not
+ * be asked for a token it cannot obtain.
+ */
+export function csrfUnlessBearer(app: FastifyInstance): onRequestHookHandler {
+  return function csrfForBrowsers(request, reply, done) {
+    if (request.agentAuth) {
+      done();
+      return;
+    }
+    app.csrfProtection(request, reply, done);
+  };
 }
