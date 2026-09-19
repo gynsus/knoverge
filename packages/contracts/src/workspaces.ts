@@ -48,6 +48,8 @@ export type MembersResponse = z.infer<typeof MembersResponse>;
  */
 export const AddMemberRequest = z.object({
   email: Email,
+  /** Retry-safe: the same key with the same body returns the first result. */
+  idempotency_key: z.string().optional(),
   role: MembershipRole.default('reviewer'),
   display_name: DisplayName.optional(),
   /** Required when the email belongs to no existing user. */

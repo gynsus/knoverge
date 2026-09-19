@@ -65,6 +65,8 @@ export type TaxonomyListResponse = z.infer<typeof TaxonomyListResponse>;
 
 export const CreateCategoryRequest = z.object({
   name: CategoryName,
+  /** Retry-safe: the same key with the same body returns the first result. */
+  idempotency_key: z.string().optional(),
   /** Omit for a root category. */
   parent_path: CategoryPath.optional(),
   slug: CategorySlug.optional(),

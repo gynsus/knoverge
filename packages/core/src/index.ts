@@ -68,6 +68,14 @@ export {
   type UserServiceOptions,
 } from './identity/user-service.ts';
 export { ID_PREFIXES, newId, type IdPrefix } from './ids.ts';
+export type { IdempotencyRecord, IdempotencyRepository } from './idempotency/repository.ts';
+export {
+  IDEMPOTENCY_TTL_MS,
+  IdempotencyKeyPattern,
+  IdempotencyService,
+  type IdempotencyServiceOptions,
+  type IdempotentResult,
+} from './idempotency/service.ts';
 export { canonicalJson } from './ledger/canonical-json.ts';
 export {
   HASH_PREFIX,
