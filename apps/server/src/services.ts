@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from '@knoverge/auth';
 import {
+  AgentService,
   BootstrapService,
   EventLedger,
   SessionService,
@@ -23,6 +24,8 @@ import {
 export interface ServicesConfig {
   databaseUrl: string;
   ledgerKey: LedgerKey;
+  /** Peppers agent credential hashes so a leaked database cannot be brute-forced offline. */
+  tokenPepper: string;
   poolMax?: number;
 }
 
@@ -47,6 +50,17 @@ export function createServices(config: ServicesConfig) {
     sessions: repositories.sessions,
     tokens: { generate: generateOpaqueToken, hash: hashToken },
   });
+  const agentService = new AgentService({
+    uow,
+    agents: repositories.agents,
+    credentials: repositories.credentials,
+    actors: repositories.actors,
+    ledger,
+    tokens: {
+      generate: generateOpaqueToken,
+      hash: (token) => hashToken(token, config.tokenPepper),
+    },
+  });
   const workspaces = new WorkspaceService({
     uow,
     workspaces: repositories.workspaces,
@@ -67,6 +81,7 @@ export function createServices(config: ServicesConfig) {
     uow,
     repositories,
     ledger,
+    agents: agentService,
     users,
     sessions,
     workspaces,

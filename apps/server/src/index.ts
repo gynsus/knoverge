@@ -34,7 +34,11 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger(config.logLevel, config.nodeEnv);
-  const services = createServices({ databaseUrl: config.databaseUrl, ledgerKey: config.ledgerKey });
+  const services = createServices({
+    databaseUrl: config.databaseUrl,
+    ledgerKey: config.ledgerKey,
+    tokenPepper: config.tokenPepper,
+  });
   const database = services.database;
   database.pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
 
