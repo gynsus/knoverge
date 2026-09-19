@@ -202,3 +202,14 @@ describe('UserService.changePassword', () => {
     });
   });
 });
+
+describe('UserService.changePassword rules', () => {
+  it('refuses a new password containing the email address', async () => {
+    const { service: s, user } = await existingUser('gregory@example.com');
+    // prepare() refuses this; changePassword did not, so a person could rotate
+    // into a password that would have been rejected when they signed up.
+    await expect(
+      s.changePassword(user.id, 'correct horse battery', 'gregory is my new password'),
+    ).rejects.toThrow(/email address/);
+  });
+});

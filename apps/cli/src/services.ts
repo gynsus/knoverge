@@ -11,6 +11,8 @@ import {
   AuthorizationService,
   BootstrapService,
   EventLedger,
+  IdempotencyService,
+  MaintenanceService,
   TaxonomyService,
   SessionService,
   UserService,
@@ -84,6 +86,17 @@ export function createServices() {
         ledger: ledger(),
       }),
   );
+  const idempotency = lazy(
+    () => new IdempotencyService({ uow, records: repositories.idempotency }),
+  );
+  const maintenance = lazy(
+    () =>
+      new MaintenanceService({
+        uow,
+        sessions: repositories.sessions,
+        idempotency: idempotency(),
+      }),
+  );
   const authorizationAdmin = lazy(
     () =>
       new AuthorizationAdminService({
@@ -151,6 +164,9 @@ export function createServices() {
     },
     get authorizationAdmin() {
       return authorizationAdmin();
+    },
+    get maintenance() {
+      return maintenance();
     },
     get taxonomy() {
       return taxonomy();

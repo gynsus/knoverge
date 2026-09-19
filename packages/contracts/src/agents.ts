@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ActorId, AgentId, WorkspaceId } from './ids.ts';
+import { ActorId, AgentId, CredentialId, WorkspaceId } from './ids.ts';
 
 export const TrustTier = z.enum(['read_only', 'propose', 'trusted']);
 export type TrustTier = z.infer<typeof TrustTier>;
@@ -83,7 +83,7 @@ export const IssueCredentialResponse = z.object({
 });
 export type IssueCredentialResponse = z.infer<typeof IssueCredentialResponse>;
 
-export const RevokeCredentialRequest = z.object({ credential_id: z.string() });
+export const RevokeCredentialRequest = z.object({ credential_id: CredentialId });
 export type RevokeCredentialRequest = z.infer<typeof RevokeCredentialRequest>;
 
 export const CredentialsResponse = z.object({ credentials: z.array(CredentialSummary) });

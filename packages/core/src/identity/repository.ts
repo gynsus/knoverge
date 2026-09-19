@@ -67,6 +67,15 @@ export interface SessionRepository {
   listActiveForUser(userId: UserId, now: Date): Promise<SessionRecord[]>;
   revoke(tx: Tx, id: SessionId, at: Date): Promise<boolean>;
   revokeAllForUser(tx: Tx, userId: UserId, at: Date, except?: SessionId): Promise<number>;
+  /**
+   * Removes sessions that expired or were revoked before the given moment.
+   *
+   * Rows are kept for a while after they stop working, because the settings
+   * page shows a person where they are signed in and recently signing out
+   * somewhere should still be visible. Without this they accumulate for the
+   * life of the installation.
+   */
+  deleteEndedBefore(tx: Tx, before: Date): Promise<number>;
 }
 
 export interface MembershipRecord {

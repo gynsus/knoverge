@@ -144,6 +144,11 @@ export class UserService {
     if (parsed.data === currentPassword) {
       throw new DomainError('VALIDATION_ERROR', 'new password must differ from the current one');
     }
+    // The same rule choosing a password applies. Without it a person could
+    // rotate to a password containing their own address, which prepare refuses.
+    if (containsEmail(parsed.data, user.email)) {
+      throw new DomainError('VALIDATION_ERROR', 'password must not contain the email address');
+    }
     const hash = await this.passwords.hash(parsed.data);
     await this.uow.run((tx) => this.users.updatePassword(tx, userId, hash, this.clock.now()));
   }

@@ -179,6 +179,18 @@ docker compose exec knoverge knoverge taxonomy list
 
 Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`.
 
+### Maintenance
+
+Two tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response, and session rows, which stop working at their expiry or when revoked. A container running the worker role removes both once an hour.
+
+An installation that runs no worker, or an operator who wants it now, can run it directly:
+
+```bash
+docker compose exec knoverge knoverge db prune
+```
+
+Session rows outlive the session by thirty days, so the settings page can still show a person where they were recently signed in.
+
 ### Permission grants from the command line
 
 `knoverge permissions list`, `grant` and `revoke` administer grants as the workspace system actor. They exist because a grant can restrict the people who administer grants, and a restriction is deliberately not lifted by the person it restricts:

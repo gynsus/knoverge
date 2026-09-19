@@ -3,9 +3,15 @@ import type pino from 'pino';
 
 export const JOBS_SCHEMA = 'pgboss';
 
+/** The queue that removes rows nothing reads any more. */
+export const MAINTENANCE_QUEUE = 'maintenance.prune';
+
+/** Once an hour. The rows it removes are already useless, so this is not urgent. */
+const MAINTENANCE_SCHEDULE = '0 * * * *';
+
 /**
  * Background job runner (pg-boss on PostgreSQL). Queues are registered by the
- * milestones that need them; Milestone 0 only starts and stops the runner.
+ * milestones that need them.
  */
 export interface Jobs {
   start(): Promise<void>;
@@ -14,7 +20,16 @@ export interface Jobs {
   ping(): Promise<void>;
 }
 
-export function createJobs(connectionString: string, logger: pino.Logger): Jobs {
+export interface JobsOptions {
+  /** Runs on a schedule and when an operator asks for it. */
+  prune: () => Promise<{ idempotencyRecords: number; sessions: number }>;
+}
+
+export function createJobs(
+  connectionString: string,
+  logger: pino.Logger,
+  options: JobsOptions,
+): Jobs {
   const boss = new PgBoss({
     connectionString,
     schema: JOBS_SCHEMA,
@@ -27,8 +42,16 @@ export function createJobs(connectionString: string, logger: pino.Logger): Jobs 
     async start() {
       if (started) return;
       await boss.start();
+      await boss.createQueue(MAINTENANCE_QUEUE);
+      await boss.work(MAINTENANCE_QUEUE, async () => {
+        const removed = await options.prune();
+        logger.info(removed, 'maintenance removed expired rows');
+      });
+      // Idempotent: scheduling the same queue again replaces the schedule, so
+      // several workers do not multiply it.
+      await boss.schedule(MAINTENANCE_QUEUE, MAINTENANCE_SCHEDULE);
       started = true;
-      logger.info({ schema: JOBS_SCHEMA }, 'job runner started');
+      logger.info({ schema: JOBS_SCHEMA, queue: MAINTENANCE_QUEUE }, 'job runner started');
     },
     async stop() {
       if (!started) return;

@@ -47,7 +47,9 @@ async function main(): Promise<void> {
 
   const migrationsFolder = defaultMigrationsFolder();
   const runsWorker = config.role === 'all' || config.role === 'worker';
-  const jobs = runsWorker ? createJobs(config.databaseUrl, logger) : undefined;
+  const jobs = runsWorker
+    ? createJobs(config.databaseUrl, logger, { prune: () => services.maintenance.prune() })
+    : undefined;
 
   const app = await buildApp({
     version: pkg.version,

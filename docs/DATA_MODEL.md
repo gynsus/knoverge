@@ -745,7 +745,7 @@ IdempotencyRecord
 - expires_at
 ```
 
-A repeated key with a different request hash must fail. The key is scoped to the workspace and the actor, the stored response never contains a secret, and an expired record is replaced by the next call. Records are removed by maintenance, not on the request path.
+A repeated key with a different request hash must fail. The key is scoped to the workspace and the actor, the stored response never contains a secret, and an expired record is replaced by the next call. Records are removed by maintenance, not on the request path: the worker prunes them hourly, and `knoverge db prune` runs the same work on demand.
 
 ## 31. Attachment
 

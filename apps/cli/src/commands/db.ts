@@ -1,5 +1,7 @@
 import { Command } from 'commander';
 
+import { withServices } from '../run.ts';
+
 import {
   createDatabase,
   defaultMigrationsFolder,
@@ -51,6 +53,17 @@ export function dbCommand(): Command {
         if (status.pending.length > 0) {
           process.exitCode = 1;
         }
+      });
+    });
+
+  db.command('prune')
+    .description('Remove expired idempotency records and long-dead sessions')
+    .action(async () => {
+      await withServices(async (services) => {
+        const removed = await services.maintenance.prune();
+        console.log(
+          `removed ${removed.idempotencyRecords} idempotency record(s) and ${removed.sessions} session(s)`,
+        );
       });
     });
 

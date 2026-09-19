@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { ActorId, CategoryId, WorkspaceId } from './ids.ts';
+import { ActorId, CategoryId, PermissionGrantId, PolicyRuleId, WorkspaceId } from './ids.ts';
 import { ActorType, LanguageTag } from './identity.ts';
 import { TrustTier } from './agents.ts';
 
@@ -77,6 +77,8 @@ export const PermissionGrantSummary = z.object({
 export type PermissionGrantSummary = z.infer<typeof PermissionGrantSummary>;
 
 export const GrantPermissionRequest = z.object({
+  /** Retry-safe: the same key with the same body returns the first result. */
+  idempotency_key: z.string().optional(),
   actor_id: ActorId,
   action: PermissionAction,
   effect: PermissionEffect.default('allow'),
@@ -84,7 +86,7 @@ export const GrantPermissionRequest = z.object({
 });
 export type GrantPermissionRequest = z.infer<typeof GrantPermissionRequest>;
 
-export const RevokePermissionRequest = z.object({ grant_id: z.string() });
+export const RevokePermissionRequest = z.object({ grant_id: PermissionGrantId });
 export type RevokePermissionRequest = z.infer<typeof RevokePermissionRequest>;
 
 export const PermissionsQuery = z.object({ actor_id: ActorId.optional() });
@@ -127,7 +129,9 @@ export const PolicyRuleSummary = z.object({
 export type PolicyRuleSummary = z.infer<typeof PolicyRuleSummary>;
 
 export const UpsertPolicyRuleRequest = z.object({
-  rule_id: z.string().optional(),
+  /** Retry-safe: without it a retried create leaves two rules at one priority. */
+  idempotency_key: z.string().optional(),
+  rule_id: PolicyRuleId.optional(),
   priority: z.number().int().min(0).max(10_000),
   subject: PolicySubject,
   action: PolicyActionName,
@@ -137,7 +141,7 @@ export const UpsertPolicyRuleRequest = z.object({
 });
 export type UpsertPolicyRuleRequest = z.infer<typeof UpsertPolicyRuleRequest>;
 
-export const DeletePolicyRuleRequest = z.object({ rule_id: z.string() });
+export const DeletePolicyRuleRequest = z.object({ rule_id: PolicyRuleId });
 export type DeletePolicyRuleRequest = z.infer<typeof DeletePolicyRuleRequest>;
 
 export const PolicyRulesResponse = z.object({ rules: z.array(PolicyRuleSummary) });

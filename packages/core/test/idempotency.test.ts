@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   IdempotencyService,
+  MaintenanceService,
+  SESSION_RETENTION_MS,
   type ActorContext,
   type IdempotencyRecord,
   type IdempotencyRepository,
@@ -155,5 +157,32 @@ describe('IdempotencyService.fingerprint', () => {
     expect(IdempotencyService.fingerprint('agents.create', { a: 1 })).not.toBe(
       IdempotencyService.fingerprint('members.add', { a: 1 }),
     );
+  });
+});
+
+describe('MaintenanceService', () => {
+  it('removes expired idempotency records and long-dead sessions', async () => {
+    const removedBefore: Date[] = [];
+    const service = new MaintenanceService({
+      uow,
+      sessions: {
+        insert: async () => undefined,
+        findActiveByTokenHash: async () => null,
+        listActiveForUser: async () => [],
+        revoke: async () => false,
+        revokeAllForUser: async () => 0,
+        deleteEndedBefore: async (_tx, before) => {
+          removedBefore.push(before);
+          return 3;
+        },
+      },
+      idempotency: { purgeExpired: async () => 7 } as unknown as IdempotencyService,
+      clock: { now: () => NOW },
+    });
+    const result = await service.prune();
+    expect(result).toEqual({ idempotencyRecords: 7, sessions: 3 });
+    // A session row outlives the session itself, so the settings page can still
+    // show where somebody was recently signed in.
+    expect(NOW.getTime() - removedBefore[0]!.getTime()).toBe(SESSION_RETENTION_MS);
   });
 });
