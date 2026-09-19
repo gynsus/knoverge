@@ -21,6 +21,7 @@ This bundle contains the implementation specification for Knoverge.
 - `docs/MCP_API.md`
 - `docs/SECURITY.md`
 - `docs/TESTING.md`
+- `docs/WORKFLOW.md`
 - `docs/adr/0001-core-architecture.md`
 - `docs/adr/0002-portable-git-repository.md`
 - `docs/adr/0003-single-contract-mcp-http.md`

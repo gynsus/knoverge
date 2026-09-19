@@ -406,6 +406,22 @@ Google OAuth is supported.
 
 Do not place secrets, agent tokens, database-internal ids other than portable object ids, or embeddings into Markdown.
 
+## Repository workflow
+
+Full rules: `docs/WORKFLOW.md`. Summary:
+
+- Run `nvm use` first. Never commit to `main`; it is protected. Work on `<type>/<short-description>` branches (`feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`) and open a pull request. Split large milestones into several PRs.
+- Read this file and the relevant specs before coding. If code and spec disagree, stop, resolve the conflict in the spec (ADR if architectural), then continue.
+- Implement only the requested task. No next-milestone work, speculative abstractions or unrequested dependencies.
+- Contracts first: `packages/contracts`, then domain, then both MCP and HTTP adapters, then tests for both.
+- Persistence change means Drizzle schema, migration, repository tests and `DATA_MODEL.md`. Before v0.1.0 migrations may be squashed into one baseline (say so in the PR); after v0.1.0 they are immutable.
+- UI text only through `en` and `ru` catalogues.
+- Before committing run `pnpm lint`, `pnpm typecheck`, `pnpm test` and review `git diff`. Report any check that could not run.
+- Commits: Conventional Commits, `git commit -s` with the maintainer's identity, no other attribution trailers. PR descriptions carry no tool attribution lines.
+- Rebase on `origin/main` before the PR; never merge `main` into the branch; `--force-with-lease` only.
+- Never merge a PR unless the owner says so.
+- Finish every task with the end-of-task report from `docs/WORKFLOW.md` section 21.
+
 ## Implementation behaviour
 
 When a requirement is unclear:
