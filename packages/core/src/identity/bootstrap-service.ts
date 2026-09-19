@@ -59,17 +59,18 @@ export class BootstrapService {
       throw new DomainError('FORBIDDEN', 'bootstrap already completed');
     }
     const user = await this.o.users.prepare(input.user);
-    const workspace = await this.o.workspaces.create({
+    const workspace = await this.o.workspaces.prepare({
       slug: input.workspace.slug,
       name: input.workspace.name,
       requestId: input.requestId,
     });
+    // One transaction: user, workspace, system actor, membership and events commit together.
     await this.o.uow.run(async (tx) => {
-      // Guard against two concurrent bootstrap calls: the second sees the first user.
       if ((await this.o.users.count()) > 0) {
         throw new DomainError('FORBIDDEN', 'bootstrap already completed');
       }
       await this.o.users.insert(tx, user);
+      await this.o.workspaces.createInTx(tx, workspace, input.requestId);
       await addMember(this.o, tx, workspace.id, user, 'owner', input.requestId, this.clock.now());
     });
     return { user, workspace };
