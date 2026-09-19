@@ -159,20 +159,46 @@
     }
   },
   "policy": {
-    "title": "Policy rules",
-    "intro": "Rules decide whether a permitted write is applied directly or waits for review.",
-    "empty": "No rules yet. Every agent write waits for review.",
-    "priority": "Priority",
-    "subject": "Applies to",
     "action": "Action",
-    "effect": "Decision",
+    "actor_id_hint": "The actor id, as the agents and members lists show it.",
+    "actor_types": {
+      "human": "Person",
+      "agent": "Agent",
+      "system": "System"
+    },
+    "create": "Create rule",
     "delete": "Delete",
     "disabled": "disabled",
+    "edit": "Edit",
+    "edit_rule": "Edit rule",
+    "effect": "Decision",
+    "effect_hints": {
+      "deny": "The write is refused and no proposal is created.",
+      "allow_direct": "The write is applied without review. This is approval given in advance.",
+      "require_review": "The write becomes a proposal and waits for a reviewer."
+    },
     "effects": {
       "deny": "Refuse",
       "allow_direct": "Apply directly",
       "require_review": "Wait for review"
-    }
+    },
+    "empty": "No rules yet. Every agent write waits for review.",
+    "enabled": "Enabled",
+    "form_intro": "Without a rule that allows a write directly, every agent write waits for a reviewer, including a trusted one.",
+    "intro": "Rules decide whether a permitted write is applied directly or waits for review.",
+    "new_rule": "New rule",
+    "priority": "Priority",
+    "priority_hint": "Lower numbers are considered first. The first matching rule decides.",
+    "save": "Save rule",
+    "subject": "Applies to",
+    "subject_is": "{{kind}}: {{value}}",
+    "subject_kind": "Applies to",
+    "subject_kinds": {
+      "trust_tier": "Trust tier",
+      "actor_type": "Kind of actor",
+      "actor_id": "One actor"
+    },
+    "title": "Policy rules"
   },
   "settings": {
     "account": "Account",

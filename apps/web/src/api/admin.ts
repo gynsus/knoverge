@@ -10,11 +10,13 @@ import type {
   IssueCredentialResponse,
   MoveCategoryRequest,
   OkResponse,
+  PolicyRuleResponse,
   PolicyRulesResponse,
   SessionsResponse,
   TaxonomyListResponse,
   MembersResponse,
   UpdateAgentRequest,
+  UpsertPolicyRuleRequest,
   UpdateCategoryRequest,
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
@@ -51,6 +53,8 @@ export const adminApi = {
   },
   policy: {
     rules: (signal?: AbortSignal) => apiGet<PolicyRulesResponse>('/v1/admin/policy.rules', signal),
+    upsertRule: (body: UpsertPolicyRuleRequest) =>
+      apiPost<PolicyRuleResponse>('/v1/admin/policy.rules.upsert', body),
     deleteRule: (ruleId: string) =>
       apiPost<OkResponse>('/v1/admin/policy.rules.delete', { rule_id: ruleId }),
   },

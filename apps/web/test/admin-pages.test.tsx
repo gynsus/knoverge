@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AgentsResponse,
   MembersResponse,
+  PolicyRulesResponse,
   MeResponse,
   TaxonomyListResponse,
   WorkspaceResponse,
@@ -531,5 +532,69 @@ describe('what the interface offers', () => {
     renderApp('/');
     await screen.findByText('Your workspaces');
     expect(await screen.findByRole('link', { name: 'Agents' })).toBeInTheDocument();
+  });
+});
+
+describe('policy page', () => {
+  const RULE = {
+    id: 'rule_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    priority: 10,
+    subject: { trust_tier: 'trusted' },
+    action: 'knowledge.update',
+    scope: { categories: [], types: [], languages: [] },
+    effect: 'require_review',
+    enabled: true,
+    created_at: '2026-09-19T00:00:00.000Z',
+  };
+
+  it('matches the contract', () => {
+    expect(() => PolicyRulesResponse.parse({ rules: [RULE] })).not.toThrow();
+  });
+
+  it('describes a rule in words rather than field names', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/policy.rules': () => json({ rules: [RULE] }) });
+    renderApp('/policy');
+    // It used to print "trust_tier: trusted" into both catalogues.
+    expect(await screen.findByText('Trust tier: Trusted')).toBeInTheDocument();
+    expect(screen.queryByText(/trust_tier:/)).not.toBeInTheDocument();
+  });
+
+  it('creates a rule, which is the only way an agent write is ever applied directly', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/policy.rules': () => json({ rules: [] }),
+      'POST /v1/admin/policy.rules.upsert': () => json({ rule: RULE }),
+    });
+    renderApp('/policy');
+    const user = userEvent.setup();
+    await screen.findByRole('heading', { name: 'New rule' });
+    await user.selectOptions(screen.getByLabelText('Decision'), 'allow_direct');
+    await user.click(screen.getByRole('button', { name: 'Create rule' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/policy.rules.upsert')?.body).toMatchObject({
+        subject: { trust_tier: 'trusted' },
+        action: 'knowledge.update',
+        effect: 'allow_direct',
+        enabled: true,
+      }),
+    );
+  });
+
+  it('edits an existing rule by its id', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/policy.rules': () => json({ rules: [RULE] }),
+      'POST /v1/admin/policy.rules.upsert': () => json({ rule: RULE }),
+    });
+    renderApp('/policy');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    await user.click(await screen.findByRole('button', { name: 'Save rule' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/policy.rules.upsert')?.body).toMatchObject({
+        rule_id: RULE.id,
+      }),
+    );
   });
 });
