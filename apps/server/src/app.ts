@@ -46,15 +46,23 @@ export function buildApp(options: AppOptions): FastifyInstance {
   app.get('/health/live', async () => ({ status: 'ok' as const }));
 
   app.get('/health/ready', async (_request, reply) => {
-    const [database, dataDir] = await Promise.all([
+    const [database, dataDir, migrations, jobs] = await Promise.all([
       options.probes.database(),
       options.probes.dataDir(),
+      options.probes.migrations?.(),
+      options.probes.jobs?.(),
     ]);
-    const healthy = database.status === 'ok' && dataDir.status === 'ok';
+    const checks: ReadyResponse['checks'] = {
+      database,
+      data_dir: dataDir,
+      ...(migrations ? { migrations } : {}),
+      ...(jobs ? { jobs } : {}),
+    };
+    const healthy = Object.values(checks).every((c) => c?.status === 'ok');
     const body: ReadyResponse = {
       status: healthy ? 'ok' : 'degraded',
       version: options.version,
-      checks: { database, data_dir: dataDir },
+      checks,
     };
     reply.code(healthy ? 200 : 503);
     return body;

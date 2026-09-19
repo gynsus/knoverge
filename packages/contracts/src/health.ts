@@ -18,6 +18,10 @@ export const ReadyResponse = z.object({
   checks: z.object({
     database: HealthCheck,
     data_dir: HealthCheck,
+    /** Present once the server manages migrations. */
+    migrations: HealthCheck.optional(),
+    /** Present when this process runs the job runner. */
+    jobs: HealthCheck.optional(),
   }),
 });
 export type ReadyResponse = z.infer<typeof ReadyResponse>;

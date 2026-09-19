@@ -1,10 +1,16 @@
-import { Pool } from 'pg';
+import { createDatabase, defaultMigrationsFolder, runMigrations } from '@knoverge/db';
 import pino from 'pino';
 
 import pkg from '../package.json' with { type: 'json' };
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
-import { createDatabaseProbe, createDataDirProbe } from './probes.ts';
+import { createJobs } from './jobs.ts';
+import {
+  createDatabaseProbe,
+  createDataDirProbe,
+  createJobsProbe,
+  createMigrationsProbe,
+} from './probes.ts';
 
 function createLogger(level: string, nodeEnv: string): pino.Logger {
   if (nodeEnv === 'development') {
@@ -26,8 +32,23 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger(config.logLevel, config.nodeEnv);
-  const pool = new Pool({ connectionString: config.databaseUrl, max: 5 });
-  pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
+  const database = createDatabase({ connectionString: config.databaseUrl, max: 10 });
+  database.pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
+
+  const migrationsFolder = defaultMigrationsFolder();
+  if (config.autoMigrate) {
+    const result = await runMigrations(database.db, migrationsFolder);
+    logger.info(
+      { applied: result.after.applied - result.before.applied, total: result.after.total },
+      'database migrations applied',
+    );
+  }
+
+  const runsWorker = config.role === 'all' || config.role === 'worker';
+  const jobs = runsWorker ? createJobs(config.databaseUrl, logger) : undefined;
+  if (jobs) {
+    await jobs.start();
+  }
 
   const app = buildApp({
     version: pkg.version,
@@ -35,15 +56,18 @@ async function main(): Promise<void> {
     trustProxy: config.trustProxy,
     ...(config.webDist ? { webDist: config.webDist } : {}),
     probes: {
-      database: createDatabaseProbe(pool),
+      database: createDatabaseProbe(database.pool),
       dataDir: createDataDirProbe(config.dataDir),
+      migrations: createMigrationsProbe(database.db, migrationsFolder),
+      ...(jobs ? { jobs: createJobsProbe(jobs) } : {}),
     },
   });
 
   const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
     logger.info({ signal }, 'shutting down');
     await app.close();
-    await pool.end();
+    await jobs?.stop();
+    await database.close();
     process.exit(0);
   };
   process.once('SIGTERM', (s) => void shutdown(s));
@@ -51,7 +75,12 @@ async function main(): Promise<void> {
 
   await app.listen({ port: config.port, host: config.host });
   logger.info(
-    { role: config.role, dataDir: config.dataDir, webDist: config.webDist ?? null },
+    {
+      role: config.role,
+      dataDir: config.dataDir,
+      webDist: config.webDist ?? null,
+      worker: runsWorker,
+    },
     'knoverge server started',
   );
 }

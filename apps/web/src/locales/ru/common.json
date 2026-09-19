@@ -17,7 +17,9 @@
     "version": "Версия {{version}}",
     "check": {
       "database": "База данных",
-      "data_dir": "Каталог данных"
+      "data_dir": "Каталог данных",
+      "migrations": "Миграции базы данных",
+      "jobs": "Обработчик задач"
     },
     "check_status": {
       "ok": "OK",
