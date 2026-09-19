@@ -1,0 +1,26 @@
+{
+  "name": "@knoverge/cli",
+  "version": "0.0.0",
+  "private": true,
+  "description": "knoverge command line: bootstrap, integrity, backup helpers and MCP stdio bridge",
+  "license": "Apache-2.0",
+  "type": "module",
+  "bin": {
+    "knoverge": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/index.ts",
+    "build": "tsup",
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "commander": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}
