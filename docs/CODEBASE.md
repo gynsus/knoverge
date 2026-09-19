@@ -44,6 +44,12 @@ Ids are prefixed ULIDs from `newId(prefix)` in `core`; prefixes live in `contrac
 
 Services take a `Clock` port (default `systemClock`) so tests control time.
 
+## 4a. Authorization
+
+`packages/policy` holds pure evaluation: scope matching, permission grants (deny wins) and policy rules (first match by priority, ties broken by id). It has no storage and no side effects, which keeps the rules unit-testable in isolation.
+
+`core` wires it to storage in `AuthorizationService`: it loads the caller's stored grants, adds the baseline implied by their role or trust tier, resolves category ancestors from the materialised paths, and either returns a decision or throws `FORBIDDEN` and records a `command.denied` event. Adapters call `requirePermission` and never evaluate rules themselves.
+
 ## 5. Ledger
 
 Every material write calls `EventLedger.append` inside the same transaction, after the change. Event metadata holds ids, hashes, counts and decision codes only, never knowledge text or secrets. Values must survive a JSON round trip through `jsonb` unchanged: strings, booleans, integers below 2^53, nested objects and arrays of those. See ADR 0007 and `DATA_MODEL.md` section 22.

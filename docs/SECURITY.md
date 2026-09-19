@@ -143,7 +143,9 @@ trusted     propose permissions plus knowledge.write; direct writes still
             happen only where an explicit policy rule says allow_direct
 ```
 
-Tiers are shortcuts that install default grants. Explicit grants and rules always take precedence.
+A trust tier is not stored as grants: it is the baseline a request is evaluated against. Stored grants add to that baseline, and an explicit `deny` beats everything, including a role or tier, so a narrow deny can carve an exception out of a broad allow. Evaluation order is: deny grant, allow grant, baseline.
+
+The same applies to humans: a workspace role carries a baseline set of permissions (`viewer` reads, `reviewer` also writes and approves, `admin` also manages agents, taxonomy and policy, `owner` also administers the workspace).
 
 ## 8. Scoped access
 
@@ -198,6 +200,10 @@ human reviewer+     allow_direct
 The `trusted` tier grants the capability for direct writes; an actual direct write requires a scope-specific `allow_direct` rule. A misconfigured tier therefore fails safe.
 
 Every non-denied policy decision is recorded on the proposal and in its event. Denied attempts create no proposal and are recorded as `command.denied` events with the actor, action, scope and reason.
+
+## 9a. Cross-site request forgery
+
+CSRF protection applies to cookie-authenticated browser requests. A request authenticated with a bearer token carries no ambient authority and is not forgeable this way, so agents are not asked for a token they cannot obtain.
 
 ## 10. Prompt injection boundary
 

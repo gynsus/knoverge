@@ -75,7 +75,9 @@ GET  /v1/auth/sessions         active sessions of the user
 POST /v1/auth/sessions/revoke  revoke one session
 ```
 
-Browser flow: call `GET /v1/auth/csrf` once, send the returned token in the `x-csrf-token` header on every `POST`. The CSRF cookie is signed with `KNOVERGE_SESSION_SECRET`; the session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` when `KNOVERGE_BASE_URL` is https, and lives 30 days.
+Browser flow: call `GET /v1/auth/csrf` once, send the returned token in the `x-csrf-token` header on every `POST`. Requests authenticated with a bearer token skip this check.
+
+Every endpoint is gated by a permission rather than by a role. `GET /v1/taxonomy.list` needs `taxonomy.read`, the taxonomy mutations need `taxonomy.manage`, agent administration needs `agent.manage`, and permissions and policy rules need `policy.manage`. The CSRF cookie is signed with `KNOVERGE_SESSION_SECRET`; the session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` when `KNOVERGE_BASE_URL` is https, and lives 30 days.
 
 Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus a per-account lockout of 15 minutes after 10 failed passwords (`RATE_LIMITED`).
 
@@ -96,8 +98,10 @@ POST /v1/admin/workspaces.update
 POST /v1/admin/members.invite
 POST /v1/admin/members.update
 POST /v1/admin/members.remove
+GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant
 POST /v1/admin/permissions.revoke
+GET  /v1/admin/policy.rules
 POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
 POST /v1/admin/taxonomy.create
