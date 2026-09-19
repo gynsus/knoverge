@@ -18,6 +18,8 @@ Temporary files, scratch scripts and local experiments are never committed.
 
 `main` is protected on GitHub: pull requests are required, force pushes and deletions are blocked, linear history is enforced, and the rules apply to administrators as well.
 
+As soon as CI exists (Milestone 0), the `ci` workflow is added to the branch protection as a required status check. Until then the protection has no required checks; this is a known gap, not a policy.
+
 Before making any change:
 
 ```bash
@@ -90,6 +92,8 @@ Do not:
 Prefer the smallest complete change that satisfies the specification.
 
 Large milestones are split into several pull requests by logical part (for example scaffold, then database, then web shell) rather than delivered as one oversized PR.
+
+Every PR is self-contained: all checks pass, nothing is half-wired, and the code it adds is tested and documented, even when the milestone as a whole is not yet finished. "The rest comes in the next PR" is acceptable for scope, never for broken or untested code.
 
 If you discover unrelated problems, report them separately instead of expanding the current branch unless they block the task.
 
@@ -235,7 +239,7 @@ Commit messages follow Conventional Commits:
 <optional body explaining why>
 ```
 
-Types match the branch prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`, plus `build` and `ci` where appropriate.
+Types match the branch prefixes: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `security`, plus `build` and `ci` where appropriate. `build` and `ci` commits live in `chore/` branches.
 
 Examples:
 
@@ -254,6 +258,10 @@ git commit -s -m "feat(server): add workspace bootstrap flow"
 ```
 
 The sign-off is the committer's own identity. No other attribution trailers are added.
+
+When an AI coding agent creates a commit, it uses the maintainer's identity and sign-off; the maintainer thereby takes responsibility for the content under the DCO, as stated in `CONTRIBUTING.md`.
+
+Never bypass hooks or checks: no `--no-verify`, no `-c core.hooksPath=...`, no skipping of configured pre-commit or pre-push hooks. If a hook is wrong, fix the hook in its own change.
 
 Keep commits logically coherent. Do not squash unrelated work into one commit. Do not rewrite another contributor's commits without a reason.
 
@@ -291,7 +299,23 @@ Use the template in `.github/PULL_REQUEST_TEMPLATE.md`. Every PR states:
 
 PR descriptions carry no tool attribution lines.
 
-## 19. Architecture changes require ADRs
+Merge strategy (chosen by the owner at merge time):
+
+- **rebase merge** by default: commits and their sign-offs are preserved on `main`;
+- **squash merge** only for a single-commit PR or when the branch history is noisy; the squash message must follow Conventional Commits and keep the `Signed-off-by` trailer.
+
+Merge commits are disabled in the repository settings.
+
+## 19. Releases
+
+Versions follow Semantic Versioning. A release is a tag `vX.Y.Z` on `main`, created by the repository owner.
+
+- `v0.1.0` is the first tagged release and the boundary for the migration policy in section 9;
+- before `v1.0.0`, minor versions may contain breaking changes to contracts and schema, announced in the release notes;
+- `CHANGELOG.md` is generated from Conventional Commits at release time; hand-edited only for the release summary;
+- release images are tagged with the same version.
+
+## 20. Architecture changes require ADRs
 
 Before implementing a change to any of the following, create or amend an ADR under `docs/adr/`:
 
@@ -306,13 +330,13 @@ Before implementing a change to any of the following, create or amend an ADR und
 
 Do not use an ADR for small implementation choices.
 
-## 20. Never merge your own PR automatically
+## 21. Never merge your own PR automatically
 
 An AI coding agent may create a branch, make changes, run tests, commit, push and prepare the PR.
 
 It does not merge the PR unless explicitly instructed by the repository owner. Human review remains the final gate.
 
-## 21. End-of-task report
+## 22. End-of-task report
 
 At the end of every task, report:
 
