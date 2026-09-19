@@ -1,0 +1,29 @@
+{
+  "app": {
+    "name": "Knoverge",
+    "tagline": "A knowledge ledger for humans and AI agents"
+  },
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ru": "Russian"
+  },
+  "status": {
+    "title": "Server status",
+    "loading": "Checking the server...",
+    "error": "The server could not be reached.",
+    "ok": "All checks passed",
+    "degraded": "Some checks failed",
+    "version": "Version {{version}}",
+    "check": {
+      "database": "Database",
+      "data_dir": "Data directory"
+    },
+    "check_status": {
+      "ok": "OK",
+      "failed": "Failed"
+    },
+    "latency": "{{count}} ms",
+    "refresh": "Refresh"
+  }
+}
