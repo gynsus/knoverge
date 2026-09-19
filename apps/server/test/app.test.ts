@@ -65,4 +65,18 @@ describe('GET /health/ready', () => {
     });
     expect(seen).toBe('req-42');
   });
+
+  it('replaces a malformed client request id', async () => {
+    const instance = app(probes(ok, ok));
+    let seen: string | undefined;
+    instance.addHook('onRequest', async (request) => {
+      seen = request.id;
+    });
+    await instance.inject({
+      method: 'GET',
+      url: '/health/live',
+      headers: { 'x-request-id': 'bad id\nwith newline' },
+    });
+    expect(seen).toMatch(/^[0-9a-f-]{36}$/);
+  });
 });

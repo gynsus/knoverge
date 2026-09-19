@@ -5,6 +5,17 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
 import type { ReadinessProbes } from './probes.ts';
 
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * Uses a well-formed client request id, otherwise generates one. Arbitrary header
+ * values never reach the logs.
+ */
+export function resolveRequestId(header: string | string[] | undefined): string {
+  const value = Array.isArray(header) ? header[0] : header;
+  return value !== undefined && REQUEST_ID_PATTERN.test(value) ? value : randomUUID();
+}
+
 export interface AppOptions {
   version: string;
   probes: ReadinessProbes;
@@ -18,8 +29,9 @@ export interface AppOptions {
 export function buildApp(options: AppOptions): FastifyInstance {
   const common = {
     trustProxy: options.trustProxy ?? false,
-    requestIdHeader: 'x-request-id',
-    genReqId: () => randomUUID(),
+    requestIdHeader: false as const,
+    genReqId: (req: { headers: Record<string, string | string[] | undefined> }) =>
+      resolveRequestId(req.headers['x-request-id']),
   };
   const app = options.loggerInstance
     ? Fastify({ ...common, loggerInstance: options.loggerInstance })

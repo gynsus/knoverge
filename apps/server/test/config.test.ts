@@ -8,9 +8,10 @@ describe('loadConfig', () => {
   it('applies defaults', () => {
     const c = loadConfig(base);
     expect(c.port).toBe(3000);
-    expect(c.host).toBe('0.0.0.0');
+    expect(c.host).toBe('127.0.0.1');
     expect(c.role).toBe('all');
-    expect(c.dataDir).toBe('./data');
+    expect(c.dataDir).toMatch(/[\\/]data$/);
+    expect(c.dataDir).not.toMatch(/^\./);
     expect(c.logLevel).toBe('info');
     expect(c.trustProxy).toBe(false);
   });
