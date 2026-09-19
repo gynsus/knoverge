@@ -1,0 +1,379 @@
+# Architecture
+
+## 1. System purpose
+
+Knoverge is a shared external knowledge layer for independent AI agents and humans.
+
+The system must solve five different problems without conflating them:
+
+1. canonical human-readable knowledge;
+2. operational metadata;
+3. audit/provenance;
+4. retrieval;
+5. agent synchronisation.
+
+## 2. Logical architecture
+
+```text
+┌───────────────────────────────────────────────────────────┐
+│                    Agent / Human Clients                  │
+│ ChatGPT · Claude Code · OpenClaw · IDE · Browser · CLI   │
+└───────────────────────────────┬───────────────────────────┘
+                                │
+              MCP (Streamable HTTP) / HTTPS RPC / stdio bridge
+                                │
+                     ┌──────────▼──────────┐
+                     │   Gateway           │
+                     │ auth · identity     │
+                     │ rate limit · scope  │
+                     └──────────┬──────────┘
+                                │
+                     ┌──────────▼──────────┐
+                     │   Domain Services   │
+                     │ knowledge           │
+                     │ taxonomy            │
+                     │ proposals · policy  │
+                     │ reconciliation      │
+                     │ review · briefing   │
+                     │ activity            │
+                     └───────┬─────┬───────┘
+                             │     │
+                  ┌──────────▼┐   ┌▼────────────────┐
+                  │ Git Store │   │ PostgreSQL       │
+                  │ Markdown  │   │ metadata         │
+                  │ taxonomy  │   │ event ledger     │
+                  │ revisions │   │ pgvector / FTS   │
+                  └───────────┘   │ jobs (pg-boss)   │
+                                  └──────┬────────────┘
+                                         │
+                                  ┌──────▼───────────┐
+                                  │ Intelligence     │
+                                  │ optional         │
+                                  │ embeddings       │
+                                  │ summaries        │
+                                  │ matching assist  │
+                                  │ extraction       │
+                                  └──────────────────┘
+```
+
+## 3. Runtime processes
+
+Knoverge ships as **one application image** plus PostgreSQL. See ADR 0005.
+
+### Server process (`apps/server`)
+
+A single Node.js process hosts:
+
+- HTTP API under `/v1` (RPC-style, mirrors MCP tools; plus auth and admin endpoints);
+- MCP endpoint under `/mcp` (Streamable HTTP);
+- the static web bundle under `/`;
+- the background worker (pg-boss consumer);
+- health checks under `/health/live` and `/health/ready`.
+
+`KNOVERGE_ROLE` controls what a process runs:
+
+```text
+all      (default) HTTP + MCP + web + worker
+web      HTTP + MCP + web, no worker
+worker   worker only
+```
+
+This allows a second container for jobs later without changing code.
+
+The MCP adapter and the HTTP adapter must not implement business rules. Both call the same domain services with the same contracts from `packages/contracts`. See ADR 0003.
+
+### Web application (`apps/web`)
+
+React single-page application built with Vite, served as static files by the server process.
+
+Responsibilities:
+
+- login and session management;
+- review inbox;
+- knowledge browser/editor;
+- taxonomy editor;
+- history/diff/restore;
+- agent management and token issuance;
+- policy rules editor;
+- activity digests;
+- sync-session inspection;
+- attachments (later milestone).
+
+All strings come from message catalogues (English source, Russian first). See `I18N.md`.
+
+### CLI (`apps/cli`)
+
+`knoverge` command:
+
+- `bootstrap`: first admin and first workspace;
+- `integrity check`: cross-store and ledger verification;
+- `backup` / `restore` helpers;
+- `mcp stdio`: local stdio bridge that proxies to a remote Knoverge MCP endpoint with a bearer token.
+
+### PostgreSQL
+
+One PostgreSQL instance is sufficient for MVP.
+
+Extensions:
+
+- `vector`;
+- `pg_trgm`;
+- `unaccent`;
+- `pgcrypto` if useful.
+
+Use ordinary PostgreSQL FTS with per-language configurations before considering an external search service.
+
+### Git store
+
+One non-bare Git repository per workspace at `KNOVERGE_DATA_DIR/workspaces/<workspace_id>/repo`.
+
+Git operations run through the Git CLI behind the `GitStore` interface in `packages/git-store`. See ADR 0006.
+
+The repository is self-describing and navigable by humans. Layout, frontmatter, hashing and commit conventions are defined in `GIT_REPOSITORY.md` and ADR 0002.
+
+Repository mutations are serialised per workspace with an in-process mutex plus a PostgreSQL advisory lock, so multiple server processes remain safe.
+
+### Attachment store
+
+Original uploaded files (later milestone) live on the local filesystem under `KNOVERGE_DATA_DIR/workspaces/<workspace_id>/attachments/<sha256>`, content-addressed. They are not committed to Git. Text extracted from them becomes ordinary `document` knowledge items. See ADR 0008.
+
+## 4. Cross-store consistency
+
+PostgreSQL and Git cannot participate in one ACID transaction.
+
+Use a controlled write workflow.
+
+### Commit flow
+
+1. validate domain command;
+2. acquire workspace write lock;
+3. write `Operation` row in PostgreSQL with state `pending`;
+4. render canonical Markdown (and `taxonomy.yaml` if the taxonomy changed);
+5. commit Git revision with trailers referencing the operation;
+6. update `Operation` to `git_committed` with the commit hash;
+7. in one PostgreSQL transaction: write revision metadata, update item, append event, mark `Operation` as `db_committed`;
+8. enqueue projection jobs (search index, embeddings, stale summaries);
+9. release lock.
+
+If the process crashes between Git and PostgreSQL steps, recovery logic must detect incomplete operations.
+
+Operation states:
+
+```text
+pending
+git_committed
+db_committed
+failed
+recovered
+```
+
+A startup job and the integrity checker repair incomplete operations:
+
+- `pending` with no matching commit: mark `failed`;
+- `git_committed` without revision row: complete the PostgreSQL side from the commit trailers, mark `recovered`;
+- revision row without commit: impossible by construction (Git commits first), report as corruption.
+
+Do not hide cross-store failure cases.
+
+## 5. Identity model
+
+Every request resolves to an actor.
+
+```text
+User                 instance-level human account (email, password)
+WorkspaceMembership  user ↔ workspace with a role
+Actor                workspace-scoped subject of audit: human | agent | system
+Agent                workspace-scoped registered agent with trust tier and credentials
+```
+
+Permission grants and policy rules reference categories by stable id with `include_descendants`; paths are resolved to ids at the API boundary. Renames and merges never change access.
+
+An agent identity is not the same as an LLM model.
+
+Example:
+
+```text
+agent:
+  id: ag_01J...
+  name: Claude Code - Mac mini
+  client: claude-code
+  trust_tier: propose
+
+runtime (per request):
+  provider: anthropic
+  model: claude-...
+```
+
+The same registered agent may use different models over time. See `SECURITY.md` and ADR 0004.
+
+## 6. Workspace isolation
+
+All knowledge belongs to a workspace.
+
+All major database tables include `workspace_id`.
+
+Git repositories and attachment directories are workspace-scoped.
+
+Never rely only on application filtering. Repository methods must require workspace context explicitly.
+
+Agent credentials are bound to exactly one workspace. A human user may be a member of several workspaces.
+
+## 7. Taxonomy
+
+A workspace has a versioned taxonomy.
+
+Taxonomy entities are categories, not arbitrary folders.
+
+Categories contain:
+
+- id;
+- slug path;
+- name;
+- description;
+- parent;
+- inclusion guidance;
+- exclusion guidance;
+- aliases;
+- status;
+- created/approved provenance.
+
+The taxonomy is also written to `taxonomy.yaml` in the workspace repository on every taxonomy change, so the repository can be interpreted without the database.
+
+Agents may query categories and propose new ones.
+
+Agents should not create categories merely because a different wording exists.
+
+See `KNOWLEDGE_MODEL.md`.
+
+## 8. Retrieval architecture
+
+Canonical Markdown is never split, but retrieval works on derived **search chunks**: a deterministic paragraph-based splitter produces one or more chunks per revision, each with its own FTS vector and embedding. Short items have one chunk. Search aggregates chunk scores to items and returns the best chunk with each result, which keeps long `document` and `procedure` items searchable and embeddable.
+
+Retrieval uses multiple independent signals.
+
+Initial hybrid ranking:
+
+```text
+lexical relevance   (language-aware FTS + trigram, per chunk)
+semantic similarity (pgvector over chunks, optional)
+category proximity
+relation proximity
+trust score        (computed from review, evidence, dispute)
+freshness
+```
+
+Weights are configuration, not hard-coded product truth.
+
+MVP may start with lexical + vector + trust score/freshness.
+
+Search result must include enough metadata to let the caller decide whether to fetch canonical content.
+
+Each item carries a `language`; the FTS vector is built with the matching PostgreSQL configuration (`english`, `russian`, ... falling back to `simple`).
+
+Embeddings are produced under one active **embedding profile** per workspace (provider, model, dimensions). Changing the profile triggers a full background rebuild; the old profile stays queryable until the rebuild completes.
+
+## 9. Briefing
+
+Agents starting a session should not page through the whole index.
+
+`knowledge_briefing` returns a compact, token-budgeted pack for a category subtree:
+
+- active `instruction`, `preference`, `decision` items in full or abridged form;
+- recent `observation`/`episode` headlines;
+- open conflicts and pending proposals relevant to the subtree;
+- revision ids and content hashes so the agent can propose updates safely;
+- the current `change_sequence` so the agent can later call `knowledge_changes`.
+
+Briefings are assembled deterministically from canonical data; no LLM is required. An optional LLM may compress the pack under a budget in later milestones.
+
+## 9a. Audit feed and change feed
+
+The event ledger (ADR 0007) feeds two read APIs:
+
+- `events_list`, the audit feed: every event, gated by `events.read_own` / `events.read_all`, shows actors;
+- `knowledge_changes`, the change feed: knowledge, relation and taxonomy changes only, gated by the caller's `knowledge.read` scope through a category id snapshot on each event, shows no actors.
+
+Both use the per-workspace integer `sequence` as cursor. Agents synchronise with the change feed; the audit feed is for humans and auditors. See ADR 0010.
+
+## 10. Knowledge graph
+
+Do not require a graph database in MVP.
+
+Represent relations in PostgreSQL and in frontmatter:
+
+```text
+knowledge_relation
+  from_item_id
+  relation_type
+  to_item_id
+  valid_from
+  valid_until
+```
+
+Relation types:
+
+```text
+relates_to
+depends_on
+supersedes
+contradicts
+supports
+derived_from
+implements
+mentions
+```
+
+If a specialised graph engine is added later, it must be an optional index/projection.
+
+## 11. Background jobs
+
+Use pg-boss (PostgreSQL-backed) in MVP.
+
+Jobs:
+
+- search index update;
+- embedding generation and profile rebuild;
+- semantic matching for sync candidates;
+- summary generation;
+- stale-summary detection;
+- taxonomy duplicate checks;
+- digest generation;
+- webhook delivery;
+- integrity checks;
+- attachment text extraction (later);
+- transcription and image description (later).
+
+Do not require Redis for the first release.
+
+## 12. Observability
+
+Application logs must include:
+
+- request id;
+- workspace id;
+- actor id;
+- agent id when applicable;
+- operation;
+- duration;
+- error code.
+
+Never log:
+
+- bearer tokens;
+- passwords or session cookies;
+- secrets;
+- raw private knowledge by default.
+
+Provide `/health/live` and `/health/ready`.
+
+No telemetry leaves the installation.
+
+## 13. Backup boundary
+
+A recoverable installation requires:
+
+1. PostgreSQL backup;
+2. `KNOVERGE_DATA_DIR` (workspace Git repositories and attachments);
+3. encryption/configuration secrets kept separately.
+
+Search indexes and embeddings are rebuildable and are not required for authoritative backup.
