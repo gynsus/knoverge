@@ -377,6 +377,9 @@ importers:
       '@knoverge/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@knoverge/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@knoverge/db':
         specifier: workspace:*
         version: link:../../packages/db

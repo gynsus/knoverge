@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { ConfigError, loadConfig } from '../src/config.ts';
 
-const base = { KNOVERGE_DATABASE_URL: 'postgres://u:p@localhost:5432/db' };
+const base = {
+  KNOVERGE_DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+  KNOVERGE_LEDGER_KEY: 'ab'.repeat(32),
+};
 
 describe('loadConfig', () => {
   it('applies defaults', () => {
@@ -39,12 +42,25 @@ describe('loadConfig', () => {
   });
 
   it('fails without a database url', () => {
-    expect(() => loadConfig({})).toThrow(ConfigError);
-    expect(() => loadConfig({})).toThrow(/KNOVERGE_DATABASE_URL/);
+    expect(() => loadConfig({ KNOVERGE_LEDGER_KEY: base.KNOVERGE_LEDGER_KEY })).toThrow(
+      ConfigError,
+    );
+    expect(() => loadConfig({ KNOVERGE_LEDGER_KEY: base.KNOVERGE_LEDGER_KEY })).toThrow(
+      /KNOVERGE_DATABASE_URL/,
+    );
+  });
+
+  it('requires a well-formed ledger key', () => {
+    expect(() => loadConfig({ KNOVERGE_DATABASE_URL: base.KNOVERGE_DATABASE_URL })).toThrow(
+      /KNOVERGE_LEDGER_KEY/,
+    );
+    expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'zz' })).toThrow(/hex/);
+    expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'ab'.repeat(8) })).toThrow(/32 bytes/);
+    expect(loadConfig(base).ledgerKey.bytes).toHaveLength(32);
   });
 
   it('rejects a non-postgres database url', () => {
-    expect(() => loadConfig({ KNOVERGE_DATABASE_URL: 'mysql://x' })).toThrow(/postgres/);
+    expect(() => loadConfig({ ...base, KNOVERGE_DATABASE_URL: 'mysql://x' })).toThrow(/postgres/);
   });
 
   it('rejects an invalid role', () => {

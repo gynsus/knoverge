@@ -9,6 +9,7 @@ import type {
 import { and, asc, eq } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
+import { rethrowUniqueViolation } from '../errors.ts';
 import { actors } from '../schema/actors.ts';
 import { workspaces } from '../schema/workspaces.ts';
 import { asTx } from '../unit-of-work.ts';
@@ -20,7 +21,13 @@ function toWorkspace(row: typeof workspaces.$inferSelect): WorkspaceRecord {
 export function createWorkspaceRepository(db: Database): WorkspaceRepository {
   return {
     async insert(tx: Tx, workspace: WorkspaceRecord) {
-      await asTx(tx).insert(workspaces).values(workspace);
+      try {
+        await asTx(tx).insert(workspaces).values(workspace);
+      } catch (err) {
+        rethrowUniqueViolation(err, `workspace slug already exists: ${workspace.slug}`, {
+          slug: workspace.slug,
+        });
+      }
     },
     async findBySlug(slug: string) {
       const rows = await db.select().from(workspaces).where(eq(workspaces.slug, slug)).limit(1);
