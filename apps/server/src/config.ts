@@ -16,6 +16,10 @@ const EnvSchema = z.object({
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
   KNOVERGE_LEDGER_KEY: z.string().min(1, 'KNOVERGE_LEDGER_KEY is required'),
+  KNOVERGE_SESSION_SECRET: z
+    .string()
+    .regex(/^[0-9a-fA-F]{64,}$/, 'KNOVERGE_SESSION_SECRET must be hex, at least 32 bytes'),
+  KNOVERGE_BASE_URL: z.string().url().default('http://localhost:3000'),
   KNOVERGE_WEB_DIST: z.string().min(1).optional(),
   KNOVERGE_AUTO_MIGRATE: z
     .enum(['true', 'false'])
@@ -37,6 +41,11 @@ export interface Config {
   dataDir: string;
   /** HMAC key of the event ledger (ADR 0007). */
   ledgerKey: LedgerKey;
+  /** Signs cookies (CSRF). */
+  sessionSecret: string;
+  baseUrl: URL;
+  /** Secure cookies when the public base URL is https. */
+  cookieSecure: boolean;
   /** Directory with the built web bundle; undefined disables static serving. */
   webDist: string | undefined;
   /** Apply pending migrations on start. Disable when an operator runs `knoverge db migrate`. */
@@ -81,6 +90,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
     ledgerKey,
+    sessionSecret: e.KNOVERGE_SESSION_SECRET,
+    baseUrl: new URL(e.KNOVERGE_BASE_URL),
+    cookieSecure: new URL(e.KNOVERGE_BASE_URL).protocol === 'https:',
     webDist: e.KNOVERGE_WEB_DIST === undefined ? undefined : resolve(e.KNOVERGE_WEB_DIST),
     autoMigrate: e.KNOVERGE_AUTO_MIGRATE,
     logLevel: e.KNOVERGE_LOG_LEVEL,

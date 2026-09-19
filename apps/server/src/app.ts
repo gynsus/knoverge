@@ -5,7 +5,15 @@ import fastifyStatic from '@fastify/static';
 import type { ReadyResponse } from '@knoverge/contracts';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+
+import { registerAuthContext } from './plugins/auth-context.ts';
+import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
+import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
+import { registerAuthRoutes } from './routes/auth.ts';
+import { registerOpenApi } from './routes/openapi.ts';
+import type { Services } from './services.ts';
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
 
@@ -25,6 +33,9 @@ export interface AppOptions {
   trustProxy?: boolean;
   /** Built web bundle to serve at '/', with SPA fallback for unknown paths. */
   webDist?: string;
+  /** Domain services; when present the API routes and security plugins are registered. */
+  services?: Services;
+  security?: SecurityOptions;
 }
 
 const API_PREFIXES = ['/v1/', '/mcp', '/health/'];
@@ -32,16 +43,20 @@ const API_PREFIXES = ['/v1/', '/mcp', '/health/'];
 /**
  * Builds the Fastify instance. Transport only: no domain logic lives here.
  */
-export function buildApp(options: AppOptions): FastifyInstance {
+export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const common = {
     trustProxy: options.trustProxy ?? false,
     requestIdHeader: false as const,
+    bodyLimit: 1_048_576,
     genReqId: (req: { headers: Record<string, string | string[] | undefined> }) =>
       resolveRequestId(req.headers['x-request-id']),
   };
   const app = options.loggerInstance
     ? Fastify({ ...common, loggerInstance: options.loggerInstance })
     : Fastify({ ...common, logger: false });
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+  registerErrorHandler(app);
 
   app.get('/health/live', async () => ({ status: 'ok' as const }));
 
@@ -68,8 +83,18 @@ export function buildApp(options: AppOptions): FastifyInstance {
     return body;
   });
 
+  if (options.services && options.security) {
+    await registerSecurity(app, options.security);
+    await registerOpenApi(app, options.version);
+    registerAuthContext(app, options.services);
+    registerAuthRoutes(app, {
+      services: options.services,
+      cookieSecure: options.security.cookieSecure,
+    });
+  }
+
   if (options.webDist) {
-    void app.register(fastifyStatic, {
+    await app.register(fastifyStatic, {
       root: options.webDist,
       prefix: '/',
       wildcard: false,
@@ -83,19 +108,20 @@ export function buildApp(options: AppOptions): FastifyInstance {
         void res.header('cache-control', cache);
       },
     });
-    app.setNotFoundHandler((request, reply) => {
-      const path = request.url.split('?')[0] ?? request.url;
-      const isApi = API_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
-      if (request.method === 'GET' && !isApi) {
-        return reply
-          .header('cache-control', 'no-cache')
-          .sendFile('index.html', options.webDist as string, { cacheControl: false });
-      }
-      return reply
-        .code(404)
-        .send({ code: 'NOT_FOUND', message: 'Route not found', retryable: false });
-    });
   }
 
+  const webDist = options.webDist;
+  app.setNotFoundHandler((request, reply) => {
+    const path = request.url.split('?')[0] ?? request.url;
+    const isApi = API_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
+    if (webDist && request.method === 'GET' && !isApi) {
+      return reply
+        .header('cache-control', 'no-cache')
+        .sendFile('index.html', webDist, { cacheControl: false });
+    }
+    return reply.code(404).send(NOT_FOUND);
+  });
+
+  await app.ready();
   return app;
 }
