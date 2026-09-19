@@ -1,4 +1,4 @@
-import type { AgentId } from '@knoverge/contracts';
+import type { AgentId, AgentSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -115,9 +115,14 @@ export function AgentsPage() {
       await refresh();
     },
   });
-  const disable = useMutation({
-    mutationFn: (agentId: AgentId) =>
-      adminApi.agents.update({ agent_id: agentId, status: 'disabled' }),
+  const setStatus = useMutation({
+    mutationFn: ({ agentId, status }: { agentId: AgentId; status: 'active' | 'disabled' }) =>
+      adminApi.agents.update({ agent_id: agentId, status }),
+    onSuccess: refresh,
+  });
+  const setTier = useMutation({
+    mutationFn: ({ agentId, tier }: { agentId: AgentId; tier: AgentSummary['trust_tier'] }) =>
+      adminApi.agents.update({ agent_id: agentId, trust_tier: tier }),
     onSuccess: refresh,
   });
 
@@ -127,6 +132,8 @@ export function AgentsPage() {
     if (expanded) detailHeading.current?.focus();
     else lastTrigger.current?.focus();
   }, [expanded]);
+
+  const current = agents.data?.agents.find((a) => a.id === expanded);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -189,7 +196,7 @@ export function AgentsPage() {
       {expanded && (
         <section className="card" aria-labelledby="agent-detail-title">
           <h3 id="agent-detail-title" tabIndex={-1} ref={detailHeading}>
-            {agents.data?.agents.find((a) => a.id === expanded)?.name ?? ''}
+            {current?.name ?? ''}
           </h3>
           {issuedToken?.agentId === expanded && (
             <div className="notice">
@@ -206,19 +213,54 @@ export function AgentsPage() {
               </button>
             </div>
           )}
+          <Field label={t('agents.trust_tier')} hint={t('agents.tier_change_hint')}>
+            <select
+              value={current?.trust_tier ?? 'propose'}
+              onChange={(e) =>
+                setTier.mutate({
+                  agentId: expanded,
+                  tier: e.target.value as AgentSummary['trust_tier'],
+                })
+              }
+              disabled={setTier.isPending}
+            >
+              <option value="read_only">{t('agents.tiers.read_only')}</option>
+              <option value="propose">{t('agents.tiers.propose')}</option>
+              <option value="trusted">{t('agents.tiers.trusted')}</option>
+            </select>
+          </Field>
           <p>
-            <button type="button" onClick={() => issue.mutate(expanded)} disabled={issue.isPending}>
-              {t('agents.issue_token')}
-            </button>{' '}
             <button
               type="button"
-              onClick={() => disable.mutate(expanded)}
-              disabled={disable.isPending}
+              onClick={() => issue.mutate(expanded)}
+              disabled={issue.isPending || current?.status !== 'active'}
             >
-              {t('agents.disable')}
-            </button>
+              {t('agents.issue_token')}
+            </button>{' '}
+            {current?.status === 'disabled' ? (
+              // A disabled agent could never be brought back from the browser,
+              // although the contract has always allowed it.
+              <button
+                type="button"
+                onClick={() => setStatus.mutate({ agentId: expanded, status: 'active' })}
+                disabled={setStatus.isPending}
+              >
+                {t('agents.enable')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setStatus.mutate({ agentId: expanded, status: 'disabled' })}
+                disabled={setStatus.isPending}
+              >
+                {t('agents.disable')}
+              </button>
+            )}
           </p>
-          <ErrorNotice error={issue.error ?? disable.error} />
+          <p>
+            <small>{t('agents.disable_hint')}</small>
+          </p>
+          <ErrorNotice error={issue.error ?? setStatus.error ?? setTier.error} />
           <CredentialList agentId={expanded} />
         </section>
       )}

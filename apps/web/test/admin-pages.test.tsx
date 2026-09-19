@@ -598,3 +598,101 @@ describe('policy page', () => {
     );
   });
 });
+
+describe('editing a category', () => {
+  const ROOT = {
+    id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    parent_id: null,
+    slug: 'projects',
+    path: 'projects',
+    name: 'Projects',
+    description: null,
+    inclusion_guidance: [],
+    exclusion_guidance: [],
+    aliases: [],
+    status: 'active',
+    created_at: '2026-09-19T00:00:00.000Z',
+    updated_at: '2026-09-19T00:00:00.000Z',
+    item_count: 0,
+    subtree_item_count: 0,
+  };
+  const CHILD = {
+    ...ROOT,
+    id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T4',
+    parent_id: ROOT.id,
+    slug: 'web',
+    path: 'projects/web',
+    name: 'Web',
+  };
+
+  it('sends every field the contract allows, not only the name', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 1, categories: [ROOT] }),
+      'POST /v1/admin/taxonomy.update': () => json({ taxonomy_version: 2, category: ROOT }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Projects' }));
+    await user.type(screen.getByLabelText('Description'), 'Client work');
+    await user.type(screen.getByLabelText('What belongs here'), 'Anything with a client');
+    await user.type(screen.getByLabelText('Other names'), 'Clients, Work');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/taxonomy.update')?.body).toMatchObject({
+        category_id: ROOT.id,
+        description: 'Client work',
+        inclusion_guidance: ['Anything with a client'],
+        aliases: ['Clients', 'Work'],
+      }),
+    );
+  });
+
+  it('moves a category to any parent, not only to the top level', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 1, categories: [ROOT, CHILD] }),
+      'POST /v1/admin/taxonomy.move': () => json({ taxonomy_version: 2, category: CHILD }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Web' }));
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Move under' }), ROOT.id);
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/taxonomy.move')?.body).toMatchObject({
+        category_id: CHILD.id,
+        new_parent_id: ROOT.id,
+      }),
+    );
+  });
+});
+
+describe('managing an agent', () => {
+  const DISABLED = { ...AGENT, status: 'disabled' };
+
+  it('changes a trust tier and brings a disabled agent back', async () => {
+    let agent: Record<string, unknown> = DISABLED;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/agents.list': () => json({ agents: [agent] }),
+      'GET /v1/admin/agents.credentials.list': () => json({ credentials: [] }),
+      'POST /v1/admin/agents.update': () => {
+        agent = { ...agent, status: 'active' };
+        return json({ agent });
+      },
+    });
+    renderApp('/agents');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Manage' }));
+    // A disabled agent could never be brought back from the browser.
+    await user.click(screen.getByRole('button', { name: 'Enable agent' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/agents.update')?.body).toMatchObject({
+        status: 'active',
+      }),
+    );
+  });
+});
