@@ -240,11 +240,24 @@ export class AgentService {
    */
   async issueCredential(
     actor: ActorContext,
+    standing: ActorStanding,
     input: IssueCredentialInput,
   ): Promise<IssuedCredential> {
     const agent = await this.require(actor.workspaceId, input.agentId);
     if (agent.status !== 'active') {
       throw new DomainError('VALIDATION_ERROR', 'cannot issue a credential for a disabled agent');
+    }
+    // Minting the token is what actually hands the tier's permissions to
+    // whoever holds it, so it takes the same standing as choosing the tier.
+    // Guarding create and update alone left this as the way around both.
+    await this.assertMayGiveTier(actor, standing, agent.trustTier);
+    if (input.expiresInDays !== undefined) {
+      if (!Number.isInteger(input.expiresInDays) || input.expiresInDays < 1) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          'expiry must be a whole number of days, at least one',
+        );
+      }
     }
     const now = this.clock.now();
     const secret = this.o.tokens.generate();

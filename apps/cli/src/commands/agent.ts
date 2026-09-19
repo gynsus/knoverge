@@ -6,6 +6,15 @@ import { systemActorContext } from '../workspace-actor.ts';
 
 const AGENT_ID = 'must be an agent id, as `agent list` prints in the first column';
 
+/** A credential that expires in no days, or in NaN days, is worse than none. */
+function parseDays(value: string): number {
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 1 || days > 3650) {
+    throw new Error('--expires-in-days must be a whole number of days between 1 and 3650');
+  }
+  return days;
+}
+
 export function agentCommand(): Command {
   const cmd = new Command('agent').description('Agent identities and credentials');
 
@@ -121,11 +130,17 @@ export function agentCommand(): Command {
       }) => {
         await withServices(async (services) => {
           const actor = await systemActorContext(services, opts.workspace);
-          const issued = await services.agents.issueCredential(actor, {
-            agentId: parseOrFail(AgentId, opts.agent, `--agent ${AGENT_ID}`),
-            label: opts.label,
-            ...(opts.expiresInDays ? { expiresInDays: Number(opts.expiresInDays) } : {}),
-          });
+          const issued = await services.agents.issueCredential(
+            actor,
+            {},
+            {
+              agentId: parseOrFail(AgentId, opts.agent, `--agent ${AGENT_ID}`),
+              label: opts.label,
+              ...(opts.expiresInDays !== undefined
+                ? { expiresInDays: parseDays(opts.expiresInDays) }
+                : {}),
+            },
+          );
           console.log(issued.token);
           console.error(
             `credential ${issued.credential.id} issued; this token is shown once and cannot be recovered`,

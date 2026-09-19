@@ -6,5 +6,5 @@ export {
 } from './defaults.ts';
 export { evaluatePermission, holdsAction, type PermissionDecision } from './permissions.ts';
 export { evaluatePolicy, type PolicyDecision } from './rules.ts';
-export { EMPTY_SCOPE, scopeMatches } from './scope.ts';
+export { EMPTY_SCOPE, scopeMatches, type ScopeCoverage } from './scope.ts';
 export type { CategoryAncestors, Grant, Rule, Subject, Target } from './types.ts';

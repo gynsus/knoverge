@@ -102,17 +102,17 @@ export class AuthorizationAdminService {
     if (input.effect === 'allow') {
       // Nobody hands out more than they hold, so policy.manage cannot be used to
       // widen one's own role or to build a more privileged actor.
-      const held = await this.o.authorization.check(actor, standing, input.action);
-      if (!held.allowed) {
-        throw new DomainError(
-          'FORBIDDEN',
-          `you do not hold ${input.action}, so you cannot grant it`,
-        );
-      }
+      await this.assertAuthorityCovers(actor, standing, input.action, scope);
       if (subject.type === 'agent' && HUMAN_ONLY_ACTIONS.has(input.action)) {
         throw new DomainError('FORBIDDEN', `${input.action} cannot be granted to an agent`);
       }
       await this.refuseConfusingScope(actor, subject, input);
+    }
+    // A restriction on you is somebody else's to place and somebody else's to
+    // lift. Denying yourself would otherwise be a one-way door: revoking needs
+    // the action the deny just took away, and nobody else can revoke it for you.
+    if (input.effect === 'deny' && input.actorId === actor.actorId) {
+      throw new DomainError('FORBIDDEN', 'you cannot restrict yourself; ask another administrator');
     }
     const record: PermissionGrantRecord = {
       id: newId('grant'),
@@ -187,15 +187,13 @@ export class AuthorizationAdminService {
     const scope = await this.validateScope(actor, input.scope);
     // A rule that applies a write directly decides in advance what a reviewer
     // would otherwise decide case by case, so writing one is approval.
-    if (input.effect === 'allow_direct') {
-      const missing = await this.o.authorization.missingAction(actor, standing, [
-        'knowledge.approve',
-      ]);
-      if (missing) {
-        throw new DomainError(
-          'FORBIDDEN',
-          'a rule that skips review approves writes in advance, so it needs knowledge.approve',
-        );
+    if (input.effect === 'allow_direct') await this.assertMayLoosenPolicy(actor, standing);
+    if (input.ruleId) {
+      const before = await this.o.rules.findById(actor.workspaceId, input.ruleId);
+      // Turning a deny off, or turning it into something weaker, loosens policy
+      // exactly as deleting it would.
+      if (before?.effect === 'deny' && (input.effect !== 'deny' || !input.enabled)) {
+        await this.assertMayLoosenPolicy(actor, standing);
       }
     }
     if ('actor_id' in input.subject) {
@@ -242,7 +240,16 @@ export class AuthorizationAdminService {
     return record;
   }
 
-  async deleteRule(actor: ActorContext, ruleId: string): Promise<void> {
+  /**
+   * Removing a rule changes policy as much as writing one: deleting a deny can
+   * expose a lower-priority allow_direct underneath it, and disabling one has
+   * the same effect. Both therefore take the standing that writing an
+   * allow_direct takes.
+   */
+  async deleteRule(actor: ActorContext, standing: ActorStanding, ruleId: string): Promise<void> {
+    const rule = await this.o.rules.findById(actor.workspaceId, ruleId);
+    if (!rule) throw new DomainError('NOT_FOUND', 'policy rule not found');
+    if (rule.effect === 'deny') await this.assertMayLoosenPolicy(actor, standing);
     await this.o.uow.run(async (tx) => {
       const removed = await this.o.rules.delete(tx, actor.workspaceId, ruleId);
       if (!removed) throw new DomainError('NOT_FOUND', 'policy rule not found');
@@ -253,6 +260,68 @@ export class AuthorizationAdminService {
         metadata: { change: 'deleted', action: removed.action, effect: removed.effect },
       });
     });
+  }
+
+  /**
+   * Anything that lets a write happen without a reviewer is approval given in
+   * advance, so it takes the power to approve.
+   */
+  private async assertMayLoosenPolicy(actor: ActorContext, standing: ActorStanding): Promise<void> {
+    const missing = await this.o.authorization.missingAction(actor, standing, [
+      'knowledge.approve',
+    ]);
+    if (missing) {
+      throw new DomainError(
+        'FORBIDDEN',
+        'this decides in advance what a reviewer would decide, so it needs knowledge.approve',
+      );
+    }
+  }
+
+  /**
+   * The granter must hold the action at least as widely as the grant gives it.
+   *
+   * Checking with no target answers "do you hold this anywhere", which a scoped
+   * deny never matches. An administrator restricted to one branch was therefore
+   * judged to hold the action workspace-wide, and could hand it out unscoped to
+   * an agent it created and then act through that agent's token. The
+   * restriction was not lifted; it was walked around.
+   */
+  private async assertAuthorityCovers(
+    actor: ActorContext,
+    standing: ActorStanding,
+    action: PermissionAction,
+    scope: ScopeSelector,
+  ): Promise<void> {
+    const refuse = (why: string): never => {
+      throw new DomainError('FORBIDDEN', why);
+    };
+    if (scope.categories.length > 0) {
+      // A branch-scoped grant needs authority over each branch it names.
+      for (const entry of scope.categories) {
+        const held = await this.o.authorization.check(actor, standing, action, {
+          categoryIds: [entry.category_id],
+        });
+        if (!held.allowed) {
+          refuse(`you do not hold ${action} for every category in this scope`);
+        }
+      }
+      return;
+    }
+    const held = await this.o.authorization.check(actor, standing, action);
+    if (!held.allowed) {
+      refuse(`you do not hold ${action}, so you cannot grant it`);
+    }
+    // An unscoped grant gives the action everywhere, so anything that restricts
+    // the granter anywhere is enough to refuse it.
+    const restricted = (await this.o.grants.listForActor(actor.workspaceId, actor.actorId)).some(
+      (g) => g.effect === 'deny' && g.action === action,
+    );
+    if (restricted) {
+      refuse(
+        `${action} is restricted for you, so you cannot grant it without the same restriction`,
+      );
+    }
   }
 
   /**

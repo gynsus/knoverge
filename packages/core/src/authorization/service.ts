@@ -102,6 +102,7 @@ export class AuthorizationService {
     standing: ActorStanding,
     action: PermissionAction,
   ): Promise<boolean> {
+    if (actor.actorType === 'system') return true;
     return holdsAction(await this.grantsFor(actor, standing), action);
   }
 
@@ -168,6 +169,11 @@ export class AuthorizationService {
     action: PermissionAction,
     target: Target = {},
   ): Promise<AuthorizationDecision> {
+    // Same rule as missingAction: the system actor is the host operator running
+    // the command line, who owns the database and the secrets. The two used to
+    // disagree, so a command line path that happened to reach check() instead
+    // would have been refused, taking the documented recovery route with it.
+    if (actor.actorType === 'system') return { allowed: true, reason: 'system_actor' };
     const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
     const grants = await this.grantsFor(actor, standing);
     const decision = evaluatePermission(grants, action, target, ancestorsOf);

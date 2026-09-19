@@ -45,7 +45,10 @@ export function evaluatePermission(
   let allow: Grant | undefined;
   for (const grant of grants) {
     if (grant.action !== action) continue;
-    if (!scopeMatches(grant.scope, target, ancestorsOf)) continue;
+    // A deny needs to cover only one of the categories the request touches; an
+    // allow has to cover all of them.
+    const coverage = grant.effect === 'deny' ? 'any' : 'all';
+    if (!scopeMatches(grant.scope, target, ancestorsOf, coverage)) continue;
     if (grant.effect === 'deny') {
       return { allowed: false, grantId: grant.id, reason: 'explicit_deny' };
     }

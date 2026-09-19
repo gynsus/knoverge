@@ -141,7 +141,11 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
-      await services.authorizationAdmin.deleteRule(actor.context, request.body.rule_id);
+      await services.authorizationAdmin.deleteRule(
+        actor.context,
+        actor.standing,
+        request.body.rule_id,
+      );
       return { ok: true as const };
     },
   );

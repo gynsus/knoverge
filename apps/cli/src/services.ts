@@ -7,6 +7,7 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  AuthorizationAdminService,
   AuthorizationService,
   BootstrapService,
   EventLedger,
@@ -83,6 +84,19 @@ export function createServices() {
         ledger: ledger(),
       }),
   );
+  const authorizationAdmin = lazy(
+    () =>
+      new AuthorizationAdminService({
+        uow,
+        grants: repositories.grants,
+        rules: repositories.policyRules,
+        categories: repositories.categories,
+        actors: repositories.actors,
+        memberships: repositories.memberships,
+        authorization: authorization(),
+        ledger: ledger(),
+      }),
+  );
   const agents = lazy(() => {
     const tokenPepper = required('KNOVERGE_TOKEN_PEPPER');
     return new AgentService({
@@ -134,6 +148,9 @@ export function createServices() {
     },
     get agents() {
       return agents();
+    },
+    get authorizationAdmin() {
+      return authorizationAdmin();
     },
     get taxonomy() {
       return taxonomy();

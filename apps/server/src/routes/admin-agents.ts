@@ -138,7 +138,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
     // storing it to replay would mean keeping a live credential in the clear.
     async (request) => {
       const actor = await requirePermission(services, request, 'agent.manage');
-      const issued = await services.agents.issueCredential(actor.context, {
+      const issued = await services.agents.issueCredential(actor.context, actor.standing, {
         agentId: request.body.agent_id,
         label: request.body.label,
         expiresInDays: request.body.expires_in_days,
