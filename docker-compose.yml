@@ -1,0 +1,45 @@
+name: knoverge
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: ${KNOVERGE_POSTGRES_DB:-knoverge}
+      POSTGRES_USER: ${KNOVERGE_POSTGRES_USER:-knoverge}
+      POSTGRES_PASSWORD: ${KNOVERGE_POSTGRES_PASSWORD:-knoverge}
+    volumes:
+      - knoverge-postgres:/var/lib/postgresql/data
+    ports:
+      - '${KNOVERGE_POSTGRES_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  knoverge:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile
+    image: knoverge:local
+    environment:
+      KNOVERGE_PORT: 3000
+      KNOVERGE_HOST: 0.0.0.0
+      KNOVERGE_ROLE: ${KNOVERGE_ROLE:-all}
+      KNOVERGE_DATABASE_URL: postgres://${KNOVERGE_POSTGRES_USER:-knoverge}:${KNOVERGE_POSTGRES_PASSWORD:-knoverge}@postgres:5432/${KNOVERGE_POSTGRES_DB:-knoverge}
+      KNOVERGE_DATA_DIR: /data
+      KNOVERGE_LOG_LEVEL: ${KNOVERGE_LOG_LEVEL:-info}
+      KNOVERGE_TRUST_PROXY: ${KNOVERGE_TRUST_PROXY:-false}
+    volumes:
+      - knoverge-data:/data
+    ports:
+      - '${KNOVERGE_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  knoverge-postgres:
+  knoverge-data:
