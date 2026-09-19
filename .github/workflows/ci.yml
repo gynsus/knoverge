@@ -78,6 +78,9 @@ jobs:
             if curl -fsS http://127.0.0.1:3000/health/live; then
               echo
               curl -fsS http://127.0.0.1:3000/ | grep -q '<div id="root">' && echo 'web bundle served'
+              # Without a database the server must stay up and report readiness as degraded.
+              code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/health/ready)
+              test "$code" = "503" && echo 'readiness degraded without database' || { echo "unexpected readiness status $code"; exit 1; }
               exit 0
             fi
             sleep 1

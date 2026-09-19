@@ -25,6 +25,7 @@ export function createJobs(connectionString: string, logger: pino.Logger): Jobs 
 
   return {
     async start() {
+      if (started) return;
       await boss.start();
       started = true;
       logger.info({ schema: JOBS_SCHEMA }, 'job runner started');

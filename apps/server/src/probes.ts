@@ -20,6 +20,10 @@ export interface ReadinessProbes {
 }
 
 function errorMessage(err: unknown): string {
+  // Drizzle wraps driver errors with the query text; the underlying cause is what operators need.
+  if (err instanceof Error && err.cause instanceof Error) {
+    return err.cause.message;
+  }
   return err instanceof Error ? err.message : String(err);
 }
 
