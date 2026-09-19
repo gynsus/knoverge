@@ -69,7 +69,54 @@ export function normaliseAlias(alias: string): string {
   return alias.trim().toLowerCase().replace(/\s+/g, ' ').normalize('NFC');
 }
 
-/** Derives a slug from a name; callers may override it. */
+/**
+ * Cyrillic to Latin, so a Russian category name yields a readable identifier
+ * rather than an empty one. Other scripts fall back to a generated slug.
+ */
+const CYRILLIC: Record<string, string> = {
+  а: 'a',
+  б: 'b',
+  в: 'v',
+  г: 'g',
+  ґ: 'g',
+  д: 'd',
+  е: 'e',
+  ё: 'e',
+  є: 'e',
+  ж: 'zh',
+  з: 'z',
+  и: 'i',
+  і: 'i',
+  ї: 'i',
+  й: 'i',
+  к: 'k',
+  л: 'l',
+  м: 'm',
+  н: 'n',
+  о: 'o',
+  п: 'p',
+  р: 'r',
+  с: 's',
+  т: 't',
+  у: 'u',
+  ф: 'f',
+  х: 'h',
+  ц: 'c',
+  ч: 'ch',
+  ш: 'sh',
+  щ: 'sch',
+  ъ: '',
+  ы: 'y',
+  ь: '',
+  э: 'e',
+  ю: 'yu',
+  я: 'ya',
+};
+
+/**
+ * Derives a slug from a name. Returns an empty string when nothing
+ * transliterable remains; callers then fall back to a generated identifier.
+ */
 export function slugify(name: string): string {
   return (
     name
@@ -77,6 +124,7 @@ export function slugify(name: string): string {
       // Drop combining marks so "Ü" becomes "u", not "u-".
       .replace(/[\u0300-\u036f]/g, '')
       .toLowerCase()
+      .replace(/[\u0400-\u04ff]/g, (char) => CYRILLIC[char] ?? '-')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 64)
@@ -141,7 +189,10 @@ export class TaxonomyService {
 
   async create(actor: ActorContext, input: CreateCategoryInput): Promise<TaxonomyResult> {
     const name = this.parseName(input.name);
-    const slug = this.parseSlug(input.slug ?? slugify(name));
+    const id = newId('cat') as CategoryId;
+    // A name in a script we cannot transliterate still deserves a usable category.
+    const derived = input.slug ?? slugify(name);
+    const slug = this.parseSlug(derived === '' ? fallbackSlug(id) : derived);
     const parent = await this.resolveParent(actor.workspaceId, input.parentPath);
     if (parent && parent.status !== 'active') {
       throw new DomainError('CATEGORY_CONFLICT', 'the parent category is not active');
@@ -162,7 +213,7 @@ export class TaxonomyService {
     const aliases = await this.parseAliases(actor.workspaceId, input.aliases ?? [], null);
     const now = this.clock.now();
     const category: CategoryRecord = {
-      id: newId('cat') as CategoryId,
+      id,
       workspaceId: actor.workspaceId,
       parentId: parent?.id ?? null,
       slug,
@@ -465,4 +516,9 @@ export class TaxonomyService {
     if (!parent) throw new DomainError('NOT_FOUND', `no category at ${parsed.data}`);
     return parent;
   }
+}
+
+/** Readable and unique enough when a name yields no slug of its own. */
+function fallbackSlug(categoryId: string): string {
+  return `category-${categoryId.slice(-8).toLowerCase()}`;
 }

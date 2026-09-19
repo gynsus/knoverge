@@ -192,6 +192,8 @@ exclusion_guidance:
 
 `slug` is unique among siblings. `path` is the slash-joined chain of slugs, unique per workspace, and is what appears in Markdown frontmatter and in the repository layout. Categories nest at most eight levels deep.
 
+A slug is derived from the name unless one is given. Diacritics are stripped and Cyrillic is transliterated, so "Архитектура" becomes `arhitektura`. A name in a script with no transliteration keeps its name and receives a generated identifier such as `category-3f8a2b1c`, which the curator may replace.
+
 Renaming a slug or moving a category rewrites the paths of its whole subtree in one statement, inside the same transaction as the taxonomy version bump and the ledger event. Archiving a category archives its descendants with it.
 
 Statuses:

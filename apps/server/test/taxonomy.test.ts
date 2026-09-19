@@ -126,6 +126,16 @@ describe('creating categories', () => {
     expect(clash.statusCode).toBe(409);
   });
 
+  it('accepts a name in another script', async () => {
+    const cyrillic = await create({ name: 'Архитектура' });
+    expect(cyrillic.category.path).toBe('arhitektura');
+    expect(cyrillic.category.name).toBe('Архитектура');
+    // A script with no transliteration still yields a usable identifier.
+    const other = await create({ name: '日本語' });
+    expect(other.category.slug).toMatch(/^category-[0-9a-z]{8}$/);
+    expect(other.category.name).toBe('日本語');
+  });
+
   it('validates names and slugs', async () => {
     expect((await admin.post('/v1/admin/taxonomy.create', { name: '' })).statusCode).toBe(400);
     expect(
