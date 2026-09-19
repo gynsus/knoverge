@@ -1,8 +1,10 @@
+import { resolve } from 'node:path';
+
 import { z } from 'zod';
 
 const EnvSchema = z.object({
   KNOVERGE_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  KNOVERGE_HOST: z.string().min(1).default('0.0.0.0'),
+  KNOVERGE_HOST: z.string().min(1).default('127.0.0.1'),
   KNOVERGE_ROLE: z.enum(['all', 'web', 'worker']).default('all'),
   KNOVERGE_DATABASE_URL: z
     .string()
@@ -40,6 +42,9 @@ export class ConfigError extends Error {
 
 /**
  * Reads and validates KNOVERGE_* variables. Throws ConfigError with every problem listed.
+ *
+ * The host defaults to loopback (local trusted mode); containers set 0.0.0.0 explicitly.
+ * A relative data directory resolves against the process working directory.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const result = EnvSchema.safeParse(env);
@@ -53,7 +58,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     host: e.KNOVERGE_HOST,
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
-    dataDir: e.KNOVERGE_DATA_DIR,
+    dataDir: resolve(e.KNOVERGE_DATA_DIR),
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
     nodeEnv: e.NODE_ENV,

@@ -377,6 +377,10 @@ The MVP does **not** require:
 
 See [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) for the full roadmap.
 
+## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup (`nvm use`, `pnpm install`, `docker compose up -d postgres`, `pnpm dev`) and the checks to run before a pull request.
+
 ## Licence
 
 Knoverge is released under the [Apache License 2.0](LICENSE).

@@ -14,7 +14,7 @@ The project also wants to stay on current, proven versions and remain upgradeabl
 | Concern | Choice | Reason |
 | --- | --- | --- |
 | Runtime | Node.js, current Active LTS line, pinned in `.nvmrc` and `engines` | Long support window; upgrade one LTS at a time |
-| Language | TypeScript strict | Contract safety across packages |
+| Language | TypeScript strict, 5.x line | Contract safety across packages; the 7.x (native) compiler is adopted once typescript-eslint and tsup support it |
 | HTTP | Fastify | Fast, schema-friendly, plugin model fits adapters |
 | Validation | Zod (current major) | Single runtime schema source for contracts and OpenAPI |
 | Database access | Drizzle ORM with SQL migrations | Schema as TypeScript, generated SQL migrations reviewed in PRs, no runtime magic, raw SQL where needed (FTS, pgvector) |
