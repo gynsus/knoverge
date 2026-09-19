@@ -144,3 +144,21 @@ export async function requirePermission(
   await services.authorization.require(actor.context, actor.standing, action, target);
   return actor;
 }
+
+/**
+ * For endpoints that list things: the caller must hold the action somewhere,
+ * and the results are filtered to what their scopes cover. Checking one empty
+ * target instead would refuse anyone whose grant covers a single branch.
+ */
+export async function requireListPermission(
+  services: Services,
+  request: FastifyRequest,
+  action: PermissionAction,
+): Promise<WorkspaceActor> {
+  const actor = await resolveWorkspaceActor(services, request);
+  if (!(await services.authorization.mayList(actor.context, actor.standing, action))) {
+    await services.authorization.recordDenied(actor.context, action, 'no_grant');
+    throw new DomainError('FORBIDDEN', `not permitted: ${action}`);
+  }
+  return actor;
+}

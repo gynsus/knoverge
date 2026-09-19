@@ -13,6 +13,7 @@ import {
   TIER_PERMISSIONS,
   TIER_POLICY_DEFAULT,
   evaluatePermission,
+  holdsAction,
   evaluatePolicy,
   type CategoryAncestors,
   type Grant,
@@ -84,17 +85,43 @@ export class AuthorizationService {
     return (categoryId: string) => cache.get(categoryId) ?? [];
   }
 
-  async check(
+  /**
+   * Whether the actor may use an endpoint that lists things. The results are
+   * filtered afterwards with filter(), so a branch-scoped grant shows that
+   * branch instead of refusing the whole listing.
+   */
+  async mayList(
     actor: ActorContext,
     standing: ActorStanding,
     action: PermissionAction,
-    target: Target = {},
-  ): Promise<AuthorizationDecision> {
+  ): Promise<boolean> {
+    return holdsAction(await this.grantsFor(actor, standing), action);
+  }
+
+  /** Keeps the items the actor may see for this action. */
+  async filter<T>(
+    actor: ActorContext,
+    standing: ActorStanding,
+    action: PermissionAction,
+    items: readonly T[],
+    toTarget: (item: T) => Target,
+  ): Promise<T[]> {
     const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
+    const grants = await this.grantsFor(actor, standing);
+    return items.filter(
+      (item) => evaluatePermission(grants, action, toTarget(item), ancestorsOf).allowed,
+    );
+  }
+
+  private async grantsFor(actor: ActorContext, standing: ActorStanding): Promise<Grant[]> {
     const stored = await this.o.grants.listForActor(actor.workspaceId, actor.actorId);
-    const implicit = this.implicitGrants(actor, standing);
-    const grants: Grant[] = [
-      ...implicit,
+    // An explicit allow replaces the baseline for that action rather than
+    // adding to it. Otherwise a role or tier that already allows the action
+    // everywhere would make a scoped grant meaningless, and restricting an
+    // agent to one branch would be impossible to express.
+    const narrowed = new Set(stored.filter((g) => g.effect === 'allow').map((g) => g.action));
+    return [
+      ...this.implicitGrants(actor, standing).filter((g) => !narrowed.has(g.action)),
       ...stored.map<Grant>((g) => ({
         id: g.id,
         actorId: g.actorId,
@@ -103,6 +130,16 @@ export class AuthorizationService {
         effect: g.effect,
       })),
     ];
+  }
+
+  async check(
+    actor: ActorContext,
+    standing: ActorStanding,
+    action: PermissionAction,
+    target: Target = {},
+  ): Promise<AuthorizationDecision> {
+    const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
+    const grants = await this.grantsFor(actor, standing);
     const decision = evaluatePermission(grants, action, target, ancestorsOf);
     return {
       allowed: decision.allowed,

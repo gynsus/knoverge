@@ -12,7 +12,11 @@ import type { CategoryWithAliases } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { idempotencyKey, requirePermission } from '../plugins/actor-context.ts';
+import {
+  idempotencyKey,
+  requireListPermission,
+  requirePermission,
+} from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -48,7 +52,7 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
     '/v1/taxonomy.list',
     { schema: { querystring: TaxonomyListQuery, response: { 200: TaxonomyListResponse } } },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.read');
+      const actor = await requireListPermission(services, request, 'taxonomy.read');
       const query = request.query;
       // The version is read first: reporting an older version with newer
       // categories is safe, the other way round makes a caching client stop
@@ -59,9 +63,17 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
         depth: query.depth,
         includeArchived: query.include_archived,
       });
+      // A scoped grant shows its branch rather than the whole tree.
+      const visible = await services.authorization.filter(
+        actor.context,
+        actor.standing,
+        'taxonomy.read',
+        categories,
+        (category) => ({ categoryIds: [category.id] }),
+      );
       return {
         taxonomy_version: version,
-        categories: categories.map((c) => summary(c, query.include_guidance)),
+        categories: visible.map((c) => summary(c, query.include_guidance)),
       };
     },
   );
