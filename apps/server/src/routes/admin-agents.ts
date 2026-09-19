@@ -78,7 +78,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
         idempotencyKey(request),
         request.body,
         async () => {
-          const agent = await services.agents.create(actor.context, {
+          const agent = await services.agents.create(actor.context, actor.standing, {
             name: request.body.name,
             description: request.body.description,
             clientType: request.body.client_type,
@@ -100,7 +100,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
     async (request) => {
       const actor = await requirePermission(services, request, 'agent.manage');
       const body = request.body;
-      const agent = await services.agents.update(actor.context, {
+      const agent = await services.agents.update(actor.context, actor.standing, {
         agentId: body.agent_id,
         name: body.name,
         description: body.description,

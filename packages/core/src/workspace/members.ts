@@ -1,6 +1,8 @@
 import type { MembershipRole, UserId, WorkspaceId } from '@knoverge/contracts';
+import { ROLE_PERMISSIONS } from '@knoverge/policy';
 
 import type { ActorContext } from '../actor-context.ts';
+import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
 import { DomainError } from '../errors.ts';
 import { addMember } from '../identity/bootstrap-service.ts';
 import type { MemberWithUser, MembershipRepository, UserRecord } from '../identity/repository.ts';
@@ -17,6 +19,7 @@ export interface MemberServiceOptions {
   actors: ActorRepository;
   workspaces: WorkspaceRepository;
   users: UserService;
+  authorization: AuthorizationService;
   ledger: EventLedger;
   clock?: Clock;
 }
@@ -53,7 +56,12 @@ export class MemberService {
     return this.o.memberships.listForWorkspace(workspaceId);
   }
 
-  async add(actor: ActorContext, input: AddMemberInput): Promise<MemberWithUser> {
+  async add(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: AddMemberInput,
+  ): Promise<MemberWithUser> {
+    await this.assertMayAssign(actor, standing, input.role);
     const existing = await this.o.users.findByEmail(input.email);
     let user: UserRecord;
     let created = false;
@@ -92,11 +100,20 @@ export class MemberService {
     return member;
   }
 
-  async updateRole(actor: ActorContext, userId: UserId, role: MembershipRole): Promise<void> {
+  async updateRole(
+    actor: ActorContext,
+    standing: ActorStanding,
+    userId: UserId,
+    role: MembershipRole,
+  ): Promise<void> {
     const membership = await this.o.memberships.find(actor.workspaceId, userId);
     if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
     if (membership.role === role) return;
+    // The workspace invariant is reported first: it is the most specific
+    // reason the change cannot happen, whoever is asking.
     await this.assertNotLastOwner(actor.workspaceId, membership.role, role === 'owner');
+    await this.assertNotSelf(actor, userId, 'change your own role');
+    await this.assertMayAssign(actor, standing, role);
     await this.o.uow.run(async (tx) => {
       await this.o.memberships.updateRole(tx, actor.workspaceId, userId, role);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
@@ -108,10 +125,14 @@ export class MemberService {
     });
   }
 
-  async remove(actor: ActorContext, userId: UserId): Promise<void> {
+  async remove(actor: ActorContext, standing: ActorStanding, userId: UserId): Promise<void> {
     const membership = await this.o.memberships.find(actor.workspaceId, userId);
     if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
     await this.assertNotLastOwner(actor.workspaceId, membership.role, false);
+    await this.assertNotSelf(actor, userId, 'remove yourself');
+    // Removing a member ends every permission their role carried, so it takes
+    // the same standing as granting that role would.
+    await this.assertMayAssign(actor, standing, membership.role);
     await this.o.uow.run(async (tx) => {
       await this.o.memberships.remove(tx, actor.workspaceId, userId);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
@@ -146,6 +167,40 @@ export class MemberService {
         metadata: { changed: Object.keys(patch).sort() },
       });
     });
+  }
+
+  /**
+   * A role is a set of permissions, so handing one out is handing out every
+   * action in it. An administrator cannot create a member more powerful than
+   * themselves, which is the same rule permission grants follow.
+   */
+  private async assertMayAssign(
+    actor: ActorContext,
+    standing: ActorStanding,
+    role: MembershipRole,
+  ): Promise<void> {
+    const missing = await this.o.authorization.missingAction(
+      actor,
+      standing,
+      ROLE_PERMISSIONS[role],
+    );
+    if (missing) {
+      throw new DomainError(
+        'FORBIDDEN',
+        `the ${role} role includes ${missing}, which you do not hold`,
+      );
+    }
+  }
+
+  /**
+   * Administering membership is done to other people. Changing your own role
+   * turns a grant that can be taken back into a role that cannot.
+   */
+  private async assertNotSelf(actor: ActorContext, userId: UserId, what: string): Promise<void> {
+    const self = await this.o.actors.findById(actor.workspaceId, actor.actorId);
+    if (self?.userId === userId) {
+      throw new DomainError('FORBIDDEN', `you cannot ${what}; ask another administrator`);
+    }
   }
 
   /** A workspace must keep at least one owner who can administer it. */

@@ -141,7 +141,28 @@ export class AuthorizationAdminService {
     return record;
   }
 
-  async revokeGrant(actor: ActorContext, grantId: string): Promise<void> {
+  /**
+   * Removing a grant changes authority as much as adding one: taking away a
+   * deny restores what it restricted. So the same rule applies in both
+   * directions, and neither end of it may be skipped.
+   */
+  async revokeGrant(actor: ActorContext, standing: ActorStanding, grantId: string): Promise<void> {
+    const grant = await this.o.grants.findById(actor.workspaceId, grantId);
+    if (!grant) throw new DomainError('NOT_FOUND', 'permission grant not found');
+    // Nobody lifts a restriction placed on themselves, however narrow it is.
+    if (grant.effect === 'deny' && grant.actorId === actor.actorId) {
+      throw new DomainError(
+        'FORBIDDEN',
+        'this grant restricts you, so somebody else has to remove it',
+      );
+    }
+    const held = await this.o.authorization.check(actor, standing, grant.action);
+    if (!held.allowed) {
+      throw new DomainError(
+        'FORBIDDEN',
+        `you do not hold ${grant.action}, so you cannot revoke a grant for it`,
+      );
+    }
     await this.o.uow.run(async (tx) => {
       const removed = await this.o.grants.delete(tx, actor.workspaceId, grantId);
       if (!removed) throw new DomainError('NOT_FOUND', 'permission grant not found');
@@ -158,8 +179,33 @@ export class AuthorizationAdminService {
     });
   }
 
-  async upsertRule(actor: ActorContext, input: RuleInput): Promise<PolicyRuleRecord> {
+  async upsertRule(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: RuleInput,
+  ): Promise<PolicyRuleRecord> {
     const scope = await this.validateScope(actor, input.scope);
+    // A rule that applies a write directly decides in advance what a reviewer
+    // would otherwise decide case by case, so writing one is approval.
+    if (input.effect === 'allow_direct') {
+      const missing = await this.o.authorization.missingAction(actor, standing, [
+        'knowledge.approve',
+      ]);
+      if (missing) {
+        throw new DomainError(
+          'FORBIDDEN',
+          'a rule that skips review approves writes in advance, so it needs knowledge.approve',
+        );
+      }
+    }
+    if ('actor_id' in input.subject) {
+      const subject = await this.o.actors.findById(actor.workspaceId, input.subject.actor_id);
+      if (!subject) {
+        throw new DomainError('NOT_FOUND', 'actor not found in this workspace', {
+          objectIds: { actor_id: input.subject.actor_id },
+        });
+      }
+    }
     const now = this.clock.now();
     const existing = input.ruleId
       ? await this.o.rules.findById(actor.workspaceId, input.ruleId)

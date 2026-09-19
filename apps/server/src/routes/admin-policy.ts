@@ -92,7 +92,11 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
-      await services.authorizationAdmin.revokeGrant(actor.context, request.body.grant_id);
+      await services.authorizationAdmin.revokeGrant(
+        actor.context,
+        actor.standing,
+        request.body.grant_id,
+      );
       return { ok: true as const };
     },
   );
@@ -116,7 +120,7 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
       const body = request.body;
-      const rule = await services.authorizationAdmin.upsertRule(actor.context, {
+      const rule = await services.authorizationAdmin.upsertRule(actor.context, actor.standing, {
         ruleId: body.rule_id,
         priority: body.priority,
         subject: body.subject,

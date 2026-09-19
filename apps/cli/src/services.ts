@@ -7,6 +7,7 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  AuthorizationService,
   BootstrapService,
   EventLedger,
   TaxonomyService,
@@ -45,6 +46,13 @@ export function createServices() {
     sessions: repositories.sessions,
     tokens: { generate: generateOpaqueToken, hash: hashToken },
   });
+  const authorization = new AuthorizationService({
+    uow,
+    grants: repositories.grants,
+    rules: repositories.policyRules,
+    categories: repositories.categories,
+    ledger,
+  });
   const agents = new AgentService({
     uow,
     agents: repositories.agents,
@@ -52,6 +60,7 @@ export function createServices() {
     actors: repositories.actors,
     ledger,
     tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
+    authorization,
   });
   const taxonomy = new TaxonomyService({
     uow,

@@ -15,6 +15,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import {
   idempotencyKey,
   requireListPermission,
+  resolveWorkspaceActor,
   requirePermission,
 } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
@@ -85,8 +86,20 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: CreateCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const body = request.body;
+      // A new category lands inside its parent's branch, so that is what the
+      // permission is checked against. A root category belongs to no branch,
+      // which no category-scoped grant covers.
+      const actor = await resolveWorkspaceActor(services, request);
+      const parent = body.parent_path
+        ? await services.repositories.categories.findByPath(
+            actor.context.workspaceId,
+            body.parent_path,
+          )
+        : null;
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        ...(parent ? { categoryIds: [parent.id] } : {}),
+      });
       const replayable = await services.idempotency.run(
         actor.context,
         idempotencyKey(request),
@@ -115,8 +128,10 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: UpdateCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const body = request.body;
+      const actor = await requirePermission(services, request, 'taxonomy.manage', {
+        categoryIds: [body.category_id],
+      });
       const result = await services.taxonomy.update(actor.context, {
         categoryId: body.category_id,
         name: body.name,
@@ -137,7 +152,14 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: MoveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.manage');
+      // Both ends of a move are checked: a branch-scoped administrator must
+      // not be able to move a category out of their branch or into it.
+      const actor = await requirePermission(services, request, 'taxonomy.manage', {
+        categoryIds: [
+          request.body.category_id,
+          ...(request.body.new_parent_id ? [request.body.new_parent_id] : []),
+        ],
+      });
       const result = await services.taxonomy.move(
         actor.context,
         request.body.category_id,
@@ -154,7 +176,9 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: ArchiveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.manage');
+      const actor = await requirePermission(services, request, 'taxonomy.manage', {
+        categoryIds: [request.body.category_id],
+      });
       const result = await services.taxonomy.archive(actor.context, request.body.category_id);
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },

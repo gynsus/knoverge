@@ -113,6 +113,25 @@ export class AuthorizationService {
     );
   }
 
+  /**
+   * The first action in the list the actor does not hold anywhere, or null when
+   * it holds all of them. Authority is handed out, never invented: whenever a
+   * call would give somebody a set of permissions at once (a membership role or
+   * an agent's trust tier), the caller must already hold every action in it.
+   */
+  async missingAction(
+    actor: ActorContext,
+    standing: ActorStanding,
+    actions: readonly PermissionAction[],
+  ): Promise<PermissionAction | null> {
+    // The system actor is the host operator running the command line, who owns
+    // the database and the secrets. Nothing here could constrain them, and
+    // pretending otherwise would only break the documented recovery path.
+    if (actor.actorType === 'system') return null;
+    const grants = await this.grantsFor(actor, standing);
+    return actions.find((action) => !holdsAction(grants, action)) ?? null;
+  }
+
   private async grantsFor(actor: ActorContext, standing: ActorStanding): Promise<Grant[]> {
     const stored = await this.o.grants.listForActor(actor.workspaceId, actor.actorId);
     // For an agent, an explicit allow replaces the tier baseline for that
