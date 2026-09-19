@@ -6,11 +6,7 @@ import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
-import type {
-  ActorRepository,
-  WorkspaceRecord,
-  WorkspaceRepository,
-} from '../workspace/repository.ts';
+import type { ActorRepository, WorkspaceRecord } from '../workspace/repository.ts';
 import type { WorkspaceService } from '../workspace/service.ts';
 import type { MembershipRepository, UserRecord } from './repository.ts';
 import type { CreateUserInput, UserService } from './user-service.ts';
@@ -30,7 +26,6 @@ export interface BootstrapServiceOptions {
   uow: UnitOfWork;
   users: UserService;
   workspaces: WorkspaceService;
-  workspaceRepository: WorkspaceRepository;
   memberships: MembershipRepository;
   actors: ActorRepository;
   ledger: EventLedger;
@@ -64,8 +59,10 @@ export class BootstrapService {
       name: input.workspace.name,
       requestId: input.requestId,
     });
-    // One transaction: user, workspace, system actor, membership and events commit together.
-    await this.o.uow.run(async (tx) => {
+    // One transaction: user, workspace, system actor, membership and events commit
+    // together. The lock serialises concurrent first-run requests, so the second
+    // one sees the first user and stops.
+    await this.o.uow.runExclusive('knoverge:bootstrap', async (tx) => {
       if ((await this.o.users.count()) > 0) {
         throw new DomainError('FORBIDDEN', 'bootstrap already completed');
       }

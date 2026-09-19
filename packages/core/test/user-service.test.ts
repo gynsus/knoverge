@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   DomainError,
+  LOCKOUT_MS,
   MAX_FAILED_LOGINS,
   UserService,
   type Tx,
@@ -13,7 +14,10 @@ import {
 
 const NOW = new Date('2026-09-19T12:00:00Z');
 const clock = { now: () => NOW };
-const uow: UnitOfWork = { run: (fn) => fn({} as Tx) };
+const uow: UnitOfWork = {
+  run: (fn) => fn({} as Tx),
+  runExclusive: (_key, fn) => fn({} as Tx),
+};
 
 /** Password hashing stub: reversible, so tests stay fast and deterministic. */
 const passwords = {
@@ -101,12 +105,16 @@ describe('UserService.prepare', () => {
 });
 
 describe('UserService.authenticate', () => {
-  it('returns the user for correct credentials and clears the failure count', async () => {
-    const { service: s, user } = await existingUser();
+  it('returns the user for correct credentials and clears a recorded failure', async () => {
+    const { service: s, user, rows } = await existingUser();
+    await expect(s.authenticate('owner@example.com', 'wrong')).rejects.toBeInstanceOf(DomainError);
+    expect(rows[0]!.failedLoginCount).toBe(1);
+
     const authenticated = await s.authenticate('Owner@Example.com', 'correct horse battery');
     expect(authenticated.id).toBe(user.id);
-    expect(authenticated.failedLoginCount).toBe(0);
-    expect(authenticated.lastLoginAt).toEqual(NOW);
+    // Asserted on the stored row, so removing recordLoginSuccess fails the test.
+    expect(rows[0]!.failedLoginCount).toBe(0);
+    expect(rows[0]!.lastLoginAt).toEqual(NOW);
   });
 
   it('verifies a dummy hash for unknown emails so timing does not reveal them', async () => {
@@ -120,19 +128,28 @@ describe('UserService.authenticate', () => {
     verify.mockRestore();
   });
 
-  it('locks the account after repeated failures and reports RATE_LIMITED', async () => {
-    const { service: s } = await existingUser();
+  it('locks the account after repeated failures, without announcing it', async () => {
+    const { service: s, rows } = await existingUser();
     for (let i = 0; i < MAX_FAILED_LOGINS; i += 1) {
       await expect(s.authenticate('owner@example.com', `wrong ${i}`)).rejects.toMatchObject({
         code: 'UNAUTHENTICATED',
       });
     }
+    expect(rows[0]!.failedLoginCount).toBe(MAX_FAILED_LOGINS);
+    expect(rows[0]!.lockedUntil?.getTime()).toBe(NOW.getTime() + LOCKOUT_MS);
+    // The right password is refused while locked, and looks like a wrong one.
     await expect(
       s.authenticate('owner@example.com', 'correct horse battery'),
-    ).rejects.toMatchObject({
-      code: 'RATE_LIMITED',
-      retryable: true,
-    });
+    ).rejects.toMatchObject({ code: 'UNAUTHENTICATED' });
+  });
+
+  it('lets the account in again once the lock has expired', async () => {
+    const { service: s, rows } = await existingUser();
+    rows[0]!.failedLoginCount = MAX_FAILED_LOGINS;
+    rows[0]!.lockedUntil = new Date(NOW.getTime() - 1);
+    const user = await s.authenticate('owner@example.com', 'correct horse battery');
+    expect(user.failedLoginCount).toBe(0);
+    expect(rows[0]!.lockedUntil).toBeNull();
   });
 
   it('refuses a disabled account with the same message as a wrong password', async () => {

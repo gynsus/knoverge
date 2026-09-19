@@ -2,7 +2,14 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { ActorId, WorkspaceId } from '@knoverge/contracts';
-import { EventLedger, WorkspaceService, parseLedgerKey, type EventRecord } from '@knoverge/core';
+import {
+  BootstrapService,
+  EventLedger,
+  UserService,
+  WorkspaceService,
+  parseLedgerKey,
+  type EventRecord,
+} from '@knoverge/core';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -10,7 +17,9 @@ import {
   createActorRepository,
   createDatabase,
   createEventRepository,
+  createMembershipRepository,
   createUnitOfWork,
+  createUserRepository,
   createWorkspaceRepository,
   runMigrations,
   type DatabaseHandle,
@@ -189,5 +198,59 @@ describe('event ledger in PostgreSQL', () => {
     expect(record.createdAt).toBeInstanceOf(Date);
     expect(record.categoryIds).toEqual([]);
     expect(record.prevEventHash).toMatch(/^hmac-sha256:[0-9a-f]{64}$/);
+  });
+});
+
+describe('bootstrap concurrency', () => {
+  /** Reversible hashing keeps the test fast; argon2 is covered in packages/auth. */
+  const passwords = {
+    hash: async (p: string) => `hashed:${p}`,
+    verify: async (p: string, h: string) => h === `hashed:${p}`,
+    dummyHash: async () => 'hashed:__dummy__',
+  };
+
+  it('lets exactly one of several concurrent first-run requests succeed', async () => {
+    const uow = createUnitOfWork(handle.db);
+    const repositories = {
+      users: createUserRepository(handle.db),
+      memberships: createMembershipRepository(handle.db),
+      actors: createActorRepository(handle.db),
+      workspaces: createWorkspaceRepository(handle.db),
+    };
+    const users = new UserService({ uow, users: repositories.users, passwords });
+    const bootstrap = new BootstrapService({
+      uow,
+      users,
+      workspaces: new WorkspaceService({
+        uow,
+        workspaces: repositories.workspaces,
+        actors: repositories.actors,
+        ledger,
+      }),
+      memberships: repositories.memberships,
+      actors: repositories.actors,
+      ledger,
+    });
+
+    expect(await bootstrap.isRequired()).toBe(true);
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, (_, i) =>
+        bootstrap.run({
+          user: {
+            email: `first${i}@example.com`,
+            password: 'a sufficiently long passphrase',
+            displayName: `First ${i}`,
+          },
+          workspace: { slug: `first-${i}`, name: `First ${i}` },
+          requestId: `bootstrap-${i}`,
+        }),
+      ),
+    );
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    for (const rejected of results.filter((r) => r.status === 'rejected')) {
+      expect((rejected as PromiseRejectedResult).reason).toMatchObject({ code: 'FORBIDDEN' });
+    }
+    expect(await users.count()).toBe(1);
+    expect(await bootstrap.isRequired()).toBe(false);
   });
 });
