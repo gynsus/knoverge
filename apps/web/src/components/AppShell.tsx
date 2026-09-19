@@ -1,8 +1,16 @@
 import { useTranslation } from 'react-i18next';
-import { Outlet } from 'react-router';
+import { NavLink, Outlet } from 'react-router';
 
 import { useAuth } from '../auth/use-auth.ts';
 import { LanguageSwitcher } from './LanguageSwitcher.tsx';
+
+const NAV = [
+  { to: '/', key: 'home' },
+  { to: '/taxonomy', key: 'taxonomy' },
+  { to: '/agents', key: 'agents' },
+  { to: '/policy', key: 'policy' },
+  { to: '/settings', key: 'settings' },
+] as const;
 
 export function AppShell() {
   const { t } = useTranslation();
@@ -15,7 +23,7 @@ export function AppShell() {
           <h1>{t('app.name')}</h1>
           <p className="tagline">{t('app.tagline')}</p>
         </div>
-        <nav aria-label={t('nav.label')}>
+        <div className="account">
           <LanguageSwitcher />
           {me && (
             <>
@@ -25,8 +33,17 @@ export function AppShell() {
               </button>
             </>
           )}
-        </nav>
+        </div>
       </header>
+      {me && (
+        <nav aria-label={t('nav.label')} className="mainnav">
+          {NAV.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.to === '/'}>
+              {t(`nav.${item.key}`)}
+            </NavLink>
+          ))}
+        </nav>
+      )}
       <main>
         <Outlet />
       </main>

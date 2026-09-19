@@ -30,11 +30,17 @@
   },
   "common": {
     "loading": "Loading...",
-    "working": "Working..."
+    "working": "Working...",
+    "close": "Close"
   },
   "nav": {
-    "label": "Account",
-    "logout": "Sign out"
+    "label": "Sections",
+    "logout": "Sign out",
+    "home": "Overview",
+    "taxonomy": "Taxonomy",
+    "agents": "Agents",
+    "policy": "Policy",
+    "settings": "Settings"
   },
   "fields": {
     "display_name": "Your name",
@@ -74,5 +80,100 @@
     "INTERNAL_ERROR": "The server reported an error. Please try again.",
     "NETWORK": "The server could not be reached.",
     "UNKNOWN": "Something went wrong."
+  },
+  "agents": {
+    "title": "Agents",
+    "intro": "Register the AI agents that may connect to this workspace and issue their tokens.",
+    "empty": "No agents yet.",
+    "new": "Register an agent",
+    "create": "Register agent",
+    "name": "Name",
+    "client_type": "Client",
+    "client_type_hint": "For example claude-code or cursor. Optional.",
+    "trust_tier": "Trust tier",
+    "status": "Status",
+    "credentials": "Active tokens",
+    "manage": "Manage",
+    "issue_token": "Issue token",
+    "disable": "Disable agent",
+    "revoke": "Revoke",
+    "token_once": "Copy this token now. It is shown once and cannot be recovered.",
+    "hide_token": "Hide token",
+    "credential": "Token",
+    "credential_state": "State",
+    "last_used": "Last used",
+    "never_used": "Never",
+    "no_credentials": "No tokens issued yet.",
+    "tiers": {
+      "read_only": "Read only",
+      "propose": "Propose",
+      "trusted": "Trusted"
+    },
+    "tier_hints": {
+      "read_only": "May read and search, and propose nothing.",
+      "propose": "May propose changes; every write is reviewed.",
+      "trusted": "May write directly where a policy rule allows it; otherwise reviewed."
+    },
+    "statuses": {
+      "active": "Active",
+      "disabled": "Disabled"
+    },
+    "states": {
+      "active": "Active",
+      "revoked": "Revoked",
+      "expired": "Expired"
+    }
+  },
+  "taxonomy": {
+    "title": "Taxonomy",
+    "intro": "The curated category tree of this workspace.",
+    "version": "version {{version}}",
+    "empty": "No categories yet.",
+    "new": "Add a category",
+    "create": "Add category",
+    "name": "Name",
+    "name_hint": "The identifier is derived from the name.",
+    "parent": "Parent",
+    "no_parent": "None (top level)",
+    "rename": "Name",
+    "save": "Save",
+    "promote": "Move to top level",
+    "archive": "Archive",
+    "statuses": {
+      "proposed": "Proposed",
+      "active": "Active",
+      "merged": "Merged",
+      "archived": "Archived",
+      "rejected": "Rejected"
+    }
+  },
+  "policy": {
+    "title": "Policy rules",
+    "intro": "Rules decide whether a permitted write is applied directly or waits for review.",
+    "empty": "No rules yet. Every agent write waits for review.",
+    "priority": "Priority",
+    "subject": "Applies to",
+    "action": "Action",
+    "effect": "Decision",
+    "delete": "Delete",
+    "disabled": "disabled",
+    "effects": {
+      "deny": "Refuse",
+      "allow_direct": "Apply directly",
+      "require_review": "Wait for review"
+    }
+  },
+  "settings": {
+    "account": "Account",
+    "change_password": "Change password",
+    "current_password": "Current password",
+    "new_password": "New password",
+    "password_changed": "Password changed. Other sessions were signed out.",
+    "sessions": "Sessions",
+    "started": "Started",
+    "client": "Client",
+    "unknown_client": "Unknown",
+    "this_session": "(this device)",
+    "revoke": "Sign out"
   }
 }
