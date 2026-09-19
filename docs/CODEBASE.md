@@ -1,0 +1,74 @@
+# Codebase Conventions
+
+How the packages fit together and the patterns every feature follows. `CLAUDE.md` lists package responsibilities; this document describes the mechanics.
+
+## 1. Layering
+
+```text
+contracts   Zod schemas, enums, ids, error codes. No runtime dependencies on other packages.
+core        Domain services and ports (interfaces). Depends on contracts only.
+db          Drizzle schema, migrations, repositories implementing core ports, unit of work.
+git-store   Markdown, hashing, Git operations implementing core ports.
+search      Projections and retrieval implementing core ports.
+auth        Credential parsing and hashing, session context.
+policy      Permission and policy evaluation, used by core services.
+server      Fastify adapters (HTTP, MCP), composition root, worker.
+cli         Command adapters, composition root.
+web         React SPA. Talks only to the HTTP API.
+```
+
+Dependencies point downward only. `core` never imports `db`, `server` or `cli`; it declares ports and receives implementations in constructors.
+
+## 2. Ports and repositories
+
+A port is an interface in `core` (for example `EventRepository`, `WorkspaceRepository`). `db` exports factory functions (`createEventRepository(db)`) returning objects that implement the port. Services receive ports through an options object in their constructor.
+
+Repositories translate between database rows and core record types. They contain no business rules and never emit events.
+
+## 3. Transactions
+
+`core` defines an opaque `Tx` handle and a `UnitOfWork` port:
+
+```ts
+await uow.run(async (tx) => {
+  await repo.insert(tx, row);
+  await ledger.append(tx, workspaceId, actor, event);
+});
+```
+
+A domain change and its ledger event always share one transaction. Repositories unwrap `Tx` with `asTx()` from `db`; nothing else touches it. Read-only queries outside a transaction take no `Tx`.
+
+## 4. Ids and time
+
+Ids are prefixed ULIDs from `newId(prefix)` in `core`; prefixes live in `contracts`. Ids identify, they never order: ordering uses explicit columns such as `events.sequence`.
+
+Services take a `Clock` port (default `systemClock`) so tests control time.
+
+## 5. Ledger
+
+Every material write calls `EventLedger.append` inside the same transaction, after the change. Event metadata holds ids, hashes, counts and decision codes only, never knowledge text or secrets. Values must survive a JSON round trip through `jsonb` unchanged: strings, booleans, integers below 2^53, nested objects and arrays of those. See ADR 0007 and `DATA_MODEL.md` section 22.
+
+## 6. Errors
+
+Services throw `DomainError(code, message, options)` for expected failures. Adapters map it to the shared `ApiError` payload and to an HTTP status (`HTTP_API.md`). Unexpected errors propagate and become `INTERNAL_ERROR` at the adapter boundary; their messages are never sent to clients.
+
+## 7. Composition roots
+
+`apps/server/src/index.ts` and `apps/cli/src/services.ts` construct the database, repositories, ledger and services. Nothing else instantiates infrastructure. Configuration is read once from `KNOVERGE_*` variables through a Zod schema and passed down as values.
+
+## 8. Contracts first
+
+For every MCP/HTTP operation: schema in `contracts`, service in `core`, then both adapters, then contract tests through both transports (`WORKFLOW.md` section 7).
+
+## 9. Tests
+
+- `core`: unit tests with in-memory port implementations.
+- `db`: integration tests against PostgreSQL through Testcontainers (`pgvector/pgvector:pg17`), covering migrations, repositories and database-level guarantees such as triggers.
+- `server`: Fastify `inject` tests with fake probes/services; contract tests through MCP and HTTP.
+- `web`: Vitest with jsdom and Testing Library.
+
+Shared fixtures live next to the tests that use them until two packages need the same one.
+
+## 10. Migrations
+
+Schema changes are made in `packages/db/src/schema`, then `pnpm --filter @knoverge/db migrations:generate --name <topic>`. Database-level guarantees that Drizzle does not model (triggers, functions, extensions) are appended to the generated SQL after a `--> statement-breakpoint` line and reviewed like code. Policy: `WORKFLOW.md` section 9.

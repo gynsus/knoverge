@@ -94,9 +94,9 @@ KNOVERGE_DATABASE_URL
 KNOVERGE_DATA_DIR
 KNOVERGE_WEB_DIST             built web bundle directory; set in the image, unset in development
 KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
-KNOVERGE_SESSION_SECRET
-KNOVERGE_TOKEN_PEPPER
-KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; never stored in the database
+KNOVERGE_SESSION_SECRET       (Milestone 1, sessions)
+KNOVERGE_TOKEN_PEPPER         (Milestone 1, agent credentials)
+KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
 KNOVERGE_ENCRYPTION_KEY       encrypts webhook signing secrets and other recoverable secrets
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL

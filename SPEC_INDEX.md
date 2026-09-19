@@ -10,6 +10,7 @@ This bundle contains the implementation specification for Knoverge.
 - `README.md`
 - `docs/AGENT_ONBOARDING_AND_RECONCILIATION.md`
 - `docs/ARCHITECTURE.md`
+- `docs/CODEBASE.md`
 - `docs/DATA_MODEL.md`
 - `docs/DEPLOYMENT.md`
 - `docs/GIT_REPOSITORY.md`
