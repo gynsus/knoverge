@@ -62,6 +62,25 @@ export { EventLedger, type LedgerOptions, type VerifyResult } from './ledger/led
 export type { EventRepository, LedgerHead } from './ledger/repository.ts';
 export type { EventActor, EventInput, EventRecord } from './ledger/types.ts';
 export { systemClock, type Clock } from './ports/clock.ts';
+export type {
+  AliasRecord,
+  AliasRepository,
+  CategoryPatch,
+  CategoryRecord,
+  CategoryRepository,
+  TaxonomyVersionRepository,
+} from './taxonomy/repository.ts';
+export {
+  MAX_CATEGORY_DEPTH,
+  TaxonomyService,
+  normaliseAlias,
+  slugify,
+  type CategoryWithAliases,
+  type CreateCategoryInput,
+  type TaxonomyResult,
+  type TaxonomyServiceOptions,
+  type UpdateCategoryInput,
+} from './taxonomy/service.ts';
 export type { Tx, UnitOfWork } from './ports/unit-of-work.ts';
 export type {
   ActorRecord,
