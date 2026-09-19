@@ -52,12 +52,24 @@ export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 /**
- * POST with the CSRF token; fetches a token first when none is cached and
- * retries once when the server rejects a stale token.
+ * POST with the CSRF token. When a cached token is rejected, fetches a fresh
+ * one and retries exactly once; a token fetched inside this call is never
+ * retried, so a genuine FORBIDDEN surfaces immediately.
  */
-export async function apiPost<T>(url: string, body: unknown, retry = true): Promise<T> {
-  const token = csrfToken ?? (await fetchCsrfToken());
-  const res = await fetch(url, {
+export async function apiPost<T>(url: string, body: unknown): Promise<T> {
+  const cached = csrfToken;
+  const res = await postOnce(url, body, cached ?? (await fetchCsrfToken()));
+  if (res.status === 403 && cached !== undefined) {
+    const retried = await postOnce(url, body, await fetchCsrfToken());
+    if (!retried.ok) throw await parseError(retried);
+    return (await retried.json()) as T;
+  }
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as T;
+}
+
+function postOnce(url: string, body: unknown, token: string): Promise<Response> {
+  return fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
     headers: {
@@ -67,20 +79,6 @@ export async function apiPost<T>(url: string, body: unknown, retry = true): Prom
     },
     body: JSON.stringify(body ?? {}),
   });
-  if (res.status === 403 && retry) {
-    const error = await parseError(res);
-    if (error.code === 'FORBIDDEN' && !csrfWasFresh(token)) {
-      await fetchCsrfToken();
-      return apiPost<T>(url, body, false);
-    }
-    throw error;
-  }
-  if (!res.ok) throw await parseError(res);
-  return (await res.json()) as T;
-}
-
-function csrfWasFresh(token: string): boolean {
-  return token !== csrfToken;
 }
 
 /** Test hook: forget the cached CSRF token. */
