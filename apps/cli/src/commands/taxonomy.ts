@@ -1,32 +1,10 @@
 import { CategoryId } from '@knoverge/contracts';
-import { DomainError } from '@knoverge/core';
 import { Command } from 'commander';
 
-import { createServices } from '../services.ts';
+import { emit, field, parseOrFail, withServices } from '../run.ts';
 import { systemActorContext } from '../workspace-actor.ts';
 
-async function withServices(
-  fn: (s: ReturnType<typeof createServices>) => Promise<void>,
-): Promise<void> {
-  const services = createServices();
-  try {
-    await fn(services);
-  } catch (err) {
-    if (err instanceof DomainError) {
-      console.error(`${err.code}: ${err.message}`);
-      process.exitCode = 1;
-      return;
-    }
-    if (err instanceof Error) {
-      console.error(err.message);
-      process.exitCode = 1;
-      return;
-    }
-    throw err;
-  } finally {
-    await services.close();
-  }
-}
+const CATEGORY_ID = 'must be a category id, as `taxonomy list` prints in the second column';
 
 export function taxonomyCommand(): Command {
   const cmd = new Command('taxonomy').description('Category tree of a workspace');
@@ -36,24 +14,52 @@ export function taxonomyCommand(): Command {
     .description('Print the category tree')
     .option('--workspace <slug|id>')
     .option('--include-archived')
-    .action(async (opts: { workspace?: string; includeArchived?: boolean }) => {
-      await withServices(async (services) => {
-        const actor = await systemActorContext(services, opts.workspace);
-        const version = await services.taxonomy.currentVersion(actor.workspaceId);
-        console.log(`taxonomy version ${version}`);
-        const categories = await services.taxonomy.list(actor.workspaceId, {
-          includeArchived: opts.includeArchived ?? false,
-        });
-        for (const category of categories) {
-          const indent = '  '.repeat(category.path.split('/').length - 1);
-          const aliases = category.aliases.length > 0 ? ` (${category.aliases.join(', ')})` : '';
-          const status = category.status === 'active' ? '' : ` [${category.status}]`;
-          console.log(
-            `${indent}${category.name}${aliases}${status}\t${category.id}\t${category.path}`,
+    .option('--tree', 'indent names to show the hierarchy; not machine readable')
+    .option('--json', 'print the result as JSON')
+    .action(
+      async (opts: {
+        workspace?: string;
+        includeArchived?: boolean;
+        tree?: boolean;
+        json?: boolean;
+      }) => {
+        await withServices(async (services) => {
+          const actor = await systemActorContext(services, opts.workspace);
+          const version = await services.taxonomy.currentVersion(actor.workspaceId);
+          // The version is context, not a row: on stdout it would be the first
+          // line a script tries to split into fields.
+          if (!opts.json) console.error(`taxonomy version ${version}`);
+          const categories = await services.taxonomy.list(actor.workspaceId, {
+            includeArchived: opts.includeArchived ?? false,
+          });
+          // The same field names the HTTP API uses. A second spelling of the
+          // same record would be a second contract nobody documented.
+          const rows = categories.map((c) => ({
+            id: c.id,
+            parent_id: c.parentId,
+            slug: c.slug,
+            path: c.path,
+            name: c.name,
+            status: c.status,
+            aliases: c.aliases,
+          }));
+          emit(opts.json ?? false, { taxonomy_version: version, categories: rows }, () =>
+            categories.map((category) => {
+              // Indentation only with --tree: it is part of the first field, so
+              // a script cannot tell a name from its depth.
+              const indent = opts.tree ? '  '.repeat(category.path.split('/').length - 1) : '';
+              return [
+                `${indent}${field(category.name)}`,
+                field(category.id),
+                field(category.path),
+                category.status,
+                category.aliases.map(field).join(','),
+              ].join('\t');
+            }),
           );
-        }
-      });
-    });
+        });
+      },
+    );
 
   cmd
     .command('create')
@@ -100,8 +106,8 @@ export function taxonomyCommand(): Command {
         const actor = await systemActorContext(services, opts.workspace);
         const result = await services.taxonomy.move(
           actor,
-          CategoryId.parse(opts.category),
-          opts.parent ? CategoryId.parse(opts.parent) : null,
+          parseOrFail(CategoryId, opts.category, `--category ${CATEGORY_ID}`),
+          opts.parent ? parseOrFail(CategoryId, opts.parent, `--parent ${CATEGORY_ID}`) : null,
         );
         console.log(
           `moved to ${result.category.path} (taxonomy version ${result.taxonomyVersion})`,
@@ -117,7 +123,10 @@ export function taxonomyCommand(): Command {
     .action(async (opts: { category: string; workspace?: string }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        const result = await services.taxonomy.archive(actor, CategoryId.parse(opts.category));
+        const result = await services.taxonomy.archive(
+          actor,
+          parseOrFail(CategoryId, opts.category, `--category ${CATEGORY_ID}`),
+        );
         console.log(
           `archived ${result.category.path} (taxonomy version ${result.taxonomyVersion})`,
         );

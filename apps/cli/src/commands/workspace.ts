@@ -2,9 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Command } from 'commander';
 
-import { DomainError } from '@knoverge/core';
-
-import { createServices } from '../services.ts';
+import { emit, field, withServices } from '../run.ts';
 
 export function workspaceCommand(): Command {
   const cmd = new Command('workspace').description('Workspace administration');
@@ -18,8 +16,7 @@ export function workspaceCommand(): Command {
     .option('--language <tag>', 'default content language', 'en')
     .action(
       async (opts: { slug: string; name: string; description?: string; language: string }) => {
-        const services = createServices();
-        try {
+        await withServices(async (services) => {
           const workspace = await services.workspaces.create({
             slug: opts.slug,
             name: opts.name,
@@ -28,31 +25,29 @@ export function workspaceCommand(): Command {
             requestId: `cli:${randomUUID()}`,
           });
           console.log(`created workspace ${workspace.id} (${workspace.slug})`);
-        } catch (err) {
-          if (err instanceof DomainError) {
-            console.error(`${err.code}: ${err.message}`);
-            process.exitCode = 1;
-            return;
-          }
-          throw err;
-        } finally {
-          await services.close();
-        }
+        });
       },
     );
 
   cmd
     .command('list')
     .description('List workspaces')
-    .action(async () => {
-      const services = createServices();
-      try {
-        for (const ws of await services.repositories.workspaces.list()) {
-          console.log(`${ws.id}\t${ws.slug}\t${ws.name}`);
-        }
-      } finally {
-        await services.close();
-      }
+    .option('--json', 'print the result as JSON')
+    .action(async (opts: { json?: boolean }) => {
+      await withServices(async (services) => {
+        const all = await services.repositories.workspaces.list();
+        // The same field names the HTTP API uses.
+        const workspaces = all.map((ws) => ({
+          id: ws.id,
+          slug: ws.slug,
+          name: ws.name,
+          description: ws.description,
+          default_language: ws.defaultLanguage,
+        }));
+        emit(opts.json ?? false, { workspaces }, () =>
+          workspaces.map((ws) => [ws.id, field(ws.slug), field(ws.name)].join('\t')),
+        );
+      });
     });
 
   return cmd;

@@ -2,9 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { Command } from 'commander';
 
-import { DomainError } from '@knoverge/core';
-
-import { createServices } from '../services.ts';
+import { withServices } from '../run.ts';
 
 export function bootstrapCommand(): Command {
   return new Command('bootstrap')
@@ -30,8 +28,7 @@ export function bootstrapCommand(): Command {
           process.exitCode = 1;
           return;
         }
-        const services = createServices();
-        try {
+        await withServices(async (services) => {
           const result = await services.bootstrap.run({
             user: { email: opts.email, password, displayName: opts.name, locale: opts.locale },
             workspace: { slug: opts.workspaceSlug, name: opts.workspaceName },
@@ -40,16 +37,7 @@ export function bootstrapCommand(): Command {
           console.log(
             `created administrator ${result.user.id} and workspace ${result.workspace.id}`,
           );
-        } catch (err) {
-          if (err instanceof DomainError) {
-            console.error(`${err.code}: ${err.message}`);
-            process.exitCode = 1;
-            return;
-          }
-          throw err;
-        } finally {
-          await services.close();
-        }
+        });
       },
     );
 }
