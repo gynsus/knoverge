@@ -96,15 +96,14 @@ export class UserService {
     const user = email.success ? await this.users.findByEmail(email.data) : null;
     const now = this.clock.now();
 
-    if (!user) {
-      await this.passwords.verify(password, await this.passwords.dummyHash());
+    // Unknown, disabled and locked accounts all verify a hash and return the same
+    // failure, so response time and payload reveal nothing about the address.
+    if (!user || user.status !== 'active' || (user.lockedUntil && user.lockedUntil > now)) {
+      await this.passwords.verify(
+        password,
+        user?.passwordHash ?? (await this.passwords.dummyHash()),
+      );
       throw failure();
-    }
-    if (user.status !== 'active') throw failure();
-    if (user.lockedUntil && user.lockedUntil > now) {
-      throw new DomainError('RATE_LIMITED', 'account temporarily locked after repeated failures', {
-        retryable: true,
-      });
     }
 
     const ok = await this.passwords.verify(password, user.passwordHash);

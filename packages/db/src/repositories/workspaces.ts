@@ -65,6 +65,14 @@ export function createActorRepository(db: Database): ActorRepository {
     async insert(tx: Tx, actor: ActorRecord) {
       await asTx(tx).insert(actors).values(actor);
     },
+    async findById(workspaceId: WorkspaceId, id: ActorRecord['id']) {
+      const rows = await db
+        .select()
+        .from(actors)
+        .where(and(eq(actors.workspaceId, workspaceId), eq(actors.id, id)))
+        .limit(1);
+      return rows[0] ? toActor(rows[0]) : null;
+    },
     async findSystemActor(workspaceId: WorkspaceId) {
       const rows = await db
         .select()
