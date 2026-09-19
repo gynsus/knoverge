@@ -78,6 +78,22 @@ export interface CategoryRepository {
     newPath: string,
     at: Date,
   ): Promise<CategoryId[]>;
+  /**
+   * The same rewrite for everything *below* a category, leaving the category
+   * itself alone, and matching nothing is not an error.
+   *
+   * A rename changes the slug and the path together, and the database checks
+   * that a path ends in its slug, so the category's own row has to be written
+   * in one statement. Its descendants keep their own slugs and are rewritten
+   * separately.
+   */
+  rewriteDescendantPaths(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    oldPath: string,
+    newPath: string,
+    at: Date,
+  ): Promise<CategoryId[]>;
   /** Sets the status of a subtree in one statement. Returns the ids it changed. */
   setSubtreeStatus(
     tx: Tx,

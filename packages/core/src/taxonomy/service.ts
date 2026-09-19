@@ -297,10 +297,20 @@ export class TaxonomyService {
       }
 
       patch.updatedAt = now;
-      await this.o.categories.update(tx, category.id, patch);
       if (newPath) {
-        await this.o.categories.rewritePaths(tx, actor.workspaceId, category.path, newPath, now);
+        // Descendants first, then this category's slug and path in one
+        // statement: the database checks that a path ends in its own slug, so
+        // writing the slug and the path separately would break it in between.
+        await this.o.categories.rewriteDescendantPaths(
+          tx,
+          actor.workspaceId,
+          category.path,
+          newPath,
+          now,
+        );
+        patch.path = newPath;
       }
+      await this.o.categories.update(tx, category.id, patch);
       if (aliases !== undefined) {
         await this.writeAliases(tx, category, aliases, now);
       }

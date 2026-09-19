@@ -52,3 +52,32 @@ describe('migrations', () => {
     expect(result.after.applied).toBe(result.before.applied);
   });
 });
+
+describe('the invariants the schema now states', () => {
+  it('installs them, so a bad value is refused by the database and not only by a type', async () => {
+    const rows = await handle.db.execute(
+      sql`SELECT conname FROM pg_constraint WHERE conname IN (
+        'categories_parent_id_categories_id_fk',
+        'categories_path_ends_with_slug',
+        'actors_type_check',
+        'agents_trust_tier_check',
+        'categories_status_check',
+        'workspace_memberships_role_check',
+        'permission_grants_effect_check',
+        'policy_rules_effect_check'
+      )`,
+    );
+    // Until now these lived only in TypeScript, so a repository cast turned a
+    // bad column value into a well-typed lie the domain believed.
+    expect(rows.rows).toHaveLength(8);
+  });
+
+  it('refuses truncating the ledger', async () => {
+    // The row trigger never saw a TRUNCATE, and the promise is about the table.
+    await expect(handle.db.execute(sql`TRUNCATE events`)).rejects.toThrow();
+    const trigger = await handle.db.execute(
+      sql`SELECT tgname FROM pg_trigger WHERE tgrelid = 'events'::regclass AND tgname = 'events_no_truncate'`,
+    );
+    expect(trigger.rows).toHaveLength(1);
+  });
+});

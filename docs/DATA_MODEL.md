@@ -36,6 +36,15 @@ chunk_ search chunk
 
 ULIDs are identifiers only. Ordering and cursors use explicit per-workspace `sequence` columns, never ULID order (ULIDs generated in the same millisecond are not ordered by commit time).
 
+## 0a. What the schema enforces
+
+The invariants below are constraints in PostgreSQL, not only rules in code:
+
+- a category's parent is a real category, and its path ends in its own slug, so a lost path rewrite cannot leave the two disagreeing;
+- every actor reference points at an actor;
+- every enum-shaped column holds one of its values, because the repositories cast them straight into union types and anything else becomes a lie the domain believes;
+- the event ledger rejects `UPDATE`, `DELETE` and `TRUNCATE`.
+
 ## 1. Workspace
 
 ```text

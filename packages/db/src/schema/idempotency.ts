@@ -1,5 +1,6 @@
 import { index, pgTable, primaryKey, text, varchar } from 'drizzle-orm/pg-core';
 
+import { actors } from './actors.ts';
 import { id, json, timestampTz } from './common.ts';
 import { workspaces } from './workspaces.ts';
 
@@ -9,7 +10,9 @@ export const idempotencyRecords = pgTable(
     workspaceId: id('workspace_id')
       .notNull()
       .references(() => workspaces.id),
-    actorId: id('actor_id').notNull(),
+    actorId: id('actor_id')
+      .notNull()
+      .references(() => actors.id),
     idempotencyKey: varchar('idempotency_key', { length: 200 }).notNull(),
     requestHash: text('request_hash').notNull(),
     response: json('response').notNull(),

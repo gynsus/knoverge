@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { index, integer, pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
+import { actors } from './actors.ts';
 import { id, json, timestampTz } from './common.ts';
 import { workspaces } from './workspaces.ts';
 
@@ -34,7 +35,9 @@ export const workspaceMemberships = pgTable(
       .notNull()
       .references(() => users.id),
     role: varchar('role', { length: 16 }).notNull(),
-    actorId: id('actor_id').notNull(),
+    actorId: id('actor_id')
+      .notNull()
+      .references(() => actors.id),
     createdAt: timestampTz('created_at').notNull(),
   },
   (t) => [
