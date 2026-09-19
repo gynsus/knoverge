@@ -25,6 +25,7 @@ export interface PermissionGrantRecord {
 export interface PermissionGrantRepository {
   insert(tx: Tx, grant: PermissionGrantRecord): Promise<void>;
   delete(tx: Tx, workspaceId: WorkspaceId, id: string): Promise<PermissionGrantRecord | null>;
+  findById(workspaceId: WorkspaceId, id: string): Promise<PermissionGrantRecord | null>;
   listForActor(workspaceId: WorkspaceId, actorId: ActorId): Promise<PermissionGrantRecord[]>;
   list(workspaceId: WorkspaceId): Promise<PermissionGrantRecord[]>;
 }

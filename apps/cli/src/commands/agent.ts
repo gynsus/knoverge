@@ -51,7 +51,7 @@ export function agentCommand(): Command {
           const tier = TrustTier.safeParse(opts.trustTier);
           if (!tier.success) throw new Error('trust tier must be read_only, propose or trusted');
           const actor = await systemActorContext(services, opts.workspace);
-          const agent = await services.agents.create(actor, {
+          const agent = await services.agents.create(actor, {}, {
             name: opts.name,
             description: opts.description,
             clientType: opts.clientType,
@@ -86,7 +86,7 @@ export function agentCommand(): Command {
     .action(async (opts: { agent: string; workspace?: string }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        const agent = await services.agents.update(actor, {
+        const agent = await services.agents.update(actor, {}, {
           agentId: AgentId.parse(opts.agent),
           status: 'disabled',
         });

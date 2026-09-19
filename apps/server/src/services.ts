@@ -55,6 +55,13 @@ export function createServices(config: ServicesConfig) {
     sessions: repositories.sessions,
     tokens: { generate: generateOpaqueToken, hash: hashToken },
   });
+  const authorization = new AuthorizationService({
+    uow,
+    grants: repositories.grants,
+    rules: repositories.policyRules,
+    categories: repositories.categories,
+    ledger,
+  });
   const agentService = new AgentService({
     uow,
     agents: repositories.agents,
@@ -65,18 +72,12 @@ export function createServices(config: ServicesConfig) {
       generate: generateOpaqueToken,
       hash: (token) => hashToken(token, config.tokenPepper),
     },
+    authorization,
   });
   const workspaces = new WorkspaceService({
     uow,
     workspaces: repositories.workspaces,
     actors: repositories.actors,
-    ledger,
-  });
-  const authorization = new AuthorizationService({
-    uow,
-    grants: repositories.grants,
-    rules: repositories.policyRules,
-    categories: repositories.categories,
     ledger,
   });
   const authorizationAdmin = new AuthorizationAdminService({
@@ -103,6 +104,7 @@ export function createServices(config: ServicesConfig) {
     actors: repositories.actors,
     workspaces: repositories.workspaces,
     users,
+    authorization,
     ledger,
   });
   const bootstrap = new BootstrapService({

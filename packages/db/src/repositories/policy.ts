@@ -58,6 +58,14 @@ export function createPermissionGrantRepository(db: Database): PermissionGrantRe
         .returning();
       return rows[0] ? toGrant(rows[0]) : null;
     },
+    async findById(workspaceId: WorkspaceId, id: string) {
+      const rows = await db
+        .select()
+        .from(permissionGrants)
+        .where(and(eq(permissionGrants.workspaceId, workspaceId), eq(permissionGrants.id, id)))
+        .limit(1);
+      return rows[0] ? toGrant(rows[0]) : null;
+    },
     async listForActor(workspaceId: WorkspaceId, actorId: ActorId) {
       const rows = await db
         .select()

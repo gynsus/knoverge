@@ -7,8 +7,10 @@ import {
   type TrustTier,
   type WorkspaceId,
 } from '@knoverge/contracts';
+import { TIER_PERMISSIONS } from '@knoverge/policy';
 
 import type { ActorContext } from '../actor-context.ts';
+import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
@@ -41,6 +43,7 @@ export interface AgentServiceOptions {
   actors: ActorRepository;
   ledger: EventLedger;
   tokens: TokenService;
+  authorization: AuthorizationService;
   clock?: Clock;
 }
 
@@ -85,7 +88,12 @@ export class AgentService {
     this.clock = options.clock ?? systemClock;
   }
 
-  async create(actor: ActorContext, input: CreateAgentInput): Promise<AgentRecord> {
+  async create(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: CreateAgentInput,
+  ): Promise<AgentRecord> {
+    await this.assertMayGiveTier(actor, standing, input.trustTier ?? 'propose');
     const name = AgentName.safeParse(input.name);
     if (!name.success) throw new DomainError('VALIDATION_ERROR', 'agent name is required');
     if (input.clientType !== undefined && !ClientType.safeParse(input.clientType).success) {
@@ -136,7 +144,14 @@ export class AgentService {
     return agent;
   }
 
-  async update(actor: ActorContext, input: UpdateAgentInput): Promise<AgentRecord> {
+  async update(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: UpdateAgentInput,
+  ): Promise<AgentRecord> {
+    if (input.trustTier !== undefined) {
+      await this.assertMayGiveTier(actor, standing, input.trustTier);
+    }
     const agent = await this.require(actor.workspaceId, input.agentId);
     const patch: AgentPatch = {};
     if (input.name !== undefined) {
@@ -176,6 +191,25 @@ export class AgentService {
       });
     });
     return { ...agent, ...patch };
+  }
+
+  /**
+   * A trust tier is a set of permissions the agent's token carries, so choosing
+   * one hands those permissions to whoever holds the token. An administrator
+   * cannot build an agent that can do more than they can.
+   */
+  private async assertMayGiveTier(
+    actor: ActorContext,
+    standing: ActorStanding,
+    tier: TrustTier,
+  ): Promise<void> {
+    const missing = await this.o.authorization.missingAction(actor, standing, TIER_PERMISSIONS[tier]);
+    if (missing) {
+      throw new DomainError(
+        'FORBIDDEN',
+        `the ${tier} tier includes ${missing}, which you do not hold`,
+      );
+    }
   }
 
   list(workspaceId: WorkspaceId): Promise<AgentRecord[]> {

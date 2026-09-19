@@ -7,6 +7,7 @@ import {
   ErrorCode,
   IssueCredentialResponse,
   MembersResponse,
+  PermissionsResponse,
   TaxonomyListResponse,
   type WorkspaceId,
 } from '@knoverge/contracts';
@@ -32,10 +33,13 @@ let workspaceId: WorkspaceId;
 class Browser {
   cookies = new Map<string, string>();
   csrf: string | undefined;
+  /** Set once a person belongs to more than one workspace. */
+  workspace: string | undefined;
 
   async request(opts: InjectOptions & { url: string }) {
     const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
     if (this.csrf) headers['x-csrf-token'] = this.csrf;
+    if (this.workspace) headers['x-knoverge-workspace'] = this.workspace;
     const res = await app.inject({ ...opts, headers, cookies: Object.fromEntries(this.cookies) });
     for (const c of res.cookies) {
       if (c.value === '') this.cookies.delete(c.name);
@@ -440,5 +444,226 @@ describe('the error contract', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('authority is handed out, never invented', () => {
+  const VIEWER = { email: 'viewer@example.com', password: 'nine amber kettles wander' };
+  let viewer: Browser;
+  let here: Browser;
+  let theAdmin: Browser;
+  let viewerActorId: string;
+  let viewerUserId: string;
+
+  beforeAll(async () => {
+    // By now the owner belongs to more than one workspace, so every request in
+    // this block names the one the fixtures were built in.
+    here = owner;
+    here.workspace = workspaceId;
+    theAdmin = admin;
+    theAdmin.workspace = workspaceId;
+    const added = await here.post('/v1/admin/members.add', {
+      email: VIEWER.email,
+      role: 'viewer',
+      display_name: 'Viewer',
+      initial_password: VIEWER.password,
+    });
+    expect(added.statusCode, added.body).toBe(200);
+    const members = MembersResponse.parse((await here.get('/v1/admin/members.list')).json());
+    const row = members.members.find((m) => m.email === VIEWER.email)!;
+    viewerActorId = row.actor_id;
+    viewerUserId = row.user_id;
+    viewer = await new Browser().signIn(VIEWER.email, VIEWER.password);
+    viewer.workspace = workspaceId;
+  });
+
+  it('a workspace administrator cannot promote itself or mint an owner', async () => {
+    expect(
+      (
+        await here.post('/v1/admin/permissions.grant', {
+          actor_id: viewerActorId,
+          action: 'workspace.admin',
+        })
+      ).statusCode,
+    ).toBe(200);
+    // The grant is real: membership administration now answers.
+    expect((await viewer.get('/v1/admin/members.list')).statusCode).toBe(200);
+
+    const self = await viewer.post('/v1/admin/members.update', {
+      user_id: viewerUserId,
+      role: 'owner',
+    });
+    expect(self.statusCode, self.body).toBe(403);
+    expect(self.json().message).toMatch(/your own role/);
+
+    const minted = await viewer.post('/v1/admin/members.add', {
+      email: 'usurper@example.com',
+      role: 'owner',
+      initial_password: 'four quiet mountains sleep',
+    });
+    expect(minted.statusCode, minted.body).toBe(403);
+    expect(minted.json().message).toMatch(/which you do not hold/);
+
+    // What it does hold, it may still hand out.
+    expect(
+      (
+        await viewer.post('/v1/admin/members.add', {
+          email: 'reader@example.com',
+          role: 'viewer',
+          initial_password: 'four quiet mountains sleep',
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('an agent cannot be built with more authority than its author holds', async () => {
+    expect(
+      (
+        await here.post('/v1/admin/permissions.grant', {
+          actor_id: viewerActorId,
+          action: 'agent.manage',
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    for (const tier of ['propose', 'trusted'] as const) {
+      const res = await viewer.post('/v1/admin/agents.create', { name: `Too much ${tier}`, trust_tier: tier });
+      expect(res.statusCode, `${tier}: ${res.body}`).toBe(403);
+      expect(res.json().message).toMatch(/which you do not hold/);
+    }
+
+    const allowed = await viewer.post('/v1/admin/agents.create', {
+      name: 'Reader',
+      trust_tier: 'read_only',
+    });
+    expect(allowed.statusCode, allowed.body).toBe(200);
+    const agent = AgentResponse.parse(allowed.json()).agent;
+
+    const raised = await viewer.post('/v1/admin/agents.update', {
+      agent_id: agent.id,
+      trust_tier: 'trusted',
+    });
+    expect(raised.statusCode, raised.body).toBe(403);
+  });
+
+  it('a rule that skips review cannot be written without the power to approve', async () => {
+    expect(
+      (
+        await here.post('/v1/admin/permissions.grant', {
+          actor_id: viewerActorId,
+          action: 'policy.manage',
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const direct = await viewer.post('/v1/admin/policy.rules.upsert', {
+      priority: 10,
+      subject: { trust_tier: 'trusted' },
+      action: 'knowledge.update',
+      effect: 'allow_direct',
+      enabled: true,
+    });
+    expect(direct.statusCode, direct.body).toBe(403);
+    expect(direct.json().message).toMatch(/knowledge.approve/);
+
+    // A rule that adds review, or refuses, needs no such standing.
+    const review = await viewer.post('/v1/admin/policy.rules.upsert', {
+      priority: 11,
+      subject: { trust_tier: 'trusted' },
+      action: 'knowledge.update',
+      effect: 'require_review',
+      enabled: true,
+    });
+    expect(review.statusCode, review.body).toBe(200);
+  });
+
+  it('a restriction placed on you is not yours to lift', async () => {
+    const members = MembersResponse.parse((await here.get('/v1/admin/members.list')).json());
+    const target = members.members.find((m) => m.email === ADMIN.email)!;
+    const denied = await here.post('/v1/admin/permissions.grant', {
+      actor_id: target.actor_id,
+      action: 'agent.manage',
+      effect: 'deny',
+    });
+    expect(denied.statusCode, denied.body).toBe(200);
+    const grants = PermissionsResponse.parse(denied.json()).grants;
+    const deny = grants.find((g) => g.effect === 'deny' && g.action === 'agent.manage')!;
+
+    // The admin can read the grant, and is refused when it tries to remove it.
+    const lifted = await theAdmin.post('/v1/admin/permissions.revoke', { grant_id: deny.id });
+    expect(lifted.statusCode, lifted.body).toBe(403);
+    expect((await theAdmin.get('/v1/admin/agents.list')).statusCode).toBe(403);
+
+    // The owner placed it, so the owner can take it back.
+    expect(
+      (await here.post('/v1/admin/permissions.revoke', { grant_id: deny.id })).statusCode,
+    ).toBe(200);
+    expect((await theAdmin.get('/v1/admin/agents.list')).statusCode).toBe(200);
+  });
+  it('a scoped deny reaches the taxonomy mutations it names', async () => {
+    // A member of its own, so earlier tests' grants cannot decide this one.
+    const CURATOR = { email: 'curator@example.com', password: 'twelve slow rivers turning' };
+    expect(
+      (
+        await here.post('/v1/admin/members.add', {
+          email: CURATOR.email,
+          role: 'admin',
+          display_name: 'Curator',
+          initial_password: CURATOR.password,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const curator = await new Browser().signIn(CURATOR.email, CURATOR.password);
+    curator.workspace = workspaceId;
+    const members = MembersResponse.parse((await here.get('/v1/admin/members.list')).json());
+    const curatorActor = members.members.find((m) => m.email === CURATOR.email)!.actor_id;
+
+    const root = CategoryResponse.parse(
+      (await here.post('/v1/admin/taxonomy.create', { name: 'Restricted branch' })).json(),
+    ).category;
+    const child = CategoryResponse.parse(
+      (await here.post('/v1/admin/taxonomy.create', { name: 'Inside', parent_path: root.path })).json(),
+    ).category;
+
+    const denied = await here.post('/v1/admin/permissions.grant', {
+      actor_id: curatorActor,
+      action: 'taxonomy.manage',
+      effect: 'deny',
+      scope: { categories: [{ category_id: root.id, include_descendants: true }] },
+    });
+    expect(denied.statusCode, denied.body).toBe(200);
+    const deny = PermissionsResponse.parse(denied.json()).grants.find(
+      (g) => g.effect === 'deny' && g.scope.categories.length > 0,
+    )!;
+
+    // The restriction covers the branch, including categories below it.
+    const renamed = await curator.post('/v1/admin/taxonomy.update', {
+      category_id: child.id,
+      name: 'Renamed',
+    });
+    expect(renamed.statusCode, renamed.body).toBe(403);
+    const archived = await curator.post('/v1/admin/taxonomy.archive', { category_id: child.id });
+    expect(archived.statusCode, archived.body).toBe(403);
+    // Moving it out of the branch is refused for the same reason.
+    const moved = await curator.post('/v1/admin/taxonomy.move', {
+      category_id: child.id,
+      new_parent_id: null,
+    });
+    expect(moved.statusCode, moved.body).toBe(403);
+    // Creating inside the branch is refused; outside it nothing changed.
+    const inside = await curator.post('/v1/admin/taxonomy.create', {
+      name: 'Smuggled',
+      parent_path: root.path,
+    });
+    expect(inside.statusCode, inside.body).toBe(403);
+    const outside = await curator.post('/v1/admin/taxonomy.create', { name: 'Elsewhere' });
+    expect(outside.statusCode, outside.body).toBe(200);
+
+    // Lifting the restriction restores the branch.
+    expect(
+      (await here.post('/v1/admin/permissions.revoke', { grant_id: deny.id })).statusCode,
+    ).toBe(200);
+    const after = await curator.post('/v1/admin/taxonomy.archive', { category_id: child.id });
+    expect(after.statusCode, after.body).toBe(200);
   });
 });

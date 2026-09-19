@@ -217,7 +217,29 @@ Every non-denied policy decision is recorded on the proposal and in its event. D
 - a deny grant needs no matching privilege, so access can always be narrowed;
 - the subject actor must belong to the granter's workspace.
 
-Without these rules an administrator could create an agent, grant it `workspace.admin`, and use its token to take ownership of the workspace.
+Revoking a grant changes authority as much as adding one, because removing a deny restores what it restricted. The same rules therefore apply in both directions:
+
+- a grant is revoked only by someone who holds the action it names;
+- a deny placed on you is never yours to lift, however narrow its scope, so somebody else has to remove it.
+
+Without these rules an administrator could create an agent, grant it `workspace.admin`, and use its token to take ownership of the workspace; or simply delete the deny that restricted them.
+
+### Roles and trust tiers are permission sets
+
+A membership role and an agent's trust tier each stand for a set of actions, so choosing one hands out every action in it. The rule above applies unchanged:
+
+- a member is added or moved to a role only by someone who holds every action that role carries, so an administrator cannot create a member more powerful than themselves;
+- an agent is created at, or raised to, a trust tier only by someone who holds every action in it, so `agent.manage` cannot be used to build a token that does more than its author can;
+- nobody changes their own role or removes their own membership, because that would turn a grant somebody can take back into a role they cannot;
+- a policy rule with the `allow_direct` effect decides in advance what a reviewer would decide case by case, so writing one requires `knowledge.approve`.
+
+`workspace.admin` alone used to be enough to promote oneself to owner, which made it equal to ownership rather than a part of it.
+
+### Scopes apply where the object is
+
+A permission is checked against the object the request names, not against the request alone. Every taxonomy mutation is checked against the category it changes, and a move against both the category and its destination, so a branch-scoped grant covers exactly that branch. A check with no object would silently ignore every scoped grant: a deny would not restrict, and an allow would refuse everything.
+
+Creating a root category belongs to no branch, which no category-scoped grant covers.
 
 ### Command line access
 

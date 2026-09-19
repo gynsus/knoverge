@@ -100,7 +100,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
         // The password is part of the request but never of the stored response.
         { ...request.body, initial_password: undefined },
         async () => {
-          await services.members.add(actor.context, {
+          await services.members.add(actor.context, actor.standing, {
             email: request.body.email,
             role: request.body.role,
             displayName: request.body.display_name,
@@ -122,7 +122,12 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'workspace.admin');
-      await services.members.updateRole(actor.context, request.body.user_id, request.body.role);
+      await services.members.updateRole(
+        actor.context,
+        actor.standing,
+        request.body.user_id,
+        request.body.role,
+      );
       return { ok: true as const };
     },
   );
@@ -135,7 +140,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'workspace.admin');
-      await services.members.remove(actor.context, request.body.user_id);
+      await services.members.remove(actor.context, actor.standing, request.body.user_id);
       return { ok: true as const };
     },
   );
