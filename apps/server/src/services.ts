@@ -11,6 +11,7 @@ import {
   AuthorizationService,
   BootstrapService,
   EventLedger,
+  IdempotencyService,
   MemberService,
   TaxonomyService,
   SessionService,
@@ -87,6 +88,7 @@ export function createServices(config: ServicesConfig) {
     authorization,
     ledger,
   });
+  const idempotency = new IdempotencyService({ uow, records: repositories.idempotency });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
@@ -118,6 +120,7 @@ export function createServices(config: ServicesConfig) {
     agents: agentService,
     authorization,
     authorizationAdmin,
+    idempotency,
     members,
     taxonomy,
     users,
