@@ -36,7 +36,7 @@ permissions and scopes
 
 OAuth 2.1 (authorization server with dynamic client registration) is a later milestone for hosts such as ChatGPT and Claude.ai connectors. See ADR 0004.
 
-The `knoverge mcp stdio` command runs a local stdio bridge that forwards to the remote endpoint with a token from the environment.
+The `knoverge mcp stdio` (Milestone 4) command runs a local stdio bridge that forwards to the remote endpoint with a token from the environment.
 
 ## 4. Context metadata
 

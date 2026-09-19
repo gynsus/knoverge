@@ -182,6 +182,8 @@ MCP exposes them as tools. HTTP exposes them as `POST /v1/<tool_name>`.
 
 Tool names use lowercase letters, digits, and underscores only (`knowledge_search`, not `knowledge.search`).
 
+This governs the operations that are MCP tools. Authentication, health and workspace administration are not tools, are not offered to agents, and have no MCP name to match; they use `POST /v1/admin/<area>.<verb>` and `GET` for reads. A read that is also a tool has both routes over one handler. See ADR 0011.
+
 ### 12. No telemetry
 
 The server must not contact any external service unless the operator has explicitly configured it.

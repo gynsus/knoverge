@@ -116,6 +116,7 @@ Default profile for a newly created agent (`trust_tier = propose`):
 allow taxonomy.read
 allow taxonomy.propose
 allow knowledge.read
+allow knowledge.read_history
 allow knowledge.search
 allow knowledge.propose_create
 allow knowledge.propose_update
@@ -248,6 +249,8 @@ An allow and a deny read a scope differently, and they have to:
 - an **allow** must cover every category the request touches. An object filed in a permitted and a restricted branch is not reachable through the permitted one.
 - a **deny** fires as soon as it covers one of them. A restriction that only applied when it covered all of them was bypassed by renaming or archiving the parent, because the parent is not inside the restricted branch and the whole operation was judged to fall outside it.
 
+A scope may be written with `category_path` instead of `category_id`. The path is resolved to an id when the grant is stored, so what is compared is always the id: a rename or a move cannot detach a grant from the branch it covers. A path is portable, never a security identifier.
+
 ### Authority has to cover what it hands out
 
 Granting is checked against the scope of the grant, not against the action alone:
@@ -274,6 +277,12 @@ A rule that decides whether a write may happen is read inside the transaction th
 - two taxonomy mutations each validated against a tree the other was rewriting, so a move could reparent a category whose path a rename had already changed, leaving the parent and the path disagreeing, and two moves could make each other's parent and produce a cycle. A category whose path no longer resolves gets no ancestors, so every category-scoped grant with `include_descendants` silently stops covering it: a corrupt path weakens authorisation, not only presentation.
 - two removals each counted two owners and each removed one, leaving a workspace with no owner and no way back through the API.
 - parallel wrong passwords each read the same failure count and wrote it back, so the account never reached the lockout threshold. The count is now added by the database and the lockout decided from what it returns.
+
+### Password rules
+
+A password is 12 to 200 characters and may not contain the account's email address, nor the part before the `@` when that is four characters or more. The same rules apply when a password is changed.
+
+Hashing is argon2id at the OWASP 2024 minimum parameters, with a per-password salt. A change revokes every other session of that account.
 
 ### Command line access
 

@@ -138,7 +138,7 @@ Agent
 
 Do not bind an agent identity permanently to one model.
 
-`trust_tier` selects a default set of permission grants and policy defaults. Explicit grants and rules override it.
+`trust_tier` is a baseline set of permissions, evaluated rather than stored as grants (see SECURITY.md section 7) and policy defaults. Explicit grants and rules override it.
 
 ## 7. Agent credential
 
@@ -509,7 +509,7 @@ Chain: `event_hash = HMAC-SHA256(KNOVERGE_LEDGER_KEY, prev_event_hash || canonic
 Two feeds are derived from the ledger:
 
 - **audit feed** (`events_list`): all events, gated by `events.read_own` / `events.read_all`;
-- **knowledge change feed** (`knowledge_changes`): only `knowledge.*`, `relation.*` and `taxonomy.*` events, filtered by the caller's `knowledge.read` scope using `category_ids_json`.
+- **knowledge change feed** (`knowledge_changes`): only `knowledge.*`, `relation.*` and `category.*` events, filtered by the caller's `knowledge.read` scope using `category_ids_json`.
 
 Event types recorded in the ledger:
 
