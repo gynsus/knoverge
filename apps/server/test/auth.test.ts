@@ -129,16 +129,16 @@ describe('bootstrap', () => {
     expect(ledger).toEqual({ ok: true, count: 3 });
   });
 
-  it('leaves nothing behind when bootstrap fails after validation', async () => {
-    // A second bootstrap is refused inside the transaction; no workspace or user leaks.
+  it('a refused second bootstrap changes nothing', async () => {
     const before = await services.repositories.workspaces.list();
     const b = new Browser();
     await b.fetchCsrf();
-    await b.post('/v1/bootstrap', {
+    const res = await b.post('/v1/bootstrap', {
       ...ADMIN,
       email: 'leak@example.com',
       workspace: { slug: 'leak', name: 'Leak' },
     });
+    expect(res.statusCode).toBe(403);
     expect(await services.repositories.workspaces.list()).toHaveLength(before.length);
     expect(await services.repositories.users.findByEmail('leak@example.com')).toBeNull();
   });
@@ -230,19 +230,102 @@ describe('login and sessions', () => {
   });
 
   it('locks the account after repeated failures', async () => {
+    // A separate account, so the per-IP login limit in the other tests cannot
+    // stand in for the lockout this test is about.
+    const email = 'locked@example.com';
+    const password = 'a passphrase to be forgotten';
+    const user = await services.users.prepare({ email, password, displayName: 'Locked' });
+    const workspace = (await services.repositories.workspaces.list())[0]!;
+    const { addMember } = await import('@knoverge/core');
+    await services.uow.run(async (tx) => {
+      await services.users.insert(tx, user);
+      await addMember(
+        {
+          memberships: services.repositories.memberships,
+          actors: services.repositories.actors,
+          ledger: services.ledger,
+        },
+        tx,
+        workspace.id,
+        user,
+        'viewer',
+        'test',
+        new Date(),
+      );
+    });
+
+    for (let i = 0; i < MAX_FAILED_LOGINS; i += 1) {
+      await services.users.authenticate(email, `bad ${i}`).catch(() => undefined);
+    }
+    const locked = await services.repositories.users.findByEmail(email);
+    expect(locked?.failedLoginCount).toBe(MAX_FAILED_LOGINS);
+    expect(locked?.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
+
+    // Over HTTP the right password is refused, and looks like a wrong one.
     const b = new Browser();
     await b.fetchCsrf();
-    let last = 0;
-    for (let i = 0; i < MAX_FAILED_LOGINS; i += 1) {
-      last = (await b.post('/v1/auth/login', { email: ADMIN.email, password: `bad ${i}` }))
-        .statusCode;
-      if (last === 429) break;
-    }
-    const locked = await b.post('/v1/auth/login', {
-      email: ADMIN.email,
-      password: 'a brand new passphrase',
+    const res = await b.post('/v1/auth/login', { email, password });
+    expect(res.statusCode).toBe(401);
+    expect(res.json().code).toBe('UNAUTHENTICATED');
+  });
+});
+
+describe('session revocation', () => {
+  it('refuses a session id that belongs to someone else', async () => {
+    const victim = await services.users.prepare({
+      email: 'victim@example.com',
+      password: 'a passphrase of its own',
+      displayName: 'Victim',
     });
-    expect([locked.statusCode, last]).toContain(429);
+    const workspace = (await services.repositories.workspaces.list())[0]!;
+    const { addMember } = await import('@knoverge/core');
+    await services.uow.run(async (tx) => {
+      await services.users.insert(tx, victim);
+      await addMember(
+        {
+          memberships: services.repositories.memberships,
+          actors: services.repositories.actors,
+          ledger: services.ledger,
+        },
+        tx,
+        workspace.id,
+        victim,
+        'viewer',
+        'test',
+        new Date(),
+      );
+    });
+    const victimBrowser = new Browser();
+    await victimBrowser.fetchCsrf();
+    expect(
+      (
+        await victimBrowser.post('/v1/auth/login', {
+          email: 'victim@example.com',
+          password: 'a passphrase of its own',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const victimSession = MeResponse.parse(
+      (await victimBrowser.request({ method: 'GET', url: '/v1/auth/me' })).json(),
+    ).session.id;
+
+    const attacker = new Browser();
+    await attacker.fetchCsrf();
+    expect(
+      (
+        await attacker.post('/v1/auth/login', {
+          email: ADMIN.email,
+          password: 'a brand new passphrase',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await attacker.post('/v1/auth/sessions/revoke', { session_id: victimSession });
+    expect(res.statusCode).toBe(404);
+
+    // The victim is still signed in.
+    expect((await victimBrowser.request({ method: 'GET', url: '/v1/auth/me' })).statusCode).toBe(
+      200,
+    );
   });
 });
 

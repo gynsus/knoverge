@@ -298,13 +298,40 @@ describe('policy rules', () => {
     });
     expect(upsert.statusCode, upsert.body).toBe(200);
 
+    const child = CategoryResponse.parse(
+      (
+        await admin.post('/v1/admin/taxonomy.create', {
+          name: 'Policy child',
+          parent_path: category.path,
+        })
+      ).json(),
+    ).category;
+    const sibling = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Policy sibling' })).json(),
+    ).category;
+
     expect(
       await services.authorization.policyFor(actor, standing, 'knowledge.create', {
         categoryIds: [category.id],
         type: 'observation',
       }),
     ).toBe('allow_direct');
-    // Outside the scope the default still applies.
+    // A descendant is covered too, which exercises the ancestor lookup built
+    // from the stored paths rather than the scope root matching itself.
+    expect(
+      await services.authorization.policyFor(actor, standing, 'knowledge.create', {
+        categoryIds: [child.id],
+        type: 'observation',
+      }),
+    ).toBe('allow_direct');
+    // Another branch is not.
+    expect(
+      await services.authorization.policyFor(actor, standing, 'knowledge.create', {
+        categoryIds: [sibling.id],
+        type: 'observation',
+      }),
+    ).toBe('require_review');
+    // Outside the type the default still applies.
     expect(
       await services.authorization.policyFor(actor, standing, 'knowledge.create', {
         categoryIds: [category.id],
@@ -314,6 +341,76 @@ describe('policy rules', () => {
     expect(await services.authorization.policyFor(actor, standing, 'knowledge.create')).toBe(
       'require_review',
     );
+  });
+
+  it('keeps a scoped denial attached to the category through a rename and a move', async () => {
+    // Scopes are stored by id and the ancestor map is rebuilt from paths, so a
+    // rename or a move must not move a restriction to a different branch. A
+    // deny grant is used because every trust tier already reads workspace-wide.
+    const parent = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Restricted' })).json(),
+    ).category;
+    const child = CategoryResponse.parse(
+      (
+        await admin.post('/v1/admin/taxonomy.create', {
+          name: 'Restricted child',
+          parent_path: parent.path,
+        })
+      ).json(),
+    ).category;
+    const { agent } = await newAgent('Scope stability');
+    const actor = {
+      workspaceId: agent.workspace_id,
+      actorId: agent.actor_id,
+      actorType: 'agent' as const,
+      requestId: 'test',
+    };
+    const standing = { trustTier: 'propose' as const };
+    const canRead = (categoryId: string) =>
+      services.authorization
+        .check(actor, standing, 'knowledge.read', { categoryIds: [categoryId] })
+        .then((d) => d.allowed);
+
+    expect(await canRead(child.id)).toBe(true);
+    await admin.post('/v1/admin/permissions.grant', {
+      actor_id: agent.actor_id,
+      action: 'knowledge.read',
+      effect: 'deny',
+      scope: { categories: [{ category_id: parent.id, include_descendants: true }] },
+    });
+    expect(await canRead(parent.id)).toBe(false);
+    expect(await canRead(child.id)).toBe(false);
+
+    // Renaming the branch keeps the restriction on the same categories.
+    expect(
+      (
+        await admin.post('/v1/admin/taxonomy.update', {
+          category_id: parent.id,
+          slug: 'restricted-renamed',
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(await canRead(child.id)).toBe(false);
+
+    // A new category at the branch's old path inherits nothing.
+    const impostor = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Restricted' })).json(),
+    ).category;
+    expect(impostor.path).toBe('restricted');
+    expect(await canRead(impostor.id)).toBe(true);
+
+    // Moving the branch under that new category keeps the restriction where it
+    // belongs: on the branch, not on its new parent.
+    expect(
+      (
+        await admin.post('/v1/admin/taxonomy.move', {
+          category_id: parent.id,
+          new_parent_id: impostor.id,
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(await canRead(child.id)).toBe(false);
+    expect(await canRead(impostor.id)).toBe(true);
   });
 
   it('updates, disables and deletes a rule', async () => {

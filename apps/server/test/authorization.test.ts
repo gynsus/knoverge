@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   AgentResponse,
+  ErrorCode,
   IssueCredentialResponse,
   MembersResponse,
+  TaxonomyListResponse,
   type WorkspaceId,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
@@ -13,6 +15,7 @@ import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
+import { statusFor } from '../src/plugins/errors.ts';
 import { createServices, type Services } from '../src/services.ts';
 
 const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
@@ -294,5 +297,100 @@ describe('rate limiting', () => {
     } finally {
       await limited.close();
     }
+  });
+});
+
+describe('workspace isolation', () => {
+  it('pins an agent to its own workspace whatever header it sends', async () => {
+    const other = await services.workspaces.create({
+      slug: 'elsewhere',
+      name: 'Elsewhere',
+      requestId: 'r',
+    });
+    const created = await owner.post('/v1/admin/agents.create', { name: 'Local agent' });
+    const agent = AgentResponse.parse(created.json()).agent;
+    const issued = IssueCredentialResponse.parse(
+      (await owner.post('/v1/admin/agents.credentials.issue', { agent_id: agent.id })).json(),
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/v1/taxonomy.list',
+      headers: { authorization: `Bearer ${issued.token}`, 'x-knoverge-workspace': other.id },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    // The header is ignored: the categories are this workspace's, not the other one's.
+    const events = await services.repositories.events.listAfter(workspaceId, 0, 2000);
+    expect(events.some((e) => e.agentId === agent.id)).toBe(false);
+    const elsewhere = await services.repositories.events.listAfter(other.id, 0, 100);
+    expect(elsewhere.every((e) => e.agentId === null)).toBe(true);
+  });
+
+  it('asks a person who belongs to two workspaces to choose one', async () => {
+    const second = await services.workspaces.create({
+      slug: 'second',
+      name: 'Second',
+      requestId: 'r',
+    });
+    const user = await services.users.findByEmail(OWNER.email);
+    const { addMember } = await import('@knoverge/core');
+    await services.uow.run((tx) =>
+      addMember(
+        {
+          memberships: services.repositories.memberships,
+          actors: services.repositories.actors,
+          ledger: services.ledger,
+        },
+        tx,
+        second.id,
+        user!,
+        'owner',
+        'test',
+        new Date(),
+        { recordUserCreated: false },
+      ),
+    );
+
+    const ambiguous = await owner.get('/v1/taxonomy.list');
+    expect(ambiguous.statusCode).toBe(400);
+    expect(ambiguous.json().message).toMatch(/x-knoverge-workspace/);
+
+    const chosen = await owner.request({
+      method: 'GET',
+      url: '/v1/taxonomy.list',
+      headers: { 'x-knoverge-workspace': second.id },
+    });
+    expect(chosen.statusCode, chosen.body).toBe(200);
+    expect(TaxonomyListResponse.parse(chosen.json()).categories).toHaveLength(0);
+  });
+});
+
+describe('the error contract', () => {
+  it('maps every domain error code to its documented status', () => {
+    // The table in HTTP_API.md section 4, asserted rather than described.
+    expect(Object.fromEntries(ErrorCode.options.map((code) => [code, statusFor(code)]))).toEqual({
+      UNAUTHENTICATED: 401,
+      FORBIDDEN: 403,
+      NOT_FOUND: 404,
+      VALIDATION_ERROR: 400,
+      REVISION_CONFLICT: 409,
+      DUPLICATE_EXTERNAL_KEY: 409,
+      DUPLICATE_SUSPECTED: 409,
+      CATEGORY_CONFLICT: 409,
+      PROPOSAL_ALREADY_RESOLVED: 409,
+      SYNC_SESSION_EXPIRED: 410,
+      POLICY_REQUIRES_REVIEW: 202,
+      RATE_LIMITED: 429,
+      INTERNAL_ERROR: 500,
+    });
+  });
+
+  it('answers an oversized body with a validation error, not a crash', async () => {
+    const res = await owner.post('/v1/admin/taxonomy.create', {
+      name: 'Too much',
+      description: 'x'.repeat(2 * 1024 * 1024),
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
   });
 });
