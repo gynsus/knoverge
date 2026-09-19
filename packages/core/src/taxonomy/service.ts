@@ -350,9 +350,13 @@ export class TaxonomyService {
     const subtree = await this.o.categories.listSubtree(actor.workspaceId, category.path);
     const now = this.clock.now();
     const version = await this.o.uow.run(async (tx) => {
-      for (const node of subtree) {
-        await this.o.categories.update(tx, node.id, { status: 'archived', updatedAt: now });
-      }
+      const archived = await this.o.categories.setSubtreeStatus(
+        tx,
+        actor.workspaceId,
+        category.path,
+        'archived',
+        now,
+      );
       const next = await this.o.versions.bump(tx, actor.workspaceId, now);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'category.archived',
@@ -361,7 +365,7 @@ export class TaxonomyService {
         categoryIds: subtree.map((c) => c.id),
         metadata: {
           path: category.path,
-          archived_categories: subtree.length,
+          archived_categories: archived,
           taxonomy_version: next,
         },
       });

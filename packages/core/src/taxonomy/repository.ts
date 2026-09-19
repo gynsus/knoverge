@@ -57,6 +57,14 @@ export interface CategoryRepository {
     newPath: string,
     at: Date,
   ): Promise<number>;
+  /** Sets the status of a subtree in one statement. Returns the number of rows changed. */
+  setSubtreeStatus(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    path: string,
+    status: CategoryStatus,
+    at: Date,
+  ): Promise<number>;
 }
 
 export interface AliasRecord {
