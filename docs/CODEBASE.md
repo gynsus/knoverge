@@ -90,3 +90,17 @@ Shared fixtures live next to the tests that use them until two packages need the
 ## 10. Migrations
 
 Schema changes are made in `packages/db/src/schema`, then `pnpm --filter @knoverge/db migrations:generate --name <topic>`. Database-level guarantees that Drizzle does not model (triggers, functions, extensions) are appended to the generated SQL after a `--> statement-breakpoint` line and reviewed like code. Policy: `WORKFLOW.md` section 9.
+
+## Choosing a workspace in the browser
+
+A person can belong to several workspaces, and the server refuses a request
+that names none of them. `apps/web/src/auth/use-workspace.ts` holds the choice,
+sends it as `X-Knoverge-Workspace` on every request, and remembers it per
+browser. The picker appears in the header only when there is more than one.
+
+The same hook reports what the caller may do, which `/v1/workspace.get` returns
+as `permissions`. Navigation entries and mutation controls are shown from that,
+not from the membership role: the server gates on the permission, and a second
+copy of the rule in the browser drifts from it. A reviewer granted an action
+explicitly would otherwise be shown a control they are entitled to use, and a
+viewer would be shown forms whose every submission is refused.

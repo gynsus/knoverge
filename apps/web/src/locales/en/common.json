@@ -43,7 +43,8 @@
     "settings": "Settings",
     "skip_to_content": "Skip to content",
     "taxonomy": "Taxonomy",
-    "workspace": "Workspace"
+    "workspace": "Workspace",
+    "workspace_label": "Workspace"
   },
   "fields": {
     "display_name": "Your name",
@@ -210,6 +211,7 @@
     "role_of": "Role of {{name}}",
     "save": "Save",
     "saved": "Workspace updated.",
+    "this_is_you": "This is you",
     "title": "Workspace"
   }
 }

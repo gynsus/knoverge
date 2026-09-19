@@ -4,6 +4,8 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
+import { useAuth } from '../auth/use-auth.ts';
+import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { Field } from '../components/Field.tsx';
 
@@ -14,9 +16,11 @@ const ROLES: MembershipRole[] = ['owner', 'admin', 'reviewer', 'viewer'];
 function MemberRow({
   member,
   onChanged,
+  isSelf,
 }: {
   member: MemberSummary;
   onChanged: () => Promise<void>;
+  isSelf: boolean;
 }) {
   const { t, i18n } = useTranslation();
   // A role change is held here until it is applied. Two reasons: the select is
@@ -48,7 +52,7 @@ function MemberRow({
           value={role}
           aria-label={t('workspace.role_of', { name: member.display_name })}
           onChange={(e) => setPendingRole(e.target.value as MembershipRole)}
-          disabled={update.isPending}
+          disabled={update.isPending || isSelf}
         >
           {ROLES.map((r) => (
             <option key={r} value={r}>
@@ -77,7 +81,11 @@ function MemberRow({
           : t('workspace.never_signed_in')}
       </td>
       <td>
-        {confirmingRemoval ? (
+        {isSelf ? (
+          <span>
+            <small>{t('workspace.this_is_you')}</small>
+          </span>
+        ) : confirmingRemoval ? (
           <>
             <span>{t('workspace.confirm_remove', { name: member.display_name })}</span>{' '}
             <button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
@@ -172,6 +180,9 @@ function WorkspaceSettingsForm({
 export function WorkspacePage() {
   const { t } = useTranslation();
   const client = useQueryClient();
+  const workspaces = useWorkspaceContext();
+  const auth = useAuth();
+  const myUserId = auth.state.kind === 'authenticated' ? auth.state.me.user.id : undefined;
   const [email, setEmail] = useState('');
   const [memberName, setMemberName] = useState('');
   const [password, setPassword] = useState('');
@@ -212,9 +223,10 @@ export function WorkspacePage() {
     addMember.mutate();
   };
 
-  const canAdminister =
-    (workspace.data?.workspace.role ?? 'viewer') === 'owner' ||
-    workspace.data?.workspace.role === 'admin';
+  // The server gates on the permission, so the interface asks the same
+  // question. Deriving it from the role showed a disabled form to a reviewer
+  // who had been granted workspace administration explicitly.
+  const canAdminister = workspaces.can('workspace.admin');
 
   return (
     <>
@@ -249,7 +261,14 @@ export function WorkspacePage() {
                 </thead>
                 <tbody>
                   {members.data.members.map((member) => (
-                    <MemberRow key={member.user_id} member={member} onChanged={refreshMembers} />
+                    <MemberRow
+                      key={member.user_id}
+                      member={member}
+                      onChanged={refreshMembers}
+                      // Changing your own role and removing yourself are both
+                      // refused by the server, so the controls are not offered.
+                      isSelf={member.user_id === myUserId}
+                    />
                   ))}
                 </tbody>
               </table>

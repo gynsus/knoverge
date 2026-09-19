@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router';
@@ -27,16 +27,20 @@ function json(body: unknown, status = 200): Response {
 }
 
 function mockApi(routes: Record<string, Handler>) {
-  const calls: { url: string; method: string; body: unknown }[] = [];
+  const calls: { url: string; method: string; body: unknown; workspace?: string }[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
+      const headers = new Headers(init?.headers);
       calls.push({
         url,
         method,
         body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        ...(headers.get('x-knoverge-workspace')
+          ? { workspace: headers.get('x-knoverge-workspace') as string }
+          : {}),
       });
       const handler = routes[`${method} ${url}`];
       if (!handler)
@@ -103,10 +107,50 @@ const CATEGORY = {
   subtree_item_count: 0,
 };
 
+/** Everything an owner holds, which is what these fixtures sign in as. */
+const OWNER_PERMISSIONS = [
+  'taxonomy.read',
+  'taxonomy.propose',
+  'taxonomy.manage',
+  'knowledge.read',
+  'knowledge.read_history',
+  'knowledge.search',
+  'knowledge.propose_create',
+  'knowledge.propose_update',
+  'knowledge.propose_delete',
+  'knowledge.propose_supersede',
+  'knowledge.write',
+  'knowledge.approve',
+  'proposal.read_all',
+  'proposal.read_own',
+  'events.read_all',
+  'events.read_own',
+  'agent.manage',
+  'policy.manage',
+  'workspace.admin',
+];
+
+const REVIEWER_PERMISSIONS = OWNER_PERMISSIONS.filter(
+  (a) => !['agent.manage', 'policy.manage', 'workspace.admin', 'taxonomy.manage'].includes(a),
+);
+
+const SIGNED_IN_WORKSPACE = {
+  id: ME.memberships[0]!.workspace_id,
+  slug: 'personal',
+  name: 'Personal',
+  description: null,
+  default_language: 'en',
+  created_at: '2026-09-19T00:00:00.000Z',
+  role: 'owner',
+};
+
 const SIGNED_IN: Record<string, Handler> = {
   'GET /v1/auth/status': () => json({ bootstrap_required: false, authenticated: true }),
   'GET /v1/auth/me': () => json(ME),
   'GET /v1/auth/csrf': () => json({ token: 'csrf-token' }),
+  // The shell asks what the caller may do before it decides what to show.
+  'GET /v1/workspace.get': () =>
+    json({ workspace: SIGNED_IN_WORKSPACE, permissions: OWNER_PERMISSIONS }),
 };
 
 function renderApp(path: string) {
@@ -279,15 +323,7 @@ describe('settings page', () => {
 });
 
 describe('workspace page', () => {
-  const WORKSPACE = {
-    id: ME.memberships[0]!.workspace_id,
-    slug: 'personal',
-    name: 'Personal',
-    description: null,
-    default_language: 'en',
-    created_at: '2026-09-19T00:00:00.000Z',
-    role: 'owner',
-  };
+  const WORKSPACE = SIGNED_IN_WORKSPACE;
   const MEMBERS = [
     {
       user_id: ME.user.id,
@@ -299,17 +335,31 @@ describe('workspace page', () => {
       joined_at: '2026-09-19T00:00:00.000Z',
       last_login_at: '2026-09-19T00:00:00.000Z',
     },
+    {
+      // Somebody else: the signed-in person's own row offers no role change
+      // and no removal, because the server refuses both.
+      user_id: 'usr_01J8Z3M4Q9V0X7K2B5N6P8R1T4',
+      actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T4',
+      email: 'second@example.com',
+      display_name: 'Second',
+      role: 'reviewer',
+      status: 'active',
+      joined_at: '2026-09-19T00:00:00.000Z',
+      last_login_at: null,
+    },
   ];
 
   it('matches the contracts', () => {
-    expect(() => WorkspaceResponse.parse({ workspace: WORKSPACE })).not.toThrow();
+    expect(() =>
+      WorkspaceResponse.parse({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
+    ).not.toThrow();
     expect(() => MembersResponse.parse({ members: MEMBERS })).not.toThrow();
   });
 
   it('shows settings and members, and updates the workspace', async () => {
     const calls = mockApi({
       ...SIGNED_IN,
-      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
       'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
       'POST /v1/admin/workspace.update': () => json({ ok: true }),
     });
@@ -333,7 +383,7 @@ describe('workspace page', () => {
     const members = [...MEMBERS];
     const calls = mockApi({
       ...SIGNED_IN,
-      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
       'GET /v1/admin/members.list': () => json({ members }),
       'POST /v1/admin/members.add': () => {
         members.push({
@@ -363,14 +413,14 @@ describe('workspace page', () => {
     const members = [...MEMBERS];
     const calls = mockApi({
       ...SIGNED_IN,
-      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
       'GET /v1/admin/members.list': () => json({ members }),
       'POST /v1/admin/members.update': () => json({ ok: true }),
       'POST /v1/admin/members.remove': () => json({ ok: true }),
     });
     renderApp('/workspace');
     const user = userEvent.setup();
-    const select = await screen.findByLabelText(`Role of ${MEMBERS[0]!.display_name}`);
+    const select = await screen.findByLabelText(`Role of ${MEMBERS[1]!.display_name}`);
 
     // Choosing a role changes nothing on its own: it used to be committed on
     // the change event, and the control then reverted while the call was in
@@ -394,11 +444,92 @@ describe('workspace page', () => {
   it('hides member management from a member who cannot administer', async () => {
     mockApi({
       ...SIGNED_IN,
-      'GET /v1/workspace.get': () => json({ workspace: { ...WORKSPACE, role: 'reviewer' } }),
+      'GET /v1/workspace.get': () =>
+        json({ workspace: { ...WORKSPACE, role: 'reviewer' }, permissions: REVIEWER_PERMISSIONS }),
     });
     renderApp('/workspace');
     expect(await screen.findByDisplayValue('Personal')).toBeDisabled();
     expect(screen.queryByText('Members')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+});
+
+describe('choosing a workspace', () => {
+  const SECOND = {
+    workspace_id: 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T9',
+    workspace_slug: 'team',
+    workspace_name: 'Team',
+    role: 'admin',
+  };
+  const twoWorkspaces = { ...ME, memberships: [...ME.memberships, SECOND] };
+
+  it('names the workspace on every request, and lets the person change it', async () => {
+    // Without the header the server refuses a person who belongs to more than
+    // one workspace, so every page failed for them with a validation error
+    // about a header they cannot see.
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/auth/me': () => json(twoWorkspaces),
+      'GET /v1/admin/members.list': () => json({ members: [] }),
+    });
+    renderApp('/');
+    await screen.findByText('Your workspaces');
+    const scoped = calls.filter((c) => c.url === '/v1/workspace.get');
+    expect(scoped.length).toBeGreaterThan(0);
+    expect(scoped.every((c) => c.workspace === ME.memberships[0]!.workspace_id)).toBe(true);
+
+    const user = userEvent.setup();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Workspace' }),
+      SECOND.workspace_id,
+    );
+    await waitFor(() =>
+      expect(
+        calls.some((c) => c.url === '/v1/workspace.get' && c.workspace === SECOND.workspace_id),
+      ).toBe(true),
+    );
+  });
+
+  it('offers no picker to a person who belongs to one workspace', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
+    renderApp('/');
+    await screen.findByText('Your workspaces');
+    expect(screen.queryByRole('combobox', { name: 'Workspace' })).not.toBeInTheDocument();
+  });
+});
+
+describe('what the interface offers', () => {
+  it('hides the sections whose every request would be refused', async () => {
+    // A reviewer holds none of agent.manage, policy.manage or taxonomy.manage.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () =>
+        json({
+          workspace: { ...SIGNED_IN_WORKSPACE, role: 'reviewer' },
+          permissions: REVIEWER_PERMISSIONS,
+        }),
+    });
+    renderApp('/');
+    await screen.findByText('Your workspaces');
+    // Waits for the permissions to arrive before judging what is shown.
+    expect(await screen.findByRole('link', { name: 'Taxonomy' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Agents' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Policy' })).not.toBeInTheDocument();
+  });
+
+  it('shows a section to somebody granted it, whatever their role says', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () =>
+        json({
+          workspace: { ...SIGNED_IN_WORKSPACE, role: 'reviewer' },
+          // The grant is what decides, not the role. Deriving this from the
+          // role showed a reviewer a disabled form they were entitled to use.
+          permissions: [...REVIEWER_PERMISSIONS, 'agent.manage'],
+        }),
+    });
+    renderApp('/');
+    await screen.findByText('Your workspaces');
+    expect(await screen.findByRole('link', { name: 'Agents' })).toBeInTheDocument();
   });
 });

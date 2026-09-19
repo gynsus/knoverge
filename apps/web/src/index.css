@@ -111,6 +111,18 @@ button {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+.workspace-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.workspace-picker select {
+  display: inline-block;
+  width: auto;
+  margin-top: 0;
+}
 .skip-link {
   position: absolute;
   left: -9999px;

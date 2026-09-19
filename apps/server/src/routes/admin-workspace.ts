@@ -55,8 +55,11 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           description: workspace.description,
           default_language: workspace.defaultLanguage,
           created_at: workspace.createdAt.toISOString(),
-          role: actor.role ?? 'viewer',
+          // Null for an agent, which has a trust tier and no role. Reporting
+          // 'viewer' invented a membership the caller does not have.
+          role: actor.role ?? null,
         },
+        permissions: await services.authorization.heldActions(actor.context, actor.standing),
       };
     },
   );

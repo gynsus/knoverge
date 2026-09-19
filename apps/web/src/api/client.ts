@@ -17,6 +17,27 @@ export class ApiRequestError extends Error {
 
 let csrfToken: string | undefined;
 
+/**
+ * The workspace every request applies to.
+ *
+ * The server refuses a person who belongs to more than one workspace and names
+ * none, so without this the whole interface stopped working for them the moment
+ * they were added to a second one.
+ */
+let workspaceId: string | undefined;
+
+export function setWorkspace(id: string | undefined): void {
+  workspaceId = id;
+}
+
+export function currentWorkspace(): string | undefined {
+  return workspaceId;
+}
+
+function scopeHeaders(): Record<string, string> {
+  return workspaceId ? { 'x-knoverge-workspace': workspaceId } : {};
+}
+
 async function fetchCsrfToken(): Promise<string> {
   const res = await fetch('/v1/auth/csrf', { credentials: 'same-origin' });
   if (!res.ok) throw new Error('could not obtain a CSRF token');
@@ -44,7 +65,7 @@ async function parseError(res: Response): Promise<ApiRequestError> {
 export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
   const res = await fetch(url, {
     credentials: 'same-origin',
-    headers: { accept: 'application/json' },
+    headers: { accept: 'application/json', ...scopeHeaders() },
     signal: signal ?? null,
   });
   if (!res.ok) throw await parseError(res);
@@ -76,12 +97,14 @@ function postOnce(url: string, body: unknown, token: string): Promise<Response> 
       accept: 'application/json',
       'content-type': 'application/json',
       'x-csrf-token': token,
+      ...scopeHeaders(),
     },
     body: JSON.stringify(body ?? {}),
   });
 }
 
-/** Test hook: forget the cached CSRF token. */
+/** Test hook: forget the cached CSRF token and the chosen workspace. */
 export function resetCsrfToken(): void {
   csrfToken = undefined;
+  workspaceId = undefined;
 }
