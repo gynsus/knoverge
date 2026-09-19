@@ -41,6 +41,12 @@ export interface AuthorizationServiceOptions {
   ledger: EventLedger;
 }
 
+/** How long the same refusal is recorded only once. */
+export const DENIAL_REPEAT_MS = 60_000;
+
+/** Upper bound on the refusals tracked at once, so the map cannot grow without limit. */
+const MAX_TRACKED_DENIALS = 10_000;
+
 export interface AuthorizationDecision {
   allowed: boolean;
   reason: string;
@@ -56,6 +62,7 @@ export interface AuthorizationDecision {
  */
 export class AuthorizationService {
   private readonly o: AuthorizationServiceOptions;
+  private readonly recentDenials = new Map<string, number>();
 
   constructor(options: AuthorizationServiceOptions) {
     this.o = options;
@@ -219,13 +226,22 @@ export class AuthorizationService {
     return decision.effect;
   }
 
-  /** Records a refused command. Denied commands never become proposals. */
+  /**
+   * Records a refused command. Denied commands never become proposals.
+   *
+   * Repeats within a short window are dropped. A caller that loops on an
+   * endpoint it may not use would otherwise write one append-only event per
+   * request into a table nothing may prune, and take the workspace's ledger
+   * lock each time, serialising every real write behind it. The first refusal
+   * of each kind is what the audit needs; the rest are the same fact again.
+   */
   async recordDenied(
     actor: ActorContext,
     action: string,
     reason: string,
     target: Target = {},
   ): Promise<void> {
+    if (this.repeatedDenial(actor, action, reason)) return;
     await this.o.uow.run((tx) =>
       this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'command.denied',
@@ -239,6 +255,30 @@ export class AuthorizationService {
         },
       }),
     );
+  }
+
+  /**
+   * True when this actor was already refused the same thing recently. The
+   * window is per process and deliberately short: two processes may each record
+   * one refusal, which is a far better trade than an unbounded write path.
+   */
+  private repeatedDenial(actor: ActorContext, action: string, reason: string): boolean {
+    const now = Date.now();
+    const key = `${actor.workspaceId}|${actor.actorId}|${action}|${reason}`;
+    const last = this.recentDenials.get(key);
+    if (last !== undefined && now - last < DENIAL_REPEAT_MS) return true;
+    if (this.recentDenials.size >= MAX_TRACKED_DENIALS) {
+      for (const [k, at] of this.recentDenials) {
+        if (now - at >= DENIAL_REPEAT_MS) this.recentDenials.delete(k);
+      }
+      // Still full of live entries: forget the oldest rather than grow.
+      if (this.recentDenials.size >= MAX_TRACKED_DENIALS) {
+        const oldest = this.recentDenials.keys().next();
+        if (!oldest.done) this.recentDenials.delete(oldest.value);
+      }
+    }
+    this.recentDenials.set(key, now);
+    return false;
   }
 
   private implicitGrants(actor: ActorContext, standing: ActorStanding): Grant[] {

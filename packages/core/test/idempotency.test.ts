@@ -62,7 +62,7 @@ describe('IdempotencyService', () => {
   it('runs the work when no key is given', async () => {
     const { service: s, rows } = service();
     const fn = vi.fn(async () => ({ value: 1 }));
-    await expect(s.run(actor, undefined, { a: 1 }, fn)).resolves.toEqual({
+    await expect(s.run(actor, undefined, 'test.op', { a: 1 }, fn)).resolves.toEqual({
       value: { value: 1 },
       replayed: false,
     });
@@ -73,8 +73,8 @@ describe('IdempotencyService', () => {
   it('replays the first response for the same key and body', async () => {
     const { service: s } = service();
     const fn = vi.fn(async () => ({ id: `run-${fn.mock.calls.length}` }));
-    const first = await s.run(actor, 'retry-key-1', { a: 1 }, fn);
-    const second = await s.run(actor, 'retry-key-1', { a: 1 }, fn);
+    const first = await s.run(actor, 'retry-key-1', 'test.op', { a: 1 }, fn);
+    const second = await s.run(actor, 'retry-key-1', 'test.op', { a: 1 }, fn);
     expect(fn).toHaveBeenCalledTimes(1);
     expect(second.replayed).toBe(true);
     expect(second.value).toEqual(first.value);
@@ -83,8 +83,8 @@ describe('IdempotencyService', () => {
   it('ignores the order of keys in the body when comparing requests', async () => {
     const { service: s } = service();
     const fn = vi.fn(async () => ({ ok: true }));
-    await s.run(actor, 'retry-key-2', { a: 1, b: 2 }, fn);
-    const replay = await s.run(actor, 'retry-key-2', { b: 2, a: 1 }, fn);
+    await s.run(actor, 'retry-key-2', 'test.op', { a: 1, b: 2 }, fn);
+    const replay = await s.run(actor, 'retry-key-2', 'test.op', { b: 2, a: 1 }, fn);
     expect(replay.replayed).toBe(true);
     expect(fn).toHaveBeenCalledTimes(1);
   });
@@ -92,8 +92,8 @@ describe('IdempotencyService', () => {
   it('refuses the same key with a different body', async () => {
     const { service: s } = service();
     const fn = vi.fn(async () => ({ ok: true }));
-    await s.run(actor, 'retry-key-3', { a: 1 }, fn);
-    await expect(s.run(actor, 'retry-key-3', { a: 2 }, fn)).rejects.toMatchObject({
+    await s.run(actor, 'retry-key-3', 'test.op', { a: 1 }, fn);
+    await expect(s.run(actor, 'retry-key-3', 'test.op', { a: 2 }, fn)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
     expect(fn).toHaveBeenCalledTimes(1);
@@ -102,9 +102,9 @@ describe('IdempotencyService', () => {
   it('keeps keys separate per actor', async () => {
     const { service: s } = service();
     const fn = vi.fn(async () => ({ ok: true }));
-    await s.run(actor, 'shared-key-1', { a: 1 }, fn);
+    await s.run(actor, 'shared-key-1', 'test.op', { a: 1 }, fn);
     const other = { ...actor, actorId: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T4' as ActorId };
-    const result = await s.run(other, 'shared-key-1', { a: 1 }, fn);
+    const result = await s.run(other, 'shared-key-1', 'test.op', { a: 1 }, fn);
     expect(result.replayed).toBe(false);
     expect(fn).toHaveBeenCalledTimes(2);
   });
@@ -112,7 +112,7 @@ describe('IdempotencyService', () => {
   it('rejects a malformed key before doing any work', async () => {
     const { service: s } = service();
     const fn = vi.fn(async () => ({ ok: true }));
-    await expect(s.run(actor, 'short', { a: 1 }, fn)).rejects.toMatchObject({
+    await expect(s.run(actor, 'short', 'test.op', { a: 1 }, fn)).rejects.toMatchObject({
       code: 'VALIDATION_ERROR',
     });
     expect(fn).not.toHaveBeenCalled();
@@ -125,8 +125,8 @@ describe('IdempotencyService', () => {
     let n = 0;
     const fn = vi.fn(async () => ({ run: (n += 1) }));
     const [first, second] = await Promise.all([
-      s.run(actor, 'raced-key-1', { a: 1 }, fn),
-      s.run(actor, 'raced-key-1', { a: 1 }, fn),
+      s.run(actor, 'raced-key-1', 'test.op', { a: 1 }, fn),
+      s.run(actor, 'raced-key-1', 'test.op', { a: 1 }, fn),
     ]);
     expect(fn).toHaveBeenCalledTimes(2);
     expect(first.replayed).toBe(false);
@@ -138,14 +138,22 @@ describe('IdempotencyService', () => {
   it('runs again once the record has expired, and prunes it', async () => {
     const { service: s, rows } = service();
     const fn = vi.fn(async () => ({ ok: true }));
-    await s.run(actor, 'expiring-key-1', { a: 1 }, fn);
+    await s.run(actor, 'expiring-key-1', 'test.op', { a: 1 }, fn);
     rows[0]!.expiresAt = new Date(NOW.getTime() - 1);
-    const again = await s.run(actor, 'expiring-key-1', { a: 1 }, fn);
+    const again = await s.run(actor, 'expiring-key-1', 'test.op', { a: 1 }, fn);
     expect(again.replayed).toBe(false);
     expect(rows).toHaveLength(1);
 
     rows[0]!.expiresAt = new Date(NOW.getTime() - 1);
     expect(await s.purgeExpired()).toBe(1);
     expect(rows).toHaveLength(0);
+  });
+});
+
+describe('IdempotencyService.fingerprint', () => {
+  it('tells two operations apart even when their requests match', () => {
+    expect(IdempotencyService.fingerprint('agents.create', { a: 1 })).not.toBe(
+      IdempotencyService.fingerprint('members.add', { a: 1 }),
+    );
   });
 });

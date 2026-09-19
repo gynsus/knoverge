@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   AddMemberRequest,
   MembersResponse,
@@ -97,8 +99,17 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
       const result = await services.idempotency.run(
         actor.context,
         idempotencyKey(request),
-        // The password is part of the request but never of the stored response.
-        { ...request.body, initial_password: undefined },
+        'members.add',
+        // The password is part of the request but never of the stored
+        // response, so only its digest goes into the fingerprint. Dropping it
+        // would make a retry that corrects the password return the first
+        // result, leaving the administrator with a password that is not live.
+        {
+          ...request.body,
+          initial_password: request.body.initial_password
+            ? createHash('sha256').update(request.body.initial_password).digest('hex')
+            : undefined,
+        },
         async () => {
           await services.members.add(actor.context, actor.standing, {
             email: request.body.email,

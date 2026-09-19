@@ -103,6 +103,7 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       const replayable = await services.idempotency.run(
         actor.context,
         idempotencyKey(request),
+        'taxonomy.create',
         body,
         async () => {
           const result = await services.taxonomy.create(actor.context, {
