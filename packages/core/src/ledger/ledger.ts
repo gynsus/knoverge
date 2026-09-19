@@ -104,7 +104,13 @@ export class EventLedger {
           return { ok: false, count, brokenAt: event.sequence, reason: 'previous hash mismatch' };
         }
         const { eventHash, ...rest } = event;
-        const recomputed = computeEventHash(this.key, event.prevEventHash, hashable(rest));
+        // A row edited to name a version this build does not implement is a
+        // broken ledger, which is what verification exists to report.
+        const hasher = HASHERS[rest.hashVersion];
+        if (!hasher) {
+          return { ok: false, count, brokenAt: event.sequence, reason: 'unknown hash version' };
+        }
+        const recomputed = computeEventHash(this.key, event.prevEventHash, hasher(rest));
         if (recomputed !== eventHash) {
           return { ok: false, count, brokenAt: event.sequence, reason: 'event hash mismatch' };
         }
@@ -120,6 +126,11 @@ export class EventLedger {
 
 /**
  * The exact field set the hash covers, in one place.
+ *
+ * Every hasher must emit its own version as `v`. That is what binds the
+ * hash_version column: a row edited to name another implemented version selects
+ * a hasher that writes a different `v`, so the recomputed hash no longer
+ * matches. A hasher that left `v` out would make the column free to edit.
  *
  * It is an explicit list rather than a spread of the row: a migration that adds
  * a column must not silently change the hash of every event ever written, which

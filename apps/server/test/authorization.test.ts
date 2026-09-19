@@ -672,3 +672,75 @@ describe('authority is handed out, never invented', () => {
     expect(after.statusCode, after.body).toBe(200);
   });
 });
+
+describe('a refused caller cannot flood the ledger', () => {
+  const countDenials = async () => {
+    let after = 0;
+    let denials = 0;
+    for (;;) {
+      const page = await services.repositories.events.listAfter(workspaceId, after, 500);
+      if (page.length === 0) return denials;
+      for (const event of page) {
+        if (event.eventType === 'command.denied') denials += 1;
+        after = event.sequence;
+      }
+    }
+  };
+
+  it('records the same refusal once, however often it is repeated', async () => {
+    const created = AgentResponse.parse(
+      (await owner.post('/v1/admin/agents.create', { name: 'Persistent' })).json(),
+    ).agent;
+    const issued = IssueCredentialResponse.parse(
+      (await owner.post('/v1/admin/agents.credentials.issue', { agent_id: created.id })).json(),
+    );
+
+    const before = await countDenials();
+    for (let i = 0; i < 12; i += 1) {
+      const res = await asAgent(issued.token, { method: 'GET', url: '/v1/admin/agents.list' });
+      expect(res.statusCode).toBe(403);
+    }
+    // Refusal still works every time; only the record of it is not repeated.
+    expect((await countDenials()) - before).toBe(1);
+  });
+});
+
+describe('every route has a budget', () => {
+  let limited: FastifyInstance;
+
+  beforeAll(async () => {
+    limited = await buildApp({
+      version: 'test',
+      probes: { database: async () => ok, dataDir: async () => ok },
+      services,
+      security: { sessionSecret: '9c'.repeat(32), cookieSecure: false },
+      rateLimit: { max: 3, timeWindow: '1 minute' },
+    });
+  });
+
+  afterAll(async () => {
+    await limited?.close();
+  });
+
+  const spend = async (url: string) => {
+    const codes: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      codes.push((await limited.inject({ method: 'GET', url })).statusCode);
+    }
+    return codes;
+  };
+
+  it('limits liveness, the generated specification and unmatched paths', async () => {
+    // Each of these used to be registered before the limiter, or to match no
+    // route at all, and so had no budget of any size.
+    expect(await spend('/health/live')).toContain(429);
+    expect(await spend('/v1/openapi.json')).toContain(429);
+    expect(await spend('/no/such/path')).toContain(429);
+  });
+
+  it('gives readiness a budget of its own, above the shared one', async () => {
+    const codes = await spend('/health/ready');
+    expect(codes).not.toContain(429);
+    expect(new Set(codes)).toEqual(new Set([200]));
+  });
+});

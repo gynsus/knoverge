@@ -50,14 +50,20 @@ export class IdempotencyService {
     this.ttlMs = options.ttlMs ?? IDEMPOTENCY_TTL_MS;
   }
 
-  /** Stable fingerprint of a request body, so a replay can be told from a reuse. */
-  static fingerprint(request: unknown): string {
-    return `sha256:${createHash('sha256').update(canonicalJson(request)).digest('hex')}`;
+  /**
+   * Stable fingerprint of a call, so a replay can be told from a reuse. The
+   * operation is part of it: two endpoints whose bodies happen to canonicalise
+   * the same must not replay each other's stored response.
+   */
+  static fingerprint(operation: string, request: unknown): string {
+    const payload = canonicalJson({ op: operation, request });
+    return `sha256:${createHash('sha256').update(payload).digest('hex')}`;
   }
 
   async run<T extends Record<string, unknown>>(
     actor: ActorContext,
     key: string | undefined,
+    operation: string,
     request: unknown,
     fn: () => Promise<T>,
   ): Promise<IdempotentResult<T>> {
@@ -70,7 +76,7 @@ export class IdempotencyService {
         'idempotency key must be 8 to 200 characters of letters, digits, dot, dash, colon or underscore',
       );
     }
-    const fingerprint = IdempotencyService.fingerprint(request);
+    const fingerprint = IdempotencyService.fingerprint(operation, request);
     const now = this.clock.now();
     const existing = await this.o.records.find(actor.workspaceId, actor.actorId, key);
     if (existing && existing.expiresAt > now) {

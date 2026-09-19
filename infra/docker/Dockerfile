@@ -33,6 +33,9 @@ USER node
 WORKDIR /app/server
 VOLUME ["/data"]
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD wget -qO- "http://127.0.0.1:${KNOVERGE_PORT}/health/live" || exit 1
+# Readiness, not liveness: liveness answers as long as the process is up, so a
+# container that cannot reach its database would still be reported healthy and
+# an orchestrator would send it traffic. The start period covers migrations.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD wget -qO- "http://127.0.0.1:${KNOVERGE_PORT}/health/ready" || exit 1
 CMD ["node", "dist/index.js"]

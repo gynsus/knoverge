@@ -76,6 +76,7 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
       const result = await services.idempotency.run(
         actor.context,
         idempotencyKey(request),
+        'agents.create',
         request.body,
         async () => {
           const agent = await services.agents.create(actor.context, actor.standing, {

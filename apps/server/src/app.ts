@@ -60,6 +60,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     genReqId: (req: { headers: Record<string, string | string[] | undefined> }) =>
       resolveRequestId(req.headers['x-request-id']),
   };
+  // Whether the rate-limit plugin is present, which decides if routes and the
+  // not-found handler can ask it for a budget.
+  let limited = false;
   const app = options.loggerInstance
     ? Fastify({ ...common, loggerInstance: options.loggerInstance })
     : Fastify({ ...common, logger: false });
@@ -67,39 +70,17 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.setSerializerCompiler(serializerCompiler);
   registerErrorHandler(app);
 
-  app.get('/health/live', async () => ({ status: 'ok' as const }));
-
-  app.get('/health/ready', async (_request, reply) => {
-    const [database, dataDir, migrations, jobs] = await Promise.all([
-      options.probes.database(),
-      options.probes.dataDir(),
-      options.probes.migrations?.(),
-      options.probes.jobs?.(),
-    ]);
-    const checks: ReadyResponse['checks'] = {
-      database,
-      data_dir: dataDir,
-      ...(migrations ? { migrations } : {}),
-      ...(jobs ? { jobs } : {}),
-    };
-    const healthy = Object.values(checks).every((c) => c?.status === 'ok');
-    const body: ReadyResponse = {
-      status: healthy ? 'ok' : 'degraded',
-      version: options.version,
-      checks,
-    };
-    reply.code(healthy ? 200 : 503);
-    return body;
-  });
-
   if (options.services && options.security) {
     await registerSecurity(app, options.security);
-    await registerOpenApi(app, options.version);
     registerActorDecorators(app);
     registerAuthContext(app, options.services);
     registerAgentContext(app, options.services);
-    // After the context hooks, so the limiter can key on the resolved caller.
+    // After the context hooks so the limiter keys on the resolved caller, and
+    // before every route: the plugin gives a budget to each route as it is
+    // declared, so anything registered earlier would have none at all.
     await registerRateLimits(app, options.rateLimit ?? {});
+    limited = true;
+    await registerOpenApi(app, options.version);
     registerRequestLogging(app);
     registerAuthRoutes(app, {
       services: options.services,
@@ -110,6 +91,38 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerAdminWorkspaceRoutes(app, options.services);
     registerTaxonomyRoutes(app, options.services);
   }
+
+  app.get('/health/live', async () => ({ status: 'ok' as const }));
+
+  // Readiness runs every probe, so it is the one unauthenticated endpoint worth
+  // hitting repeatedly. A budget of its own keeps that away from the database
+  // while staying far above the rate any orchestrator polls at.
+  app.get(
+    '/health/ready',
+    limited ? { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } } : {},
+    async (_request, reply) => {
+      const [database, dataDir, migrations, jobs] = await Promise.all([
+        options.probes.database(),
+        options.probes.dataDir(),
+        options.probes.migrations?.(),
+        options.probes.jobs?.(),
+      ]);
+      const checks: ReadyResponse['checks'] = {
+        database,
+        data_dir: dataDir,
+        ...(migrations ? { migrations } : {}),
+        ...(jobs ? { jobs } : {}),
+      };
+      const healthy = Object.values(checks).every((c) => c?.status === 'ok');
+      const body: ReadyResponse = {
+        status: healthy ? 'ok' : 'degraded',
+        version: options.version,
+        checks,
+      };
+      reply.code(healthy ? 200 : 503);
+      return body;
+    },
+  );
 
   if (options.webDist) {
     await app.register(fastifyStatic, {
@@ -129,7 +142,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   }
 
   const webDist = options.webDist;
-  app.setNotFoundHandler((request, reply) => {
+  // An unmatched path reaches no route, so no per-route budget ever applied to
+  // it, and the single-page fallback reads index.html from disk on every hit.
+  app.setNotFoundHandler(limited ? { preHandler: app.rateLimit() } : {}, (request, reply) => {
     const path = request.url.split('?')[0] ?? request.url;
     const isApi = API_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
     if (webDist && request.method === 'GET' && !isApi) {

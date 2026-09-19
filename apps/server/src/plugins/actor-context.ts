@@ -82,9 +82,14 @@ export async function resolveWorkspaceActor(
         actorId: agent.actorId,
         actorType: 'agent',
         agentId: agent.id,
-        // An agent's session is the client's own conversation id, when it sends one.
-        ...(sanitise(request.headers['x-knoverge-session-id'], 128)
-          ? { sessionId: sanitise(request.headers['x-knoverge-session-id'], 128) as string }
+        // An agent's session is the client's own conversation id, when it
+        // sends one. It is namespaced because the caller chooses it: without
+        // the prefix an agent could stamp its events with a person's session id
+        // and have the audit trail read as if that person had acted.
+        ...(sanitise(request.headers['x-knoverge-session-id'], 124)
+          ? {
+              sessionId: `ext:${sanitise(request.headers['x-knoverge-session-id'], 124) as string}`,
+            }
           : {}),
         ...meta,
       },

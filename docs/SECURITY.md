@@ -208,6 +208,8 @@ The `trusted` tier grants the capability for direct writes; an actual direct wri
 
 Every non-denied policy decision is recorded on the proposal and in its event. Denied attempts create no proposal and are recorded as `command.denied` events with the actor, action, scope and reason.
 
+The same refusal by the same actor is recorded once a minute rather than once a request. The ledger is append-only and nothing prunes it, so a caller looping on an endpoint it may not use would otherwise write without limit and hold the workspace's ledger lock ahead of every real write. The first refusal is the fact worth keeping; the repetitions are that same fact again.
+
 ### Granting permissions
 
 `policy.manage` allows an actor to administer grants, not to acquire privileges:
@@ -240,6 +242,14 @@ A membership role and an agent's trust tier each stand for a set of actions, so 
 A permission is checked against the object the request names, not against the request alone. Every taxonomy mutation is checked against the category it changes, and a move against both the category and its destination, so a branch-scoped grant covers exactly that branch. A check with no object would silently ignore every scoped grant: a deny would not restrict, and an allow would refuse everything.
 
 Creating a root category belongs to no branch, which no category-scoped grant covers.
+
+### Who chooses the provenance on an event
+
+A person's `session_id` is the identifier of their real session, never a header: a caller must not be able to choose how its own actions are attributed.
+
+An agent has no such session, so it may name its client's conversation with `X-Knoverge-Session-Id`. That value is recorded with an `ext:` prefix, because the agent chose it. Without the prefix an agent could stamp its events with a person's session identifier, and anything correlating the audit trail by session would read the agent's actions as that person's. The actor and agent identifiers on the event are resolved from the credential and stay truthful either way.
+
+`X-Request-Id` is likewise the caller's own, so two callers can deliberately share one. It groups a call with its retries; it does not identify anybody.
 
 ### Command line access
 
@@ -282,6 +292,12 @@ Accidentally committed secrets are removed with the purge procedure (later miles
 Per-actor rate limits are required for remote deployments.
 
 Every route has a per-actor budget, keyed on the agent or the signed-in user and falling back to the address for anonymous callers. Several agents behind one reverse proxy therefore get separate budgets, and one noisy caller cannot spend everyone else's.
+
+The limiter gives each route its budget as the route is declared, so it is registered before any route exists and after the authentication hooks, which is what lets it key on the resolved caller rather than the address. Paths that match no route reach the not-found handler, which asks for a budget of its own: the single-page fallback reads a file from disk on every hit.
+
+Readiness has a separate, tighter budget. It is unauthenticated and runs every probe, including the database, so it is the one endpoint where repeated calls cost more than the reply.
+
+The limiter runs after authentication, so a request that ends in a refusal has already paid one indexed lookup. Tokens are compared by digest rather than by a key derivation function, so that lookup is a query, not work an attacker can amplify.
 
 Stricter per-route limits apply to authentication failures, and to proposal writes and sync batches when they arrive.
 
