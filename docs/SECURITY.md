@@ -201,6 +201,10 @@ The `trusted` tier grants the capability for direct writes; an actual direct wri
 
 Every non-denied policy decision is recorded on the proposal and in its event. Denied attempts create no proposal and are recorded as `command.denied` events with the actor, action, scope and reason.
 
+### Command line access
+
+`knoverge` commands run on the host with the database credentials and act as the workspace's system actor. They are not subject to permission grants: an operator with shell access on the server already controls the installation. Their changes are recorded in the ledger like any other.
+
 ## 9a. Cross-site request forgery
 
 CSRF protection applies to cookie-authenticated browser requests. A request authenticated with a bearer token carries no ambient authority and is not forgeable this way, so agents are not asked for a token they cannot obtain.

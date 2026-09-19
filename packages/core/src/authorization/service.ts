@@ -60,7 +60,14 @@ export class AuthorizationService {
     this.o = options;
   }
 
-  /** Builds an ancestor lookup from the workspace's category paths. */
+  /**
+   * Builds an ancestor lookup from the workspace's category paths.
+   *
+   * This reads the workspace's categories once per call. Taxonomies are tens to
+   * hundreds of rows, so the query is cheap; if it ever stops being cheap, cache
+   * it by taxonomy version rather than by time, because a stale ancestor map
+   * would decide permissions from an outdated tree.
+   */
   async ancestorsOf(workspaceId: WorkspaceId): Promise<CategoryAncestors> {
     const categories = await this.o.categories.list(workspaceId, { includeArchived: true });
     const byPath = new Map(categories.map((c) => [c.path, c.id as string]));
