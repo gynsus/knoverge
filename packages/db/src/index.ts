@@ -13,6 +13,7 @@ export {
   type MigrationStatus,
   type RunMigrationsResult,
 } from './migrate.ts';
+export { createAgentRepository, createCredentialRepository } from './repositories/agents.ts';
 export { createEventRepository } from './repositories/events.ts';
 export { createRepositories, type Repositories } from './repositories/index.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
