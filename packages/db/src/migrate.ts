@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 
 import type { Database } from './client.ts';
+import { LOCK_MIGRATIONS } from './locks.ts';
 
 export const MIGRATIONS_TABLE = '__drizzle_migrations';
 export const MIGRATIONS_SCHEMA = 'drizzle';
@@ -68,19 +69,37 @@ export interface RunMigrationsResult {
 }
 
 /**
- * Applies pending migrations. Safe to call concurrently across processes: Drizzle
- * serialises through the migrations table inside a transaction.
+ * Applies pending migrations.
+ *
+ * Safe to call concurrently across processes. Nothing in the migration runner
+ * itself serialises two processes that both find the same migration pending, so
+ * this holds an advisory lock for the whole run: the second process waits and
+ * then finds nothing left to apply. That is what lets a `web` and a `worker`
+ * container start together without coordinating.
+ *
+ * The lock is held on a connection of its own, so the pool needs at least two.
  */
 export async function runMigrations(
   db: Database,
   migrationsFolder: string,
 ): Promise<RunMigrationsResult> {
-  const before = await getMigrationStatus(db, migrationsFolder);
-  await migrate(db, {
-    migrationsFolder,
-    migrationsSchema: MIGRATIONS_SCHEMA,
-    migrationsTable: MIGRATIONS_TABLE,
-  });
-  const after = await getMigrationStatus(db, migrationsFolder);
-  return { before, after };
+  const gate = await db.$client.connect();
+  try {
+    await gate.query('BEGIN');
+    await gate.query('SELECT pg_advisory_xact_lock($1, $2)', [LOCK_MIGRATIONS, 0]);
+    const before = await getMigrationStatus(db, migrationsFolder);
+    await migrate(db, {
+      migrationsFolder,
+      migrationsSchema: MIGRATIONS_SCHEMA,
+      migrationsTable: MIGRATIONS_TABLE,
+    });
+    const after = await getMigrationStatus(db, migrationsFolder);
+    await gate.query('COMMIT');
+    return { before, after };
+  } catch (error) {
+    await gate.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    gate.release();
+  }
 }

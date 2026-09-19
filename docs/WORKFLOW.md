@@ -18,7 +18,7 @@ Temporary files, scratch scripts and local experiments are never committed.
 
 `main` is protected on GitHub: pull requests are required, force pushes and deletions are blocked, linear history is enforced, and the rules apply to administrators as well.
 
-As soon as CI exists (Milestone 0), the `ci` workflow is added to the branch protection as a required status check. Until then the protection has no required checks; this is a known gap, not a policy.
+Both CI jobs, `lint, typecheck, test, build` and `docker image`, are required status checks, and the branch must be up to date with `main` before a merge.
 
 Before making any change:
 
@@ -197,7 +197,9 @@ Agent-facing contracts, error codes, code, comments and technical documentation 
 
 ## 12. Testing requirements
 
-A feature is not complete without tests. Add the appropriate combination of unit tests, PostgreSQL integration tests, Git-store tests, HTTP integration tests, MCP integration tests and Playwright tests for critical UI workflows.
+A feature is not complete without tests. Add the appropriate combination of unit tests, PostgreSQL integration tests, Git-store tests, HTTP integration tests and MCP integration tests.
+
+End-to-end browser tests are planned but have no harness yet, so no change is held up waiting for one. Until then a user interface change is covered by component tests and by the HTTP integration tests behind it.
 
 Test failures must be fixed, not bypassed. Do not weaken or remove an existing test merely to make a change pass unless the expected behaviour itself intentionally changed. If expected behaviour changes, update the specification and explain why.
 

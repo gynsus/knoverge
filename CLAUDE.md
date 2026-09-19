@@ -221,13 +221,13 @@ Prefer native `fetch` and standard platform APIs when practical.
 
 Exact versions are chosen and pinned in Milestone 0 and kept current through automated dependency updates. See `docs/adr/0006-implementation-stack.md`.
 
-## Target workspace structure
+## Workspace structure
 
 ```text
 apps/
-  server/
-  web/
-  cli/
+  server/   HTTP API, the MCP endpoint and the built web interface, one process
+  web/      React single-page application
+  cli/      knoverge command line
 
 packages/
   auth/
@@ -244,8 +244,9 @@ infra/
 
 docs/
   adr/
-  i18n/
 ```
+
+One deployable process serves the API, the MCP endpoint and the web interface; ADR 0005 records why, and `docs/CODEBASE.md` describes what lives where. There is no separate `apps/api` or `apps/mcp`.
 
 ## Package responsibilities
 
