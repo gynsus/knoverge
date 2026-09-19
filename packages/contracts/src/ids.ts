@@ -1,0 +1,51 @@
+import { z } from 'zod';
+
+/**
+ * Object id prefixes (DATA_MODEL.md section 0). Ids are prefixed ULIDs.
+ */
+export const ID_PREFIXES = {
+  workspace: 'ws',
+  user: 'usr',
+  actor: 'act',
+  agent: 'ag',
+  credential: 'cred',
+  session: 'sess',
+  category: 'cat',
+  knowledgeItem: 'kn',
+  revision: 'rev',
+  sourceReference: 'src',
+  relation: 'rel',
+  proposal: 'prop',
+  event: 'evt',
+  operation: 'op',
+  syncSession: 'sync',
+  syncCandidate: 'cand',
+  attachment: 'att',
+  webhook: 'hook',
+  policyRule: 'rule',
+  searchChunk: 'chunk',
+} as const;
+
+export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
+
+const ULID = '[0-9A-HJKMNP-TV-Z]{26}';
+
+export function idSchema<P extends IdPrefix>(prefix: P) {
+  return z
+    .string()
+    .regex(new RegExp(`^${prefix}_${ULID}$`), `expected an id with prefix ${prefix}_`)
+    .brand<`Id<${P}>`>();
+}
+
+export const WorkspaceId = idSchema('ws');
+export type WorkspaceId = z.infer<typeof WorkspaceId>;
+export const UserId = idSchema('usr');
+export type UserId = z.infer<typeof UserId>;
+export const ActorId = idSchema('act');
+export type ActorId = z.infer<typeof ActorId>;
+export const AgentId = idSchema('ag');
+export type AgentId = z.infer<typeof AgentId>;
+export const SessionId = idSchema('sess');
+export type SessionId = z.infer<typeof SessionId>;
+export const EventId = idSchema('evt');
+export type EventId = z.infer<typeof EventId>;
