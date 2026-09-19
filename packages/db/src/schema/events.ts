@@ -10,6 +10,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 
+import { actors } from './actors.ts';
 import { id, json, timestampTz } from './common.ts';
 import { workspaces } from './workspaces.ts';
 
@@ -28,7 +29,9 @@ export const events = pgTable(
     /** Which field set event_hash covers, so old rows keep verifying. */
     hashVersion: integer('hash_version').notNull().default(1),
     eventType: varchar('event_type', { length: 64 }).notNull(),
-    actorId: id('actor_id').notNull(),
+    actorId: id('actor_id')
+      .notNull()
+      .references(() => actors.id),
     agentId: id('agent_id'),
     requestId: varchar('request_id', { length: 128 }).notNull(),
     sessionId: varchar('session_id', { length: 128 }),

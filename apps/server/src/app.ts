@@ -105,7 +105,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       schema: { response: { 200: ReadyResponse, 503: ReadyResponse } },
       ...(limited ? { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } } : {}),
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const [database, dataDir, migrations, jobs] = await Promise.all([
         options.probes.database(),
         options.probes.dataDir(),
@@ -119,6 +119,15 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
         ...(jobs ? { jobs } : {}),
       };
       const healthy = Object.values(checks).every((c) => c?.status === 'ok');
+      // The reason a probe failed can name a host, a user or a missing
+      // migration. Readiness is unauthenticated, so an anonymous caller learns
+      // only that it is degraded. `undefined` means no authentication is wired
+      // at all, which is a development or test harness, and keeps the detail.
+      if (request.humanAuth === null) {
+        for (const check of Object.values(checks)) {
+          if (check && 'error' in check) delete (check as { error?: string }).error;
+        }
+      }
       const body: ReadyResponse = {
         status: healthy ? 'ok' : 'degraded',
         version: options.version,

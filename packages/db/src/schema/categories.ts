@@ -1,7 +1,17 @@
 import { sql } from 'drizzle-orm';
-import { bigint, index, jsonb, pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import {
+  bigint,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  type AnyPgColumn,
+  uniqueIndex,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 import { id, timestampTz } from './common.ts';
+import { actors } from './actors.ts';
 import { workspaces } from './workspaces.ts';
 
 export const categories = pgTable(
@@ -11,7 +21,9 @@ export const categories = pgTable(
     workspaceId: id('workspace_id')
       .notNull()
       .references(() => workspaces.id),
-    parentId: id('parent_id'),
+    // Self-reference: declared with a callback because the table is still
+    // being defined at this point.
+    parentId: id('parent_id').references((): AnyPgColumn => categories.id),
     slug: varchar('slug', { length: 64 }).notNull(),
     /** Materialised chain of slugs, for example projects/pixel-brisbane/architecture. */
     path: varchar('path', { length: 1024 }).notNull(),
@@ -27,7 +39,9 @@ export const categories = pgTable(
       .default(sql`'[]'::jsonb`),
     status: varchar('status', { length: 16 }).notNull().default('active'),
     mergedIntoCategoryId: id('merged_into_category_id'),
-    createdByActorId: id('created_by_actor_id').notNull(),
+    createdByActorId: id('created_by_actor_id')
+      .notNull()
+      .references(() => actors.id),
     approvedByActorId: id('approved_by_actor_id'),
     createdAt: timestampTz('created_at').notNull(),
     updatedAt: timestampTz('updated_at').notNull(),

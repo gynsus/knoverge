@@ -124,6 +124,37 @@ export function createCategoryRepository(db: Database): CategoryRepository {
         .returning({ id: categories.id });
       return rows.map((r) => r.id as CategoryId);
     },
+    async rewriteDescendantPaths(
+      tx: Tx,
+      workspaceId: WorkspaceId,
+      oldPath: string,
+      newPath: string,
+      at: Date,
+    ) {
+      try {
+        const rows = await asTx(tx)
+          .update(categories)
+          .set({
+            path: sql`${newPath}::text || substring(${categories.path} from ${oldPath.length + 1}::int)`,
+            updatedAt: at,
+          })
+          .where(
+            and(
+              eq(categories.workspaceId, workspaceId),
+              sql`${categories.path} LIKE ${`${oldPath}/%`}`,
+            ),
+          )
+          .returning({ id: categories.id });
+        return rows.map((r) => r.id as CategoryId);
+      } catch (err) {
+        rethrowUniqueViolation(
+          err,
+          `a category already exists at ${newPath}`,
+          { path: newPath },
+          'CATEGORY_CONFLICT',
+        );
+      }
+    },
     async rewritePaths(
       tx: Tx,
       workspaceId: WorkspaceId,

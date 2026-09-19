@@ -19,7 +19,9 @@ export const agents = pgTable(
     clientType: varchar('client_type', { length: 64 }),
     trustTier: varchar('trust_tier', { length: 16 }).notNull().default('propose'),
     status: varchar('status', { length: 16 }).notNull().default('active'),
-    createdByActorId: id('created_by_actor_id').notNull(),
+    createdByActorId: id('created_by_actor_id')
+      .notNull()
+      .references(() => actors.id),
     createdAt: timestampTz('created_at').notNull(),
     lastSeenAt: timestampTz('last_seen_at'),
     metadata: json('metadata').notNull().default({}),
@@ -40,7 +42,9 @@ export const agentCredentials = pgTable(
     tokenHash: varchar('token_hash', { length: 128 }).notNull().unique(),
     tokenPrefix: varchar('token_prefix', { length: 32 }).notNull(),
     label: varchar('label', { length: 120 }),
-    createdByActorId: id('created_by_actor_id').notNull(),
+    createdByActorId: id('created_by_actor_id')
+      .notNull()
+      .references(() => actors.id),
     createdAt: timestampTz('created_at').notNull(),
     expiresAt: timestampTz('expires_at'),
     revokedAt: timestampTz('revoked_at'),

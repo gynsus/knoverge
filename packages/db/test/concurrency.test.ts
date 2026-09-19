@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { ActorId, CategoryId, UserId, WorkspaceId } from '@knoverge/contracts';
+import { sql } from 'drizzle-orm';
+
 import type { ActorContext } from '@knoverge/core';
 import {
   AuthorizationService,
@@ -281,5 +283,27 @@ describe('concurrent membership changes', () => {
       // Both removals used to read two owners and each remove one.
       expect(await repositories.memberships.countByRole(ws.id, 'owner')).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+describe('the database refuses what the domain would never write', () => {
+  it('refuses a path that does not end in the slug, and a status nothing produces', async () => {
+    const category = (
+      await taxonomy.create(context('constraint-check'), { name: 'Constraint check' })
+    ).category;
+    // The path is the parent's path plus this slug. A lost rewrite used to
+    // leave the two disagreeing, and nothing at the database level noticed.
+    await expect(
+      handle.db.execute(sql`UPDATE categories SET path = 'not-the-slug' WHERE id = ${category.id}`),
+    ).rejects.toThrow();
+    await expect(
+      handle.db.execute(sql`UPDATE categories SET status = 'nonsense' WHERE id = ${category.id}`),
+    ).rejects.toThrow();
+    // A parent that is not a category is refused too.
+    await expect(
+      handle.db.execute(
+        sql`UPDATE categories SET parent_id = 'cat_01M2XXXXXXXXXXXXXXXXXXXXXX' WHERE id = ${category.id}`,
+      ),
+    ).rejects.toThrow();
   });
 });
