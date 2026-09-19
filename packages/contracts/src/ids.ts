@@ -12,6 +12,7 @@ export const ID_PREFIXES = {
   credential: 'cred',
   session: 'sess',
   category: 'cat',
+  categoryAlias: 'alias',
   knowledgeItem: 'kn',
   revision: 'rev',
   sourceReference: 'src',
@@ -50,3 +51,5 @@ export const SessionId = idSchema('sess');
 export type SessionId = z.infer<typeof SessionId>;
 export const EventId = idSchema('evt');
 export type EventId = z.infer<typeof EventId>;
+export const CategoryId = idSchema('cat');
+export type CategoryId = z.infer<typeof CategoryId>;
