@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import { parseLedgerKey, type LedgerKey } from '@knoverge/core';
 import { z } from 'zod';
 
 const EnvSchema = z.object({
@@ -14,6 +15,7 @@ const EnvSchema = z.object({
       'KNOVERGE_DATABASE_URL must be a postgres:// URL',
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
+  KNOVERGE_LEDGER_KEY: z.string().min(1, 'KNOVERGE_LEDGER_KEY is required'),
   KNOVERGE_WEB_DIST: z.string().min(1).optional(),
   KNOVERGE_AUTO_MIGRATE: z
     .enum(['true', 'false'])
@@ -33,6 +35,8 @@ export interface Config {
   role: 'all' | 'web' | 'worker';
   databaseUrl: string;
   dataDir: string;
+  /** HMAC key of the event ledger (ADR 0007). */
+  ledgerKey: LedgerKey;
   /** Directory with the built web bundle; undefined disables static serving. */
   webDist: string | undefined;
   /** Apply pending migrations on start. Disable when an operator runs `knoverge db migrate`. */
@@ -62,12 +66,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(`Invalid configuration:\n${problems.join('\n')}`);
   }
   const e = result.data;
+  let ledgerKey: LedgerKey;
+  try {
+    ledgerKey = parseLedgerKey(e.KNOVERGE_LEDGER_KEY);
+  } catch (err) {
+    throw new ConfigError(
+      `Invalid configuration:\nKNOVERGE_LEDGER_KEY: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
   return {
     port: e.KNOVERGE_PORT,
     host: e.KNOVERGE_HOST,
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
+    ledgerKey,
     webDist: e.KNOVERGE_WEB_DIST === undefined ? undefined : resolve(e.KNOVERGE_WEB_DIST),
     autoMigrate: e.KNOVERGE_AUTO_MIGRATE,
     logLevel: e.KNOVERGE_LOG_LEVEL,

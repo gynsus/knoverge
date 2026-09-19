@@ -65,6 +65,25 @@ describe('WorkspaceService.create', () => {
     expect(await createWorkspaceRepository(handle.db).list()).toHaveLength(1);
   });
 
+  it('turns a slug race into a validation error', async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: 4 }, (_, i) =>
+        service.create({ slug: 'raced', name: `Race ${i}`, requestId: `race-${i}` }),
+      ),
+    );
+    const fulfilled = results.filter((r) => r.status === 'fulfilled');
+    const rejected = results.filter((r) => r.status === 'rejected');
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(3);
+    for (const r of rejected) {
+      expect((r as PromiseRejectedResult).reason).toMatchObject({ code: 'VALIDATION_ERROR' });
+    }
+    expect(
+      (await ledger.verify((fulfilled[0] as PromiseFulfilledResult<{ id: WorkspaceId }>).value.id))
+        .count,
+    ).toBe(1);
+  });
+
   it('validates slug and name', async () => {
     await expect(
       service.create({ slug: 'Bad Slug', name: 'x', requestId: 'r' }),
