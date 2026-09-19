@@ -54,7 +54,9 @@ Services take a `Clock` port (default `systemClock`) so tests control time.
 
 `packages/policy` holds pure evaluation: scope matching, permission grants (deny wins) and policy rules (first match by priority, ties broken by id). It has no storage and no side effects, which keeps the rules unit-testable in isolation.
 
-`core` wires it to storage in `AuthorizationService`: it loads the caller's stored grants, adds the baseline implied by their role or trust tier, resolves category ancestors from the materialised paths, and either returns a decision or throws `FORBIDDEN` and records a `command.denied` event. Adapters call `requirePermission` and never evaluate rules themselves.
+`core` wires it to storage in `AuthorizationService`: it loads the caller's stored grants, adds the baseline implied by their role or trust tier for the actions the grants do not already cover, resolves category ancestors from the materialised paths, and either returns a decision or throws `FORBIDDEN` and records a `command.denied` event.
+
+Adapters call `requirePermission` for an operation on one thing, and `requireListPermission` plus `authorization.filter` for an endpoint that lists things. Checking a listing against one empty target would refuse anyone whose grant covers a single branch.
 
 ## 4b. Retry safety
 

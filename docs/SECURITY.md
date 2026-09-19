@@ -143,7 +143,13 @@ trusted     propose permissions plus knowledge.write; direct writes still
             happen only where an explicit policy rule says allow_direct
 ```
 
-A trust tier is not stored as grants: it is the baseline a request is evaluated against. Stored grants add to that baseline, and an explicit `deny` beats everything, including a role or tier, so a narrow deny can carve an exception out of a broad allow. Evaluation order is: deny grant, allow grant, baseline.
+A trust tier is not stored as grants: it is the baseline a request is evaluated against. Three rules decide the outcome:
+
+- an explicit `deny` beats everything, including a role or tier, so a narrow deny carves an exception out of a broad allow;
+- an explicit `allow` for an action **replaces** the baseline for that action rather than adding to it, so granting one branch restricts the actor to that branch. Without this a tier that already allows the action everywhere would make a scoped grant meaningless;
+- otherwise the baseline decides.
+
+A listing endpoint asks whether the actor holds the action anywhere, then filters its results to the scopes that cover them, so a branch-scoped reader sees its branch instead of being refused outright.
 
 The same applies to humans: a workspace role carries a baseline set of permissions (`viewer` reads, `reviewer` also writes and approves, `admin` also manages agents, taxonomy and policy, `owner` also administers the workspace).
 
@@ -153,7 +159,7 @@ Permissions and policy rules carry a scope selector stored by **stable category 
 
 Renaming, moving or merging a category therefore never changes who can access its items, and a new category created later under an old path never inherits an old grant.
 
-Selectors apply to reads as well. Search, index, briefing, changes and events never return items outside the actor's readable scope, and the taxonomy is filtered to readable branches.
+Selectors apply to reads as well. The taxonomy listing is filtered to readable branches today; search, index, briefing, changes and events are filtered the same way as they arrive.
 
 ## 9. Approval policy
 
