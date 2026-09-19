@@ -6,6 +6,7 @@ import { z } from 'zod';
 export const ID_PREFIXES = {
   workspace: 'ws',
   user: 'usr',
+  membership: 'mem',
   actor: 'act',
   agent: 'ag',
   credential: 'cred',
