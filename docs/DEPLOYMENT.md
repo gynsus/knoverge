@@ -138,6 +138,12 @@ docker compose exec -e KNOVERGE_BOOTSTRAP_PASSWORD='...' knoverge \
 
 Do not ship a default administrator password.
 
+## 7a. Adding people
+
+Self-hosted installations have no mail server by default, so there are no invitation emails. An administrator adds a member in the web UI under Workspace, either by the email of an existing account or by creating one with an initial password passed on out of band. The person changes it under Settings after signing in.
+
+A workspace always keeps at least one owner: the last one cannot be demoted or removed.
+
 ## 8. Creating an agent connection
 
 Admin UI:

@@ -254,3 +254,91 @@ describe('settings page', () => {
     });
   });
 });
+
+describe('workspace page', () => {
+  const WORKSPACE = {
+    id: ME.memberships[0]!.workspace_id,
+    slug: 'personal',
+    name: 'Personal',
+    description: null,
+    default_language: 'en',
+    created_at: '2026-09-19T00:00:00.000Z',
+    role: 'owner',
+  };
+  const MEMBERS = [
+    {
+      user_id: ME.user.id,
+      actor_id: 'act_1',
+      email: 'owner@example.com',
+      display_name: 'Owner',
+      role: 'owner',
+      status: 'active',
+      joined_at: '2026-09-19T00:00:00.000Z',
+      last_login_at: '2026-09-19T00:00:00.000Z',
+    },
+  ];
+
+  it('shows settings and members, and updates the workspace', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
+      'POST /v1/admin/workspace.update': () => json({ ok: true }),
+    });
+    renderApp('/workspace');
+    expect(await screen.findByDisplayValue('Personal')).toBeInTheDocument();
+    expect(screen.getByText('owner@example.com')).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText('Name'));
+    await user.type(screen.getByLabelText('Name'), 'Personal Knowledge');
+    await user.selectOptions(screen.getByLabelText('Default content language'), 'ru');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('Workspace updated');
+    expect(calls.find((c) => c.url === '/v1/admin/workspace.update')?.body).toMatchObject({
+      name: 'Personal Knowledge',
+      default_language: 'ru',
+    });
+  });
+
+  it('adds a member with an initial password', async () => {
+    const members = [...MEMBERS];
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE }),
+      'GET /v1/admin/members.list': () => json({ members }),
+      'POST /v1/admin/members.add': () => {
+        members.push({
+          ...MEMBERS[0]!,
+          user_id: 'usr_2',
+          email: 'member@example.com',
+          display_name: 'Member',
+          role: 'reviewer',
+        });
+        return json({ members });
+      },
+    });
+    renderApp('/workspace');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Email'), 'member@example.com');
+    await user.type(screen.getByLabelText('Initial password'), 'a long enough passphrase');
+    await user.click(screen.getByRole('button', { name: 'Add member' }));
+    expect(await screen.findByText('member@example.com')).toBeInTheDocument();
+    expect(calls.find((c) => c.url === '/v1/admin/members.add')?.body).toMatchObject({
+      email: 'member@example.com',
+      role: 'reviewer',
+      initial_password: 'a long enough passphrase',
+    });
+  });
+
+  it('hides member management from a member who cannot administer', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () => json({ workspace: { ...WORKSPACE, role: 'reviewer' } }),
+    });
+    renderApp('/workspace');
+    expect(await screen.findByDisplayValue('Personal')).toBeDisabled();
+    expect(screen.queryByText('Members')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+  });
+});

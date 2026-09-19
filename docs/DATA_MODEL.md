@@ -500,6 +500,7 @@ Event types recorded in the ledger:
 
 ```text
 workspace.created
+workspace.updated
 user.created
 membership.created
 membership.updated

@@ -40,7 +40,8 @@
     "taxonomy": "Taxonomy",
     "agents": "Agents",
     "policy": "Policy",
-    "settings": "Settings"
+    "settings": "Settings",
+    "workspace": "Workspace"
   },
   "fields": {
     "display_name": "Your name",
@@ -175,5 +176,28 @@
     "unknown_client": "Unknown",
     "this_session": "(this device)",
     "revoke": "Sign out"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "name": "Name",
+    "description": "Description",
+    "default_language": "Default content language",
+    "default_language_hint": "Used for knowledge items that do not state their own language.",
+    "identifier": "Identifier",
+    "save": "Save",
+    "saved": "Workspace updated.",
+    "members": "Members",
+    "person": "Person",
+    "role": "Role",
+    "last_seen": "Last signed in",
+    "never_signed_in": "Never",
+    "remove": "Remove",
+    "role_of": "Role of {{name}}",
+    "add_member": "Add a member",
+    "add": "Add member",
+    "add_member_intro": "Add an existing account by email, or create one by giving it a password to pass on.",
+    "display_name_hint": "Only used when creating a new account.",
+    "initial_password": "Initial password",
+    "initial_password_hint": "Required for a new account. Ask the person to change it after signing in."
   }
 }
