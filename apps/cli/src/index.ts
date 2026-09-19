@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 
 import pkg from '../package.json' with { type: 'json' };
+import { bootstrapCommand } from './commands/bootstrap.ts';
 import { dbCommand } from './commands/db.ts';
 import { ledgerCommand } from './commands/ledger.ts';
 import { workspaceCommand } from './commands/workspace.ts';
@@ -12,6 +13,7 @@ program
   .description('Knoverge command line.')
   .version(pkg.version, '-v, --version');
 
+program.addCommand(bootstrapCommand());
 program.addCommand(dbCommand());
 program.addCommand(workspaceCommand());
 program.addCommand(ledgerCommand());

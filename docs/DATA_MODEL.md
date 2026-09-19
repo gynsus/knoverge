@@ -11,6 +11,7 @@ All primary keys are ULIDs with a type prefix, rendered as strings:
 ```text
 ws_    workspace
 usr_   user
+mem_   workspace membership
 act_   actor
 ag_    agent
 cred_  agent credential

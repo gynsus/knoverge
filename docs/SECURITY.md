@@ -52,7 +52,9 @@ MVP:
 
 - email and password;
 - passwords hashed with argon2id;
-- opaque session token in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie; only its hash is stored;
+- opaque session token (256-bit) in the `knoverge_session` `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the base URL is https; only its SHA-256 is stored; 30-day lifetime;
+- constant-time behaviour for unknown emails (a dummy hash is verified) and no distinction between unknown email and wrong password in responses;
+- lockout after 10 failed passwords for 15 minutes, plus per-IP limits on login and bootstrap;
 - CSRF token required on state-changing browser requests;
 - session list and revocation in the UI;
 - no default administrator account; the first admin is created by `knoverge bootstrap` or a one-time bootstrap page that disables itself.
