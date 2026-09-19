@@ -229,6 +229,27 @@ describe('event ledger in PostgreSQL', () => {
     expect((await ledger.verify(ws.id)).ok).toBe(true);
   });
 
+  it('never stores a secret or a payload in an event', async () => {
+    // Checked over every event the suite has produced, not one hand-picked row.
+    // Content hashes are expected in events; credential hashes are not.
+    const secrets = await handle.db.execute<{ secret: string }>(
+      sql`SELECT token_hash AS secret FROM agent_credentials
+          UNION ALL SELECT token_hash FROM human_sessions
+          UNION ALL SELECT password_hash FROM users`,
+    );
+    const rows = await handle.db.execute<{ row: string }>(
+      sql`SELECT to_jsonb(events)::text AS row FROM events`,
+    );
+    expect(rows.rows.length).toBeGreaterThan(0);
+    const dump = rows.rows.map((r) => r.row).join('\n');
+    for (const { secret } of secrets.rows) {
+      expect(dump).not.toContain(secret);
+    }
+    expect(dump).not.toMatch(/knv_/);
+    expect(dump).not.toMatch(/\$argon2/);
+    expect(dump).not.toMatch(/"markdown"|proposed_payload/i);
+  });
+
   it('round-trips every stored column through the repository', async () => {
     const [first] = await createEventRepository(handle.db).listAfter(workspaceId, 1, 1);
     const record: EventRecord = first!;
@@ -270,6 +291,32 @@ describe('bootstrap concurrency', () => {
     });
 
     expect(await bootstrap.isRequired()).toBe(true);
+
+    // A failure after the user, workspace, actor and membership are written
+    // must undo all of them, together with the events they produced.
+    const original = repositories.memberships.insert;
+    repositories.memberships.insert = async () => {
+      throw new Error('storage failed while writing the membership');
+    };
+    try {
+      await expect(
+        bootstrap.run({
+          user: {
+            email: 'rolled@example.com',
+            password: 'a sufficiently long passphrase',
+            displayName: 'Rolled back',
+          },
+          workspace: { slug: 'rolled-back', name: 'Rolled back' },
+          requestId: 'rollback',
+        }),
+      ).rejects.toThrow(/storage failed/);
+    } finally {
+      repositories.memberships.insert = original;
+    }
+    expect(await users.count()).toBe(0);
+    expect(await repositories.workspaces.findBySlug('rolled-back')).toBeNull();
+    expect(await bootstrap.isRequired()).toBe(true);
+
     const results = await Promise.allSettled(
       Array.from({ length: 4 }, (_, i) =>
         bootstrap.run({

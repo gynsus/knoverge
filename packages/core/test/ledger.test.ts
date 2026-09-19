@@ -16,17 +16,27 @@ const otherKey = parseLedgerKey('b'.repeat(64));
 const ws = 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T3' as WorkspaceId;
 const tx = {} as Tx;
 
+/** Scoped by workspace, like the real repository, so per-workspace chains are testable. */
 class MemoryEvents implements EventRepository {
   rows: EventRecord[] = [];
-  async lockAndGetHead() {
-    const last = this.rows.at(-1);
+
+  private forWorkspace(workspaceId: WorkspaceId) {
+    return this.rows.filter((r) => r.workspaceId === workspaceId);
+  }
+
+  async lockAndGetHead(_tx: Tx, workspaceId: WorkspaceId) {
+    const last = this.forWorkspace(workspaceId).at(-1);
     return last ? { sequence: last.sequence, eventHash: last.eventHash } : null;
   }
+
   async insert(_tx: Tx, record: EventRecord) {
     this.rows.push(record);
   }
-  async listAfter(_ws: WorkspaceId, after: number, limit: number) {
-    return this.rows.filter((r) => r.sequence > after).slice(0, limit);
+
+  async listAfter(workspaceId: WorkspaceId, after: number, limit: number) {
+    return this.forWorkspace(workspaceId)
+      .filter((r) => r.sequence > after)
+      .slice(0, limit);
   }
 }
 
@@ -92,6 +102,39 @@ describe('EventLedger', () => {
     await appendThree(new EventLedger({ key: otherKey, events }));
     const result = await ledgerWith(events).verify(ws);
     expect(result).toMatchObject({ ok: false, brokenAt: 1 });
+  });
+
+  it('keeps a separate chain per workspace', async () => {
+    const events = new MemoryEvents();
+    const ledger = ledgerWith(events);
+    const other = 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T4' as WorkspaceId;
+    await appendThree(ledger);
+    await ledger.append(
+      tx,
+      other,
+      { actorId: 'act_1' as ActorId, requestId: 'req' },
+      {
+        eventType: 'workspace.created',
+        objectType: 'workspace',
+        objectId: other,
+      },
+    );
+    const first = events.rows.find((r) => r.workspaceId === other)!;
+    expect(first.sequence).toBe(1);
+    expect(first.prevEventHash).toBe(genesisHash(key));
+    await expect(ledger.verify(ws)).resolves.toEqual({ ok: true, count: 3 });
+    await expect(ledger.verify(other)).resolves.toEqual({ ok: true, count: 1 });
+  });
+
+  it('detects two events swapped in place', async () => {
+    const events = new MemoryEvents();
+    const ledger = ledgerWith(events);
+    await appendThree(ledger);
+    const [a, b] = [events.rows[1]!, events.rows[2]!];
+    // Swap the payloads but keep the sequence numbers, so only the chain can tell.
+    events.rows[1] = { ...b, sequence: a.sequence };
+    events.rows[2] = { ...a, sequence: b.sequence };
+    expect(await ledger.verify(ws)).toMatchObject({ ok: false, brokenAt: 2 });
   });
 
   it('detects a deleted event', async () => {

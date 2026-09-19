@@ -8,6 +8,7 @@ import {
   IssueCredentialResponse,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
+import { sql } from 'drizzle-orm';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -231,7 +232,7 @@ describe('credentials', () => {
     expect(await services.agents.authenticate(issued.token)).toBeNull();
   });
 
-  it('rejects an expired token', async () => {
+  it('rejects an expired token while it is still unrevoked', async () => {
     const { admin, agent } = await newAgent('Expiry test');
     const issued = IssueCredentialResponse.parse(
       (
@@ -241,11 +242,17 @@ describe('credentials', () => {
         })
       ).json(),
     );
+    expect(issued.credential.expires_at).not.toBeNull();
     expect(await services.agents.authenticate(issued.token)).not.toBeNull();
-    await services.uow.run((tx) =>
-      services.repositories.credentials.revoke(tx, issued.credential.id, new Date()),
+
+    // Move the expiry into the past; the credential stays unrevoked, so this
+    // exercises the expiry branch rather than the revocation one.
+    await services.database.db.execute(
+      sql`UPDATE agent_credentials SET expires_at = now() - interval '1 second' WHERE id = ${issued.credential.id}`,
     );
     expect(await services.agents.authenticate(issued.token)).toBeNull();
+    const stored = await services.repositories.credentials.findById(issued.credential.id);
+    expect(stored?.revokedAt).toBeNull();
   });
 
   it('revokes every credential when the agent is disabled', async () => {

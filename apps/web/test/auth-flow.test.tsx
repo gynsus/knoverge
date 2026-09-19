@@ -5,6 +5,8 @@ import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MeResponse } from '@knoverge/contracts';
+
 import { resetCsrfToken } from '../src/api/client.ts';
 import { App } from '../src/App.tsx';
 import { createI18n } from '../src/i18n.ts';
@@ -76,6 +78,12 @@ function renderApp(path = '/') {
     </I18nextProvider>,
   );
 }
+
+describe('fixtures match the contracts', () => {
+  it('parses the canned session response', () => {
+    expect(() => MeResponse.parse(ME)).not.toThrow();
+  });
+});
 
 beforeEach(() => resetCsrfToken());
 afterEach(() => vi.unstubAllGlobals());

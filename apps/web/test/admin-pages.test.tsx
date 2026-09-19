@@ -5,6 +5,14 @@ import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import {
+  AgentsResponse,
+  MembersResponse,
+  MeResponse,
+  TaxonomyListResponse,
+  WorkspaceResponse,
+} from '@knoverge/contracts';
+
 import { resetCsrfToken } from '../src/api/client.ts';
 import { App } from '../src/App.tsx';
 import { createI18n } from '../src/i18n.ts';
@@ -114,6 +122,18 @@ function renderApp(path: string) {
   );
 }
 
+// The fixtures below stand in for real responses, so they are parsed through the
+// contracts: a schema change fails these tests instead of silently passing them.
+describe('fixtures match the contracts', () => {
+  it('parses every canned response', () => {
+    expect(() => MeResponse.parse(ME)).not.toThrow();
+    expect(() => AgentsResponse.parse({ agents: [AGENT] })).not.toThrow();
+    expect(() =>
+      TaxonomyListResponse.parse({ taxonomy_version: 1, categories: [CATEGORY] }),
+    ).not.toThrow();
+  });
+});
+
 beforeEach(() => resetCsrfToken());
 afterEach(() => vi.unstubAllGlobals());
 
@@ -124,7 +144,7 @@ describe('agents page', () => {
       ...SIGNED_IN,
       'GET /v1/admin/agents.list': () => json({ agents }),
       'POST /v1/admin/agents.create': () => {
-        agents.push({ ...AGENT, id: 'ag_2', name: 'Cursor' });
+        agents.push({ ...AGENT, id: 'ag_01J8Z3M4Q9V0X7K2B5N6P8R1T4', name: 'Cursor' });
         return json({ agent: agents[1] });
       },
     });
@@ -268,7 +288,7 @@ describe('workspace page', () => {
   const MEMBERS = [
     {
       user_id: ME.user.id,
-      actor_id: 'act_1',
+      actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
       email: 'owner@example.com',
       display_name: 'Owner',
       role: 'owner',
@@ -277,6 +297,11 @@ describe('workspace page', () => {
       last_login_at: '2026-09-19T00:00:00.000Z',
     },
   ];
+
+  it('matches the contracts', () => {
+    expect(() => WorkspaceResponse.parse({ workspace: WORKSPACE })).not.toThrow();
+    expect(() => MembersResponse.parse({ members: MEMBERS })).not.toThrow();
+  });
 
   it('shows settings and members, and updates the workspace', async () => {
     const calls = mockApi({
