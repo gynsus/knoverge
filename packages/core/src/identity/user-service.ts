@@ -9,6 +9,16 @@ import type { PasswordHasher } from './ports.ts';
 import type { UserRecord, UserRepository } from './repository.ts';
 
 export const MAX_FAILED_LOGINS = 10;
+/** Local parts shorter than this are too common to treat as a password fragment. */
+const MIN_LOCAL_PART_FOR_CHECK = 4;
+
+function containsEmail(password: string, email: string): boolean {
+  const lower = password.toLowerCase();
+  if (lower.includes(email)) return true;
+  const local = email.split('@')[0] ?? '';
+  return local.length >= MIN_LOCAL_PART_FOR_CHECK && lower.includes(local);
+}
+
 export const LOCKOUT_MS = 15 * 60 * 1000;
 
 export interface UserServiceOptions {
@@ -46,7 +56,7 @@ export class UserService {
     if (!password.success) {
       throw new DomainError('VALIDATION_ERROR', 'password must be 12 to 200 characters');
     }
-    if (password.data.toLowerCase().includes(email.data.split('@')[0] ?? '\u0000')) {
+    if (containsEmail(password.data, email.data)) {
       throw new DomainError('VALIDATION_ERROR', 'password must not contain the email address');
     }
     const displayName = DisplayName.safeParse(input.displayName);
