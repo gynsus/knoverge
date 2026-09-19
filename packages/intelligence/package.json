@@ -1,0 +1,18 @@
+{
+  "name": "@knoverge/intelligence",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Optional AI provider abstraction",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "typescript": "catalog:"
+  }
+}
