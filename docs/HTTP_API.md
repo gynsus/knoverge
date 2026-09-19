@@ -86,6 +86,7 @@ Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus
 Require the corresponding workspace role or permission.
 
 ```text
+GET  /v1/taxonomy.list                      (any member with taxonomy.read)
 GET  /v1/workspace.get                      (any member)
 POST /v1/admin/workspace.update
 GET  /v1/admin/members.list

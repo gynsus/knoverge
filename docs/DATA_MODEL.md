@@ -62,6 +62,9 @@ User
 - display_name
 - locale (ui language, e.g. en, ru)
 - status: active | disabled
+- failed_login_count
+- locked_until nullable
+- password_changed_at
 - created_at
 - last_login_at
 - mfa_json nullable (reserved for TOTP)
@@ -145,6 +148,8 @@ AgentCredential
 - agent_id
 - token_hash
 - token_prefix
+- label nullable
+- created_by_actor_id
 - created_at
 - expires_at
 - revoked_at
@@ -179,6 +184,7 @@ PermissionGrant
 - action
 - scope_json (Scope selector)
 - effect: allow | deny
+- created_by_actor_id
 - created_at
 ```
 
@@ -224,6 +230,7 @@ PolicyRule
 - enabled
 - created_by_actor_id
 - created_at
+- updated_at
 ```
 
 Evaluation: first enabled rule matching subject, action and scope wins. If no rule matches:
@@ -251,7 +258,7 @@ Category
 - description
 - inclusion_guidance_json
 - exclusion_guidance_json
-- status
+- status: proposed | active | merged | archived | rejected
 - merged_into_category_id nullable
 - created_by_actor_id
 - approved_by_actor_id
@@ -265,8 +272,15 @@ Category
 CategoryAlias
 - id
 - category_id
+- workspace_id
 - alias
 - normalised_alias
+- created_at
+```
+
+An alias is unique per workspace after case folding and space collapsing, not merely per category.
+
+```text
 ```
 
 ## 13. Taxonomy version
@@ -274,8 +288,8 @@ CategoryAlias
 ```text
 TaxonomyVersion
 - workspace_id
-- version (monotonic)
-- git_commit_hash (commit that wrote taxonomy.yaml)
+- version (monotonic; unique with workspace_id)
+- git_commit_hash (commit that wrote taxonomy.yaml; filled from Milestone 2)
 - created_at
 ```
 
@@ -462,6 +476,7 @@ Event
 - id
 - workspace_id
 - sequence (per workspace, monotonic, gapless)
+- hash_version (which field set event_hash covers)
 - event_type
 - actor_id
 - agent_id nullable

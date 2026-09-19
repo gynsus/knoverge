@@ -25,7 +25,7 @@ The first draft also allowed knowledge text in event payloads, which is incompat
    `canonical_json` is RFC 8785 (JSON Canonicalization Scheme) over an explicit, versioned field list, not over whatever columns the table happens to have. Each event stores the `hash_version` it was written with, so adding a column later cannot change the hash of events already written, and a future field set is a new version that old events keep verifying against. Timestamps are RFC 3339 UTC and absent values are `null`; values that are `undefined` are dropped before hashing, so what is hashed matches what the database stores. The first event of a workspace uses `prev_event_hash = HMAC-SHA256(KNOVERGE_LEDGER_KEY, "")`.
 3. `KNOVERGE_LEDGER_KEY` is a required secret supplied through the environment. It is never stored in PostgreSQL. The integrity checker needs it to verify; backups of the key are the operator's responsibility and are documented with the other secrets.
 4. Events are inserted inside the same transaction as the domain change, holding a per-workspace advisory lock so that `sequence` and the chain cannot fork.
-5. `knoverge integrity check` verifies the chain and reports the first broken link.
+5. `knoverge ledger verify` recomputes the chain and reports the first broken link. It becomes part of the wider `knoverge integrity check` once the Git store exists.
 
 ### What the chain guarantees
 

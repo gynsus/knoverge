@@ -300,7 +300,7 @@ Search indexing must be rebuildable from canonical data.
 
 ### `packages/auth`
 
-Token parsing, identity resolution, token hashing, password hashing, session context.
+Password hashing and opaque token generation and hashing. Identity resolution and session context live in the server adapters, which own the request.
 
 ### `packages/policy`
 
