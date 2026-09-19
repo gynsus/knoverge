@@ -1,0 +1,51 @@
+name: Bug report
+description: Something behaves differently from what the documentation says.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report a security vulnerability here. Use the private form linked on the Security tab.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what the software did instead of what you expected.
+      placeholder: |
+        I ran `knoverge taxonomy list` and it printed ...
+        I expected ...
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The shortest sequence that shows the problem. A command, a request, or a few clicks.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: The image tag you ran, or the commit you built from.
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where
+      options:
+        - Web interface
+        - HTTP API
+        - Command line
+        - MCP
+        - Deployment or container
+        - Somewhere else
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error output
+      description: Paste the relevant part. Remove tokens, passwords and keys first.
+      render: text
