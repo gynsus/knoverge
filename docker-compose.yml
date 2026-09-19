@@ -29,6 +29,7 @@ services:
       KNOVERGE_ROLE: ${KNOVERGE_ROLE:-all}
       KNOVERGE_DATABASE_URL: postgres://${KNOVERGE_POSTGRES_USER:-knoverge}:${KNOVERGE_POSTGRES_PASSWORD:-knoverge}@postgres:5432/${KNOVERGE_POSTGRES_DB:-knoverge}
       KNOVERGE_DATA_DIR: /data
+      KNOVERGE_LEDGER_KEY: ${KNOVERGE_LEDGER_KEY:?Set KNOVERGE_LEDGER_KEY in .env (openssl rand -hex 32)}
       KNOVERGE_LOG_LEVEL: ${KNOVERGE_LOG_LEVEL:-info}
       KNOVERGE_TRUST_PROXY: ${KNOVERGE_TRUST_PROXY:-false}
     volumes:

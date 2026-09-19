@@ -38,7 +38,8 @@ Before implementing features, read:
 11. `docs/I18N.md`
 12. `docs/IMPLEMENTATION_PLAN.md`
 13. `docs/TESTING.md`
-14. `docs/adr/`
+14. `docs/CODEBASE.md`
+15. `docs/adr/`
 
 Architecture changes require an ADR under `docs/adr/`.
 

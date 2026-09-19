@@ -482,7 +482,7 @@ Event
 - created_at
 ```
 
-Events are append-only.
+Events are append-only. A database trigger rejects `UPDATE` and `DELETE` on the table; corrections are new events.
 
 Content rule: an event never contains knowledge text, proposal payloads, credentials or secrets. It contains ids, hashes, actor context and safe metadata (counts, decision codes, category ids, change kinds). This keeps purge compatible with the immutable chain.
 

@@ -414,4 +414,5 @@ Thank you.
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) - build sequence
 - [docs/TESTING.md](docs/TESTING.md) - required tests
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) - branching, commits, pull requests
+- [docs/CODEBASE.md](docs/CODEBASE.md) - layering, ports, transactions, ledger usage
 - [docs/adr/](docs/adr/) - architecture decision records
