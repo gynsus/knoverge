@@ -10,6 +10,8 @@ import type {
 import { EMPTY_SCOPE } from '@knoverge/policy';
 
 import type { ActorContext } from '../actor-context.ts';
+import type { ActorRepository } from '../workspace/repository.ts';
+import type { ActorStanding, AuthorizationService } from './service.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
@@ -29,9 +31,22 @@ export interface AuthorizationAdminOptions {
   grants: PermissionGrantRepository;
   rules: PolicyRuleRepository;
   categories: CategoryRepository;
+  actors: ActorRepository;
+  authorization: AuthorizationService;
   ledger: EventLedger;
   clock?: Clock;
 }
+
+/**
+ * Actions that administer the installation itself. An agent is automation acting
+ * for a person; giving it these would let one administrator hand workspace
+ * control to a credential they hold, outside the membership model.
+ */
+const HUMAN_ONLY_ACTIONS: ReadonlySet<PermissionAction> = new Set([
+  'workspace.admin',
+  'policy.manage',
+  'agent.manage',
+]);
 
 export interface GrantInput {
   actorId: ActorId;
@@ -70,8 +85,32 @@ export class AuthorizationAdminService {
     return this.o.rules.list(actor.workspaceId);
   }
 
-  async grant(actor: ActorContext, input: GrantInput): Promise<PermissionGrantRecord> {
+  async grant(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: GrantInput,
+  ): Promise<PermissionGrantRecord> {
+    const subject = await this.o.actors.findById(actor.workspaceId, input.actorId);
+    if (!subject) {
+      throw new DomainError('NOT_FOUND', 'actor not found in this workspace', {
+        objectIds: { actor_id: input.actorId },
+      });
+    }
     const scope = await this.validateScope(actor, input.scope);
+    if (input.effect === 'allow') {
+      // Nobody hands out more than they hold, so policy.manage cannot be used to
+      // widen one's own role or to build a more privileged actor.
+      const held = await this.o.authorization.check(actor, standing, input.action);
+      if (!held.allowed) {
+        throw new DomainError(
+          'FORBIDDEN',
+          `you do not hold ${input.action}, so you cannot grant it`,
+        );
+      }
+      if (subject.type === 'agent' && HUMAN_ONLY_ACTIONS.has(input.action)) {
+        throw new DomainError('FORBIDDEN', `${input.action} cannot be granted to an agent`);
+      }
+    }
     const record: PermissionGrantRecord = {
       id: newId('grant'),
       workspaceId: actor.workspaceId,

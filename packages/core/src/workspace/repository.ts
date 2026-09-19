@@ -39,5 +39,6 @@ export interface ActorRecord {
 
 export interface ActorRepository {
   insert(tx: Tx, actor: ActorRecord): Promise<void>;
+  findById(workspaceId: WorkspaceId, id: ActorId): Promise<ActorRecord | null>;
   findSystemActor(workspaceId: WorkspaceId): Promise<ActorRecord | null>;
 }
