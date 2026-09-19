@@ -1,5 +1,5 @@
 {
-  "id": "2776d143-f0db-42ad-8490-ffa214329379",
+  "id": "725364ef-24e8-4e2c-8006-ec60d3518652",
   "prevId": "0f3e7108-91fe-4ef8-97be-d89a0b5db40a",
   "version": "7",
   "dialect": "postgresql",
@@ -96,6 +96,15 @@
           "tableFrom": "actors",
           "tableTo": "workspaces",
           "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "actors_user_id_users_id_fk": {
+          "name": "actors_user_id_users_id_fk",
+          "tableFrom": "actors",
+          "tableTo": "users",
+          "columnsFrom": ["user_id"],
           "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
@@ -572,6 +581,25 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
+        },
+        "failed_login_count": {
+          "name": "failed_login_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "locked_until": {
+          "name": "locked_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "password_changed_at": {
+          "name": "password_changed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
