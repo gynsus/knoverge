@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fastify/static": "catalog:",
     "@knoverge/contracts": "workspace:*",
     "fastify": "catalog:",
     "pg": "catalog:",

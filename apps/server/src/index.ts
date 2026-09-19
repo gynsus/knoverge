@@ -33,6 +33,7 @@ async function main(): Promise<void> {
     version: pkg.version,
     loggerInstance: logger,
     trustProxy: config.trustProxy,
+    ...(config.webDist ? { webDist: config.webDist } : {}),
     probes: {
       database: createDatabaseProbe(pool),
       dataDir: createDataDirProbe(config.dataDir),
@@ -49,7 +50,10 @@ async function main(): Promise<void> {
   process.once('SIGINT', (s) => void shutdown(s));
 
   await app.listen({ port: config.port, host: config.host });
-  logger.info({ role: config.role, dataDir: config.dataDir }, 'knoverge server started');
+  logger.info(
+    { role: config.role, dataDir: config.dataDir, webDist: config.webDist ?? null },
+    'knoverge server started',
+  );
 }
 
 main().catch((err: unknown) => {
