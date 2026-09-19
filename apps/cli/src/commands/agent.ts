@@ -51,12 +51,16 @@ export function agentCommand(): Command {
           const tier = TrustTier.safeParse(opts.trustTier);
           if (!tier.success) throw new Error('trust tier must be read_only, propose or trusted');
           const actor = await systemActorContext(services, opts.workspace);
-          const agent = await services.agents.create(actor, {}, {
-            name: opts.name,
-            description: opts.description,
-            clientType: opts.clientType,
-            trustTier: tier.data,
-          });
+          const agent = await services.agents.create(
+            actor,
+            {},
+            {
+              name: opts.name,
+              description: opts.description,
+              clientType: opts.clientType,
+              trustTier: tier.data,
+            },
+          );
           console.log(`created agent ${agent.id} (${agent.name}, ${agent.trustTier})`);
         });
       },
@@ -86,10 +90,14 @@ export function agentCommand(): Command {
     .action(async (opts: { agent: string; workspace?: string }) => {
       await withServices(async (services) => {
         const actor = await systemActorContext(services, opts.workspace);
-        const agent = await services.agents.update(actor, {}, {
-          agentId: AgentId.parse(opts.agent),
-          status: 'disabled',
-        });
+        const agent = await services.agents.update(
+          actor,
+          {},
+          {
+            agentId: AgentId.parse(opts.agent),
+            status: 'disabled',
+          },
+        );
         console.log(`disabled agent ${agent.id}`);
       });
     });
