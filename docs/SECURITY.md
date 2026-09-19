@@ -30,7 +30,7 @@ The server may face the Internet from Milestone 4 on, so the baseline arrives be
 
 Milestone 1 (web and accounts):
 
-- login rate limiting per IP and per email, with lockout;
+- login rate limiting per IP, plus a per-account lockout that covers the per-address dimension;
 - `HttpOnly`, `Secure`, `SameSite=Lax` session cookies;
 - CSRF token on state-changing browser requests;
 - request body size limits;
@@ -54,7 +54,7 @@ MVP:
 - passwords hashed with argon2id;
 - opaque session token (256-bit) in the `knoverge_session` `HttpOnly`, `SameSite=Lax` cookie, `Secure` when the base URL is https; only its SHA-256 is stored; 30-day lifetime;
 - constant-time behaviour for unknown emails (a dummy hash is verified) and no distinction between unknown email and wrong password in responses;
-- lockout after 10 failed passwords for 15 minutes, plus per-IP limits on login and bootstrap;
+- lockout after 10 failed passwords for 15 minutes, plus per-IP limits on login and bootstrap; a locked account answers exactly like a wrong password, so the lockout is not an oracle for which addresses are registered;
 - CSRF token required on state-changing browser requests;
 - session list and revocation in the UI;
 - no default administrator account; the first admin is created by `knoverge bootstrap` or a one-time bootstrap page that disables itself.
@@ -201,6 +201,17 @@ The `trusted` tier grants the capability for direct writes; an actual direct wri
 
 Every non-denied policy decision is recorded on the proposal and in its event. Denied attempts create no proposal and are recorded as `command.denied` events with the actor, action, scope and reason.
 
+### Granting permissions
+
+`policy.manage` allows an actor to administer grants, not to acquire privileges:
+
+- an allow grant is refused unless the granter already holds that action, so nobody hands out more than they hold;
+- `workspace.admin`, `policy.manage` and `agent.manage` are never granted to an agent actor, because an agent is automation acting for a person and must not become a route around the membership model;
+- a deny grant needs no matching privilege, so access can always be narrowed;
+- the subject actor must belong to the granter's workspace.
+
+Without these rules an administrator could create an agent, grant it `workspace.admin`, and use its token to take ownership of the workspace.
+
 ### Command line access
 
 `knoverge` commands run on the host with the database credentials and act as the workspace's system actor. They are not subject to permission grants: an operator with shell access on the server already controls the installation. Their changes are recorded in the ledger like any other.
@@ -241,12 +252,9 @@ Accidentally committed secrets are removed with the purge procedure (later miles
 
 Per-actor rate limits are required for remote deployments.
 
-Separate limits for:
+Every route has a per-actor budget, keyed on the agent or the signed-in user and falling back to the address for anonymous callers. Several agents behind one reverse proxy therefore get separate budgets, and one noisy caller cannot spend everyone else's.
 
-- read/search;
-- proposal writes;
-- sync batches;
-- authentication failures.
+Stricter per-route limits apply to authentication failures, and to proposal writes and sync batches when they arrive.
 
 ## 14. Backup security
 
