@@ -203,7 +203,11 @@ export class AgentService {
     standing: ActorStanding,
     tier: TrustTier,
   ): Promise<void> {
-    const missing = await this.o.authorization.missingAction(actor, standing, TIER_PERMISSIONS[tier]);
+    const missing = await this.o.authorization.missingAction(
+      actor,
+      standing,
+      TIER_PERMISSIONS[tier],
+    );
     if (missing) {
       throw new DomainError(
         'FORBIDDEN',

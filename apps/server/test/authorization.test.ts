@@ -527,7 +527,10 @@ describe('authority is handed out, never invented', () => {
     ).toBe(200);
 
     for (const tier of ['propose', 'trusted'] as const) {
-      const res = await viewer.post('/v1/admin/agents.create', { name: `Too much ${tier}`, trust_tier: tier });
+      const res = await viewer.post('/v1/admin/agents.create', {
+        name: `Too much ${tier}`,
+        trust_tier: tier,
+      });
       expect(res.statusCode, `${tier}: ${res.body}`).toBe(403);
       expect(res.json().message).toMatch(/which you do not hold/);
     }
@@ -622,7 +625,9 @@ describe('authority is handed out, never invented', () => {
       (await here.post('/v1/admin/taxonomy.create', { name: 'Restricted branch' })).json(),
     ).category;
     const child = CategoryResponse.parse(
-      (await here.post('/v1/admin/taxonomy.create', { name: 'Inside', parent_path: root.path })).json(),
+      (
+        await here.post('/v1/admin/taxonomy.create', { name: 'Inside', parent_path: root.path })
+      ).json(),
     ).category;
 
     const denied = await here.post('/v1/admin/permissions.grant', {
