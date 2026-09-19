@@ -128,3 +128,9 @@ export {
   type CreateWorkspaceInput,
   type WorkspaceServiceOptions,
 } from './workspace/service.ts';
+export {
+  MaintenanceService,
+  SESSION_RETENTION_MS,
+  type MaintenanceOptions,
+  type MaintenanceResult,
+} from './maintenance/service.ts';

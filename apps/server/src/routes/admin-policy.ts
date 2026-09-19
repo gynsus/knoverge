@@ -15,7 +15,7 @@ import type { PermissionGrantRecord, PolicyRuleRecord } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requirePermission } from '../plugins/actor-context.ts';
+import { idempotencyKey, requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -70,17 +70,27 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
-      await services.authorizationAdmin.grant(actor.context, actor.standing, {
-        actorId: request.body.actor_id,
-        action: request.body.action,
-        effect: request.body.effect,
-        scope: request.body.scope,
-      });
-      const grants = await services.authorizationAdmin.listGrants(
+      // Without this a retried grant leaves two identical rows and two events.
+      const result = await services.idempotency.run(
         actor.context,
-        request.body.actor_id,
+        idempotencyKey(request),
+        'permissions.grant',
+        request.body,
+        async () => {
+          await services.authorizationAdmin.grant(actor.context, actor.standing, {
+            actorId: request.body.actor_id,
+            action: request.body.action,
+            effect: request.body.effect,
+            scope: request.body.scope,
+          });
+          const grants = await services.authorizationAdmin.listGrants(
+            actor.context,
+            request.body.actor_id,
+          );
+          return { grants: grants.map(grantSummary) };
+        },
       );
-      return { grants: grants.map(grantSummary) };
+      return result.value;
     },
   );
 
@@ -120,16 +130,30 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
       const body = request.body;
-      const rule = await services.authorizationAdmin.upsertRule(actor.context, actor.standing, {
-        ruleId: body.rule_id,
-        priority: body.priority,
-        subject: body.subject,
-        action: body.action,
-        scope: body.scope,
-        effect: body.effect,
-        enabled: body.enabled,
-      });
-      return { rule: ruleSummary(rule) };
+      // A retried create would otherwise leave two rules at the same priority.
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'policy.rules.upsert',
+        request.body,
+        async () => {
+          const created = await services.authorizationAdmin.upsertRule(
+            actor.context,
+            actor.standing,
+            {
+              ruleId: body.rule_id,
+              priority: body.priority,
+              subject: body.subject,
+              action: body.action,
+              scope: body.scope,
+              effect: body.effect,
+              enabled: body.enabled,
+            },
+          );
+          return { rule: ruleSummary(created) };
+        },
+      );
+      return replayable.value;
     },
   );
 

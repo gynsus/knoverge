@@ -5,6 +5,7 @@ import {
   TrustTier,
   type PolicyRuleSummary,
   type PolicySubject,
+  type UpsertPolicyRuleRequest,
 } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
@@ -146,7 +147,7 @@ function RuleForm({
   const save = useMutation({
     mutationFn: () =>
       adminApi.policy.upsertRule({
-        ...(rule ? { rule_id: rule.id } : {}),
+        ...(rule ? { rule_id: rule.id as UpsertPolicyRuleRequest['rule_id'] } : {}),
         priority: Number(priority),
         subject: { [kind]: value } as PolicySubject,
         action,

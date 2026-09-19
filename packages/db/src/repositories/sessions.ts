@@ -1,6 +1,6 @@
 import type { SessionId, UserId } from '@knoverge/contracts';
 import type { SessionRecord, SessionRepository, Tx } from '@knoverge/core';
-import { and, desc, eq, gt, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, gt, isNotNull, isNull, lt, ne, or } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { humanSessions } from '../schema/users.ts';
@@ -58,6 +58,18 @@ export function createSessionRepository(db: Database): SessionRepository {
         .update(humanSessions)
         .set({ revokedAt: at })
         .where(and(...conditions))
+        .returning({ id: humanSessions.id });
+      return rows.length;
+    },
+    async deleteEndedBefore(tx: Tx, before: Date) {
+      const rows = await asTx(tx)
+        .delete(humanSessions)
+        .where(
+          or(
+            lt(humanSessions.expiresAt, before),
+            and(isNotNull(humanSessions.revokedAt), lt(humanSessions.revokedAt, before)),
+          ),
+        )
         .returning({ id: humanSessions.id });
       return rows.length;
     },

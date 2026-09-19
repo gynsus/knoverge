@@ -54,3 +54,10 @@ export const EventId = idSchema('evt');
 export type EventId = z.infer<typeof EventId>;
 export const CategoryId = idSchema('cat');
 export type CategoryId = z.infer<typeof CategoryId>;
+
+export const PolicyRuleId = idSchema('rule');
+export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
+export const PermissionGrantId = idSchema('grant');
+export type PermissionGrantId = z.infer<typeof PermissionGrantId>;
+export const CredentialId = idSchema('cred');
+export type CredentialId = z.infer<typeof CredentialId>;
