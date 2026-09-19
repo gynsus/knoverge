@@ -162,6 +162,14 @@ docker compose exec knoverge knoverge agent list
 docker compose exec knoverge knoverge agent token revoke --credential cred_...
 ```
 
+The category tree can also be managed from the command line:
+
+```bash
+docker compose exec knoverge knoverge taxonomy create --name Projects
+docker compose exec knoverge knoverge taxonomy create --name "Pixel Brisbane" --parent projects
+docker compose exec knoverge knoverge taxonomy list
+```
+
 Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 
 Connection examples for common MCP clients (Claude Code, Cursor, generic Streamable HTTP client, stdio bridge) are provided after implementation:

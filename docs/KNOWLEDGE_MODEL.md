@@ -190,7 +190,9 @@ exclusion_guidance:
   - implementation tasks with no durable architectural value
 ```
 
-`slug` is unique among siblings. `path` is the slash-joined chain of slugs and is what appears in Markdown frontmatter and in the repository layout.
+`slug` is unique among siblings. `path` is the slash-joined chain of slugs, unique per workspace, and is what appears in Markdown frontmatter and in the repository layout. Categories nest at most eight levels deep.
+
+Renaming a slug or moving a category rewrites the paths of its whole subtree in one statement, inside the same transaction as the taxonomy version bump and the ledger event. Archiving a category archives its descendants with it.
 
 Statuses:
 
