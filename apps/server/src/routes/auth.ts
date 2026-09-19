@@ -16,7 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { requireUser, type HumanAuth } from '../plugins/auth-context.ts';
-import { SESSION_COOKIE } from '../plugins/security.ts';
+import { CSRF_COOKIE, SESSION_COOKIE } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
 export interface AuthRouteOptions {
@@ -76,6 +76,9 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
   };
   const clearSessionCookie = (reply: FastifyReply) => {
     void reply.clearCookie(SESSION_COOKIE, { path: '/' });
+    // The CSRF secret is bound to the user, so leaving it behind would hand
+    // the next person on this browser a token minted for someone else.
+    void reply.clearCookie(CSRF_COOKIE, { path: '/' });
   };
 
   r.get(

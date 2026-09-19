@@ -352,3 +352,58 @@ describe('hardening', () => {
     expect(res.json()).toEqual({ code: 'NOT_FOUND', message: 'Route not found', retryable: false });
   });
 });
+
+describe('what a rejection tells the caller', () => {
+  it('answers an unusable bearer token with UNAUTHENTICATED, not FORBIDDEN', async () => {
+    // The CSRF hook used to run for any request whose token did not resolve,
+    // so an expired or revoked credential was answered by the hook before the
+    // route could speak. An agent could not tell "rotate your token" from "you
+    // may not do this", and retryable said not to try either.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/agents.create',
+      headers: { authorization: 'Bearer knv_nosuch_credential' },
+      payload: { name: 'Nope' },
+    });
+    expect(res.statusCode, res.body).toBe(401);
+    expect(res.json().code).toBe('UNAUTHENTICATED');
+  });
+
+  it('answers a request with no content type as a client mistake', async () => {
+    // Fastify rejects it with 415, which fell through to INTERNAL_ERROR and
+    // told the client the server was at fault and to try again.
+    const b = new Browser();
+    await b.fetchCsrf();
+    const res = await b.request({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: 'email=x',
+      headers: { 'content-type': '' },
+      remoteAddress: '10.9.0.1',
+    });
+    expect(res.statusCode).toBeLessThan(500);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    expect(res.json().retryable).toBe(false);
+  });
+
+  it('clears the cross-site request token when the person signs out', async () => {
+    const b = new Browser();
+    await b.fetchCsrf();
+    // A separate address, so the per-IP login budget the other tests spent
+    // does not decide this one.
+    const login = await b.request({
+      method: 'POST',
+      url: '/v1/auth/login',
+      // An earlier test changes this account's password, so both are tried.
+      payload: { email: ADMIN.email, password: 'a brand new passphrase' },
+      remoteAddress: '10.9.0.2',
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    const out = await b.post('/v1/auth/logout', {});
+    expect(out.statusCode).toBe(200);
+    // Both cookies go, so the next person on this browser starts clean.
+    const cleared = out.cookies.filter((c) => c.value === '').map((c) => c.name);
+    expect(cleared).toContain('knoverge_session');
+    expect(cleared).toContain('knoverge_csrf');
+  });
+});
