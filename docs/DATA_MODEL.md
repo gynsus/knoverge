@@ -769,4 +769,4 @@ Signing secrets are encrypted, not hashed, because the server must recover them.
 
 ## 33. Jobs
 
-pg-boss manages its own tables in a dedicated schema. Domain tables never reference job ids.
+pg-boss manages its own tables in the `pgboss` schema. Drizzle keeps its migration log in `drizzle.__drizzle_migrations`. Domain tables never reference job ids.
