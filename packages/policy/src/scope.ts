@@ -17,7 +17,8 @@ export function scopeMatches(
   ancestorsOf: CategoryAncestors,
 ): boolean {
   if (scope.types.length > 0) {
-    if (target.type === undefined || !scope.types.includes(target.type as never)) return false;
+    const types: readonly string[] = scope.types;
+    if (target.type === undefined || !types.includes(target.type)) return false;
   }
   if (scope.languages.length > 0) {
     if (target.language === undefined || !scope.languages.includes(target.language)) return false;
