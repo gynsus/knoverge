@@ -85,6 +85,7 @@ export function createServices(config: ServicesConfig) {
     rules: repositories.policyRules,
     categories: repositories.categories,
     actors: repositories.actors,
+    memberships: repositories.memberships,
     authorization,
     ledger,
   });
