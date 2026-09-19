@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import fastifyStatic from '@fastify/static';
 
-import type { ReadyResponse } from '@knoverge/contracts';
+import { LiveResponse, ReadyResponse } from '@knoverge/contracts';
 import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
@@ -92,14 +92,19 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerTaxonomyRoutes(app, options.services);
   }
 
-  app.get('/health/live', async () => ({ status: 'ok' as const }));
+  app.get('/health/live', { schema: { response: { 200: LiveResponse } } }, async () => ({
+    status: 'ok' as const,
+  }));
 
   // Readiness runs every probe, so it is the one unauthenticated endpoint worth
   // hitting repeatedly. A budget of its own keeps that away from the database
   // while staying far above the rate any orchestrator polls at.
   app.get(
     '/health/ready',
-    limited ? { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } } : {},
+    {
+      schema: { response: { 200: ReadyResponse, 503: ReadyResponse } },
+      ...(limited ? { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } } : {}),
+    },
     async (_request, reply) => {
       const [database, dataDir, migrations, jobs] = await Promise.all([
         options.probes.database(),

@@ -30,6 +30,14 @@ export function StatusPage() {
                   {check.latency_ms !== undefined && (
                     <> ({t('status.latency', { count: check.latency_ms })})</>
                   )}
+                  {/* The server sends why a check failed; showing only that it
+                      failed sent the operator to curl for the reason. */}
+                  {check.error && (
+                    <>
+                      <br />
+                      <small>{check.error}</small>
+                    </>
+                  )}
                 </li>
               ),
             )}

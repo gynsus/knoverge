@@ -44,9 +44,12 @@ export function createAgentRepository(db: Database): AgentRepository {
         rethrowUniqueViolation(err, `an agent named "${agent.name}" already exists`);
       }
     },
-    async update(tx: Tx, id: AgentId, patch: AgentPatch) {
+    async update(tx: Tx, workspaceId: WorkspaceId, id: AgentId, patch: AgentPatch) {
       try {
-        await asTx(tx).update(agents).set(patch).where(eq(agents.id, id));
+        await asTx(tx)
+          .update(agents)
+          .set(patch)
+          .where(and(eq(agents.workspaceId, workspaceId), eq(agents.id, id)));
       } catch (err) {
         rethrowUniqueViolation(err, 'an agent with this name already exists');
       }

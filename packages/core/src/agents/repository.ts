@@ -23,7 +23,12 @@ export type AgentPatch = Partial<
 
 export interface AgentRepository {
   insert(tx: Tx, agent: AgentRecord): Promise<void>;
-  update(tx: Tx, id: AgentId, patch: AgentPatch): Promise<void>;
+  /**
+   * The workspace is part of the statement, not only of the caller's earlier
+   * lookup. A service that forgets the lookup would otherwise reach across
+   * workspaces, and the boundary should hold at the statement.
+   */
+  update(tx: Tx, workspaceId: WorkspaceId, id: AgentId, patch: AgentPatch): Promise<void>;
   findById(workspaceId: WorkspaceId, id: AgentId): Promise<AgentRecord | null>;
   findByName(workspaceId: WorkspaceId, name: string): Promise<AgentRecord | null>;
   list(workspaceId: WorkspaceId): Promise<AgentRecord[]>;
