@@ -308,6 +308,30 @@ describe('archiving and listing', () => {
   });
 });
 
+describe('concurrency', () => {
+  it('gives concurrent taxonomy changes distinct, gapless versions', async () => {
+    const workspace = (await services.repositories.workspaces.list())[0]!;
+    const actorRecord = await services.repositories.actors.findSystemActor(workspace.id);
+    const actor = {
+      workspaceId: workspace.id,
+      actorId: actorRecord!.id,
+      actorType: 'system' as const,
+      requestId: 'concurrency-test',
+    };
+    const before = await services.taxonomy.currentVersion(workspace.id);
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        services.taxonomy.create(actor, { name: `Concurrent ${i}` }),
+      ),
+    );
+    const versions = results.map((r) => r.taxonomyVersion).sort((a, b) => a - b);
+    expect(new Set(versions).size).toBe(8);
+    expect(versions).toEqual(Array.from({ length: 8 }, (_, i) => before + i + 1));
+    expect(await services.taxonomy.currentVersion(workspace.id)).toBe(before + 8);
+    expect((await services.ledger.verify(workspace.id)).ok).toBe(true);
+  });
+});
+
 describe('slugify', () => {
   it('produces safe slugs', () => {
     expect(slugify('Pixel Brisbane')).toBe('pixel-brisbane');

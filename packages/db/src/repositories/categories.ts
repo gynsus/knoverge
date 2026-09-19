@@ -85,6 +85,26 @@ export function createCategoryRepository(db: Database): CategoryRepository {
         .orderBy(asc(categories.path));
       return rows.map(toCategory);
     },
+    async setSubtreeStatus(
+      tx: Tx,
+      workspaceId: WorkspaceId,
+      path: string,
+      status: CategoryRecord['status'],
+      at: Date,
+    ) {
+      const rows = await asTx(tx)
+        .update(categories)
+        .set({ status, updatedAt: at })
+        .where(
+          and(
+            eq(categories.workspaceId, workspaceId),
+            or(eq(categories.path, path), sql`${categories.path} LIKE ${`${path}/%`}`),
+            ne(categories.status, status),
+          ),
+        )
+        .returning({ id: categories.id });
+      return rows.length;
+    },
     async rewritePaths(
       tx: Tx,
       workspaceId: WorkspaceId,
