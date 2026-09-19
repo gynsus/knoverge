@@ -80,7 +80,14 @@
     "RATE_LIMITED": "Too many attempts. Please wait a few minutes and try again.",
     "INTERNAL_ERROR": "The server reported an error. Please try again.",
     "NETWORK": "The server could not be reached.",
-    "UNKNOWN": "Something went wrong."
+    "UNKNOWN": "Something went wrong.",
+    "REVISION_CONFLICT": "Someone changed this while you were editing. Reload and try again.",
+    "DUPLICATE_EXTERNAL_KEY": "This record is already linked to something here.",
+    "DUPLICATE_SUSPECTED": "This looks like something that already exists.",
+    "CATEGORY_CONFLICT": "A category already exists there.",
+    "PROPOSAL_ALREADY_RESOLVED": "This proposal has already been decided.",
+    "SYNC_SESSION_EXPIRED": "This synchronisation run has expired. Start a new one.",
+    "POLICY_REQUIRES_REVIEW": "Saved for review."
   },
   "agents": {
     "title": "Agents",
