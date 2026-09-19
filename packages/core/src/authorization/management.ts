@@ -6,6 +6,7 @@ import type {
   PolicyEffect,
   PolicySubject,
   ScopeSelector,
+  ScopeSelectorInput,
 } from '@knoverge/contracts';
 import { EMPTY_SCOPE, ROLE_PERMISSIONS } from '@knoverge/policy';
 
@@ -54,7 +55,7 @@ export interface GrantInput {
   actorId: ActorId;
   action: PermissionAction;
   effect: PermissionEffect;
-  scope?: ScopeSelector | undefined;
+  scope?: ScopeSelectorInput | undefined;
 }
 
 export interface RuleInput {
@@ -62,7 +63,7 @@ export interface RuleInput {
   priority: number;
   subject: PolicySubject;
   action: PolicyActionName;
-  scope?: ScopeSelector | undefined;
+  scope?: ScopeSelectorInput | undefined;
   effect: PolicyEffect;
   enabled: boolean;
 }
@@ -351,17 +352,29 @@ export class AuthorizationAdminService {
   /** Rejects scopes that name categories from another workspace or none at all. */
   private async validateScope(
     actor: ActorContext,
-    scope: ScopeSelector | undefined,
+    scope: ScopeSelectorInput | undefined,
   ): Promise<ScopeSelector> {
     if (!scope) return EMPTY_SCOPE;
+    const categories: ScopeSelector['categories'] = [];
     for (const entry of scope.categories) {
-      const category = await this.o.categories.findById(actor.workspaceId, entry.category_id);
+      // A path is resolved here and never stored: what is compared is the id,
+      // so a rename or a move cannot detach a grant from what it covers.
+      const category = entry.category_id
+        ? await this.o.categories.findById(actor.workspaceId, entry.category_id)
+        : await this.o.categories.findByPath(actor.workspaceId, entry.category_path as string);
       if (!category) {
-        throw new DomainError('NOT_FOUND', `unknown category in scope: ${entry.category_id}`, {
-          objectIds: { category_id: entry.category_id },
+        const named = entry.category_id ?? entry.category_path ?? '';
+        throw new DomainError('NOT_FOUND', `unknown category in scope: ${named}`, {
+          objectIds: entry.category_id
+            ? { category_id: entry.category_id }
+            : { path: entry.category_path ?? null },
         });
       }
+      categories.push({
+        category_id: category.id,
+        include_descendants: entry.include_descendants,
+      });
     }
-    return scope;
+    return { categories, types: scope.types, languages: scope.languages };
   }
 }

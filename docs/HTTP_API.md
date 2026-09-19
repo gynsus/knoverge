@@ -13,6 +13,8 @@ Request body is the tool input; response body is the tool output. Schemas come f
 
 REST-style resource routes are not provided for domain operations. This keeps one set of schemas, one set of tests, and one permission path.
 
+This governs the operations that are MCP tools. Authentication, health and workspace administration are not tools: they are what a browser does on behalf of a person, they are not offered to agents, and they have no MCP name to match. They keep the shape below, `POST /v1/admin/<area>.<verb>` for mutations and `GET` for reads with a few filters. A read that is also a tool has both routes over one handler. ADR 0011 records why.
+
 ## 2. Authentication
 
 Two credential types are accepted on `/v1`:
@@ -117,9 +119,9 @@ POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
 POST /v1/admin/taxonomy.merge              (arrives with knowledge items, Milestone 2)
-POST /v1/admin/knowledge.restore
-POST /v1/admin/knowledge.rename_slug
-POST /v1/admin/embedding_profile.set
+POST /v1/admin/knowledge.restore            (Milestone 2)
+POST /v1/admin/knowledge.rename_slug        (Milestone 2)
+POST /v1/admin/embedding_profile.set        (Milestone 6)
 POST /v1/admin/webhooks.upsert              (Milestone 9)
 POST /v1/admin/integrity.check              (Milestone 9)
 POST /v1/admin/attachments.upload           (multipart, later milestone)
@@ -129,18 +131,13 @@ Admin endpoints follow the same RPC style and the same error model.
 
 ## 7. Web-only read endpoints
 
-The SPA may need list views that agents do not. They live under `/v1/ui/*`, are documented in code, and are not part of the public contract stability promise.
+None so far. The web interface reads the same routes agents do. If it ever needs a list view that no agent wants, it will live under `/v1/ui/*` and will not be part of the contract stability promise.
 
 ## 8. Rate limiting
 
-Per-actor limits with separate buckets:
+One per-actor budget covers every route: 600 requests a minute, keyed on the agent, then the signed-in user, then the address. Two routes have their own, tighter budgets: sign-in at 10 a minute per address and first-run setup at 5, both keyed on the address because there is no actor yet, and readiness at 120 a minute because it is unauthenticated and runs every probe.
 
-```text
-read/search
-proposal writes
-sync batches
-authentication failures (per IP and per email)
-```
+Separate buckets for reads, proposal writes and sync batches are not implemented. They arrive with the operations they meter.
 
 Limits are in-process (single node) in MVP. Exceeding a limit returns `RATE_LIMITED` with `Retry-After`.
 

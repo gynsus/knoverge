@@ -101,8 +101,9 @@ export async function addMember(
     createdAt: now,
     disabledAt: null,
   });
+  const membershipId = newId('mem');
   await deps.memberships.insert(tx, {
-    id: newId('mem'),
+    id: membershipId,
     workspaceId,
     userId: user.id,
     role,
@@ -121,8 +122,10 @@ export async function addMember(
   await deps.ledger.append(tx, workspaceId, actor, {
     eventType: 'membership.created',
     objectType: 'membership',
-    objectId: user.id,
-    metadata: { role, actor_id: actorId },
+    // The membership's own id: a lookup by object id would otherwise never
+    // find it, because the membership has an id of its own.
+    objectId: membershipId,
+    metadata: { user_id: user.id, role, actor_id: actorId },
   });
   return { actorId };
 }

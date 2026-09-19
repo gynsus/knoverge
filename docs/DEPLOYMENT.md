@@ -38,7 +38,7 @@ Then:
 ```text
 Web UI:     http://localhost:3000/
 HTTP API:   http://localhost:3000/v1
-MCP:        http://localhost:3000/mcp
+MCP:        http://localhost:3000/mcp (Milestone 4)
 Health:     http://localhost:3000/health/ready
 ```
 
@@ -98,25 +98,24 @@ KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
 KNOVERGE_SESSION_SECRET       signs browser cookies; required; hex, at least 32 bytes
 KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at least 32 bytes
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
-KNOVERGE_ENCRYPTION_KEY       encrypts webhook signing secrets and other recoverable secrets
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
 NODE_ENV                      development | test | production
 
-KNOVERGE_LLM_PROVIDER         disabled | openai_compatible | anthropic | ollama
-KNOVERGE_LLM_BASE_URL
-KNOVERGE_LLM_API_KEY
-KNOVERGE_LLM_MODEL
+Read but not yet used, because the features they configure do not exist:
 
-KNOVERGE_EMBEDDING_PROVIDER   disabled | openai_compatible | ollama
-KNOVERGE_EMBEDDING_BASE_URL
-KNOVERGE_EMBEDDING_API_KEY
-KNOVERGE_EMBEDDING_MODEL
-
-KNOVERGE_ATTACHMENT_MAX_MB    (later milestone)
+KNOVERGE_LLM_PROVIDER         (Milestone 6) disabled | openai_compatible | anthropic | ollama
+KNOVERGE_LLM_BASE_URL         (Milestone 6)
+KNOVERGE_LLM_API_KEY          (Milestone 6)
+KNOVERGE_LLM_MODEL            (Milestone 6)
+KNOVERGE_EMBEDDING_PROVIDER   (Milestone 6) disabled | openai_compatible | ollama
+KNOVERGE_EMBEDDING_BASE_URL   (Milestone 6)
+KNOVERGE_EMBEDDING_API_KEY    (Milestone 6)
+KNOVERGE_EMBEDDING_MODEL      (Milestone 6)
+KNOVERGE_ATTACHMENT_MAX_MB    (Milestone 11)
 ```
 
-The server must start with LLM/embedding providers disabled.
+The server must start with LLM and embedding providers disabled, and today it always does: nothing reads those variables yet, and the core never will (rule 9).
 
 The three secrets (`KNOVERGE_SESSION_SECRET`, `KNOVERGE_TOKEN_PEPPER`, `KNOVERGE_LEDGER_KEY`) must be generated once, kept out of the database, and backed up separately. Generate each with `openssl rand -hex 32`. Nothing generates them for you: the server refuses to start without them, on purpose, so that an installation cannot come up with a secret somebody else can guess.
 
@@ -209,6 +208,18 @@ Every listing writes tab-separated rows to standard output and nothing else. Hea
 `--json` prints the whole result as one object, using the same field names as the HTTP API. `ledger verify` exits 1 when any workspace is broken, and `db status` exits 1 when migrations are pending, so both can gate a deployment step.
 
 Commands ask only for the secrets they use. `workspace list` needs the database URL alone; `ledger verify` needs the ledger key as well; issuing a credential needs the token pepper.
+
+### Rotating an agent credential
+
+Rotation is issue then revoke, in that order, so the agent is never without a working token:
+
+```bash
+docker compose exec knoverge knoverge agent token issue --agent ag_01J...
+docker compose exec knoverge knoverge agent token list --agent ag_01J...
+docker compose exec knoverge knoverge agent token revoke --credential cred_01J...
+```
+
+Both steps are recorded in the ledger. There is no single rotate operation: one would have to decide for you when the old token stops working, and an agent holding a token that was revoked before it was given the new one is worse than two live tokens for a minute.
 
 Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 

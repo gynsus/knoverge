@@ -906,3 +906,69 @@ describe('every route has a budget', () => {
     expect(new Set(codes)).toEqual(new Set([200]));
   });
 });
+
+describe('a scope may be written with a path', () => {
+  it('resolves the path to an id at write time, so a rename cannot detach it', async () => {
+    const branch = CategoryResponse.parse(
+      (await owner.post('/v1/admin/taxonomy.create', { name: 'Named by path' })).json(),
+    ).category;
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const subject = members.members.find((m) => m.email === ADMIN.email)!;
+
+    // Rule 13: a path is accepted at the boundary and never stored, because a
+    // path moves when a category is renamed and a security identifier must not.
+    const granted = await owner.post('/v1/admin/permissions.grant', {
+      actor_id: subject.actor_id,
+      action: 'taxonomy.manage',
+      effect: 'deny',
+      scope: { categories: [{ category_path: branch.path, include_descendants: true }] },
+    });
+    expect(granted.statusCode, granted.body).toBe(200);
+    const stored = PermissionsResponse.parse(granted.json()).grants.find(
+      (g) => g.effect === 'deny' && g.scope.categories.length > 0,
+    )!;
+    expect(stored.scope.categories[0]?.category_id).toBe(branch.id);
+
+    // Renaming the branch leaves the grant pointing at the same category.
+    expect(
+      (
+        await owner.post('/v1/admin/taxonomy.update', {
+          category_id: branch.id,
+          slug: 'renamed-by-path',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const after = PermissionsResponse.parse((await owner.get('/v1/admin/permissions.list')).json());
+    expect(after.grants.find((g) => g.id === stored.id)?.scope.categories[0]?.category_id).toBe(
+      branch.id,
+    );
+  });
+
+  it('refuses a path that names no category, and both forms at once', async () => {
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const subject = members.members.find((m) => m.email === ADMIN.email)!;
+    const missing = await owner.post('/v1/admin/permissions.grant', {
+      actor_id: subject.actor_id,
+      action: 'taxonomy.manage',
+      effect: 'deny',
+      scope: { categories: [{ category_path: 'no-such-branch', include_descendants: true }] },
+    });
+    expect(missing.statusCode, missing.body).toBe(404);
+
+    const both = await owner.post('/v1/admin/permissions.grant', {
+      actor_id: subject.actor_id,
+      action: 'taxonomy.manage',
+      effect: 'deny',
+      scope: {
+        categories: [
+          {
+            category_id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+            category_path: 'x',
+            include_descendants: true,
+          },
+        ],
+      },
+    });
+    expect(both.statusCode, both.body).toBe(400);
+  });
+});

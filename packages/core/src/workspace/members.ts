@@ -125,8 +125,10 @@ export class MemberService {
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'membership.updated',
         objectType: 'membership',
-        objectId: userId,
-        metadata: { role, previous_role: membership.role },
+        // The membership's own id, not the user's: a lookup by object id in
+        // the event feed would never have found it.
+        objectId: membership.id,
+        metadata: { user_id: userId, role, previous_role: membership.role },
       });
     });
   }
@@ -144,9 +146,9 @@ export class MemberService {
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'membership.updated',
         objectType: 'membership',
-        objectId: userId,
+        objectId: membership.id,
         // The actor stays, so its past events keep their attribution.
-        metadata: { change: 'removed', previous_role: membership.role },
+        metadata: { user_id: userId, change: 'removed', previous_role: membership.role },
       });
     });
   }

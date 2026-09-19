@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { ActorId, CategoryId, PermissionGrantId, PolicyRuleId, WorkspaceId } from './ids.ts';
+import { CategoryPath } from './taxonomy.ts';
 import { ActorType, LanguageTag } from './identity.ts';
 import { TrustTier } from './agents.ts';
 
@@ -48,6 +49,11 @@ export const KnowledgeType = z.enum([
 ]);
 export type KnowledgeType = z.infer<typeof KnowledgeType>;
 
+/**
+ * A scope names a category by id. That is what is stored and what is compared,
+ * because a path moves when a category is renamed and a security identifier
+ * must not (CLAUDE.md rule 13).
+ */
 export const CategoryScope = z.object({
   category_id: CategoryId,
   include_descendants: z.boolean().default(true),
@@ -64,6 +70,29 @@ export const ScopeSelector = z.object({
   languages: z.array(LanguageTag).max(20).default([]),
 });
 export type ScopeSelector = z.infer<typeof ScopeSelector>;
+
+/**
+ * What a caller may send. A path is a convenience for a person writing a grant
+ * by hand, resolved to an id at write time and never stored: rule 13's other
+ * half, "paths are accepted at the boundary".
+ */
+export const CategoryScopeInput = z
+  .object({
+    category_id: CategoryId.optional(),
+    category_path: CategoryPath.optional(),
+    include_descendants: z.boolean().default(true),
+  })
+  .refine((scope) => (scope.category_id === undefined) !== (scope.category_path === undefined), {
+    message: 'give either category_id or category_path, not both',
+  });
+export type CategoryScopeInput = z.infer<typeof CategoryScopeInput>;
+
+export const ScopeSelectorInput = z.object({
+  categories: z.array(CategoryScopeInput).max(50).default([]),
+  types: z.array(KnowledgeType).max(20).default([]),
+  languages: z.array(LanguageTag).max(20).default([]),
+});
+export type ScopeSelectorInput = z.infer<typeof ScopeSelectorInput>;
 
 export const PermissionGrantSummary = z.object({
   id: z.string(),
@@ -82,7 +111,7 @@ export const GrantPermissionRequest = z.object({
   actor_id: ActorId,
   action: PermissionAction,
   effect: PermissionEffect.default('allow'),
-  scope: ScopeSelector.optional(),
+  scope: ScopeSelectorInput.optional(),
 });
 export type GrantPermissionRequest = z.infer<typeof GrantPermissionRequest>;
 
@@ -135,7 +164,7 @@ export const UpsertPolicyRuleRequest = z.object({
   priority: z.number().int().min(0).max(10_000),
   subject: PolicySubject,
   action: PolicyActionName,
-  scope: ScopeSelector.optional(),
+  scope: ScopeSelectorInput.optional(),
   effect: PolicyEffect,
   enabled: z.boolean().default(true),
 });
