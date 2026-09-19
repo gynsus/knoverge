@@ -6,11 +6,11 @@ How the packages fit together and the patterns every feature follows. `CLAUDE.md
 
 ```text
 contracts   Zod schemas, enums, ids, error codes. No runtime dependencies on other packages.
-core        Domain services and ports (interfaces). Depends on contracts only.
+core        Domain services and ports (interfaces). Depends on contracts and policy.
 db          Drizzle schema, migrations, repositories implementing core ports, unit of work.
 git-store   Markdown, hashing, Git operations implementing core ports.
 search      Projections and retrieval implementing core ports.
-auth        Credential parsing and hashing, session context.
+auth        Password and token hashing primitives.
 policy      Permission and policy evaluation, used by core services.
 server      Fastify adapters (HTTP, MCP), composition root, worker.
 cli         Command adapters, composition root.
@@ -76,7 +76,7 @@ For every MCP/HTTP operation: schema in `contracts`, service in `core`, then bot
 
 - `core`: unit tests with in-memory port implementations.
 - `db`: integration tests against PostgreSQL through Testcontainers (`pgvector/pgvector:pg17`), covering migrations, repositories and database-level guarantees such as triggers.
-- `server`: Fastify `inject` tests with fake probes/services; contract tests through MCP and HTTP.
+- `server`: Fastify `inject` tests against the real composition root and a PostgreSQL container, with only the readiness probes faked; contract tests through MCP and HTTP.
 - `web`: Vitest with jsdom and Testing Library.
 
 Shared fixtures live next to the tests that use them until two packages need the same one.

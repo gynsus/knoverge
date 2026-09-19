@@ -87,8 +87,9 @@ https://knoverge.example.com/mcp
 All variables use the `KNOVERGE_` prefix.
 
 ```text
-KNOVERGE_BASE_URL
+KNOVERGE_BASE_URL             public URL; cookies are Secure when https
 KNOVERGE_PORT
+KNOVERGE_HOST                 127.0.0.1 by default; containers set 0.0.0.0
 KNOVERGE_ROLE                 all | web | worker
 KNOVERGE_DATABASE_URL
 KNOVERGE_DATA_DIR
@@ -96,13 +97,11 @@ KNOVERGE_WEB_DIST             built web bundle directory; set in the image, unse
 KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
 KNOVERGE_SESSION_SECRET       signs browser cookies; required; hex, at least 32 bytes
 KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at least 32 bytes
-KNOVERGE_BASE_URL             public URL; cookies are Secure when https (default http://localhost:3000)
-KNOVERGE_TOKEN_PEPPER         (Milestone 1, agent credentials)
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
 KNOVERGE_ENCRYPTION_KEY       encrypts webhook signing secrets and other recoverable secrets
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
-KNOVERGE_DEFAULT_LOCALE       en | ru
+NODE_ENV                      development | test | production
 
 KNOVERGE_LLM_PROVIDER         disabled | openai_compatible | anthropic | ollama
 KNOVERGE_LLM_BASE_URL
@@ -176,6 +175,8 @@ docker compose exec knoverge knoverge taxonomy create --name "Pixel Brisbane" --
 docker compose exec knoverge knoverge taxonomy list
 ```
 
+Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`.
+
 Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 
 Connection examples for common MCP clients (Claude Code, Cursor, generic Streamable HTTP client, stdio bridge) are provided after implementation:
@@ -210,7 +211,7 @@ Restore order:
 1. stop application writes;
 2. restore PostgreSQL;
 3. restore the data directory;
-4. run `knoverge integrity check`;
+4. run `knoverge ledger verify` (and `knoverge integrity check` once the Git store ships);
 5. rebuild search/embedding indexes if needed;
 6. start application.
 
