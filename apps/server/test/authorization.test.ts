@@ -267,13 +267,16 @@ describe('sign-in failures are indistinguishable', () => {
     expect(unknown.json()).toEqual(wrong.json());
 
     // Lock an account outright, then check it still looks like a wrong password.
+    // One call is enough: the threshold is passed as 1, so the first failure
+    // locks it, which is what the store now decides for itself.
     const locked = await services.users.findByEmail(ADMIN.email);
     await services.uow.run((tx) =>
       services.repositories.users.recordLoginFailure(
         tx,
         locked!.id,
-        10,
+        1,
         new Date(Date.now() + 60_000),
+        null,
       ),
     );
     const afterLock = await attempt(ADMIN.email, ADMIN.password);
