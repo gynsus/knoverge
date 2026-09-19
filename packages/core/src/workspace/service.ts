@@ -5,7 +5,7 @@ import { newId } from '../ids.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
-import type { UnitOfWork } from '../ports/unit-of-work.ts';
+import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type { ActorRepository, WorkspaceRecord, WorkspaceRepository } from './repository.ts';
 
 export interface CreateWorkspaceInput {
@@ -46,10 +46,20 @@ export class WorkspaceService {
    * workspace.created attributed to that actor. Used by bootstrap and by
    * workspace administration; the caller's own attribution is added in metadata.
    */
+  /**
+   * Validates input and creates the workspace with its system actor in a new
+   * transaction. Records workspace.created attributed to the system actor.
+   */
   async create(
     input: CreateWorkspaceInput,
     createdBy?: { actorId: ActorId; workspaceId: WorkspaceId },
   ): Promise<WorkspaceRecord> {
+    const prepared = await this.prepare(input);
+    return this.uow.run((tx) => this.createInTx(tx, prepared, input.requestId, createdBy));
+  }
+
+  /** Validates and builds the record without touching storage. */
+  async prepare(input: CreateWorkspaceInput): Promise<WorkspaceRecord> {
     const slug = WorkspaceSlug.safeParse(input.slug);
     if (!slug.success) {
       throw new DomainError('VALIDATION_ERROR', `invalid slug: ${slug.error.issues[0]?.message}`);
@@ -67,9 +77,8 @@ export class WorkspaceService {
         objectIds: { slug: slug.data },
       });
     }
-
     const now = this.clock.now();
-    const workspace: WorkspaceRecord = {
+    return {
       id: newId('ws') as WorkspaceId,
       slug: slug.data,
       name,
@@ -79,40 +88,50 @@ export class WorkspaceService {
       createdAt: now,
       updatedAt: now,
     };
-    const systemActorId = newId('act') as ActorId;
+  }
 
-    await this.uow.run(async (tx) => {
-      await this.workspaces.insert(tx, workspace);
-      await this.actors.insert(tx, {
-        id: systemActorId,
-        workspaceId: workspace.id,
-        type: 'system',
-        displayName: SYSTEM_ACTOR_NAME,
-        userId: null,
-        agentId: null,
-        createdAt: now,
-        disabledAt: null,
-      });
-      await this.ledger.append(
-        tx,
-        workspace.id,
-        { actorId: systemActorId, requestId: input.requestId },
-        {
-          eventType: 'workspace.created',
-          objectType: 'workspace',
-          objectId: workspace.id,
-          metadata: {
-            slug: workspace.slug,
-            ...(createdBy
-              ? {
-                  created_by_actor_id: createdBy.actorId,
-                  created_by_workspace_id: createdBy.workspaceId,
-                }
-              : {}),
-          },
-        },
-      );
+  /**
+   * Inserts a prepared workspace, its system actor and the workspace.created
+   * event inside the caller's transaction. Used by bootstrap so the first user,
+   * workspace and membership commit together.
+   */
+  async createInTx(
+    tx: Tx,
+    workspace: WorkspaceRecord,
+    requestId: string,
+    createdBy?: { actorId: ActorId; workspaceId: WorkspaceId },
+  ): Promise<WorkspaceRecord> {
+    const systemActorId = newId('act') as ActorId;
+    await this.workspaces.insert(tx, workspace);
+    await this.actors.insert(tx, {
+      id: systemActorId,
+      workspaceId: workspace.id,
+      type: 'system',
+      displayName: SYSTEM_ACTOR_NAME,
+      userId: null,
+      agentId: null,
+      createdAt: workspace.createdAt,
+      disabledAt: null,
     });
+    await this.ledger.append(
+      tx,
+      workspace.id,
+      { actorId: systemActorId, requestId },
+      {
+        eventType: 'workspace.created',
+        objectType: 'workspace',
+        objectId: workspace.id,
+        metadata: {
+          slug: workspace.slug,
+          ...(createdBy
+            ? {
+                created_by_actor_id: createdBy.actorId,
+                created_by_workspace_id: createdBy.workspaceId,
+              }
+            : {}),
+        },
+      },
+    );
     return workspace;
   }
 }

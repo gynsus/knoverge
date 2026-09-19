@@ -128,6 +128,20 @@ describe('bootstrap', () => {
     expect(ledger).toEqual({ ok: true, count: 3 });
   });
 
+  it('leaves nothing behind when bootstrap fails after validation', async () => {
+    // A second bootstrap is refused inside the transaction; no workspace or user leaks.
+    const before = await services.repositories.workspaces.list();
+    const b = new Browser();
+    await b.fetchCsrf();
+    await b.post('/v1/bootstrap', {
+      ...ADMIN,
+      email: 'leak@example.com',
+      workspace: { slug: 'leak', name: 'Leak' },
+    });
+    expect(await services.repositories.workspaces.list()).toHaveLength(before.length);
+    expect(await services.repositories.users.findByEmail('leak@example.com')).toBeNull();
+  });
+
   it('refuses a second bootstrap', async () => {
     const b = new Browser();
     await b.fetchCsrf();
