@@ -62,13 +62,20 @@ Body is the same error object as MCP.
 Not part of the MCP surface; used by the web UI and CLI.
 
 ```text
-POST /v1/auth/login            email + password → session cookie
-POST /v1/auth/logout
-GET  /v1/auth/me               user, memberships, locale
-POST /v1/auth/password         change password
-GET  /v1/auth/sessions         list sessions
-POST /v1/auth/sessions/revoke
+GET  /v1/auth/status           bootstrap_required, authenticated (public)
+GET  /v1/auth/csrf             CSRF token; sets the knoverge_csrf cookie (public)
+POST /v1/bootstrap             first administrator and workspace; only while no user exists; signs in
+POST /v1/auth/login            email + password → knoverge_session cookie; returns user, memberships, session
+POST /v1/auth/logout           revokes the current session
+GET  /v1/auth/me               user, memberships, session
+POST /v1/auth/password         change password; revokes every other session
+GET  /v1/auth/sessions         active sessions of the user
+POST /v1/auth/sessions/revoke  revoke one session
 ```
+
+Browser flow: call `GET /v1/auth/csrf` once, send the returned token in the `x-csrf-token` header on every `POST`. The CSRF cookie is signed with `KNOVERGE_SESSION_SECRET`; the session cookie is `HttpOnly`, `SameSite=Lax`, `Secure` when `KNOVERGE_BASE_URL` is https, and lives 30 days.
+
+Rate limits: `login` 10 per minute per IP, `bootstrap` 5 per minute per IP, plus a per-account lockout of 15 minutes after 10 failed passwords (`RATE_LIMITED`).
 
 ## 6. Admin endpoints
 

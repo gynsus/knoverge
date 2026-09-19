@@ -94,7 +94,8 @@ KNOVERGE_DATABASE_URL
 KNOVERGE_DATA_DIR
 KNOVERGE_WEB_DIST             built web bundle directory; set in the image, unset in development
 KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
-KNOVERGE_SESSION_SECRET       (Milestone 1, sessions)
+KNOVERGE_SESSION_SECRET       signs browser cookies; required; hex, at least 32 bytes
+KNOVERGE_BASE_URL             public URL; cookies are Secure when https (default http://localhost:3000)
 KNOVERGE_TOKEN_PEPPER         (Milestone 1, agent credentials)
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
 KNOVERGE_ENCRYPTION_KEY       encrypts webhook signing secrets and other recoverable secrets
@@ -126,11 +127,13 @@ First start should support creation of:
 - first admin user;
 - first workspace.
 
-```bash
-docker compose exec knoverge knoverge bootstrap
-```
+Open the web UI: while no user exists it shows the one-time setup form, which disables itself once the first administrator is created. Or use the CLI:
 
-or a secure one-time web bootstrap page that disables itself after use.
+```bash
+docker compose exec -e KNOVERGE_BOOTSTRAP_PASSWORD='...' knoverge \
+  knoverge bootstrap --email you@example.com --name "Your Name" \
+  --workspace-slug personal --workspace-name "Personal Knowledge"
+```
 
 Do not ship a default administrator password.
 
