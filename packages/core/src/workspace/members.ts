@@ -10,7 +10,7 @@ import type { UserService } from '../identity/user-service.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
-import type { UnitOfWork } from '../ports/unit-of-work.ts';
+import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type { ActorRepository, WorkspaceRepository } from './repository.ts';
 
 export interface MemberServiceOptions {
@@ -106,15 +106,21 @@ export class MemberService {
     userId: UserId,
     role: MembershipRole,
   ): Promise<void> {
-    const membership = await this.o.memberships.find(actor.workspaceId, userId);
-    if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
-    if (membership.role === role) return;
-    // The workspace invariant is reported first: it is the most specific
-    // reason the change cannot happen, whoever is asking.
-    await this.assertNotLastOwner(actor.workspaceId, membership.role, role === 'owner');
-    await this.assertNotSelf(actor, userId, 'change your own role');
-    await this.assertMayAssign(actor, standing, role);
-    await this.o.uow.run(async (tx) => {
+    await this.o.uow.runExclusive(`members:${actor.workspaceId}`, async (tx) => {
+      // Inside the lock and the transaction: the owner count decides whether
+      // this may happen, so reading it beforehand let two callers each see
+      // enough owners and each remove one.
+      const membership = await this.o.memberships.find(actor.workspaceId, userId, tx);
+      if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
+      if (membership.role === role) return;
+      // The workspace invariant is reported first: it is the most specific
+      // reason the change cannot happen, whoever is asking.
+      await this.assertNotLastOwner(actor.workspaceId, membership.role, role === 'owner', tx);
+      await this.assertNotSelf(actor, userId, 'change your own role', tx);
+      // Both roles are checked: taking a role away ends every permission it
+      // carried, so it takes the same standing as handing that role out.
+      await this.assertMayAssign(actor, standing, membership.role);
+      await this.assertMayAssign(actor, standing, role);
       await this.o.memberships.updateRole(tx, actor.workspaceId, userId, role);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'membership.updated',
@@ -126,14 +132,14 @@ export class MemberService {
   }
 
   async remove(actor: ActorContext, standing: ActorStanding, userId: UserId): Promise<void> {
-    const membership = await this.o.memberships.find(actor.workspaceId, userId);
-    if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
-    await this.assertNotLastOwner(actor.workspaceId, membership.role, false);
-    await this.assertNotSelf(actor, userId, 'remove yourself');
-    // Removing a member ends every permission their role carried, so it takes
-    // the same standing as granting that role would.
-    await this.assertMayAssign(actor, standing, membership.role);
-    await this.o.uow.run(async (tx) => {
+    await this.o.uow.runExclusive(`members:${actor.workspaceId}`, async (tx) => {
+      const membership = await this.o.memberships.find(actor.workspaceId, userId, tx);
+      if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
+      await this.assertNotLastOwner(actor.workspaceId, membership.role, false, tx);
+      await this.assertNotSelf(actor, userId, 'remove yourself', tx);
+      // Removing a member ends every permission their role carried, so it takes
+      // the same standing as granting that role would.
+      await this.assertMayAssign(actor, standing, membership.role);
       await this.o.memberships.remove(tx, actor.workspaceId, userId);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'membership.updated',
@@ -196,8 +202,13 @@ export class MemberService {
    * Administering membership is done to other people. Changing your own role
    * turns a grant that can be taken back into a role that cannot.
    */
-  private async assertNotSelf(actor: ActorContext, userId: UserId, what: string): Promise<void> {
-    const self = await this.o.actors.findById(actor.workspaceId, actor.actorId);
+  private async assertNotSelf(
+    actor: ActorContext,
+    userId: UserId,
+    what: string,
+    tx?: Tx,
+  ): Promise<void> {
+    const self = await this.o.actors.findById(actor.workspaceId, actor.actorId, tx);
     if (self?.userId === userId) {
       throw new DomainError('FORBIDDEN', `you cannot ${what}; ask another administrator`);
     }
@@ -208,9 +219,10 @@ export class MemberService {
     workspaceId: WorkspaceId,
     currentRole: MembershipRole,
     becomingOwner: boolean,
+    tx?: Tx,
   ): Promise<void> {
     if (currentRole !== 'owner' || becomingOwner) return;
-    if ((await this.o.memberships.countByRole(workspaceId, 'owner')) <= 1) {
+    if ((await this.o.memberships.countByRole(workspaceId, 'owner', tx)) <= 1) {
       throw new DomainError('VALIDATION_ERROR', 'a workspace must keep at least one owner');
     }
   }

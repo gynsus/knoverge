@@ -108,9 +108,19 @@ export class UserService {
 
     const ok = await this.passwords.verify(password, user.passwordHash);
     if (!ok) {
-      const failed = user.failedLoginCount + 1;
-      const lockedUntil = failed >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCKOUT_MS) : null;
-      await this.uow.run((tx) => this.users.recordLoginFailure(tx, user.id, failed, lockedUntil));
+      // The database adds one and tells us the new count, so parallel attempts
+      // against one account add up. Computing it here from a value read before
+      // an argon2 verify let them overwrite each other, and the account never
+      // locked under a parallel attack.
+      await this.uow.run((tx) =>
+        this.users.recordLoginFailure(
+          tx,
+          user.id,
+          MAX_FAILED_LOGINS,
+          new Date(now.getTime() + LOCKOUT_MS),
+          now,
+        ),
+      );
       throw failure();
     }
     await this.uow.run((tx) => this.users.recordLoginSuccess(tx, user.id, now));

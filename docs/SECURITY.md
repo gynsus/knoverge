@@ -251,6 +251,14 @@ An agent has no such session, so it may name its client's conversation with `X-K
 
 `X-Request-Id` is likewise the caller's own, so two callers can deliberately share one. It groups a call with its retries; it does not identify anybody.
 
+### Checking and acting are one step
+
+A rule that decides whether a write may happen is read inside the transaction that performs it, holding the lock that protects it. Reading first and writing afterwards lets two requests each decide on a state the other is about to change:
+
+- two taxonomy mutations each validated against a tree the other was rewriting, so a move could reparent a category whose path a rename had already changed, leaving the parent and the path disagreeing, and two moves could make each other's parent and produce a cycle. A category whose path no longer resolves gets no ancestors, so every category-scoped grant with `include_descendants` silently stops covering it: a corrupt path weakens authorisation, not only presentation.
+- two removals each counted two owners and each removed one, leaving a workspace with no owner and no way back through the API.
+- parallel wrong passwords each read the same failure count and wrote it back, so the account never reached the lockout threshold. The count is now added by the database and the lockout decided from what it returns.
+
 ### Command line access
 
 `knoverge` commands run on the host with the database credentials and act as the workspace's system actor. They are not subject to permission grants: an operator with shell access on the server already controls the installation. Their changes are recorded in the ledger like any other.

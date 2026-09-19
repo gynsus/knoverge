@@ -38,18 +38,38 @@ export type CategoryPatch = Partial<
 export interface CategoryRepository {
   insert(tx: Tx, category: CategoryRecord): Promise<void>;
   update(tx: Tx, id: CategoryId, patch: CategoryPatch): Promise<void>;
-  findById(workspaceId: WorkspaceId, id: CategoryId): Promise<CategoryRecord | null>;
-  findByPath(workspaceId: WorkspaceId, path: string): Promise<CategoryRecord | null>;
+  /**
+   * Takes the workspace's taxonomy lock for the rest of the transaction.
+   *
+   * A mutation validates against the tree and then rewrites it, so the check
+   * and the act have to be one step. Without this the lock was taken when the
+   * version was allocated, near the end, and serialised only the version
+   * number: two mutations could each validate against a tree the other was
+   * about to change.
+   */
+  lock(tx: Tx, workspaceId: WorkspaceId): Promise<void>;
+  /**
+   * Reads pass the transaction when they are part of a check-then-act. Without
+   * it they go through the pool and cannot see what the transaction holding the
+   * lock has already written.
+   */
+  findById(workspaceId: WorkspaceId, id: CategoryId, tx?: Tx): Promise<CategoryRecord | null>;
+  findByPath(workspaceId: WorkspaceId, path: string, tx?: Tx): Promise<CategoryRecord | null>;
   list(
     workspaceId: WorkspaceId,
     options?: { includeArchived?: boolean },
   ): Promise<CategoryRecord[]>;
   /** The category itself and everything beneath it, ordered by path. */
-  listSubtree(workspaceId: WorkspaceId, path: string): Promise<CategoryRecord[]>;
+  listSubtree(workspaceId: WorkspaceId, path: string, tx?: Tx): Promise<CategoryRecord[]>;
   /**
    * Rewrites the path prefix of a subtree in one statement. Returns the ids it
    * changed, including the category itself, so the caller reports what actually
    * moved rather than a snapshot read before the statement.
+   *
+   * Throws when it matches nothing: the caller only asks for a rewrite it
+   * believes is needed, so matching no row means the tree is not what the
+   * caller read, and silently succeeding would leave a path and a parent that
+   * disagree.
    */
   rewritePaths(
     tx: Tx,
@@ -80,11 +100,18 @@ export interface AliasRecord {
 export interface AliasRepository {
   replaceForCategory(tx: Tx, categoryId: CategoryId, aliases: AliasRecord[]): Promise<void>;
   listForWorkspace(workspaceId: WorkspaceId): Promise<AliasRecord[]>;
-  findByNormalised(workspaceId: WorkspaceId, normalised: string): Promise<AliasRecord | null>;
+  findByNormalised(
+    workspaceId: WorkspaceId,
+    normalised: string,
+    tx?: Tx,
+  ): Promise<AliasRecord | null>;
 }
 
 export interface TaxonomyVersionRepository {
-  current(workspaceId: WorkspaceId): Promise<number>;
-  /** Inserts the next version inside the caller's transaction and returns it. */
+  current(workspaceId: WorkspaceId, tx?: Tx): Promise<number>;
+  /**
+   * Inserts the next version inside the caller's transaction and returns it.
+   * The caller holds the taxonomy lock, so the number cannot be claimed twice.
+   */
   bump(tx: Tx, workspaceId: WorkspaceId, at: Date): Promise<number>;
 }
