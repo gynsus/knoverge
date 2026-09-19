@@ -28,12 +28,24 @@ export interface UserRepository {
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: UserId): Promise<UserRecord | null>;
   count(): Promise<number>;
+  /**
+   * Adds one to the failure counter in the database and returns the new value.
+   *
+   * Reading the count and writing back a number computed from it lets parallel
+   * attempts overwrite each other: an argon2 verify sits in that window, so
+   * twenty-five simultaneous wrong passwords left the counter at two and the
+   * account unlocked. The lockout decision is made from the returned value.
+   *
+   * `lockAfter` is the count at which the account is locked, and `lockedUntil`
+   * the time it is locked to, applied only when the new count reaches it.
+   */
   recordLoginFailure(
     tx: Tx,
     id: UserId,
-    failedLoginCount: number,
-    lockedUntil: Date | null,
-  ): Promise<void>;
+    lockAfter: number,
+    lockedUntil: Date,
+    resetBefore: Date | null,
+  ): Promise<number>;
   recordLoginSuccess(tx: Tx, id: UserId, at: Date): Promise<void>;
   updatePassword(tx: Tx, id: UserId, passwordHash: string, at: Date): Promise<void>;
 }
@@ -89,6 +101,12 @@ export interface MembershipRepository {
   remove(tx: Tx, workspaceId: WorkspaceId, userId: UserId): Promise<MembershipRecord | null>;
   listForUser(userId: UserId): Promise<MembershipWithWorkspace[]>;
   listForWorkspace(workspaceId: WorkspaceId): Promise<MemberWithUser[]>;
-  countByRole(workspaceId: WorkspaceId, role: MembershipRole): Promise<number>;
-  find(workspaceId: WorkspaceId, userId: UserId): Promise<MembershipRecord | null>;
+  /**
+   * Reads pass the transaction when the answer decides whether a write may
+   * happen. Counting owners through the pool and then writing let two removals
+   * each see two owners and each remove one, leaving a workspace nobody can
+   * administer.
+   */
+  countByRole(workspaceId: WorkspaceId, role: MembershipRole, tx?: Tx): Promise<number>;
+  find(workspaceId: WorkspaceId, userId: UserId, tx?: Tx): Promise<MembershipRecord | null>;
 }

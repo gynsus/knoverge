@@ -39,10 +39,26 @@ export function createUserRepository(db: Database): UserRepository {
     async recordLoginFailure(
       tx: Tx,
       id: UserId,
-      failedLoginCount: number,
-      lockedUntil: Date | null,
+      lockAfter: number,
+      lockedUntil: Date,
+      resetBefore: Date | null,
     ) {
-      await asTx(tx).update(users).set({ failedLoginCount, lockedUntil }).where(eq(users.id, id));
+      // One statement, so parallel attempts add up instead of overwriting each
+      // other. An expired lockout resets the count first: otherwise a user who
+      // was locked once is locked again by their next single mistyped password.
+      const base = resetBefore
+        ? sql`CASE WHEN ${users.lockedUntil} IS NOT NULL AND ${users.lockedUntil} <= ${resetBefore} THEN 0 ELSE ${users.failedLoginCount} END`
+        : sql`${users.failedLoginCount}`;
+      const next = sql`${base} + 1`;
+      const rows = await asTx(tx)
+        .update(users)
+        .set({
+          failedLoginCount: next,
+          lockedUntil: sql`CASE WHEN ${next} >= ${lockAfter} THEN ${lockedUntil}::timestamptz ELSE NULL END`,
+        })
+        .where(eq(users.id, id))
+        .returning({ failedLoginCount: users.failedLoginCount });
+      return rows[0]?.failedLoginCount ?? 0;
     },
     async recordLoginSuccess(tx: Tx, id: UserId, at: Date) {
       await asTx(tx)

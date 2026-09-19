@@ -12,6 +12,8 @@ import { and, asc, desc, eq, max, ne, or, sql } from 'drizzle-orm';
 
 import { LOCK_TAXONOMY } from '../locks.ts';
 
+import { DomainError } from '@knoverge/core';
+
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
 import { categories, categoryAliases, taxonomyVersions } from '../schema/categories.ts';
@@ -31,7 +33,14 @@ function toCategory(row: typeof categories.$inferSelect): CategoryRecord {
 }
 
 export function createCategoryRepository(db: Database): CategoryRepository {
+  /** The transaction when one is given, otherwise the pool. */
+  const reader = (tx?: Tx) => (tx ? asTx(tx) : db);
   return {
+    async lock(tx: Tx, workspaceId: WorkspaceId) {
+      await asTx(tx).execute(
+        sql`SELECT pg_advisory_xact_lock(${LOCK_TAXONOMY}, hashtext(${workspaceId}))`,
+      );
+    },
     async insert(tx: Tx, category: CategoryRecord) {
       try {
         await asTx(tx).insert(categories).values(category);
@@ -59,16 +68,16 @@ export function createCategoryRepository(db: Database): CategoryRepository {
         );
       }
     },
-    async findById(workspaceId: WorkspaceId, id: CategoryId) {
-      const rows = await db
+    async findById(workspaceId: WorkspaceId, id: CategoryId, tx?: Tx) {
+      const rows = await reader(tx)
         .select()
         .from(categories)
         .where(and(eq(categories.workspaceId, workspaceId), eq(categories.id, id)))
         .limit(1);
       return rows[0] ? toCategory(rows[0]) : null;
     },
-    async findByPath(workspaceId: WorkspaceId, path: string) {
-      const rows = await db
+    async findByPath(workspaceId: WorkspaceId, path: string, tx?: Tx) {
+      const rows = await reader(tx)
         .select()
         .from(categories)
         .where(and(eq(categories.workspaceId, workspaceId), eq(categories.path, path)))
@@ -82,8 +91,8 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       const rows = await db.select().from(categories).where(where).orderBy(asc(categories.path));
       return rows.map(toCategory);
     },
-    async listSubtree(workspaceId: WorkspaceId, path: string) {
-      const rows = await db
+    async listSubtree(workspaceId: WorkspaceId, path: string, tx?: Tx) {
+      const rows = await reader(tx)
         .select()
         .from(categories)
         .where(
@@ -138,8 +147,19 @@ export function createCategoryRepository(db: Database): CategoryRepository {
             ),
           )
           .returning({ id: categories.id });
+        if (rows.length === 0) {
+          // The caller read this path and decided a rewrite was needed, so no
+          // match means the tree changed underneath it. Succeeding here would
+          // leave the category's parent and its path disagreeing.
+          throw new DomainError(
+            'CATEGORY_CONFLICT',
+            'the category tree changed while this change was being applied; read it again and retry',
+            { objectIds: { path: oldPath } },
+          );
+        }
         return rows.map((r) => r.id as CategoryId);
       } catch (err) {
+        if (err instanceof DomainError) throw err;
         // The path is only ever written here, so this is where a concurrent
         // rename or move collides. Without it the caller would see a 500.
         rethrowUniqueViolation(
@@ -180,8 +200,8 @@ export function createAliasRepository(db: Database): AliasRepository {
         .orderBy(asc(categoryAliases.alias));
       return rows.map(toAlias);
     },
-    async findByNormalised(workspaceId: WorkspaceId, normalised: string) {
-      const rows = await db
+    async findByNormalised(workspaceId: WorkspaceId, normalised: string, tx?: Tx) {
+      const rows = await (tx ? asTx(tx) : db)
         .select()
         .from(categoryAliases)
         .where(
@@ -198,8 +218,8 @@ export function createAliasRepository(db: Database): AliasRepository {
 
 export function createTaxonomyVersionRepository(db: Database): TaxonomyVersionRepository {
   return {
-    async current(workspaceId: WorkspaceId) {
-      const [row] = await db
+    async current(workspaceId: WorkspaceId, tx?: Tx) {
+      const [row] = await (tx ? asTx(tx) : db)
         .select({ version: max(taxonomyVersions.version) })
         .from(taxonomyVersions)
         .where(eq(taxonomyVersions.workspaceId, workspaceId));
@@ -207,10 +227,8 @@ export function createTaxonomyVersionRepository(db: Database): TaxonomyVersionRe
     },
     async bump(tx: Tx, workspaceId: WorkspaceId, at: Date) {
       const t = asTx(tx);
-      // Serialise version allocation per workspace, as for the ledger sequence.
-      await t.execute(
-        sql`SELECT pg_advisory_xact_lock(${LOCK_TAXONOMY}, hashtext(${workspaceId}))`,
-      );
+      // The caller holds the taxonomy lock from the start of its transaction,
+      // which is what makes this read-then-insert safe.
       const [current] = await t
         .select({ version: taxonomyVersions.version })
         .from(taxonomyVersions)

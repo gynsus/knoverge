@@ -91,8 +91,8 @@ export function createMembershipRepository(db: Database): MembershipRepository {
         lastLoginAt: r.user.lastLoginAt,
       }));
     },
-    async countByRole(workspaceId: WorkspaceId, role: MembershipRecord['role']) {
-      const [row] = await db
+    async countByRole(workspaceId: WorkspaceId, role: MembershipRecord['role'], tx?: Tx) {
+      const [row] = await (tx ? asTx(tx) : db)
         .select({ n: count() })
         .from(workspaceMemberships)
         .where(
@@ -103,8 +103,8 @@ export function createMembershipRepository(db: Database): MembershipRepository {
         );
       return row?.n ?? 0;
     },
-    async find(workspaceId: WorkspaceId, userId: UserId) {
-      const rows = await db
+    async find(workspaceId: WorkspaceId, userId: UserId, tx?: Tx) {
+      const rows = await (tx ? asTx(tx) : db)
         .select()
         .from(workspaceMemberships)
         .where(

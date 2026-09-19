@@ -33,9 +33,19 @@ function repository(initial: UserRecord[] = []) {
     findByEmail: async (email) => rows.find((u) => u.email === email) ?? null,
     findById: async (id) => rows.find((u) => u.id === id) ?? null,
     count: async () => rows.length,
-    recordLoginFailure: async (_tx, id, failedLoginCount, lockedUntil) => {
+    // Mirrors the SQL: the store adds one and reports the new count, and an
+    // expired lockout resets it first.
+    recordLoginFailure: async (_tx, id, lockAfter, lockedUntil, resetBefore) => {
       const user = rows.find((u) => u.id === id);
-      if (user) Object.assign(user, { failedLoginCount, lockedUntil });
+      if (!user) return 0;
+      const expired =
+        resetBefore !== null && user.lockedUntil !== null && user.lockedUntil <= resetBefore;
+      const next = (expired ? 0 : user.failedLoginCount) + 1;
+      Object.assign(user, {
+        failedLoginCount: next,
+        lockedUntil: next >= lockAfter ? lockedUntil : null,
+      });
+      return next;
     },
     recordLoginSuccess: async (_tx, id, at) => {
       const user = rows.find((u) => u.id === id);
