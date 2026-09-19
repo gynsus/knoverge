@@ -1,4 +1,5 @@
 import type { Database } from '../client.ts';
+import { createAgentRepository, createCredentialRepository } from './agents.ts';
 import { createEventRepository } from './events.ts';
 import { createMembershipRepository } from './memberships.ts';
 import { createSessionRepository } from './sessions.ts';
@@ -9,6 +10,8 @@ import { createActorRepository, createWorkspaceRepository } from './workspaces.t
 export function createRepositories(db: Database) {
   return {
     events: createEventRepository(db),
+    agents: createAgentRepository(db),
+    credentials: createCredentialRepository(db),
     workspaces: createWorkspaceRepository(db),
     actors: createActorRepository(db),
     users: createUserRepository(db),

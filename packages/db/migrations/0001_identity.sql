@@ -9,6 +9,35 @@ CREATE TABLE "actors" (
 	"disabled_at" timestamp with time zone
 );
 --> statement-breakpoint
+CREATE TABLE "agent_credentials" (
+	"id" varchar(40) PRIMARY KEY NOT NULL,
+	"agent_id" varchar(40) NOT NULL,
+	"token_hash" varchar(128) NOT NULL,
+	"token_prefix" varchar(32) NOT NULL,
+	"label" varchar(120),
+	"created_by_actor_id" varchar(40) NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"expires_at" timestamp with time zone,
+	"revoked_at" timestamp with time zone,
+	"last_used_at" timestamp with time zone,
+	CONSTRAINT "agent_credentials_token_hash_unique" UNIQUE("token_hash")
+);
+--> statement-breakpoint
+CREATE TABLE "agents" (
+	"id" varchar(40) PRIMARY KEY NOT NULL,
+	"workspace_id" varchar(40) NOT NULL,
+	"actor_id" varchar(40) NOT NULL,
+	"name" varchar(120) NOT NULL,
+	"description" text,
+	"client_type" varchar(64),
+	"trust_tier" varchar(16) DEFAULT 'propose' NOT NULL,
+	"status" varchar(16) DEFAULT 'active' NOT NULL,
+	"created_by_actor_id" varchar(40) NOT NULL,
+	"created_at" timestamp with time zone NOT NULL,
+	"last_seen_at" timestamp with time zone,
+	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "events" (
 	"id" varchar(40) PRIMARY KEY NOT NULL,
 	"workspace_id" varchar(40) NOT NULL,
@@ -97,6 +126,9 @@ CREATE TABLE "workspaces" (
 --> statement-breakpoint
 ALTER TABLE "actors" ADD CONSTRAINT "actors_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "actors" ADD CONSTRAINT "actors_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "agent_credentials" ADD CONSTRAINT "agent_credentials_agent_id_agents_id_fk" FOREIGN KEY ("agent_id") REFERENCES "public"."agents"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "agents" ADD CONSTRAINT "agents_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "agents" ADD CONSTRAINT "agents_actor_id_actors_id_fk" FOREIGN KEY ("actor_id") REFERENCES "public"."actors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "events" ADD CONSTRAINT "events_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "idempotency_records" ADD CONSTRAINT "idempotency_records_workspace_id_workspaces_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."workspaces"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "human_sessions" ADD CONSTRAINT "human_sessions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -104,6 +136,9 @@ ALTER TABLE "workspace_memberships" ADD CONSTRAINT "workspace_memberships_worksp
 ALTER TABLE "workspace_memberships" ADD CONSTRAINT "workspace_memberships_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "actors_workspace_idx" ON "actors" USING btree ("workspace_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "actors_workspace_system_idx" ON "actors" USING btree ("workspace_id") WHERE type = 'system';--> statement-breakpoint
+CREATE INDEX "agent_credentials_agent_idx" ON "agent_credentials" USING btree ("agent_id");--> statement-breakpoint
+CREATE INDEX "agents_workspace_idx" ON "agents" USING btree ("workspace_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "agents_workspace_name_idx" ON "agents" USING btree ("workspace_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "events_workspace_sequence_idx" ON "events" USING btree ("workspace_id","sequence");--> statement-breakpoint
 CREATE INDEX "events_workspace_object_idx" ON "events" USING btree ("workspace_id","object_type","object_id");--> statement-breakpoint
 CREATE INDEX "events_workspace_type_idx" ON "events" USING btree ("workspace_id","event_type");--> statement-breakpoint

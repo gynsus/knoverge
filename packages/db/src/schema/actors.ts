@@ -15,6 +15,7 @@ export const actors = pgTable(
     type: varchar('type', { length: 16 }).notNull(),
     displayName: varchar('display_name', { length: 120 }).notNull(),
     userId: id('user_id').references(() => users.id),
+    // No foreign key to agents: the actor is created first and referenced by the agent.
     agentId: id('agent_id'),
     createdAt: timestampTz('created_at').notNull(),
     disabledAt: timestampTz('disabled_at'),
