@@ -14,6 +14,10 @@ export {
   type RunMigrationsResult,
 } from './migrate.ts';
 export { createEventRepository } from './repositories/events.ts';
+export { createRepositories, type Repositories } from './repositories/index.ts';
+export { createMembershipRepository } from './repositories/memberships.ts';
+export { createSessionRepository } from './repositories/sessions.ts';
+export { createUserRepository } from './repositories/users.ts';
 export { createActorRepository, createWorkspaceRepository } from './repositories/workspaces.ts';
 export * as schema from './schema/index.ts';
 export { asTx, createUnitOfWork, type DrizzleTx } from './unit-of-work.ts';

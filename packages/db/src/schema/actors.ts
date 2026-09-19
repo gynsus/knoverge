@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { index, pgTable, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 import { id, timestampTz } from './common.ts';
+import { users } from './users.ts';
 import { workspaces } from './workspaces.ts';
 
 export const actors = pgTable(
@@ -13,7 +14,7 @@ export const actors = pgTable(
       .references(() => workspaces.id),
     type: varchar('type', { length: 16 }).notNull(),
     displayName: varchar('display_name', { length: 120 }).notNull(),
-    userId: id('user_id'),
+    userId: id('user_id').references(() => users.id),
     agentId: id('agent_id'),
     createdAt: timestampTz('created_at').notNull(),
     disabledAt: timestampTz('disabled_at'),

@@ -1,5 +1,5 @@
 import { sql } from 'drizzle-orm';
-import { index, pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import { index, integer, pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 import { id, json, timestampTz } from './common.ts';
 import { workspaces } from './workspaces.ts';
@@ -14,6 +14,9 @@ export const users = pgTable(
     locale: varchar('locale', { length: 8 }).notNull().default('en'),
     status: varchar('status', { length: 16 }).notNull().default('active'),
     mfa: json('mfa'),
+    failedLoginCount: integer('failed_login_count').notNull().default(0),
+    lockedUntil: timestampTz('locked_until'),
+    passwordChangedAt: timestampTz('password_changed_at').notNull(),
     createdAt: timestampTz('created_at').notNull(),
     lastLoginAt: timestampTz('last_login_at'),
   },
