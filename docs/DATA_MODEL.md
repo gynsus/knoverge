@@ -30,6 +30,7 @@ cand_  sync candidate
 att_   attachment
 hook_  webhook
 rule_  policy rule
+grant_ permission grant
 chunk_ search chunk
 ```
 

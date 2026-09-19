@@ -434,6 +434,9 @@ importers:
       '@knoverge/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@knoverge/policy':
+        specifier: workspace:*
+        version: link:../../packages/policy
       '@node-rs/argon2':
         specifier: 'catalog:'
         version: 2.2.1
@@ -582,6 +585,9 @@ importers:
       '@knoverge/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@knoverge/policy':
+        specifier: workspace:*
+        version: link:../policy
       ulid:
         specifier: 'catalog:'
         version: 3.0.2
@@ -604,6 +610,9 @@ importers:
       '@knoverge/core':
         specifier: workspace:*
         version: link:../core
+      '@knoverge/policy':
+        specifier: workspace:*
+        version: link:../policy
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.2(@types/pg@8.23.1)(pg@8.23.0)
@@ -643,10 +652,17 @@ importers:
         version: 5.9.3
 
   packages/policy:
+    dependencies:
+      '@knoverge/contracts':
+        specifier: workspace:*
+        version: link:../contracts
     devDependencies:
       typescript:
         specifier: 'catalog:'
         version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@24.13.5)(jsdom@30.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(tsx@4.23.13))
 
   packages/search:
     devDependencies:
