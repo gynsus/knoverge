@@ -10,6 +10,7 @@ export type {
 export {
   AgentService,
   TOKEN_PREFIX,
+  TOUCH_INTERVAL_MS,
   type AgentServiceOptions,
   type CreateAgentInput,
   type IssueCredentialInput,

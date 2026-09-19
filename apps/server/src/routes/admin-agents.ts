@@ -5,12 +5,12 @@ import {
   CredentialsResponse,
   IssueCredentialRequest,
   IssueCredentialResponse,
+  ListCredentialsQuery,
   OkResponse,
   RevokeCredentialRequest,
   UpdateAgentRequest,
   type AgentSummary,
   type CredentialSummary,
-  type AgentId,
 } from '@knoverge/contracts';
 import type { AgentRecord, CredentialRecord } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
@@ -106,16 +106,13 @@ export function registerAdminAgentRoutes(app: FastifyInstance, services: Service
   r.get(
     '/v1/admin/agents.credentials',
     {
-      schema: {
-        querystring: IssueCredentialRequest.pick({ agent_id: true }),
-        response: { 200: CredentialsResponse },
-      },
+      schema: { querystring: ListCredentialsQuery, response: { 200: CredentialsResponse } },
     },
     async (request) => {
       const actor = await requireRole(services, request, 'admin');
       const credentials = await services.agents.listCredentials(
         actor.context.workspaceId,
-        request.query.agent_id as AgentId,
+        request.query.agent_id,
       );
       return { credentials: credentials.map(credentialSummary) };
     },

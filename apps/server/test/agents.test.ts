@@ -201,6 +201,11 @@ describe('credentials', () => {
     const stored = await services.repositories.credentials.findById(issued.credential.id);
     expect(stored?.tokenHash).not.toContain(issued.token);
     expect(stored?.lastUsedAt).not.toBeNull();
+    // A second authentication within the throttle window writes nothing.
+    const firstTouch = stored?.lastUsedAt;
+    await services.agents.authenticate(issued.token);
+    const again = await services.repositories.credentials.findById(issued.credential.id);
+    expect(again?.lastUsedAt).toEqual(firstTouch);
 
     const list = CredentialsResponse.parse(
       (await admin.get(`/v1/admin/agents.credentials?agent_id=${agent.id}`)).json(),
@@ -252,6 +257,9 @@ describe('credentials', () => {
       agent_id: agent.id,
       status: 'disabled',
     });
+    const events = await services.repositories.events.listAfter(agent.workspace_id, 0, 500);
+    const updated = events.filter((e) => e.eventType === 'agent.updated').at(-1);
+    expect(updated?.metadata).toMatchObject({ status: 'disabled', revoked_credentials: 1 });
     expect(update.statusCode, update.body).toBe(200);
     expect(AgentResponse.parse(update.json()).agent.status).toBe('disabled');
     expect(await services.agents.authenticate(issued.token)).toBeNull();
