@@ -239,9 +239,25 @@ A membership role and an agent's trust tier each stand for a set of actions, so 
 
 ### Scopes apply where the object is
 
-A permission is checked against the object the request names, not against the request alone. Every taxonomy mutation is checked against the category it changes, and a move against both the category and its destination, so a branch-scoped grant covers exactly that branch. A check with no object would silently ignore every scoped grant: a deny would not restrict, and an allow would refuse everything.
+A permission is checked against every object the request changes, not against the request alone. A taxonomy mutation that rewrites a subtree, meaning an archive, a move, or a rename that changes the slug, is checked against the whole subtree; a move is checked against its destination as well; a new category against its parent. A check with no object would silently ignore every scoped grant: a deny would not restrict, and an allow would refuse everything.
 
 Creating a root category belongs to no branch, which no category-scoped grant covers.
+
+An allow and a deny read a scope differently, and they have to:
+
+- an **allow** must cover every category the request touches. An object filed in a permitted and a restricted branch is not reachable through the permitted one.
+- a **deny** fires as soon as it covers one of them. A restriction that only applied when it covered all of them was bypassed by renaming or archiving the parent, because the parent is not inside the restricted branch and the whole operation was judged to fall outside it.
+
+### Authority has to cover what it hands out
+
+Granting is checked against the scope of the grant, not against the action alone:
+
+- a branch-scoped grant requires the granter to hold the action for each branch it names;
+- an unscoped grant requires the granter to hold the action and to be under no restriction on it anywhere. Anything less let a restricted administrator hand the action out unrestricted, to an agent they created, and then act through that agent's token. The restriction was not lifted, it was walked around.
+
+Minting a credential is checked the same way as choosing the tier, because the token is what actually hands the tier's permissions to whoever holds it.
+
+A restriction aimed at yourself is refused. Revoking it would need the action it took away, and a deny on you is not yours to lift, so there would be no way back. `knoverge permissions` is the operator's route in: it runs as the workspace system actor and is recorded in the ledger like any other change.
 
 ### Who chooses the provenance on an event
 

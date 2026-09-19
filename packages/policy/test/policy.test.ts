@@ -296,3 +296,60 @@ describe('defaults', () => {
     }
   });
 });
+
+describe('a scope covers an allow and a deny differently', () => {
+  const ancestorsOf = (id: string) => (id === 'cat_child' ? ['cat_parent'] : []);
+  const scoped = (effect: 'allow' | 'deny', categoryId: string): Grant => ({
+    id: `grant_${effect}`,
+    actorId: 'act_1' as ActorId,
+    action: 'taxonomy.manage' as PermissionAction,
+    effect,
+    scope: {
+      categories: [{ category_id: categoryId as CategoryId, include_descendants: true }],
+      types: [],
+      languages: [],
+    } as ScopeSelector,
+  });
+  const unscopedAllow: Grant = {
+    id: 'grant_base',
+    actorId: 'act_1' as ActorId,
+    action: 'taxonomy.manage' as PermissionAction,
+    effect: 'allow',
+    scope: { categories: [], types: [], languages: [] } as ScopeSelector,
+  };
+
+  it('fires a deny when the request touches the restricted branch at all', () => {
+    // Renaming the parent rewrites the child's path, so the request names both.
+    // Requiring the deny to cover every named category let exactly this be used
+    // to reach a restricted child through its permitted parent.
+    const decision = evaluatePermission(
+      [unscopedAllow, scoped('deny', 'cat_child')],
+      'taxonomy.manage',
+      { categoryIds: ['cat_parent', 'cat_child'] },
+      ancestorsOf,
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe('explicit_deny');
+  });
+
+  it('leaves a request that touches nothing restricted alone', () => {
+    const decision = evaluatePermission(
+      [unscopedAllow, scoped('deny', 'cat_child')],
+      'taxonomy.manage',
+      { categoryIds: ['cat_parent'] },
+      ancestorsOf,
+    );
+    expect(decision.allowed).toBe(true);
+  });
+
+  it('still requires an allow to cover every category the request touches', () => {
+    const decision = evaluatePermission(
+      [scoped('allow', 'cat_parent')],
+      'taxonomy.manage',
+      { categoryIds: ['cat_parent', 'cat_elsewhere'] },
+      ancestorsOf,
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toBe('no_grant');
+  });
+});

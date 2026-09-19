@@ -5,6 +5,7 @@ import { agentCommand } from './commands/agent.ts';
 import { bootstrapCommand } from './commands/bootstrap.ts';
 import { dbCommand } from './commands/db.ts';
 import { ledgerCommand } from './commands/ledger.ts';
+import { permissionsCommand } from './commands/permissions.ts';
 import { taxonomyCommand } from './commands/taxonomy.ts';
 import { workspaceCommand } from './commands/workspace.ts';
 
@@ -20,6 +21,7 @@ program.addCommand(bootstrapCommand());
 program.addCommand(dbCommand());
 program.addCommand(workspaceCommand());
 program.addCommand(ledgerCommand());
+program.addCommand(permissionsCommand());
 program.addCommand(taxonomyCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {

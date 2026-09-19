@@ -69,6 +69,8 @@ function asAgent(token: string, opts: InjectOptions & { url: string }) {
 }
 
 const OWNER = { email: 'owner@example.com', password: 'correct horse battery staple' };
+const VIEWER_EMAIL = 'viewer@example.com';
+const VIEWER_PASSWORD = 'nine amber kettles wander';
 const ADMIN = { email: 'second@example.com', password: 'seven purple lanterns drift' };
 
 beforeAll(async () => {
@@ -187,14 +189,30 @@ describe('privilege escalation is refused', () => {
   });
 
   it('a deny grant needs no matching privilege, so access can always be narrowed', async () => {
-    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
-    const self = members.members.find((m) => m.email === ADMIN.email)!;
+    // The admin does not hold workspace.admin and may still restrict it.
+    const created = await admin.post('/v1/admin/agents.create', { name: 'Restrictable' });
+    const agent = AgentResponse.parse(created.json()).agent;
     const res = await admin.post('/v1/admin/permissions.grant', {
-      actor_id: self.actor_id,
+      actor_id: agent.actor_id,
       action: 'workspace.admin',
       effect: 'deny',
     });
     expect(res.statusCode, res.body).toBe(200);
+  });
+
+  it('refuses a restriction aimed at yourself, which nobody could lift', async () => {
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    const self = members.members.find((m) => m.email === ADMIN.email)!;
+    const res = await admin.post('/v1/admin/permissions.grant', {
+      actor_id: self.actor_id,
+      action: 'policy.manage',
+      effect: 'deny',
+    });
+    expect(res.statusCode, res.body).toBe(403);
+    expect(res.json().message).toMatch(/cannot restrict yourself/);
+    // Revoking needs the action the deny would have taken away, and a deny on
+    // you is not yours to lift, so there would have been no way back.
+    expect((await admin.get('/v1/admin/permissions.list')).statusCode).toBe(200);
   });
 
   it('refuses an actor from another workspace', async () => {
@@ -451,7 +469,7 @@ describe('the error contract', () => {
 });
 
 describe('authority is handed out, never invented', () => {
-  const VIEWER = { email: 'viewer@example.com', password: 'nine amber kettles wander' };
+  const VIEWER = { email: VIEWER_EMAIL, password: VIEWER_PASSWORD };
   let viewer: Browser;
   let here: Browser;
   let theAdmin: Browser;
@@ -673,6 +691,147 @@ describe('authority is handed out, never invented', () => {
     ).toBe(200);
     const after = await curator.post('/v1/admin/taxonomy.archive', { category_id: child.id });
     expect(after.statusCode, after.body).toBe(200);
+  });
+});
+
+describe('a restriction cannot be walked around', () => {
+  const RESTRICTED = { email: 'restricted@example.com', password: 'eleven copper bridges hum' };
+  let restricted: Browser;
+  let restrictedActor: string;
+  let branch: { id: string; path: string };
+
+  beforeAll(async () => {
+    owner.workspace = workspaceId;
+    const added = await owner.post('/v1/admin/members.add', {
+      email: RESTRICTED.email,
+      role: 'admin',
+      display_name: 'Restricted',
+      initial_password: RESTRICTED.password,
+    });
+    expect(added.statusCode, added.body).toBe(200);
+    const members = MembersResponse.parse((await owner.get('/v1/admin/members.list')).json());
+    restrictedActor = members.members.find((m) => m.email === RESTRICTED.email)!.actor_id;
+    restricted = await new Browser().signIn(RESTRICTED.email, RESTRICTED.password);
+    restricted.workspace = workspaceId;
+
+    const created = CategoryResponse.parse(
+      (await owner.post('/v1/admin/taxonomy.create', { name: 'Out of bounds' })).json(),
+    ).category;
+    branch = { id: created.id, path: created.path };
+    expect(
+      (
+        await owner.post('/v1/admin/permissions.grant', {
+          actor_id: restrictedActor,
+          action: 'taxonomy.manage',
+          effect: 'deny',
+          scope: { categories: [{ category_id: branch.id, include_descendants: true }] },
+        })
+      ).statusCode,
+    ).toBe(200);
+    // The restriction works directly.
+    expect(
+      (await restricted.post('/v1/admin/taxonomy.archive', { category_id: branch.id })).statusCode,
+    ).toBe(403);
+  });
+
+  it('cannot be handed to an agent the restricted person creates', async () => {
+    const agent = AgentResponse.parse(
+      (await restricted.post('/v1/admin/agents.create', { name: 'Proxy' })).json(),
+    ).agent;
+    // The grant is unscoped, so it would give the agent what the deny took away.
+    const granted = await restricted.post('/v1/admin/permissions.grant', {
+      actor_id: agent.actor_id,
+      action: 'taxonomy.manage',
+    });
+    expect(granted.statusCode, granted.body).toBe(403);
+    expect(granted.json().message).toMatch(/restricted for you/);
+  });
+
+  it('cannot be escaped by granting the same scope to somebody else', async () => {
+    const agent = AgentResponse.parse(
+      (await restricted.post('/v1/admin/agents.create', { name: 'Scoped proxy' })).json(),
+    ).agent;
+    const granted = await restricted.post('/v1/admin/permissions.grant', {
+      actor_id: agent.actor_id,
+      action: 'taxonomy.manage',
+      scope: { categories: [{ category_id: branch.id, include_descendants: true }] },
+    });
+    expect(granted.statusCode, granted.body).toBe(403);
+    expect(granted.json().message).toMatch(/every category in this scope/);
+  });
+
+  it('reaches the whole subtree a mutation would rewrite', async () => {
+    const child = CategoryResponse.parse(
+      (
+        await owner.post('/v1/admin/taxonomy.create', {
+          name: 'Inner secret',
+          parent_path: branch.path,
+        })
+      ).json(),
+    ).category;
+    const outer = CategoryResponse.parse(
+      (await owner.post('/v1/admin/taxonomy.create', { name: 'Permitted' })).json(),
+    ).category;
+    const inner = CategoryResponse.parse(
+      (
+        await owner.post('/v1/admin/taxonomy.create', {
+          name: 'Restricted leaf',
+          parent_path: outer.path,
+        })
+      ).json(),
+    ).category;
+    expect(
+      (
+        await owner.post('/v1/admin/permissions.grant', {
+          actor_id: restrictedActor,
+          action: 'taxonomy.manage',
+          effect: 'deny',
+          scope: { categories: [{ category_id: inner.id, include_descendants: true }] },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    // Renaming the parent rewrites the restricted child's path, so it is refused.
+    const renamed = await restricted.post('/v1/admin/taxonomy.update', {
+      category_id: outer.id,
+      slug: 'renamed-permitted',
+    });
+    expect(renamed.statusCode, renamed.body).toBe(403);
+    // Archiving the parent would archive the restricted child with it.
+    const archived = await restricted.post('/v1/admin/taxonomy.archive', {
+      category_id: outer.id,
+    });
+    expect(archived.statusCode, archived.body).toBe(403);
+    // A change that touches no descendant is still allowed.
+    expect(
+      (
+        await restricted.post('/v1/admin/taxonomy.update', {
+          category_id: outer.id,
+          description: 'A description changes nothing below it',
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(child.path.startsWith(branch.path)).toBe(true);
+  });
+
+  it('cannot be escaped by minting a token for an agent somebody else built', async () => {
+    // A viewer given only agent.manage may not issue a token for an agent whose
+    // tier carries more than the viewer holds.
+    const viewerBrowser = await new Browser().signIn(VIEWER_EMAIL, VIEWER_PASSWORD);
+    viewerBrowser.workspace = workspaceId;
+    const agent = AgentResponse.parse(
+      (
+        await owner.post('/v1/admin/agents.create', {
+          name: 'Powerful',
+          trust_tier: 'trusted',
+        })
+      ).json(),
+    ).agent;
+    const issued = await viewerBrowser.post('/v1/admin/agents.credentials.issue', {
+      agent_id: agent.id,
+    });
+    expect(issued.statusCode, issued.body).toBe(403);
+    expect(issued.json().message).toMatch(/which you do not hold/);
   });
 });
 

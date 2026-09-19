@@ -179,6 +179,17 @@ docker compose exec knoverge knoverge taxonomy list
 
 Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`.
 
+### Permission grants from the command line
+
+`knoverge permissions list`, `grant` and `revoke` administer grants as the workspace system actor. They exist because a grant can restrict the people who administer grants, and a restriction is deliberately not lifted by the person it restricts:
+
+```bash
+docker compose exec knoverge knoverge permissions list
+docker compose exec knoverge knoverge permissions revoke --grant grant_01J...
+docker compose exec knoverge knoverge permissions grant --actor act_01J... \
+  --action taxonomy.manage --effect deny --category cat_01J...
+```
+
 ### Reading command line output from a script
 
 Every listing writes tab-separated rows to standard output and nothing else. Headers, counts and failure detail go to standard error, so `knoverge taxonomy list > categories.tsv` gives you rows and only rows. `--tree` indents names to show the hierarchy, which is for reading, not for parsing.

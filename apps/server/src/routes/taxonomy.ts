@@ -6,7 +6,9 @@ import {
   TaxonomyListQuery,
   TaxonomyListResponse,
   UpdateCategoryRequest,
+  type CategoryId,
   type CategorySummary,
+  type WorkspaceId,
 } from '@knoverge/contracts';
 import type { CategoryWithAliases } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
@@ -16,7 +18,6 @@ import {
   idempotencyKey,
   requireListPermission,
   resolveWorkspaceActor,
-  requirePermission,
 } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
@@ -46,6 +47,22 @@ function summary(category: CategoryWithAliases, includeGuidance = true): Categor
  * Reads require taxonomy.read, mutations taxonomy.manage. Both come from the
  * caller's role or trust tier by default and can be granted explicitly.
  */
+/**
+ * The category and everything under it. A mutation that rewrites a subtree is
+ * authorised against every category it rewrites, because a scope matches only
+ * when it covers all of them.
+ */
+async function subtreeOf(
+  services: Services,
+  workspaceId: WorkspaceId,
+  categoryId: CategoryId,
+): Promise<CategoryId[]> {
+  const category = await services.repositories.categories.findById(workspaceId, categoryId);
+  if (!category) return [categoryId];
+  const subtree = await services.repositories.categories.listSubtree(workspaceId, category.path);
+  return subtree.map((c) => c.id);
+}
+
 export function registerTaxonomyRoutes(app: FastifyInstance, services: Services): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
@@ -130,8 +147,15 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
     },
     async (request) => {
       const body = request.body;
-      const actor = await requirePermission(services, request, 'taxonomy.manage', {
-        categoryIds: [body.category_id],
+      // A slug change rewrites the path of every descendant, so the permission
+      // is checked against all of them. Checking only the category named lets a
+      // deny on a child be bypassed by renaming its parent.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        categoryIds:
+          body.slug === undefined
+            ? [body.category_id]
+            : await subtreeOf(services, actor.context.workspaceId, body.category_id),
       });
       const result = await services.taxonomy.update(actor.context, {
         categoryId: body.category_id,
@@ -153,11 +177,13 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: MoveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      // Both ends of a move are checked: a branch-scoped administrator must
-      // not be able to move a category out of their branch or into it.
-      const actor = await requirePermission(services, request, 'taxonomy.manage', {
+      // Both ends of a move are checked, and the whole subtree that moves with
+      // it: a branch-scoped administrator must not be able to move a category
+      // out of their branch, into it, or take a restricted child along.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
         categoryIds: [
-          request.body.category_id,
+          ...(await subtreeOf(services, actor.context.workspaceId, request.body.category_id)),
           ...(request.body.new_parent_id ? [request.body.new_parent_id] : []),
         ],
       });
@@ -177,8 +203,10 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       schema: { body: ArchiveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'taxonomy.manage', {
-        categoryIds: [request.body.category_id],
+      // Archiving takes the whole subtree with it.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        categoryIds: await subtreeOf(services, actor.context.workspaceId, request.body.category_id),
       });
       const result = await services.taxonomy.archive(actor.context, request.body.category_id);
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };

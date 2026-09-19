@@ -4,6 +4,7 @@ import { agentCommand } from '../src/commands/agent.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
+import { permissionsCommand } from '../src/commands/permissions.ts';
 import { taxonomyCommand } from '../src/commands/taxonomy.ts';
 import { workspaceCommand } from '../src/commands/workspace.ts';
 
@@ -13,6 +14,7 @@ const EXPECTED: Record<string, string[]> = {
   bootstrap: [],
   db: ['migrate', 'status'],
   ledger: ['verify'],
+  permissions: ['list', 'grant', 'revoke'],
   taxonomy: ['list', 'create', 'move', 'archive'],
   workspace: ['create', 'list'],
 };
@@ -22,6 +24,7 @@ const commands = [
   bootstrapCommand(),
   dbCommand(),
   ledgerCommand(),
+  permissionsCommand(),
   taxonomyCommand(),
   workspaceCommand(),
 ];
@@ -75,6 +78,7 @@ describe('output a script can read', () => {
     ['taxonomy', 'list'],
     ['workspace', 'list'],
     ['ledger', 'verify'],
+    ['permissions', 'list'],
   ] as const;
 
   it('offers --json wherever a command prints a list', () => {
