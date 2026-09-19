@@ -47,8 +47,9 @@ export interface CategoryRepository {
   /** The category itself and everything beneath it, ordered by path. */
   listSubtree(workspaceId: WorkspaceId, path: string): Promise<CategoryRecord[]>;
   /**
-   * Rewrites the path prefix of a subtree in one statement. Returns the number
-   * of rows changed, including the category itself.
+   * Rewrites the path prefix of a subtree in one statement. Returns the ids it
+   * changed, including the category itself, so the caller reports what actually
+   * moved rather than a snapshot read before the statement.
    */
   rewritePaths(
     tx: Tx,
@@ -56,15 +57,15 @@ export interface CategoryRepository {
     oldPath: string,
     newPath: string,
     at: Date,
-  ): Promise<number>;
-  /** Sets the status of a subtree in one statement. Returns the number of rows changed. */
+  ): Promise<CategoryId[]>;
+  /** Sets the status of a subtree in one statement. Returns the ids it changed. */
   setSubtreeStatus(
     tx: Tx,
     workspaceId: WorkspaceId,
     path: string,
     status: CategoryStatus,
     at: Date,
-  ): Promise<number>;
+  ): Promise<CategoryId[]>;
 }
 
 export interface AliasRecord {

@@ -1,3 +1,4 @@
+import type { ErrorCode } from '@knoverge/contracts';
 import { DomainError } from '@knoverge/core';
 
 const UNIQUE_VIOLATION = '23505';
@@ -24,10 +25,11 @@ export function rethrowUniqueViolation(
   err: unknown,
   message: string,
   objectIds?: Record<string, string | null>,
+  code: ErrorCode = 'VALIDATION_ERROR',
 ): never {
   const pg = driverError(err);
   if (pg?.code === UNIQUE_VIOLATION) {
-    throw new DomainError('VALIDATION_ERROR', message, {
+    throw new DomainError(code, message, {
       cause: err,
       ...(objectIds ? { objectIds } : {}),
     });

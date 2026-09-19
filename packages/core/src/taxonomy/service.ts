@@ -375,11 +375,12 @@ export class TaxonomyService {
         eventType: 'category.moved',
         objectType: 'category',
         objectId: category.id,
-        categoryIds: subtree.map((c) => c.id),
+        // The ids the statement actually touched, not a snapshot read before it.
+        categoryIds: moved,
         metadata: {
           previous_path: category.path,
           path: newPath,
-          moved_categories: moved,
+          moved_categories: moved.length,
           taxonomy_version: next,
         },
       });
@@ -398,7 +399,6 @@ export class TaxonomyService {
         taxonomyVersion: await this.o.versions.current(actor.workspaceId),
       };
     }
-    const subtree = await this.o.categories.listSubtree(actor.workspaceId, category.path);
     const now = this.clock.now();
     const version = await this.o.uow.run(async (tx) => {
       const archived = await this.o.categories.setSubtreeStatus(
@@ -413,10 +413,10 @@ export class TaxonomyService {
         eventType: 'category.archived',
         objectType: 'category',
         objectId: category.id,
-        categoryIds: subtree.map((c) => c.id),
+        categoryIds: archived,
         metadata: {
           path: category.path,
-          archived_categories: archived,
+          archived_categories: archived.length,
           taxonomy_version: next,
         },
       });
