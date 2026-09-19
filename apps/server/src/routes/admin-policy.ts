@@ -70,7 +70,7 @@ export function registerAdminPolicyRoutes(app: FastifyInstance, services: Servic
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'policy.manage');
-      await services.authorizationAdmin.grant(actor.context, {
+      await services.authorizationAdmin.grant(actor.context, actor.standing, {
         actorId: request.body.actor_id,
         action: request.body.action,
         effect: request.body.effect,
