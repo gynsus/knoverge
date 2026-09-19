@@ -12,7 +12,8 @@ import type { CategoryWithAliases } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requireRole, resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import { requirePermission } from '../plugins/actor-context.ts';
+import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
 function summary(category: CategoryWithAliases, includeGuidance = true): CategorySummary {
@@ -37,8 +38,8 @@ function summary(category: CategoryWithAliases, includeGuidance = true): Categor
 }
 
 /**
- * Taxonomy reads are open to any workspace member; mutations require the admin
- * role until the policy engine can grant taxonomy.manage to other actors.
+ * Reads require taxonomy.read, mutations taxonomy.manage. Both come from the
+ * caller's role or trust tier by default and can be granted explicitly.
  */
 export function registerTaxonomyRoutes(app: FastifyInstance, services: Services): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
@@ -47,7 +48,7 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
     '/v1/taxonomy.list',
     { schema: { querystring: TaxonomyListQuery, response: { 200: TaxonomyListResponse } } },
     async (request) => {
-      const actor = await resolveWorkspaceActor(services, request);
+      const actor = await requirePermission(services, request, 'taxonomy.read');
       const query = request.query;
       const categories = await services.taxonomy.list(actor.context.workspaceId, {
         rootPath: query.root_path,
@@ -64,11 +65,11 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
   r.post(
     '/v1/admin/taxonomy.create',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: CreateCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const body = request.body;
       const result = await services.taxonomy.create(actor.context, {
         name: body.name,
@@ -86,11 +87,11 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
   r.post(
     '/v1/admin/taxonomy.update',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: UpdateCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const body = request.body;
       const result = await services.taxonomy.update(actor.context, {
         categoryId: body.category_id,
@@ -108,11 +109,11 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
   r.post(
     '/v1/admin/taxonomy.move',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: MoveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const result = await services.taxonomy.move(
         actor.context,
         request.body.category_id,
@@ -125,11 +126,11 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
   r.post(
     '/v1/admin/taxonomy.archive',
     {
-      onRequest: app.csrfProtection,
+      onRequest: csrfUnlessBearer(app),
       schema: { body: ArchiveCategoryRequest, response: { 200: CategoryResponse } },
     },
     async (request) => {
-      const actor = await requireRole(services, request, 'admin');
+      const actor = await requirePermission(services, request, 'taxonomy.manage');
       const result = await services.taxonomy.archive(actor.context, request.body.category_id);
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },

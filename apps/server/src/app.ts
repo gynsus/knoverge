@@ -14,6 +14,7 @@ import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
 import { registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
+import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerOpenApi } from './routes/openapi.ts';
@@ -98,6 +99,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       cookieSecure: options.security.cookieSecure,
     });
     registerAdminAgentRoutes(app, options.services);
+    registerAdminPolicyRoutes(app, options.services);
     registerTaxonomyRoutes(app, options.services);
   }
 
