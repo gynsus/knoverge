@@ -11,6 +11,7 @@ import { registerActorDecorators } from './plugins/actor-decorators.ts';
 import { registerAgentContext } from './plugins/agent-context.ts';
 import { registerAuthContext } from './plugins/auth-context.ts';
 import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
+import { registerRequestLogging } from './plugins/logging.ts';
 import { registerRateLimits, registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
@@ -99,6 +100,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerAgentContext(app, options.services);
     // After the context hooks, so the limiter can key on the resolved caller.
     await registerRateLimits(app, options.rateLimit ?? {});
+    registerRequestLogging(app);
     registerAuthRoutes(app, {
       services: options.services,
       cookieSecure: options.security.cookieSecure,

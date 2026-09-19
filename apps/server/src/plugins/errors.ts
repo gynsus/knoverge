@@ -52,6 +52,7 @@ export function registerErrorHandler(app: FastifyInstance): void {
       request.log.error({ err: error }, 'unhandled error');
       body = { code: 'INTERNAL_ERROR', message: 'internal error', retryable: true };
     }
+    reply.knovergeErrorCode = body.code;
     void reply.code(statusFor(body.code)).send(body);
   });
 }
