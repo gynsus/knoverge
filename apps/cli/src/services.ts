@@ -9,6 +9,7 @@ import {
   AgentService,
   BootstrapService,
   EventLedger,
+  TaxonomyService,
   SessionService,
   UserService,
   WorkspaceService,
@@ -52,6 +53,13 @@ export function createServices() {
     ledger,
     tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
   });
+  const taxonomy = new TaxonomyService({
+    uow,
+    categories: repositories.categories,
+    aliases: repositories.aliases,
+    versions: repositories.taxonomyVersions,
+    ledger,
+  });
   const workspaces = new WorkspaceService({
     uow,
     workspaces: repositories.workspaces,
@@ -71,6 +79,7 @@ export function createServices() {
     repositories,
     ledger,
     agents,
+    taxonomy,
     uow,
     users,
     sessions,

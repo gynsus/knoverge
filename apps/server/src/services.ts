@@ -9,6 +9,7 @@ import {
   AgentService,
   BootstrapService,
   EventLedger,
+  TaxonomyService,
   SessionService,
   UserService,
   WorkspaceService,
@@ -67,6 +68,13 @@ export function createServices(config: ServicesConfig) {
     actors: repositories.actors,
     ledger,
   });
+  const taxonomy = new TaxonomyService({
+    uow,
+    categories: repositories.categories,
+    aliases: repositories.aliases,
+    versions: repositories.taxonomyVersions,
+    ledger,
+  });
   const bootstrap = new BootstrapService({
     uow,
     users,
@@ -82,6 +90,7 @@ export function createServices(config: ServicesConfig) {
     repositories,
     ledger,
     agents: agentService,
+    taxonomy,
     users,
     sessions,
     workspaces,
