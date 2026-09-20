@@ -142,6 +142,8 @@ Separate buckets for reads, proposal writes and sync batches are not implemented
 
 Limits are in-process (single node) in MVP. Exceeding a limit returns `RATE_LIMITED` with `Retry-After`.
 
+`RATE_LIMITED` is also what a caller receives when a workspace is already being written to and the wait ran out. That answer carries no `Retry-After`: the wait is another write finishing, not a budget refilling, and there is no honest number to give.
+
 ## 9. Versioning
 
 `/v1` changes only on breaking changes, together with `contract_version` in `workspace_manifest`.

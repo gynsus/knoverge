@@ -293,7 +293,11 @@ PostgreSQL schema, migrations, repositories, transactions.
 
 ### `packages/git-store`
 
-Markdown serialisation, frontmatter parsing, content hashing, file layout, Git revision operations, diff, restore, repository locking.
+Responsibility: everything about the repository as a file format and as a Git repository — Markdown serialisation, frontmatter parsing, content hashing, slugs, file layout, the `taxonomy.yaml` renderer and parser, and Git operations including history, reading a file at a revision, diff and restore.
+
+Built so far: hashing, slugs, `taxonomy.yaml`, and the repository itself — create, write, remove, commit, history, read at a revision. Markdown serialisation, frontmatter parsing, diff and restore arrive with knowledge items.
+
+Not here: the write lock. It is a PostgreSQL advisory lock held by the unit of work, because exclusion has to hold across processes.
 
 ### `packages/search`
 

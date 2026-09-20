@@ -128,6 +128,8 @@ A revision additionally has `frontmatter_hash` (sha256 of the canonical YAML ser
 
 ## 6. Taxonomy file
 
+An empty field is left out rather than written as `null` or `[]`: the file is meant to be read by a person, and a page of empty lists is not.
+
 ```yaml
 version: 42
 updated_at: 2026-09-19T09:20:00Z
@@ -139,9 +141,8 @@ categories:
       - slug: pixel-brisbane
         name: Pixel Brisbane
         description: ...
-        aliases: []
-        inclusion_guidance: []
-        exclusion_guidance: []
+        aliases:
+          - Pixel
         children:
           - slug: architecture
             name: Architecture
