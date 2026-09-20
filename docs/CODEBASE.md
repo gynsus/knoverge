@@ -117,3 +117,16 @@ commit. `runExclusive` keeps its transaction-scoped meaning for single
 transaction work such as first-run setup. ADR 0012 records why, including why
 a process that dies leaves an operation row rather than a lock nobody can
 release.
+
+## The web interface
+
+Styling is Tailwind CSS; components are shadcn/ui copied into
+`apps/web/src/components/ui` rather than installed, so they are our code under
+our licence. ADR 0013 records the decision, including why colour is expressed
+as semantic tokens with no `dark:` variant, and why a table becomes a labelled
+list on a phone.
+
+Two rules follow from it. A cell in `ui/table.tsx` must pass a `label`, because
+that heading is what a narrow screen shows beside the value. And the native
+`select` is used for short lists of fixed values, because it is what a phone
+opens as a wheel and what a screen reader already knows.

@@ -8,7 +8,10 @@ export function ErrorNotice({ error }: { error: unknown }) {
   if (!error) return null;
   const key = error instanceof ApiRequestError ? `errors.${error.code}` : 'errors.NETWORK';
   return (
-    <p role="alert" className="error">
+    <p
+      role="alert"
+      className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+    >
       {t(key, { defaultValue: t('errors.UNKNOWN') })}
     </p>
   );

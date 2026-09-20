@@ -29,6 +29,7 @@
     "refresh": "Refresh"
   },
   "common": {
+    "actions": "Actions",
     "cancel": "Cancel",
     "close": "Close",
     "loading": "Loading...",

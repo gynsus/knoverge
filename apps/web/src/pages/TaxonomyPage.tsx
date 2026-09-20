@@ -4,8 +4,13 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
+import { Button } from '@/components/ui/button';
+import { Card, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
-import { Field } from '../components/Field.tsx';
 
 const TAXONOMY_KEY = ['taxonomy'] as const;
 
@@ -132,8 +137,8 @@ export function TaxonomyPage() {
 
   return (
     <>
-      <section className="card" aria-labelledby="taxonomy-title">
-        <h2 id="taxonomy-title">{t('taxonomy.title')}</h2>
+      <Card aria-labelledby="taxonomy-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="taxonomy-title">{t('taxonomy.title')}</CardTitle>
         <p>
           {t('taxonomy.intro')}{' '}
           {taxonomy.data && (
@@ -146,7 +151,7 @@ export function TaxonomyPage() {
         <ul className="tree">
           {categories.map((category) => (
             <li key={category.id} data-depth={Math.min(category.path.split('/').length - 1, 6)}>
-              <button
+              <Button
                 type="button"
                 className="link"
                 onClick={(event) => {
@@ -156,63 +161,63 @@ export function TaxonomyPage() {
                 }}
               >
                 {category.name}
-              </button>{' '}
+              </Button>{' '}
               <code>{category.path}</code>
               {category.status !== 'active' && <> [{t(`taxonomy.statuses.${category.status}`)}]</>}
               {category.aliases.length > 0 && <> ({category.aliases.join(', ')})</>}
             </li>
           ))}
         </ul>
-      </section>
+      </Card>
 
       {selected && (
-        <section className="card" aria-labelledby="category-detail-title">
-          <h3 id="category-detail-title" tabIndex={-1} ref={detailHeading}>
+        <Card aria-labelledby="category-detail-title" className="grid gap-3 p-4 sm:p-6">
+          <CardTitle id="category-detail-title" tabIndex={-1} ref={detailHeading}>
             {selected.name}
-          </h3>
+          </CardTitle>
           <Field label={t('taxonomy.rename')}>
-            <input
+            <Input
               value={draft.name}
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
               maxLength={120}
             />
           </Field>
           <Field label={t('taxonomy.slug')} hint={t('taxonomy.slug_hint')}>
-            <input
+            <Input
               value={draft.slug}
               onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
               maxLength={64}
             />
           </Field>
           <Field label={t('taxonomy.description')}>
-            <input
+            <Input
               value={draft.description}
               onChange={(e) => setDraft({ ...draft, description: e.target.value })}
               maxLength={2000}
             />
           </Field>
           <Field label={t('taxonomy.inclusion')} hint={t('taxonomy.guidance_hint')}>
-            <textarea
+            <Textarea
               rows={3}
               value={draft.inclusion}
               onChange={(e) => setDraft({ ...draft, inclusion: e.target.value })}
             />
           </Field>
           <Field label={t('taxonomy.exclusion')} hint={t('taxonomy.guidance_hint')}>
-            <textarea
+            <Textarea
               rows={3}
               value={draft.exclusion}
               onChange={(e) => setDraft({ ...draft, exclusion: e.target.value })}
             />
           </Field>
           <Field label={t('taxonomy.aliases')} hint={t('taxonomy.aliases_hint')}>
-            <input
+            <Input
               value={draft.aliases}
               onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
             />
           </Field>
           <Field label={t('taxonomy.move_to')} hint={t('taxonomy.parent_hint')}>
-            <select
+            <Select
               value={selected.parent_id ?? ''}
               onChange={(e) =>
                 move.mutate({ category: selected, parentId: e.target.value || null })
@@ -229,33 +234,33 @@ export function TaxonomyPage() {
                     {c.path}
                   </option>
                 ))}
-            </select>
+            </Select>
           </Field>
           <p>
-            <button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
+            <Button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
               {t('taxonomy.save')}
-            </button>{' '}
-            <button
+            </Button>{' '}
+            <Button
               type="button"
               onClick={() => archive.mutate(selected)}
               disabled={archive.isPending || selected.status === 'archived'}
             >
               {t('taxonomy.archive')}
-            </button>{' '}
-            <button type="button" onClick={() => setSelected(null)}>
+            </Button>{' '}
+            <Button type="button" onClick={() => setSelected(null)}>
               {t('common.close')}
-            </button>
+            </Button>
           </p>
           <ErrorNotice error={save.error ?? move.error ?? archive.error} />
-        </section>
+        </Card>
       )}
 
-      <section className="card" aria-labelledby="new-category-title">
-        <h3 id="new-category-title">{t('taxonomy.new')}</h3>
+      <Card aria-labelledby="new-category-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="new-category-title">{t('taxonomy.new')}</CardTitle>
         <form onSubmit={submit}>
-          <fieldset disabled={create.isPending}>
+          <fieldset disabled={create.isPending} className="grid gap-4 border-0 p-0">
             <Field label={t('taxonomy.name')} hint={t('taxonomy.name_hint')}>
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -263,22 +268,22 @@ export function TaxonomyPage() {
               />
             </Field>
             <Field label={t('taxonomy.parent')}>
-              <select value={parentPath} onChange={(e) => setParentPath(e.target.value)}>
+              <Select value={parentPath} onChange={(e) => setParentPath(e.target.value)}>
                 <option value="">{t('taxonomy.no_parent')}</option>
                 {parents.map((category) => (
                   <option key={category.id} value={category.path}>
                     {category.path}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
           </fieldset>
           <ErrorNotice error={create.error} />
-          <button type="submit" disabled={create.isPending}>
+          <Button type="submit" disabled={create.isPending}>
             {create.isPending ? t('common.working') : t('taxonomy.create')}
-          </button>
+          </Button>
         </form>
-      </section>
+      </Card>
     </>
   );
 }
