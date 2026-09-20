@@ -5,7 +5,12 @@ import type { ActorContext } from '../actor-context.ts';
 import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
 import { DomainError } from '../errors.ts';
 import { addMember } from '../identity/bootstrap-service.ts';
-import type { MemberWithUser, MembershipRepository, UserRecord } from '../identity/repository.ts';
+import type {
+  MemberWithUser,
+  MembershipRepository,
+  SessionRepository,
+  UserRecord,
+} from '../identity/repository.ts';
 import type { UserService } from '../identity/user-service.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
@@ -19,6 +24,8 @@ export interface MemberServiceOptions {
   actors: ActorRepository;
   workspaces: WorkspaceRepository;
   users: UserService;
+  /** Resetting a password ends every session that used the old one. */
+  sessions: SessionRepository;
   authorization: AuthorizationService;
   ledger: EventLedger;
   clock?: Clock;
@@ -149,6 +156,47 @@ export class MemberService {
         objectId: membership.id,
         // The actor stays, so its past events keep their attribution.
         metadata: { user_id: userId, change: 'removed', previous_role: membership.role },
+      });
+    });
+  }
+
+  /**
+   * Sets a member's password, for an installation with no mail server to send
+   * a reset link through (ADR 0014).
+   *
+   * The authority rule is the one every other membership action follows: you
+   * may act on somebody only if you hold every permission their role includes.
+   * Without it this would be a promotion from admin to owner that no role
+   * change records — an admin would reset the owner's password and sign in as
+   * them.
+   *
+   * Every session that member holds is revoked. An account that was taken over
+   * does not stay taken over, and somebody who did not ask for this finds out
+   * at once rather than the next time their session expires.
+   */
+  async resetPassword(
+    actor: ActorContext,
+    standing: ActorStanding,
+    userId: UserId,
+    newPassword: string,
+  ): Promise<void> {
+    await this.o.uow.runExclusive(`members:${actor.workspaceId}`, async (tx) => {
+      const membership = await this.o.memberships.find(actor.workspaceId, userId, tx);
+      if (!membership) throw new DomainError('NOT_FOUND', 'membership not found');
+      // Changing your own password belongs on the settings page, which checks
+      // the current one. Going through here would skip that check.
+      await this.assertNotSelf(actor, userId, 'reset your own password', tx);
+      await this.assertMayAssign(actor, standing, membership.role);
+      await this.o.users.setPassword(tx, userId, newPassword);
+      const revoked = await this.o.sessions.revokeAllForUser(tx, userId, this.clock.now());
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType: 'user.password_reset',
+        objectType: 'user',
+        objectId: userId,
+        // The address is not recorded. The ledger holds ids, hashes and actor
+        // context; an email address is personal data, and an append-only table
+        // is the wrong place to accumulate it.
+        metadata: { role: membership.role, sessions_revoked: revoked },
       });
     });
   }

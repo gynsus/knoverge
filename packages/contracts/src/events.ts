@@ -7,6 +7,7 @@ export const EventType = z.enum([
   'workspace.created',
   'workspace.updated',
   'user.created',
+  'user.password_reset',
   'membership.created',
   'membership.updated',
   'agent.created',

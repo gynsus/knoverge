@@ -78,6 +78,7 @@ POST /v1/auth/login            email + password → knoverge_session cookie; ret
 POST /v1/auth/logout           revokes the current session
 GET  /v1/auth/me               user, memberships, session
 POST /v1/auth/password         change password; revokes every other session
+POST /v1/auth/email            change the sign-in address; needs the current password
 GET  /v1/auth/sessions         active sessions of the user
 POST /v1/auth/sessions/revoke  revoke one session
 ```
@@ -99,6 +100,7 @@ POST /v1/admin/workspace.update
 GET  /v1/admin/members.list
 POST /v1/admin/members.add
 POST /v1/admin/members.update
+POST /v1/admin/members.reset_password       sets a member's password; revokes their sessions
 POST /v1/admin/members.remove
 
 POST /v1/admin/agents.create

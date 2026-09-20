@@ -154,6 +154,37 @@ Self-hosted installations have no mail server by default, so there are no invita
 
 A workspace always keeps at least one owner: the last one cannot be demoted or removed.
 
+## 7b. When somebody cannot get in
+
+There is no mail server, so there is no reset link. ADR 0014 records the three
+routes that replace one.
+
+**A member forgot their password.** An administrator sets a new one under
+Workspace and passes it on out of band. The member's sessions all end, so
+anybody signed in as them is signed out. An administrator can only do this to
+somebody whose role does not include a permission they lack, so an admin cannot
+reset an owner's password — that would be a promotion no role change records.
+
+**An owner forgot their password, or there is only one of them.** The operator
+resets it from the command line:
+
+```bash
+docker compose exec -e KNOVERGE_NEW_PASSWORD='...' knoverge \
+  knoverge user password-reset --email owner@example.com
+```
+
+**The address is wrong.** Somebody signed in changes their own under Settings,
+with their password. The operator can change anyone's:
+
+```bash
+docker compose exec knoverge knoverge user email \
+  --email old@example.com --to new@example.com
+```
+
+Nothing is sent to confirm a new address, because there is nothing to send it
+with. An address typed wrongly is recoverable through an administrator or the
+command line, and the settings page says so before saving.
+
 ## 8. Creating an agent connection
 
 Admin UI:

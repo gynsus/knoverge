@@ -163,6 +163,66 @@ describe('members', () => {
     expect(duplicate.json().message).toMatch(/already a member/);
   });
 
+  it('resets a member password, ending their sessions', async () => {
+    const members = MembersResponse.parse(
+      (await owner.get('/v1/admin/members.list')).json(),
+    ).members;
+    const member = members.find((m) => m.email === MEMBER.email)!;
+    const browser = await new Browser().signIn(MEMBER.email, MEMBER.password);
+    expect((await browser.get('/v1/taxonomy.list')).statusCode).toBe(200);
+
+    const fresh = 'a whole new passphrase';
+    const res = await owner.post('/v1/admin/members.reset_password', {
+      user_id: member.user_id,
+      new_password: fresh,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    // The session opened with the old password is gone, and the old password
+    // no longer works.
+    expect((await browser.get('/v1/taxonomy.list')).statusCode).toBe(401);
+    await expect(new Browser().signIn(MEMBER.email, MEMBER.password)).rejects.toThrow();
+    const again = await new Browser().signIn(MEMBER.email, fresh);
+    expect((await again.get('/v1/taxonomy.list')).statusCode).toBe(200);
+    // Put it back, so the tests after this one still know the password.
+    expect(
+      (
+        await owner.post('/v1/admin/members.reset_password', {
+          user_id: member.user_id,
+          new_password: MEMBER.password,
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('refuses to reset the password of somebody whose role outranks yours', async () => {
+    const members = MembersResponse.parse(
+      (await owner.get('/v1/admin/members.list')).json(),
+    ).members;
+    const ownerMember = members.find((m) => m.email !== MEMBER.email)!;
+    const member = members.find((m) => m.email === MEMBER.email)!;
+
+    // Promote the member to admin, then have them try it on the owner. Without
+    // the role rule this endpoint is a promotion from admin to owner that no
+    // role change records.
+    await owner.post('/v1/admin/members.update', { user_id: member.user_id, role: 'admin' });
+    const asAdmin = await new Browser().signIn(MEMBER.email, MEMBER.password);
+    const res = await asAdmin.post('/v1/admin/members.reset_password', {
+      user_id: ownerMember.user_id,
+      new_password: 'this should not work at all',
+    });
+    expect(res.statusCode, res.body).toBe(403);
+
+    // And not on themselves either: that is what the settings page is for, and
+    // it checks the current password.
+    const self = await asAdmin.post('/v1/admin/members.reset_password', {
+      user_id: member.user_id,
+      new_password: 'nor should this one work',
+    });
+    expect(self.statusCode, self.body).toBe(403);
+    await owner.post('/v1/admin/members.update', { user_id: member.user_id, role: 'reviewer' });
+  });
+
   it('changes a role and then removes the member', async () => {
     const members = MembersResponse.parse(
       (await owner.get('/v1/admin/members.list')).json(),

@@ -1,4 +1,5 @@
 import type { UserId } from '@knoverge/contracts';
+import type { SessionRepository } from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -31,6 +32,7 @@ function repository(initial: UserRecord[] = []) {
   const rows = [...initial];
   const repo: UserRepository = {
     insert: async (_tx, user) => void rows.push(user),
+    updateEmail: async () => undefined,
     findByEmail: async (email) => rows.find((u) => u.email === email) ?? null,
     findById: async (id) => rows.find((u) => u.id === id) ?? null,
     count: async () => rows.length,
@@ -60,9 +62,19 @@ function repository(initial: UserRecord[] = []) {
   return { repo, rows };
 }
 
+/** These tests are about the password rules; sessions only have to be callable. */
+const sessions = {
+  insert: async () => undefined,
+  findActiveByTokenHash: async () => null,
+  listActiveForUser: async () => [],
+  revoke: async () => false,
+  revokeAllForUser: async () => 0,
+  deleteEndedBefore: async () => 0,
+} as unknown as SessionRepository;
+
 function service(initial: UserRecord[] = []) {
   const { repo, rows } = repository(initial);
-  return { service: new UserService({ uow, users: repo, passwords, clock }), rows };
+  return { service: new UserService({ uow, users: repo, sessions, passwords, clock }), rows };
 }
 
 async function existingUser(email = 'owner@example.com', password = 'correct horse battery') {

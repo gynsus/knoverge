@@ -5,6 +5,7 @@ import {
   MembersResponse,
   OkResponse,
   RemoveMemberRequest,
+  ResetMemberPasswordRequest,
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
   WorkspaceResponse,
@@ -141,6 +142,24 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
         actor.standing,
         request.body.user_id,
         request.body.role,
+      );
+      return { ok: true as const };
+    },
+  );
+
+  r.post(
+    '/v1/admin/members.reset_password',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: ResetMemberPasswordRequest, response: { 200: OkResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'workspace.admin');
+      await services.members.resetPassword(
+        actor.context,
+        actor.standing,
+        request.body.user_id,
+        request.body.new_password,
       );
       return { ok: true as const };
     },

@@ -74,6 +74,7 @@ beforeAll(async () => {
   uow = createUnitOfWork(handle.db);
   const ledger = new EventLedger({ key, events: repositories.events });
   users = new UserService({
+    sessions: repositories.sessions,
     uow,
     users: repositories.users,
     passwords: {
@@ -148,6 +149,7 @@ beforeAll(async () => {
     actors: repositories.actors,
   });
   members = new MemberService({
+    sessions: repositories.sessions,
     uow,
     memberships: repositories.memberships,
     actors: repositories.actors,

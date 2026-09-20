@@ -6,7 +6,7 @@ import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type { PasswordHasher } from './ports.ts';
-import type { UserRecord, UserRepository } from './repository.ts';
+import type { SessionRepository, UserRecord, UserRepository } from './repository.ts';
 
 export const MAX_FAILED_LOGINS = 10;
 /** Local parts shorter than this are too common to treat as a password fragment. */
@@ -24,6 +24,12 @@ export const LOCKOUT_MS = 15 * 60 * 1000;
 export interface UserServiceOptions {
   uow: UnitOfWork;
   users: UserRepository;
+  /**
+   * A credential and the sessions opened with it have one lifetime: changing
+   * either the password or the address ends every session that used the old
+   * one, in the same transaction that changed it.
+   */
+  sessions: SessionRepository;
   passwords: PasswordHasher;
   clock?: Clock;
 }
@@ -38,12 +44,14 @@ export interface CreateUserInput {
 export class UserService {
   private readonly uow: UnitOfWork;
   private readonly users: UserRepository;
+  private readonly sessions: SessionRepository;
   private readonly passwords: PasswordHasher;
   private readonly clock: Clock;
 
   constructor(options: UserServiceOptions) {
     this.uow = options.uow;
     this.users = options.users;
+    this.sessions = options.sessions;
     this.passwords = options.passwords;
     this.clock = options.clock ?? systemClock;
   }
@@ -151,6 +159,98 @@ export class UserService {
     }
     const hash = await this.passwords.hash(parsed.data);
     await this.uow.run((tx) => this.users.updatePassword(tx, userId, hash, this.clock.now()));
+  }
+
+  /**
+   * Changes the address the account signs in with.
+   *
+   * The current password is required: a stolen session must not be enough to
+   * move an account somewhere its owner cannot follow. Nothing confirms that
+   * the new address exists, because an installation has no mail server to
+   * confirm it with — ADR 0014 records that, and the settings page says so.
+   */
+  async changeEmail(userId: UserId, currentPassword: string, newEmail: string): Promise<string> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new DomainError('NOT_FOUND', 'user not found');
+    if (!(await this.passwords.verify(currentPassword, user.passwordHash))) {
+      throw new DomainError('UNAUTHENTICATED', 'current password is incorrect');
+    }
+    const parsed = Email.safeParse(newEmail);
+    if (!parsed.success) {
+      throw new DomainError('VALIDATION_ERROR', 'that is not an email address');
+    }
+    const email = parsed.data;
+    if (email === user.email) {
+      throw new DomainError('VALIDATION_ERROR', 'this is already the address on the account');
+    }
+    // The password rule is checked against the address that will be live, so a
+    // change cannot leave a password containing the account's own address.
+    if (containsEmail(currentPassword, email)) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'the password contains this address; change the password first',
+      );
+    }
+    // A better message than the unique index alone would give. The index is
+    // still what makes it true, so a race loses here rather than there.
+    if (await this.users.findByEmail(email)) {
+      throw new DomainError('VALIDATION_ERROR', 'another account already uses this address');
+    }
+    await this.uow.run((tx) => this.users.updateEmail(tx, userId, email));
+    return email;
+  }
+
+  /**
+   * Sets a password without knowing the old one.
+   *
+   * For an administrator resetting a member's password, and for the operator
+   * doing the same from the command line — an installation has no mail server
+   * to send a reset link through (ADR 0014). The caller is responsible for
+   * proving it may: this method checks the password itself and nothing about
+   * who is asking.
+   */
+  async setPassword(tx: Tx, userId: UserId, newPassword: string): Promise<void> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new DomainError('NOT_FOUND', 'user not found');
+    const parsed = Password.safeParse(newPassword);
+    if (!parsed.success) {
+      throw new DomainError('VALIDATION_ERROR', 'password must be 12 to 200 characters');
+    }
+    if (containsEmail(parsed.data, user.email)) {
+      throw new DomainError('VALIDATION_ERROR', 'password must not contain the email address');
+    }
+    const hash = await this.passwords.hash(parsed.data);
+    await this.users.updatePassword(tx, userId, hash, this.clock.now());
+  }
+
+  /**
+   * Sets a password and ends every session, with no old password and no actor.
+   *
+   * For the operator at the command line, which is the only route left for the
+   * last owner of a workspace: there is nobody above them to ask (ADR 0014).
+   * It writes no ledger event, because there is no workspace and no membership
+   * to attribute it to — the event feed is per-workspace and an account is not.
+   */
+  async resetPasswordAsOperator(userId: UserId, newPassword: string): Promise<number> {
+    return this.uow.run(async (tx) => {
+      await this.setPassword(tx, userId, newPassword);
+      return this.sessions.revokeAllForUser(tx, userId, this.clock.now());
+    });
+  }
+
+  /** The same, for the address the account signs in with. */
+  async setEmailAsOperator(userId: UserId, newEmail: string): Promise<number> {
+    const user = await this.users.findById(userId);
+    if (!user) throw new DomainError('NOT_FOUND', 'user not found');
+    const parsed = Email.safeParse(newEmail);
+    if (!parsed.success) throw new DomainError('VALIDATION_ERROR', 'that is not an email address');
+    if (parsed.data === user.email) {
+      throw new DomainError('VALIDATION_ERROR', 'this is already the address on the account');
+    }
+    return this.uow.run(async (tx) => {
+      await this.users.updateEmail(tx, userId, parsed.data);
+      return this.sessions.revokeAllForUser(tx, userId, this.clock.now());
+    });
   }
 
   findById(id: UserId): Promise<UserRecord | null> {

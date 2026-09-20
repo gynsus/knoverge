@@ -79,6 +79,7 @@ beforeAll(async () => {
   const created = await new BootstrapService({
     uow,
     users: new UserService({
+      sessions: repositories.sessions,
       uow,
       users: repositories.users,
       // The drill is about what a restore brings back, not about hashing.

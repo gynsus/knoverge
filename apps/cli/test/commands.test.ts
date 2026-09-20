@@ -6,6 +6,7 @@ import { dbCommand } from '../src/commands/db.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { permissionsCommand } from '../src/commands/permissions.ts';
 import { taxonomyCommand } from '../src/commands/taxonomy.ts';
+import { userCommand } from '../src/commands/user.ts';
 import { workspaceCommand } from '../src/commands/workspace.ts';
 
 /** The surface the deployment guide tells operators to use. */
@@ -16,6 +17,7 @@ const EXPECTED: Record<string, string[]> = {
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
   taxonomy: ['list', 'create', 'move', 'archive', 'restore'],
+  user: ['password-reset', 'email'],
   workspace: ['create', 'list'],
 };
 
@@ -26,6 +28,7 @@ const commands = [
   ledgerCommand(),
   permissionsCommand(),
   taxonomyCommand(),
+  userCommand(),
   workspaceCommand(),
 ];
 
