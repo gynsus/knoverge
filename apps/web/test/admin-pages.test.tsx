@@ -179,7 +179,12 @@ describe('fixtures match the contracts', () => {
   });
 });
 
-beforeEach(() => resetCsrfToken());
+beforeEach(() => {
+  resetCsrfToken();
+  // The chosen workspace and the rail's state are remembered per browser, so
+  // without this each test inherits whatever the one before it clicked.
+  window.localStorage.clear();
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe('agents page', () => {
@@ -491,11 +496,80 @@ describe('choosing a workspace', () => {
     );
   });
 
+  it("does not keep one workspace's rows on screen under the other's name", async () => {
+    // The page keys are not scoped by workspace, so a switch that left the
+    // cache alone showed the previous workspace's categories under the new
+    // name — and acting on a row would have posted its id with the new header.
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/auth/me': () => json(twoWorkspaces),
+      'GET /v1/taxonomy.list?include_archived=true': (_url, init) =>
+        json({
+          categories: [
+            {
+              ...CATEGORY,
+              name:
+                new Headers(init?.headers).get('x-knoverge-workspace') === SECOND.workspace_id
+                  ? 'Team projects'
+                  : 'Projects',
+            },
+          ],
+          taxonomy_version: 1,
+        }),
+    });
+    renderApp('/taxonomy');
+    await screen.findByRole('button', { name: 'Projects' });
+
+    const user = userEvent.setup();
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Workspace' }),
+      SECOND.workspace_id,
+    );
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.url === '/v1/taxonomy.list?include_archived=true' &&
+            c.workspace === SECOND.workspace_id,
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole('button', { name: 'Team projects' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Projects' })).not.toBeInTheDocument();
+    expect(
+      calls.filter(
+        (c) =>
+          c.url === '/v1/taxonomy.list?include_archived=true' &&
+          c.workspace === SECOND.workspace_id,
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
   it('offers no picker to a person who belongs to one workspace', async () => {
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
     renderApp('/');
     await screen.findByText('Your workspaces');
     expect(screen.queryByRole('combobox', { name: 'Workspace' })).not.toBeInTheDocument();
+  });
+});
+
+describe('the shell', () => {
+  it('names the current section in a heading of its own', async () => {
+    // Every page heading is an h2 from a card title. Without this each page is
+    // a flat run of h2s under no level-1 heading, and nothing names the page.
+    mockApi({ ...SIGNED_IN });
+    renderApp('/taxonomy');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Taxonomy' })).toBeInTheDocument();
+  });
+
+  it('keeps the way out reachable when the rail is collapsed', async () => {
+    // The footer holds the only sign-out control, and the collapsed state is
+    // remembered, so hiding it locked a person out of signing out for good.
+    mockApi({ ...SIGNED_IN });
+    renderApp('/');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Show or hide the navigation' }));
+    expect(screen.getByRole('button', { name: 'Sign out' })).toBeVisible();
   });
 });
 

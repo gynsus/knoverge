@@ -69,11 +69,28 @@ export function TableCell({ className, label, ...props }: TableCellProps) {
       data-label={label}
       className={cn(
         'py-2 pr-3 align-top last:pr-0',
-        'max-md:flex max-md:gap-2 max-md:py-0.5',
+        // A flex item refuses to shrink below its content by default, so an
+        // unbreakable value — an email, a token prefix, a user agent — pushed
+        // the whole page sideways on a phone. It wraps instead.
+        'max-md:flex max-md:min-w-0 max-md:flex-wrap max-md:gap-x-2 max-md:break-words max-md:py-0.5',
+        // A cell whose content is conditional prints its heading and nothing
+        // else. Not on a phone, where the heading is the only thing on the row.
+        'max-md:empty:hidden',
         'max-md:before:content-[attr(data-label)] max-md:before:min-w-28 max-md:before:shrink-0 max-md:before:text-xs max-md:before:text-muted-foreground',
         className,
       )}
       {...props}
     />
   );
+}
+
+/**
+ * The controls inside a cell, laid out as a wrapping row.
+ *
+ * A table cell is not a flex container, so two adjacent buttons sit with no gap
+ * between them; on a phone the cell is a flex row and a confirmation sentence
+ * plus two buttons are forced onto one line. Both are the same missing wrapper.
+ */
+export function TableActions({ className, ...props }: ComponentProps<'div'>) {
+  return <div className={cn('flex flex-wrap items-center gap-2', className)} {...props} />;
 }

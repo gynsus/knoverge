@@ -6,6 +6,10 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+/** Attributes whose value a person reads or a screen reader speaks. */
+const SPOKEN_ATTRIBUTES =
+  'JSXAttribute[name.name=/^(aria-label|alt|placeholder|title|label|aria-valuetext|aria-roledescription|aria-placeholder)$/]';
+
 export default tseslint.config(
   {
     ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/.turbo/**', 'data/**'],
@@ -42,10 +46,24 @@ export default tseslint.config(
       // speaks but nobody sees would otherwise bypass the catalogue.
       'no-restricted-syntax': [
         'error',
+        // Three shapes, because a literal reaches an attribute three ways:
+        // bare, wrapped in braces, or written as a template. A literal deeper
+        // than that is an argument to something — t(...) among them — and is
+        // not the string being rendered.
+        //
+        // `label` is here because TableCell's is the column heading a phone
+        // prints beside every value, so it is as visible as any other string.
         {
-          selector:
-            'JSXAttribute[name.name=/^(aria-label|alt|placeholder|title|aria-valuetext|aria-roledescription|aria-placeholder)$/] > Literal',
-          message: 'A string a reader hears goes through the catalogue: use t(...).',
+          selector: `${SPOKEN_ATTRIBUTES} > Literal`,
+          message: 'A string a reader sees or hears goes through the catalogue: use t(...).',
+        },
+        {
+          selector: `${SPOKEN_ATTRIBUTES} > JSXExpressionContainer > Literal`,
+          message: 'A string a reader sees or hears goes through the catalogue: use t(...).',
+        },
+        {
+          selector: `${SPOKEN_ATTRIBUTES} > JSXExpressionContainer > TemplateLiteral`,
+          message: 'A string a reader sees or hears goes through the catalogue: use t(...).',
         },
       ],
     },

@@ -16,6 +16,11 @@ export interface FieldProps {
  * The hint sits outside the label so it stays out of the accessible name, and
  * is tied to the control with aria-describedby so it is still announced. A hint
  * only sighted readers get is half a hint.
+ *
+ * The child may be a component rather than an element, in which case it has to
+ * forward `id` and `aria-describedby` to the control it renders. One that
+ * swallows them leaves the label pointing at nothing and the hint unannounced,
+ * and nothing about the rendered page says so.
  */
 export function Field({ label, hint, className, children }: FieldProps) {
   const controlId = useId();
@@ -57,10 +62,14 @@ export interface FieldSetProps {
  * A group of fields with no subheading of its own, used where the card's title
  * already names the section. It exists so the layout is written once: the same
  * class list repeated at every form is the thing that drifts.
+ *
+ * The width cap is here for the same reason. A card fills the content area, so
+ * an uncapped text field is as wide as the monitor, and a line that long is
+ * hard to read and absurd to type a name into.
  */
 export function FieldSet({ disabled, className, children }: FieldSetProps) {
   return (
-    <fieldset disabled={disabled} className={cn('grid gap-4 border-0 p-0', className)}>
+    <fieldset disabled={disabled} className={cn('grid max-w-md gap-4 border-0 p-0', className)}>
       {children}
     </fieldset>
   );
@@ -84,7 +93,7 @@ export interface FieldGroupProps {
  */
 export function FieldGroup({ legend, disabled, className, children }: FieldGroupProps) {
   return (
-    <fieldset disabled={disabled} className={cn('grid gap-4 border-0 p-0', className)}>
+    <fieldset disabled={disabled} className={cn('grid max-w-md gap-4 border-0 p-0', className)}>
       <legend className="mb-3 text-base font-semibold">{legend}</legend>
       {children}
     </fieldset>

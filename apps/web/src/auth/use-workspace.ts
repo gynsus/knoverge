@@ -1,10 +1,10 @@
 import type { PermissionAction, WorkspaceResponse } from '@knoverge/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
 import { adminApi } from '../api/admin.ts';
 import { currentWorkspace, setWorkspace } from '../api/client.ts';
-import { useAuth } from './use-auth.ts';
+import { AUTH_QUERY_KEY, useAuth } from './use-auth.ts';
 
 export const WORKSPACE_KEY = ['workspace'] as const;
 const STORAGE_KEY = 'knoverge.workspace';
@@ -49,6 +49,7 @@ export interface WorkspaceContext {
  */
 export function useWorkspaceContext(): WorkspaceContext {
   const auth = useAuth();
+  const client = useQueryClient();
   const memberships = auth.state.kind === 'authenticated' ? auth.state.me.memberships : [];
   const available = memberships.map((m) => ({
     id: m.workspace_id,
@@ -82,6 +83,16 @@ export function useWorkspaceContext(): WorkspaceContext {
       remember(id);
       setWorkspace(id);
       setChosen(id);
+      // Nothing cached belongs to the new workspace. The page keys are not
+      // scoped by workspace, so without this the agents, categories, rules and
+      // members of the old one stay on screen under the new one's name — and
+      // acting on a row would post an id from one workspace with the other's
+      // header.
+      //
+      // Reset rather than remove: the page stays mounted across the switch, and
+      // removing a query an observer is still watching clears it without asking
+      // for it again.
+      void client.resetQueries({ predicate: (q) => q.queryKey[0] !== AUTH_QUERY_KEY[0] });
     },
     workspace: query.data?.workspace,
     can: (action) => held.has(action),
