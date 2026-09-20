@@ -1,7 +1,10 @@
 import type { ActorId, WorkspaceId } from '@knoverge/contracts';
+
+import type { OperationRepository } from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+  OPERATION_RETENTION_MS,
   IdempotencyService,
   MaintenanceService,
   SESSION_RETENTION_MS,
@@ -164,6 +167,7 @@ describe('IdempotencyService.fingerprint', () => {
 describe('MaintenanceService', () => {
   it('removes expired idempotency records and long-dead sessions', async () => {
     const removedBefore: Date[] = [];
+    const decidedBefore: Date[] = [];
     const service = new MaintenanceService({
       uow,
       sessions: {
@@ -177,13 +181,22 @@ describe('MaintenanceService', () => {
           return 3;
         },
       },
+      operations: {
+        deleteDecidedBefore: async (_tx: unknown, before: Date) => {
+          decidedBefore.push(before);
+          return 5;
+        },
+      } as unknown as OperationRepository,
       idempotency: { purgeExpired: async () => 7 } as unknown as IdempotencyService,
       clock: { now: () => NOW },
     });
     const result = await service.prune();
-    expect(result).toEqual({ idempotencyRecords: 7, sessions: 3 });
+    expect(result).toEqual({ idempotencyRecords: 7, sessions: 3, operations: 5 });
     // A session row outlives the session itself, so the settings page can still
     // show where somebody was recently signed in.
     expect(NOW.getTime() - removedBefore[0]!.getTime()).toBe(SESSION_RETENTION_MS);
+    // A decided operation is history; an unfinished one is what recovery reads,
+    // and the repository refuses to remove those at any age.
+    expect(NOW.getTime() - decidedBefore[0]!.getTime()).toBe(OPERATION_RETENTION_MS);
   });
 });

@@ -177,7 +177,14 @@ export class WorkspaceGitRepository {
       GIT_COMMITTER_EMAIL: COMMITTER_EMAIL,
       GIT_COMMITTER_DATE: when,
     });
-    return (await this.git(['rev-parse', 'HEAD'])).trim();
+    const head = (await this.git(['rev-parse', 'HEAD'])).trim();
+    // Every taxonomy change rewrites the whole file, so a workspace that is
+    // edited often accumulates loose objects that repack far smaller. `--auto`
+    // does nothing until git's own thresholds are crossed, and the caller
+    // already holds the workspace write lock, so nothing else is writing here.
+    // A failure is not the caller's problem: the commit is made either way.
+    await this.git(['gc', '--auto', '--quiet']).catch(() => undefined);
+    return head;
   }
 
   /**
