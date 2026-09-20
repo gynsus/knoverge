@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { LanguageTag } from './identity.ts';
-import { KnowledgeItemId, type RevisionId } from './ids.ts';
+import { KnowledgeItemId, RevisionId, WorkspaceId } from './ids.ts';
 import { CategoryPath, CategorySlug } from './taxonomy.ts';
 
 /**
@@ -207,3 +207,72 @@ export interface RevisionRef {
   revisionId: RevisionId;
   kind: ChangeKind;
 }
+
+/** A knowledge item as a list or a detail view shows it. */
+export const KnowledgeItemSummary = z.object({
+  id: KnowledgeItemId,
+  workspace_id: WorkspaceId,
+  slug: CategorySlug,
+  /** `knowledge/<primary category path>/<slug>.md`, derived and stored. */
+  markdown_path: z.string(),
+  title: z.string(),
+  type: ItemType,
+  status: ItemStatus,
+  language: LanguageTag,
+  current_revision_id: RevisionId,
+  review_state: ReviewState,
+  evidence_state: EvidenceState,
+  disputed: z.boolean(),
+  /** Slug paths, primary first, the way the frontmatter carries them. */
+  categories: z.array(CategoryPath),
+  tags: z.array(Tag),
+  valid_from: z.iso.datetime({ offset: true }).nullable(),
+  valid_until: z.iso.datetime({ offset: true }).nullable(),
+  observed_at: z.iso.datetime({ offset: true }).nullable(),
+  created_at: z.iso.datetime({ offset: true }),
+  updated_at: z.iso.datetime({ offset: true }),
+});
+export type KnowledgeItemSummary = z.infer<typeof KnowledgeItemSummary>;
+
+/** The item with the knowledge itself, which a list deliberately omits. */
+export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
+  body: z.string(),
+  content_hash: z.string(),
+  frontmatter_hash: z.string(),
+  revision_number: z.number().int().positive(),
+});
+export type KnowledgeItemDetail = z.infer<typeof KnowledgeItemDetail>;
+
+export const CreateKnowledgeRequest = z.object({
+  title: z.string().trim().min(1).max(300),
+  /** The knowledge itself, as Markdown. */
+  body: z.string().min(1).max(200_000),
+  type: ItemType,
+  language: LanguageTag.optional(),
+  /**
+   * Slug paths. The first is the primary category and decides where the file
+   * lives. An item with none is uncategorised and lives under
+   * `knowledge/_uncategorised/`.
+   */
+  categories: z.array(CategoryPath).max(20).default([]),
+  tags: z.array(Tag).max(50).default([]),
+  /** Chosen from the title unless one is given. */
+  slug: CategorySlug.optional(),
+  valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
+  valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
+  observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  external: FrontmatterExternal.optional(),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type CreateKnowledgeRequest = z.infer<typeof CreateKnowledgeRequest>;
+
+export const KnowledgeResponse = z.object({ item: KnowledgeItemDetail });
+export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;
+
+export const KnowledgeListResponse = z.object({
+  items: z.array(KnowledgeItemSummary),
+  /** The cursor for the next page, or null at the end. */
+  next_cursor: z.string().nullable(),
+});
+export type KnowledgeListResponse = z.infer<typeof KnowledgeListResponse>;

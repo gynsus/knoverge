@@ -16,6 +16,7 @@ import {
   MaintenanceService,
   RecoveryService,
   MemberService,
+  KnowledgeService,
   TaxonomyService,
   SessionService,
   UserService,
@@ -28,7 +29,17 @@ import {
   createUnitOfWork,
   type DatabaseHandle,
 } from '@knoverge/db';
-import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
+import {
+  TAXONOMY_PATH,
+  contentHash,
+  createGitStore,
+  frontmatterHash,
+  parseItem,
+  renderItem,
+  renderTaxonomy,
+  slugifyTitle,
+  uniqueSlug,
+} from '@knoverge/git-store';
 
 export interface ServicesConfig {
   databaseUrl: string;
@@ -115,6 +126,29 @@ export function createServices(config: ServicesConfig) {
     operations: repositories.operations,
     commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
   });
+  const knowledge = new KnowledgeService({
+    uow,
+    items: repositories.knowledge,
+    revisions: repositories.revisions,
+    categories: repositories.categories,
+    versions: repositories.taxonomyVersions,
+    actors: repositories.actors,
+    workspaces: {
+      findById: async (workspaceId) => {
+        const workspace = await repositories.workspaces.findById(workspaceId);
+        return workspace ? { id: workspace.id, name: workspace.name } : null;
+      },
+    },
+    ledger,
+    crossStore,
+    git,
+    slugifyTitle,
+    uniqueSlug,
+    renderItem,
+    parseItem,
+    contentHash,
+    frontmatterHash,
+  });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
@@ -163,6 +197,7 @@ export function createServices(config: ServicesConfig) {
     maintenance,
     recovery,
     members,
+    knowledge,
     taxonomy,
     users,
     sessions,

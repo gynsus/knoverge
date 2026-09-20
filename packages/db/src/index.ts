@@ -26,6 +26,7 @@ export {
   createPolicyRuleRepository,
 } from './repositories/policy.ts';
 export { createRepositories, type Repositories } from './repositories/index.ts';
+export { createKnowledgeRepository, createRevisionRepository } from './repositories/knowledge.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
 export { createSessionRepository } from './repositories/sessions.ts';
 export { createUserRepository } from './repositories/users.ts';

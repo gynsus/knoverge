@@ -44,6 +44,13 @@ export interface GitStore {
     at: Date,
   ): Promise<void>;
   write(workspaceId: WorkspaceId, files: readonly GitFile[]): Promise<void>;
+  /**
+   * One file as the working tree has it, or null when it is not there.
+   *
+   * The knowledge itself is only in the file: PostgreSQL indexes an item but
+   * never stores its body, so reading one means reading the repository.
+   */
+  read(workspaceId: WorkspaceId, path: string): Promise<string | null>;
   remove(workspaceId: WorkspaceId, paths: readonly string[]): Promise<void>;
   /** Returns the commit hash, or null when nothing changed. */
   commit(workspaceId: WorkspaceId, request: GitCommitRequest): Promise<string | null>;

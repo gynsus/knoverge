@@ -4,6 +4,7 @@ export * from './agents.ts';
 export * from './categories.ts';
 export * from './events.ts';
 export * from './idempotency.ts';
+export * from './knowledge.ts';
 export * from './operations.ts';
 export * from './policy.ts';
 export * from './users.ts';

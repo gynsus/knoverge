@@ -11,6 +11,7 @@ import { createPermissionGrantRepository, createPolicyRuleRepository } from './p
 import { createMembershipRepository } from './memberships.ts';
 import { createSessionRepository } from './sessions.ts';
 import { createUserRepository } from './users.ts';
+import { createKnowledgeRepository, createRevisionRepository } from './knowledge.ts';
 import { createOperationRepository } from './operations.ts';
 import { createActorRepository, createWorkspaceRepository } from './workspaces.ts';
 
@@ -29,6 +30,8 @@ export function createRepositories(db: Database) {
     workspaces: createWorkspaceRepository(db),
     actors: createActorRepository(db),
     operations: createOperationRepository(db),
+    knowledge: createKnowledgeRepository(db),
+    revisions: createRevisionRepository(db),
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
     memberships: createMembershipRepository(db),

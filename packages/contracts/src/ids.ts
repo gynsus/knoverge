@@ -17,6 +17,7 @@ export const ID_PREFIXES = {
   revision: 'rev',
   sourceReference: 'src',
   relation: 'rel',
+  tag: 'tag',
   proposal: 'prop',
   event: 'evt',
   operation: 'op',
