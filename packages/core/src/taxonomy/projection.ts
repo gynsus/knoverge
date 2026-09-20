@@ -1,4 +1,4 @@
-import type { CategoryId } from '@knoverge/contracts';
+import type { CategoryId, CategoryStatus } from '@knoverge/contracts';
 
 import type { CategoryRecord } from './repository.ts';
 
@@ -51,13 +51,23 @@ export function withMove(
   });
 }
 
-/** The tree with a subtree archived. */
-export function withArchivedSubtree(
+/**
+ * The tree with one status swapped for another across a subtree.
+ *
+ * Only the status named in `from` moves, so archiving and restoring are exact
+ * inverses and neither touches a category a reviewer left `rejected` or a merge
+ * left `merged`.
+ */
+export function withSubtreeStatus(
   categories: readonly CategoryRecord[],
   path: string,
+  from: CategoryStatus,
+  to: CategoryStatus,
 ): CategoryRecord[] {
   return categories.map((category) =>
-    inSubtree(category.path, path) ? { ...category, status: 'archived' as const } : category,
+    inSubtree(category.path, path) && category.status === from
+      ? { ...category, status: to }
+      : category,
   );
 }
 

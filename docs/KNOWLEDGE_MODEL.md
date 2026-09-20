@@ -194,7 +194,7 @@ exclusion_guidance:
 
 A slug is derived from the name unless one is given. Diacritics are stripped and Cyrillic is transliterated, so "Архитектура" becomes `arhitektura`. A name in a script with no transliteration keeps its name and receives a generated identifier such as `category-3f8a2b1c`, which the curator may replace.
 
-Renaming a slug or moving a category rewrites the paths of its whole subtree in one statement, inside the same transaction as the taxonomy version bump and the ledger event. Archiving a category archives its descendants with it.
+Renaming a slug or moving a category rewrites the paths of its whole subtree in one statement, inside the same transaction as the taxonomy version bump and the ledger event. Archiving a category archives its descendants with it, and restoring it brings the same subtree back; a category cannot be restored while its parent is archived.
 
 Statuses:
 

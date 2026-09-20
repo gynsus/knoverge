@@ -98,6 +98,18 @@ export type MoveCategoryRequest = z.infer<typeof MoveCategoryRequest>;
 export const ArchiveCategoryRequest = z.object({ category_id: CategoryId });
 export type ArchiveCategoryRequest = z.infer<typeof ArchiveCategoryRequest>;
 
+/**
+ * Brings an archived category and its descendants back.
+ *
+ * The whole subtree returns, because that is what archiving took. A category
+ * archived on its own before its parent was archived therefore comes back with
+ * the parent: nothing records why something was archived, and reviving too
+ * much is visible and correctable, while reviving too little leaves an
+ * operator clicking through a branch one node at a time.
+ */
+export const RestoreCategoryRequest = z.object({ category_id: CategoryId });
+export type RestoreCategoryRequest = z.infer<typeof RestoreCategoryRequest>;
+
 export const CategoryResponse = z.object({
   taxonomy_version: z.number().int().nonnegative(),
   category: CategorySummary,

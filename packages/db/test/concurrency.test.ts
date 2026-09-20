@@ -374,6 +374,7 @@ describe('the tree written to the repository is the tree the database ends up wi
         taxonomy.update(context('p-rename'), { categoryId: root.id, slug: 'projection-renamed' }),
       () => taxonomy.move(context('p-move'), child.id, elsewhere.id),
       () => taxonomy.archive(context('p-archive'), elsewhere.id),
+      () => taxonomy.restore(context('p-restore'), elsewhere.id),
     ]) {
       await mutate();
       const fromDb = await repositories.categories.list(workspaceId, { includeArchived: true });
@@ -384,6 +385,30 @@ describe('the tree written to the repository is the tree the database ends up wi
       }
       expect(await treeFromDatabase()).toBe(shape(fromDb));
     }
+  });
+
+  it('restores the subtree archiving took, and refuses an archived parent', async () => {
+    const root = (await taxonomy.create(context('r-root'), { name: 'Restore root' })).category;
+    const child = (
+      await taxonomy.create(context('r-child'), { name: 'Restore child', parentPath: root.path })
+    ).category;
+    await taxonomy.archive(context('r-archive'), root.id);
+
+    // A child cannot come back on its own while its parent is still archived.
+    await expect(taxonomy.restore(context('r-early'), child.id)).rejects.toMatchObject({
+      code: 'CATEGORY_CONFLICT',
+    });
+
+    await taxonomy.restore(context('r-restore'), root.id);
+    const restored = (await repositories.categories.list(workspaceId, { includeArchived: true }))
+      .filter((c) => c.path.startsWith('restore-root'))
+      .map((c) => c.status);
+    expect(restored).toEqual(['active', 'active']);
+
+    // Restoring what is already active changes nothing, so it is refused.
+    await expect(taxonomy.restore(context('r-again'), root.id)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
   });
 
   it('records the version and the commit together', async () => {

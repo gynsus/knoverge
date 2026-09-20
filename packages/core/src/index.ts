@@ -154,7 +154,7 @@ export {
 export type { CommitAuthor, GitCommitRequest, GitFile, GitStore } from './ports/git-store.ts';
 export {
   subtreeIds,
-  withArchivedSubtree,
+  withSubtreeStatus,
   withCategory,
   withMove,
   withUpdate,

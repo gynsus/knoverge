@@ -108,17 +108,19 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       tx: Tx,
       workspaceId: WorkspaceId,
       path: string,
-      status: CategoryRecord['status'],
+      change: { from: CategoryRecord['status']; to: CategoryRecord['status'] },
       at: Date,
     ) {
       const rows = await asTx(tx)
         .update(categories)
-        .set({ status, updatedAt: at })
+        .set({ status: change.to, updatedAt: at })
         .where(
           and(
             eq(categories.workspaceId, workspaceId),
             or(eq(categories.path, path), sql`${categories.path} LIKE ${`${path}/%`}`),
-            ne(categories.status, status),
+            // Only the named status moves: a rejected or merged descendant is
+            // not something archiving hid, so restoring must not surface it.
+            eq(categories.status, change.from),
           ),
         )
         .returning({ id: categories.id });

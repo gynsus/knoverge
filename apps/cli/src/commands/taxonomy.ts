@@ -133,5 +133,23 @@ export function taxonomyCommand(): Command {
       });
     });
 
+  cmd
+    .command('restore')
+    .description('Bring an archived category and its descendants back')
+    .requiredOption('--category <id>')
+    .option('--workspace <slug|id>')
+    .action(async (opts: { category: string; workspace?: string }) => {
+      await withServices(async (services) => {
+        const actor = await systemActorContext(services, opts.workspace);
+        const result = await services.taxonomy.restore(
+          actor,
+          parseOrFail(CategoryId, opts.category, `--category ${CATEGORY_ID}`),
+        );
+        console.log(
+          `restored ${result.category.path} (taxonomy version ${result.taxonomyVersion})`,
+        );
+      });
+    });
+
   return cmd;
 }
