@@ -8,7 +8,7 @@ How the packages fit together and the patterns every feature follows. `CLAUDE.md
 contracts   Zod schemas, enums, ids, error codes. No runtime dependencies on other packages.
 core        Domain services and ports (interfaces). Depends on contracts and policy.
 db          Drizzle schema, migrations, repositories implementing core ports, unit of work.
-git-store   Markdown, hashing, Git operations implementing core ports.
+git-store   Markdown, hashing, slugs, taxonomy.yaml, Git operations.
 search      Projections and retrieval implementing core ports.
 auth        Password and token hashing primitives.
 policy      Permission and policy evaluation, used by core services.

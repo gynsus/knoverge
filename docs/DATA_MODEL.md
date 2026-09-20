@@ -513,7 +513,7 @@ Events are append-only. A database trigger rejects `UPDATE` and `DELETE` on the 
 
 Content rule: an event never contains knowledge text, proposal payloads, credentials or secrets. It contains ids, hashes, actor context and safe metadata (counts, decision codes, category ids, change kinds). This keeps purge compatible with the immutable chain.
 
-Chain: `event_hash = HMAC-SHA256(KNOVERGE_LEDGER_KEY, prev_event_hash || canonical_json(event without event_hash))`. The first event of a workspace uses `prev_event_hash` equal to the HMAC of the empty string. See ADR 0007.
+Chain: `event_hash = HMAC-SHA256(KNOVERGE_LEDGER_KEY, prev_event_hash || canonical_json(fields))`, where `fields` is an explicit, versioned list rather than whatever columns the table happens to have — so a migration that adds one cannot silently rehash history. The first event of a workspace uses `prev_event_hash` equal to the HMAC of the empty string. ADR 0007 gives the field list and the reasoning.
 
 Two feeds are derived from the ledger:
 
