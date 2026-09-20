@@ -344,6 +344,22 @@ valid_from = 2026-09-18
 
 Do not destroy historically correct information solely because current state changed.
 
+### Relation types
+
+```text
+supersedes
+implements
+derived_from
+contradicts
+duplicates
+depends_on
+relates_to
+```
+
+`superseded_by` is not one of them: it is `supersedes` read from the other end,
+and storing both directions gives two rows that can disagree. A reader wanting
+that view asks for relations pointing at the item.
+
 ## 11. Provenance
 
 Every knowledge item must be traceable to one or more source references.

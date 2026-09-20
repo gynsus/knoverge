@@ -19,4 +19,11 @@ export {
   type TaxonomyFile,
   type TaxonomyNode,
 } from './taxonomy-file.ts';
+export {
+  MarkdownError,
+  itemContent,
+  parseItem,
+  renderItem,
+  type MarkdownItem,
+} from './markdown.ts';
 export { createGitStore, type GitStoreOptions } from './store.ts';
