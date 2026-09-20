@@ -3,6 +3,7 @@ import {
   CategoryResponse,
   CreateCategoryRequest,
   MoveCategoryRequest,
+  RestoreCategoryRequest,
   TaxonomyListQuery,
   TaxonomyListResponse,
   UpdateCategoryRequest,
@@ -192,6 +193,24 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
         request.body.category_id,
         request.body.new_parent_id,
       );
+      return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/taxonomy.restore',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: RestoreCategoryRequest, response: { 200: CategoryResponse } },
+    },
+    async (request) => {
+      // Restoring brings the whole subtree back, so it is checked against the
+      // whole subtree, exactly as archiving is.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        categoryIds: await subtreeOf(services, actor.context.workspaceId, request.body.category_id),
+      });
+      const result = await services.taxonomy.restore(actor.context, request.body.category_id);
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },
   );

@@ -15,7 +15,7 @@ const EXPECTED: Record<string, string[]> = {
   db: ['migrate', 'prune', 'status'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
-  taxonomy: ['list', 'create', 'move', 'archive'],
+  taxonomy: ['list', 'create', 'move', 'archive', 'restore'],
   workspace: ['create', 'list'],
 };
 

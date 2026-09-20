@@ -48,6 +48,8 @@ export const adminApi = {
     update: (body: UpdateCategoryRequest) =>
       apiPost<CategoryResponse>('/v1/admin/taxonomy.update', body),
     move: (body: MoveCategoryRequest) => apiPost<CategoryResponse>('/v1/admin/taxonomy.move', body),
+    restore: (categoryId: string) =>
+      apiPost<CategoryResponse>('/v1/admin/taxonomy.restore', { category_id: categoryId }),
     archive: (categoryId: string) =>
       apiPost<CategoryResponse>('/v1/admin/taxonomy.archive', { category_id: categoryId }),
   },

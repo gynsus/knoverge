@@ -95,11 +95,12 @@ export interface CategoryRepository {
     at: Date,
   ): Promise<CategoryId[]>;
   /** Sets the status of a subtree in one statement. Returns the ids it changed. */
+  /** Moves every category in the subtree that currently holds `from` to `to`. */
   setSubtreeStatus(
     tx: Tx,
     workspaceId: WorkspaceId,
     path: string,
-    status: CategoryStatus,
+    change: { from: CategoryStatus; to: CategoryStatus },
     at: Date,
   ): Promise<CategoryId[]>;
 }

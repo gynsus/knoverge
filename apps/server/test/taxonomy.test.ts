@@ -313,6 +313,31 @@ describe('archiving and listing', () => {
     expect(archived.every((c) => c.status === 'archived')).toBe(true);
   });
 
+  it('restores an archived subtree', async () => {
+    const root = await create({ name: 'Restore root' });
+    await create({ name: 'Restore child', parent_path: root.category.path });
+    expect(
+      (await admin.post('/v1/admin/taxonomy.archive', { category_id: root.category.id }))
+        .statusCode,
+    ).toBe(200);
+
+    const res = await admin.post('/v1/admin/taxonomy.restore', { category_id: root.category.id });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(CategoryResponse.parse(res.json()).category.status).toBe('active');
+
+    const visible = TaxonomyListResponse.parse((await admin.get('/v1/taxonomy.list')).json());
+    const back = visible.categories.filter((c) => c.path.startsWith('restore-root'));
+    expect(back).toHaveLength(2);
+    expect(back.every((c) => c.status === 'active')).toBe(true);
+  });
+
+  it('refuses to restore a category that is already active', async () => {
+    const root = await create({ name: 'Restore active' });
+    const res = await admin.post('/v1/admin/taxonomy.restore', { category_id: root.category.id });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('filters by root path and depth, and can omit guidance', async () => {
     const root = await create({ name: 'Filter root', inclusion_guidance: ['keep this'] });
     const child = await create({ name: 'Filter child', parent_path: root.category.path });

@@ -11,13 +11,7 @@ import {
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
-import {
-  subtreeIds,
-  withArchivedSubtree,
-  withCategory,
-  withMove,
-  withUpdate,
-} from './projection.ts';
+import { subtreeIds, withSubtreeStatus, withCategory, withMove, withUpdate } from './projection.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
@@ -508,21 +502,21 @@ export class TaxonomyService {
       // An already-archived category may still have an active descendant, if
       // one was created under it in a window a lock has since closed.
       // Archiving again is how an operator repairs that.
-      const archived = subtreeIds(tree.categories, category.path, (c) => c.status !== 'archived');
+      const archived = subtreeIds(tree.categories, category.path, (c) => c.status === 'active');
       if (archived.length === 0) {
         throw new DomainError('VALIDATION_ERROR', 'this change would alter nothing');
       }
       return {
         subject: `taxonomy: archive ${category.path}`,
         objectIds: { category: category.id, path: category.path },
-        categories: withArchivedSubtree(tree.categories, category.path),
+        categories: withSubtreeStatus(tree.categories, category.path, 'active', 'archived'),
         aliases: tree.aliases,
         apply: async (tx, version, commitHash) => {
           await this.o.categories.setSubtreeStatus(
             tx,
             actor.workspaceId,
             category.path,
-            'archived',
+            { from: 'active', to: 'archived' },
             now,
           );
           await this.o.versions.bump(tx, actor.workspaceId, now, version, commitHash);
@@ -534,6 +528,61 @@ export class TaxonomyService {
             metadata: {
               path: category.path,
               archived_categories: archived.length,
+              taxonomy_version: version,
+              git_commit: commitHash,
+            },
+          });
+          const updated = await this.require(actor.workspaceId, category.id, tx);
+          return { category: await this.withAliases(updated, tx), taxonomyVersion: version };
+        },
+      };
+    });
+  }
+
+  /** Brings an archived category and its descendants back into the active tree. */
+  async restore(actor: ActorContext, categoryId: CategoryId): Promise<TaxonomyResult> {
+    const now = this.clock.now();
+    return this.change(actor, async () => {
+      const tree = await this.tree(actor.workspaceId);
+      const category = this.requireIn(tree.categories, categoryId);
+      const parent = category.parentId
+        ? tree.categories.find((c) => c.id === category.parentId)
+        : null;
+      if (parent && parent.status !== 'active') {
+        // An active category under an archived parent is the inconsistency the
+        // rest of this service exists to prevent.
+        throw new DomainError(
+          'CATEGORY_CONFLICT',
+          'the parent category is archived; restore it first',
+          { objectIds: { category_id: parent.id } },
+        );
+      }
+      const restored = subtreeIds(tree.categories, category.path, (c) => c.status === 'archived');
+      if (restored.length === 0) {
+        throw new DomainError('VALIDATION_ERROR', 'this change would alter nothing');
+      }
+      return {
+        subject: `taxonomy: restore ${category.path}`,
+        objectIds: { category: category.id, path: category.path },
+        categories: withSubtreeStatus(tree.categories, category.path, 'archived', 'active'),
+        aliases: tree.aliases,
+        apply: async (tx, version, commitHash) => {
+          await this.o.categories.setSubtreeStatus(
+            tx,
+            actor.workspaceId,
+            category.path,
+            { from: 'archived', to: 'active' },
+            now,
+          );
+          await this.o.versions.bump(tx, actor.workspaceId, now, version, commitHash);
+          await this.o.ledger.append(tx, actor.workspaceId, actor, {
+            eventType: 'category.restored',
+            objectType: 'category',
+            objectId: category.id,
+            categoryIds: restored,
+            metadata: {
+              path: category.path,
+              restored_categories: restored.length,
               taxonomy_version: version,
               git_commit: commitHash,
             },

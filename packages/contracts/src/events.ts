@@ -23,6 +23,7 @@ export const EventType = z.enum([
   'category.moved',
   'category.merged',
   'category.archived',
+  'category.restored',
   'knowledge.proposed_create',
   'knowledge.proposed_update',
   'knowledge.proposed_delete',

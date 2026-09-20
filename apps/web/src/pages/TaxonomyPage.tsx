@@ -68,6 +68,8 @@ export function TaxonomyPage() {
   // Every editable field of a category, not only its name. Guidance and
   // aliases are what make a curated taxonomy useful, and neither was reachable.
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+  // Archiving takes the whole subtree, so it asks first.
+  const [confirmingArchive, setConfirmingArchive] = useState(false);
   const detailHeading = useRef<HTMLHeadingElement>(null);
   const lastTrigger = useRef<HTMLButtonElement | null>(null);
 
@@ -126,6 +128,13 @@ export function TaxonomyPage() {
       await refresh();
     },
   });
+  const restore = useMutation({
+    mutationFn: (category: CategorySummary) => adminApi.taxonomy.restore(category.id),
+    onSuccess: async () => {
+      setSelected(null);
+      await refresh();
+    },
+  });
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -158,6 +167,7 @@ export function TaxonomyPage() {
                   lastTrigger.current = event.currentTarget;
                   setSelected(category);
                   setDraft(draftOf(category));
+                  setConfirmingArchive(false);
                 }}
               >
                 {category.name}
@@ -240,18 +250,39 @@ export function TaxonomyPage() {
             <Button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
               {t('taxonomy.save')}
             </Button>
-            <Button
-              type="button"
-              onClick={() => archive.mutate(selected)}
-              disabled={archive.isPending || selected.status === 'archived'}
-            >
-              {t('taxonomy.archive')}
-            </Button>
+            {selected.status === 'archived' ? (
+              <Button
+                type="button"
+                onClick={() => restore.mutate(selected)}
+                disabled={restore.isPending}
+              >
+                {t('taxonomy.restore')}
+              </Button>
+            ) : confirmingArchive ? (
+              <>
+                <span className="self-center text-sm">{t('taxonomy.confirm_archive')}</span>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => archive.mutate(selected)}
+                  disabled={archive.isPending}
+                >
+                  {t('taxonomy.confirm')}
+                </Button>
+                <Button type="button" onClick={() => setConfirmingArchive(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </>
+            ) : (
+              <Button type="button" onClick={() => setConfirmingArchive(true)}>
+                {t('taxonomy.archive')}
+              </Button>
+            )}
             <Button type="button" onClick={() => setSelected(null)}>
               {t('common.close')}
             </Button>
           </div>
-          <ErrorNotice error={save.error ?? move.error ?? archive.error} />
+          <ErrorNotice error={save.error ?? move.error ?? archive.error ?? restore.error} />
         </Card>
       )}
 
