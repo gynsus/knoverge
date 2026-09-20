@@ -1,5 +1,6 @@
 import {
   CategorySlug,
+  FRONTMATTER_KEY_ORDER,
   type ActorId,
   type Frontmatter,
   type ChangeKind,
@@ -49,6 +50,33 @@ export function evidenceFrom(sources: readonly FrontmatterSource[]): EvidenceSta
   return sources.some((s) => s.uri !== undefined || s.content_hash !== undefined)
     ? 'source_backed'
     : 'none';
+}
+
+/** One frontmatter field that differs between two revisions. */
+export interface MetadataChange {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+/**
+ * The frontmatter fields that differ, in the order the file writes them.
+ *
+ * `updated_at` is skipped: it differs by construction on every revision, and a
+ * list of changes whose first entry is always the same one is a list people
+ * stop reading.
+ */
+export function compareFrontmatter(from: Frontmatter, to: Frontmatter): MetadataChange[] {
+  const changes: MetadataChange[] = [];
+  for (const field of FRONTMATTER_KEY_ORDER) {
+    if (field === 'updated_at') continue;
+    const before = (from as Record<string, unknown>)[field];
+    const after = (to as Record<string, unknown>)[field];
+    if (JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)) {
+      changes.push({ field, from: before ?? null, to: after ?? null });
+    }
+  }
+  return changes;
 }
 
 /** Where an item with no category lives, so every item still has a path. */
@@ -621,6 +649,47 @@ export class KnowledgeService {
       });
     }
     return this.o.revisions.listForItem(itemId, limit);
+  }
+
+  /**
+   * What changed between two revisions of one item.
+   *
+   * The text comes from Git, which is where the text is; the metadata is
+   * compared field by field from the two revisions, because a reader asking
+   * what changed about an item wants the answer rather than a patch to read it
+   * out of.
+   */
+  async diff(
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    fromRevisionId: RevisionId,
+    toRevisionId: RevisionId,
+  ): Promise<{
+    from: RevisionRecord;
+    to: RevisionRecord;
+    bodyDiff: string;
+    metadata: MetadataChange[];
+  }> {
+    const [from, to] = await Promise.all([
+      this.o.revisions.findById(actor.workspaceId, fromRevisionId),
+      this.o.revisions.findById(actor.workspaceId, toRevisionId),
+    ]);
+    if (!from || !to) {
+      throw new DomainError('NOT_FOUND', 'revision not found', {
+        objectIds: { knowledge_item: itemId },
+      });
+    }
+    if (from.knowledgeItemId !== itemId || to.knowledgeItemId !== itemId) {
+      throw new DomainError('VALIDATION_ERROR', 'those revisions belong to different items', {
+        objectIds: { knowledge_item: itemId },
+      });
+    }
+    const bodyDiff = await this.o.git.diffFiles(
+      actor.workspaceId,
+      { commitHash: from.gitCommitHash, path: from.markdownPath },
+      { commitHash: to.gitCommitHash, path: to.markdownPath },
+    );
+    return { from, to, bodyDiff, metadata: compareFrontmatter(from.frontmatter, to.frontmatter) };
   }
 
   /** A page of items without their bodies: a list does not need the knowledge. */

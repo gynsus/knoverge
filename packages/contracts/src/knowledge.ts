@@ -350,3 +350,27 @@ export type RevisionSummary = z.infer<typeof RevisionSummary>;
 
 export const RevisionsResponse = z.object({ revisions: z.array(RevisionSummary) });
 export type RevisionsResponse = z.infer<typeof RevisionsResponse>;
+
+/** One frontmatter field that differs between two revisions. */
+export const MetadataChange = z.object({
+  field: z.string(),
+  from: z.unknown(),
+  to: z.unknown(),
+});
+export type MetadataChange = z.infer<typeof MetadataChange>;
+
+export const KnowledgeDiffResponse = z.object({
+  from: RevisionSummary,
+  to: RevisionSummary,
+  /** A unified diff of the whole file, empty when the bytes are identical. */
+  body_diff: z.string(),
+  /**
+   * What changed in the frontmatter, field by field.
+   *
+   * Computed from the two revisions rather than read out of the text diff: a
+   * reader asking what changed about an item wants the answer, not a patch to
+   * read it out of.
+   */
+  metadata_changes: z.array(MetadataChange),
+});
+export type KnowledgeDiffResponse = z.infer<typeof KnowledgeDiffResponse>;

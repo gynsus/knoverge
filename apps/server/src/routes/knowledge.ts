@@ -3,22 +3,45 @@ import { z } from 'zod';
 import {
   CreateKnowledgeRequest,
   DeleteKnowledgeRequest,
+  KnowledgeDiffResponse,
   KnowledgeItemId,
   KnowledgeListResponse,
   KnowledgeResponse,
   RestoreKnowledgeRequest,
+  RevisionId,
   RevisionsResponse,
   UpdateKnowledgeRequest,
   type KnowledgeItemDetail,
   type KnowledgeItemSummary,
+  type RevisionSummary,
 } from '@knoverge/contracts';
-import { DomainError, type ItemResult, type ItemSummary } from '@knoverge/core';
+import {
+  DomainError,
+  type ItemResult,
+  type ItemSummary,
+  type RevisionRecord,
+} from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
+
+function revisionSummary(revision: RevisionRecord): RevisionSummary {
+  return {
+    id: revision.id,
+    revision_number: revision.revisionNumber,
+    change_kind: revision.changeKind,
+    title: revision.title,
+    markdown_path: revision.markdownPath,
+    content_hash: revision.contentHash,
+    frontmatter_hash: revision.frontmatterHash,
+    git_commit: revision.gitCommitHash,
+    actor_id: revision.createdByActorId,
+    created_at: revision.createdAt.toISOString(),
+  };
+}
 
 function summary(entry: ItemSummary): KnowledgeItemSummary {
   const { item } = entry;
@@ -199,19 +222,36 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.read_history');
       const revisions = await services.knowledge.history(actor.context, request.query.item_id);
+      return { revisions: revisions.map(revisionSummary) };
+    },
+  );
+
+  r.get(
+    '/v1/knowledge.diff',
+    {
+      schema: {
+        querystring: z.object({
+          item_id: KnowledgeItemId,
+          from_revision_id: RevisionId,
+          to_revision_id: RevisionId,
+        }),
+        response: { 200: KnowledgeDiffResponse },
+      },
+    },
+    async (request) => {
+      // Past content, so the history permission rather than the read one.
+      const actor = await requirePermission(services, request, 'knowledge.read_history');
+      const result = await services.knowledge.diff(
+        actor.context,
+        request.query.item_id,
+        request.query.from_revision_id,
+        request.query.to_revision_id,
+      );
       return {
-        revisions: revisions.map((revision) => ({
-          id: revision.id,
-          revision_number: revision.revisionNumber,
-          change_kind: revision.changeKind,
-          title: revision.title,
-          markdown_path: revision.markdownPath,
-          content_hash: revision.contentHash,
-          frontmatter_hash: revision.frontmatterHash,
-          git_commit: revision.gitCommitHash,
-          actor_id: revision.createdByActorId,
-          created_at: revision.createdAt.toISOString(),
-        })),
+        from: revisionSummary(result.from),
+        to: revisionSummary(result.to),
+        body_diff: result.bodyDiff,
+        metadata_changes: result.metadata,
       };
     },
   );

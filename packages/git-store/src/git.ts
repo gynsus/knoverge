@@ -276,6 +276,37 @@ export class WorkspaceGitRepository {
     }
   }
 
+  /**
+   * A unified diff between one file at one commit and another at another.
+   *
+   * Two rev:path pairs rather than one path, because a file moves: an item
+   * that changed category is the same item at a different path, and a diff
+   * that could not span the move would be blank exactly when it mattered.
+   */
+  async diffFiles(
+    from: { commitHash: string; path: string },
+    to: { commitHash: string; path: string },
+  ): Promise<string> {
+    this.requireHash(from.commitHash);
+    this.requireHash(to.commitHash);
+    const inside = (path: string) =>
+      relative(this.root, this.resolveInside(path)).split(sep).join('/');
+    try {
+      return await this.git([
+        'diff',
+        '--no-color',
+        '--unified=3',
+        `${from.commitHash}:./${inside(from.path)}`,
+        `${to.commitHash}:./${inside(to.path)}`,
+      ]);
+    } catch (error) {
+      // `git diff` on two blobs exits 0; a failure here means one of them is
+      // not there, which is a question about the repository rather than a
+      // difference between two files.
+      throw new GitError(`cannot diff those revisions`, (error as GitError).stderr ?? '');
+    }
+  }
+
   async headCommit(): Promise<string | null> {
     try {
       return (await this.git(['rev-parse', 'HEAD'])).trim();
