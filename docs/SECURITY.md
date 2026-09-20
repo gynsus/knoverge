@@ -356,7 +356,9 @@ Canonical knowledge is a Git repository per workspace, written by running `git` 
 
 **Attribution cannot be dressed up as somebody else.** The author address is always `<actor id>@knoverge.local`, and a display name is stripped of the characters git would render as an address before it is used.
 
-Not yet enforced, and known: there is no per-workspace quota on repository size, and a commit an operator adds on top of HEAD is not detected. Both are recorded in `docs/GIT_REPOSITORY.md` §9.
+**A workspace cannot fill the disk every workspace shares.** Every taxonomy change rewrites the whole file and commits it, so without a ceiling a holder of `taxonomy.manage` in one workspace could grow its repository with the square of the number of changes until the volume was full — taking PostgreSQL down with it wherever an operator put both on one filesystem. A workspace holds at most 2 000 categories, the rendered `taxonomy.yaml` is capped at 1 MiB, and `git gc --auto` runs after each commit while the write lock is still held.
+
+Not yet enforced, and known: a commit an operator adds on top of HEAD is not detected. It is recorded in `docs/GIT_REPOSITORY.md` §9.
 
 ## 14. Backup security
 

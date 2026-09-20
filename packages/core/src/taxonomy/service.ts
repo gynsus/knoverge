@@ -36,6 +36,27 @@ import type {
 
 export const MAX_CATEGORY_DEPTH = 8;
 
+/**
+ * How many categories one workspace may hold.
+ *
+ * A taxonomy is meant to be read by a person; a workspace with thousands of
+ * categories has stopped being one. The number is also a cost limit: every
+ * taxonomy change rewrites the whole file and commits it, so the repository
+ * grows with the square of the number of changes, and without a ceiling a
+ * holder of `taxonomy.manage` in one workspace can fill the disk every
+ * workspace on the host shares.
+ */
+export const MAX_CATEGORIES_PER_WORKSPACE = 2_000;
+
+/**
+ * How large the rendered `taxonomy.yaml` may be.
+ *
+ * The count above is not enough on its own: guidance and descriptions are
+ * thousands of characters each, so a few hundred maximal categories are tens
+ * of megabytes, rewritten in full on every change.
+ */
+export const MAX_TAXONOMY_BYTES = 1024 * 1024;
+
 export interface TaxonomyServiceOptions {
   uow: UnitOfWork;
   categories: CategoryRepository;
@@ -283,6 +304,13 @@ export class TaxonomyService {
         throw new DomainError('CATEGORY_CONFLICT', `a category already exists at ${path}`, {
           objectIds: { path },
         });
+      }
+      if (tree.categories.length >= MAX_CATEGORIES_PER_WORKSPACE) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `a workspace may hold at most ${MAX_CATEGORIES_PER_WORKSPACE} categories; archive what is no longer used`,
+          { objectIds: { workspace_id: actor.workspaceId } },
+        );
       }
       const aliases = await this.parseAliases(actor.workspaceId, input.aliases ?? [], null);
       const category: CategoryRecord = {
@@ -695,8 +723,19 @@ export class TaxonomyService {
             exclusionGuidance: category.exclusionGuidance,
           }))
           .sort((a, b) => a.path.localeCompare(b.path));
+        const rendered = this.o.renderTaxonomy(entries, version, now);
+        // Rewritten in full by every change, so its size is paid again on each
+        // one. A file this large is not a taxonomy anybody is reading.
+        const size = Buffer.byteLength(rendered, 'utf8');
+        if (size > MAX_TAXONOMY_BYTES) {
+          throw new DomainError(
+            'VALIDATION_ERROR',
+            `the taxonomy file would be ${size} bytes, over the ${MAX_TAXONOMY_BYTES} byte limit; shorten descriptions and guidance, or archive categories`,
+            { objectIds: { workspace_id: actor.workspaceId, bytes: String(size) } },
+          );
+        }
         await this.o.git.write(actor.workspaceId, [
-          { path: this.o.taxonomyPath, content: this.o.renderTaxonomy(entries, version, now) },
+          { path: this.o.taxonomyPath, content: rendered },
         ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
           paths: [this.o.taxonomyPath],

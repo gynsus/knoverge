@@ -100,6 +100,7 @@ export function createServices(config: ServicesConfig) {
   const maintenance = new MaintenanceService({
     uow,
     sessions: repositories.sessions,
+    operations: repositories.operations,
     idempotency,
   });
   const git = createGitStore({ dataDir: config.dataDir });
