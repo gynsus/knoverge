@@ -46,3 +46,47 @@ export function Field({ label, hint, className, children }: FieldProps) {
     </div>
   );
 }
+
+export interface FieldSetProps {
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+}
+
+/**
+ * A group of fields with no subheading of its own, used where the card's title
+ * already names the section. It exists so the layout is written once: the same
+ * class list repeated at every form is the thing that drifts.
+ */
+export function FieldSet({ disabled, className, children }: FieldSetProps) {
+  return (
+    <fieldset disabled={disabled} className={cn('grid gap-4 border-0 p-0', className)}>
+      {children}
+    </fieldset>
+  );
+}
+
+export interface FieldGroupProps {
+  /** The subheading for this group of fields. */
+  legend: string;
+  disabled?: boolean;
+  className?: string;
+  children: ReactNode;
+}
+
+/**
+ * A group of fields under a subheading.
+ *
+ * The heading and the spacing live here rather than at each call site, so a
+ * group added later cannot end up looking like a different kind of thing. A
+ * legend takes no part in the grid's gap, which is why its spacing is its own:
+ * relying on the gap left it sitting against the first field's label.
+ */
+export function FieldGroup({ legend, disabled, className, children }: FieldGroupProps) {
+  return (
+    <fieldset disabled={disabled} className={cn('grid gap-4 border-0 p-0', className)}>
+      <legend className="mb-3 text-base font-semibold">{legend}</legend>
+      {children}
+    </fieldset>
+  );
+}

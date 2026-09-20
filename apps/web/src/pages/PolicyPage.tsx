@@ -16,7 +16,7 @@ import { adminApi } from '../api/admin.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Field } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
@@ -192,7 +192,7 @@ function RuleForm({
       </CardTitle>
       <p>{t('policy.form_intro')}</p>
       <form onSubmit={submit} className="grid gap-4">
-        <fieldset disabled={save.isPending} className="grid gap-4 border-0 p-0">
+        <FieldSet disabled={save.isPending}>
           <Field label={t('policy.priority')} hint={t('policy.priority_hint')}>
             <Input
               type="number"
@@ -265,7 +265,7 @@ function RuleForm({
               {t('policy.enabled')}
             </Label.Root>
           </div>
-        </fieldset>
+        </FieldSet>
         <ErrorNotice error={save.error} />
         <Button type="submit" disabled={save.isPending} className="justify-self-start">
           {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}

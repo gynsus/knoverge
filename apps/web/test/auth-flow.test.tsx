@@ -105,6 +105,14 @@ describe('first run', () => {
     renderApp('/');
     expect(await screen.findByRole('heading', { name: 'Set up Knoverge' })).toBeInTheDocument();
 
+    // Both groups read as headings and stand apart from the first field under
+    // them. A legend takes no part in the grid gap, so this is not automatic.
+    for (const name of ['Administrator', 'First workspace']) {
+      const legend = screen.getByText(name, { selector: 'legend' });
+      expect(legend.className).toContain('mb-3');
+      expect(legend.className).toContain('font-semibold');
+    }
+
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Your name'), 'Owner');
     await user.type(screen.getByLabelText('Email'), 'owner@example.com');

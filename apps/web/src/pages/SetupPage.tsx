@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
+import { Field, FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { authApi } from '../api/auth.ts';
 import { useAuth } from '../auth/use-auth.ts';
@@ -73,8 +73,11 @@ export function SetupPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={(e) => void submit(e)} className="grid gap-6">
-          <fieldset disabled={busy} className="grid gap-4 rounded-lg border border-border p-4">
-            <legend className="px-1 text-sm font-medium">{t('setup.administrator')}</legend>
+          <FieldGroup
+            legend={t('setup.administrator')}
+            disabled={busy}
+            className="rounded-lg border border-border p-4"
+          >
             <Field label={t('fields.display_name')}>
               <Input
                 value={form.display_name}
@@ -102,9 +105,12 @@ export function SetupPage() {
                 autoComplete="new-password"
               />
             </Field>
-          </fieldset>
-          <fieldset disabled={busy} className="grid gap-4 rounded-lg border border-border p-4">
-            <legend className="px-1 text-sm font-medium">{t('setup.workspace')}</legend>
+          </FieldGroup>
+          <FieldGroup
+            legend={t('setup.workspace')}
+            disabled={busy}
+            className="rounded-lg border border-border p-4"
+          >
             <Field label={t('fields.workspace_name')}>
               <Input value={form.workspace_name} onChange={update('workspace_name')} required />
             </Field>
@@ -116,7 +122,7 @@ export function SetupPage() {
                 pattern="[a-z0-9](?:[a-z0-9-]*[a-z0-9])?"
               />
             </Field>
-          </fieldset>
+          </FieldGroup>
           <ErrorNotice error={error} />
           <Button type="submit" disabled={busy} className="justify-self-start">
             {busy ? t('common.working') : t('setup.submit')}

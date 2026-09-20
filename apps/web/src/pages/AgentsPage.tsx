@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { adminApi } from '../api/admin.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
@@ -286,7 +286,7 @@ export function AgentsPage() {
       <Card aria-labelledby="new-agent-title" className="grid gap-3 p-4 sm:p-6">
         <CardTitle id="new-agent-title">{t('agents.new')}</CardTitle>
         <form onSubmit={submit} className="grid gap-4">
-          <fieldset disabled={create.isPending} className="grid gap-4 border-0 p-0">
+          <FieldSet disabled={create.isPending}>
             <Field label={t('agents.name')}>
               <Input
                 value={name}
@@ -308,7 +308,7 @@ export function AgentsPage() {
                 <option value="trusted">{t('agents.tiers.trusted')}</option>
               </Select>
             </Field>
-          </fieldset>
+          </FieldSet>
           <ErrorNotice error={create.error} />
           <Button type="submit" disabled={create.isPending} className="justify-self-start">
             {create.isPending ? t('common.working') : t('agents.create')}

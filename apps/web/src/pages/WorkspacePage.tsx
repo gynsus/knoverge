@@ -8,7 +8,7 @@ import { useAuth } from '../auth/use-auth.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
@@ -155,7 +155,7 @@ function WorkspaceSettingsForm({
 
   return (
     <form onSubmit={submit} className="grid gap-4">
-      <fieldset disabled={!canAdminister || save.isPending} className="grid gap-4 border-0 p-0">
+      <FieldSet disabled={!canAdminister || save.isPending}>
         <Field label={t('workspace.name')}>
           <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
         </Field>
@@ -177,7 +177,7 @@ function WorkspaceSettingsForm({
             {t('workspace.identifier')}: <code>{workspace.slug}</code>
           </small>
         </p>
-      </fieldset>
+      </FieldSet>
       <ErrorNotice error={save.error} />
       {saved && <p role="status">{t('workspace.saved')}</p>}
       {canAdminister && (
@@ -291,7 +291,7 @@ export function WorkspacePage() {
             <CardTitle id="add-member-title">{t('workspace.add_member')}</CardTitle>
             <p>{t('workspace.add_member_intro')}</p>
             <form onSubmit={submitMember} className="grid gap-4">
-              <fieldset disabled={addMember.isPending} className="grid gap-4 border-0 p-0">
+              <FieldSet disabled={addMember.isPending}>
                 <Field label={t('fields.email')}>
                   <Input
                     type="email"
@@ -324,7 +324,7 @@ export function WorkspacePage() {
                     ))}
                   </Select>
                 </Field>
-              </fieldset>
+              </FieldSet>
               <ErrorNotice error={addMember.error} />
               <Button type="submit" disabled={addMember.isPending} className="justify-self-start">
                 {addMember.isPending ? t('common.working') : t('workspace.add')}
