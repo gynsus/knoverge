@@ -76,4 +76,11 @@ export interface GitStore {
    * is not the history this workspace's records describe.
    */
   hasCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
+  /**
+   * The `Knoverge-*` trailers of a commit, in order.
+   *
+   * What recovery reads: a commit that reached Git without its PostgreSQL
+   * transaction carries everything needed to write the rows it was missing.
+   */
+  trailersOf(workspaceId: WorkspaceId, commitHash: string): Promise<[string, string][]>;
 }

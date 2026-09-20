@@ -1,4 +1,5 @@
 export type { ActorContext } from './actor-context.ts';
+export { KnowledgeRecovery, type KnowledgeRecoveryOptions } from './knowledge/recovery.ts';
 export {
   KnowledgeService,
   MAX_BODY_BYTES,

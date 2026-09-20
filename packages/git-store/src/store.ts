@@ -58,6 +58,9 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     hasCommitForOperation(workspaceId: WorkspaceId, operationId: string) {
       return open(workspaceId).hasCommitForOperation(operationId);
     },
+    trailersOf(workspaceId: WorkspaceId, commitHash: string) {
+      return open(workspaceId).trailersOf(commitHash);
+    },
     hasCommit(workspaceId: WorkspaceId, commitHash: string) {
       return open(workspaceId).hasCommit(commitHash);
     },
