@@ -119,6 +119,7 @@ POST /v1/admin/policy.rules.delete
 GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
 GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
+GET  /v1/knowledge.diff?item_id=&from_revision_id=&to_revision_id=
 POST /v1/admin/knowledge.create             a person writes an item directly
                                             carries sources and relations; a source with a
                                             locator makes the item source-backed

@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { KnowledgeListResponse, KnowledgeResponse, RevisionsResponse } from '@knoverge/contracts';
+import {
+  KnowledgeDiffResponse,
+  KnowledgeListResponse,
+  KnowledgeResponse,
+  RevisionsResponse,
+} from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -471,5 +476,114 @@ describe('sources and relations', () => {
     });
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toMatch(/relate to itself/);
+  });
+});
+
+describe('comparing two revisions', () => {
+  it('shows the text that changed and the fields that changed', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Retention',
+          body: 'Backups are kept for thirty days.',
+          type: 'decision',
+          tags: ['backups'],
+        })
+      ).json(),
+    ).item;
+    const updated = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          title: 'Retention policy',
+          body: 'Backups are kept for ninety days.',
+          tags: ['backups', 'retention'],
+        })
+      ).json(),
+    ).item;
+
+    const res = await admin.get(
+      `/v1/knowledge.diff?item_id=${item.id}&from_revision_id=${item.current_revision_id}&to_revision_id=${updated.current_revision_id}`,
+    );
+    expect(res.statusCode, res.body).toBe(200);
+    const diff = KnowledgeDiffResponse.parse(res.json());
+    expect(diff.from.revision_number).toBe(1);
+    expect(diff.to.revision_number).toBe(2);
+    expect(diff.body_diff).toContain('-Backups are kept for thirty days.');
+    expect(diff.body_diff).toContain('+Backups are kept for ninety days.');
+
+    const changed = Object.fromEntries(diff.metadata_changes.map((c) => [c.field, c]));
+    expect(Object.keys(changed).sort()).toEqual(['tags', 'title']);
+    expect(changed['title']).toMatchObject({ from: 'Retention', to: 'Retention policy' });
+    // updated_at differs on every revision by construction, so it is left out.
+    expect(changed['updated_at']).toBeUndefined();
+  });
+
+  it('spans a move, where the file is at two different paths', async () => {
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Storage' })).statusCode).toBe(
+      200,
+    );
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Travelling item',
+          body: 'It starts here.',
+          type: 'fact',
+          categories: ['architecture'],
+        })
+      ).json(),
+    ).item;
+    const moved = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          categories: ['storage'],
+          body: 'It ends there.',
+        })
+      ).json(),
+    ).item;
+    expect(moved.markdown_path).not.toBe(item.markdown_path);
+
+    const diff = KnowledgeDiffResponse.parse(
+      (
+        await admin.get(
+          `/v1/knowledge.diff?item_id=${item.id}&from_revision_id=${item.current_revision_id}&to_revision_id=${moved.current_revision_id}`,
+        )
+      ).json(),
+    );
+    // A diff that could not span the move would be blank exactly here.
+    expect(diff.body_diff).toContain('-It starts here.');
+    expect(diff.body_diff).toContain('+It ends there.');
+    expect(diff.metadata_changes.map((c) => c.field)).toContain('categories');
+  });
+
+  it('refuses two revisions that belong to different items', async () => {
+    const one = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'First',
+          body: 'One.',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const two = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Second',
+          body: 'Two.',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const res = await admin.get(
+      `/v1/knowledge.diff?item_id=${one.id}&from_revision_id=${one.current_revision_id}&to_revision_id=${two.current_revision_id}`,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/different items/);
   });
 });

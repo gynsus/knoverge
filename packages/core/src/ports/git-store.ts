@@ -83,4 +83,16 @@ export interface GitStore {
    * transaction carries everything needed to write the rows it was missing.
    */
   trailersOf(workspaceId: WorkspaceId, commitHash: string): Promise<[string, string][]>;
+  /**
+   * A unified diff between one file at one commit and another at another.
+   *
+   * Two commit-and-path pairs rather than one path, because a file moves with
+   * its category: a diff that could not span the move would be blank exactly
+   * when it mattered.
+   */
+  diffFiles(
+    workspaceId: WorkspaceId,
+    from: { commitHash: string; path: string },
+    to: { commitHash: string; path: string },
+  ): Promise<string>;
 }

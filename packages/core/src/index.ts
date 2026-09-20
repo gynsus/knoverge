@@ -5,7 +5,10 @@ export {
   MAX_BODY_BYTES,
   UNCATEGORISED_DIRECTORY,
   type CreateItemInput,
+  compareFrontmatter,
+  evidenceFrom,
   type ItemResult,
+  type MetadataChange,
   type ItemSummary,
   type KnowledgeServiceOptions,
 } from './knowledge/service.ts';
