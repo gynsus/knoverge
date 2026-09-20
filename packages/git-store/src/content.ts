@@ -26,6 +26,11 @@ export function normalise(text: string): string {
  * Frontmatter is excluded on purpose: recategorising, retagging or reviewing an
  * item does not change what it says, and this is the hash an agent compares
  * during reconciliation.
+ *
+ * Normalisation already ends each part with exactly one newline, so the single
+ * newline joining them is the blank line between title and body. An agent
+ * computing this from docs/GIT_REPOSITORY.md section 5 has to produce the same
+ * bytes, and a digest one newline apart is a digest that never matches.
  */
 export function contentHash(title: string, body: string): string {
   const canonical = `${normalise(title)}\n${normalise(body)}`;

@@ -42,6 +42,7 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     },
     commit(workspaceId: WorkspaceId, request: GitCommitRequest) {
       return open(workspaceId).commit({
+        paths: request.paths,
         subject: request.subject,
         trailers: request.trailers,
         identity: identity(request.author),

@@ -97,9 +97,11 @@ below describe each other.
 
 ## Editing
 
-Editing this repository directly is not supported. Knoverge treats an
-unexpected HEAD as an integrity error and refuses to write to the workspace
-until an operator has looked at it.
+Editing this repository directly is not supported. Knoverge records the commit
+each taxonomy version was written with, and refuses to write to this workspace
+if the branch no longer leads back to it — so a reset, a rebase or a restore
+from an older backup stops the workspace rather than stacking new history on a
+hole.
 
 ## What is here, and what is not
 
@@ -107,5 +109,11 @@ Here: the knowledge, its metadata, the taxonomy, and the history of both.
 
 Not here: users, permissions, policy, proposals, review decisions, sync state
 and the audit ledger. Those live in PostgreSQL. A full restore needs both.
+
+## Documentation
+
+The format of these files, the commit conventions and the restore procedure are
+documented in the Knoverge repository under docs/, starting with
+docs/GIT_REPOSITORY.md.
 `;
 }

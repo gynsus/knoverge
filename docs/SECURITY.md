@@ -340,6 +340,24 @@ The limiter runs after authentication, so a request that ends in a refusal has a
 
 Stricter per-route limits apply to authentication failures, and to proposal writes and sync batches when they arrive.
 
+## 13a. The workspace repository
+
+Canonical knowledge is a Git repository per workspace, written by running `git` (ADR 0002). That makes the boundary between the server and the operator's own machine a security boundary, and it is drawn as follows.
+
+**The repository is named, never discovered.** Every invocation passes `--git-dir` and `--work-tree` explicitly. Git's own search walks up the directory tree, so a data directory that happens to sit inside another working tree — the documented development default puts `./data` inside the Knoverge checkout — would otherwise let a missing `.git` silently redirect canonical commits into the operator's repository, and `git add` would sweep whatever that tree held.
+
+**Only the operation's own paths are staged.** One domain operation is one commit, whatever else is in the directory. Staging everything would fold an editor's swap file or a desktop's `.DS_Store` into an unrelated commit and would turn a change that alters nothing into a commit carrying only that junk.
+
+**The environment is built from an allowlist, not inherited.** `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_CONFIG_*`, `GIT_EXTERNAL_DIFF` and their relatives never reach git, because none of them is anything Knoverge sets on purpose and each of them redirects or subverts a write.
+
+**No configuration the server did not choose applies.** System and global configuration are switched off and `core.hooksPath` is forced empty, so the server never executes a hook, a template or an fsmonitor an operator installed for their own work. A repository configured with husky would otherwise run its `pre-commit` script as the server user on every canonical write.
+
+**Nothing caller-supplied reaches the command line as an option or a path.** Arguments are always passed as an array, never through a shell. Commit hashes are checked against their shape before they become arguments, paths are resolved inside the repository and refused if they reach `.git`, and a commit subject or trailer value containing a line break is refused — a forged trailer would otherwise let a title speak for the commit when recovery reads it.
+
+**Attribution cannot be dressed up as somebody else.** The author address is always `<actor id>@knoverge.local`, and a display name is stripped of the characters git would render as an address before it is used.
+
+Not yet enforced, and known: there is no per-workspace quota on repository size, and a commit an operator adds on top of HEAD is not detected. Both are recorded in `docs/GIT_REPOSITORY.md` §9.
+
 ## 14. Backup security
 
 Backups contain private knowledge.
