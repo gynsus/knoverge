@@ -8,6 +8,11 @@ export interface CommitAuthor {
 }
 
 export interface GitCommitRequest {
+  /**
+   * The paths this operation wrote or removed. Only these are staged, so one
+   * domain operation stays one commit whatever else is in the directory.
+   */
+  paths: readonly string[];
   /** One line, for example `taxonomy: add Projects`. */
   subject: string;
   /** Repeated `Knoverge-*` lines, in the order given. */
@@ -49,11 +54,11 @@ export interface GitStore {
    */
   hasCommitForOperation(workspaceId: WorkspaceId, operationId: string): Promise<boolean>;
   /**
-   * Whether a commit is in this repository's history.
+   * Whether a commit is reachable from the current branch.
    *
    * Used before writing: PostgreSQL records the commit that wrote each
-   * taxonomy version, so a repository that does not contain the newest one is
-   * not the repository this workspace's history belongs to.
+   * taxonomy version, so a branch that no longer leads back to the newest one
+   * is not the history this workspace's records describe.
    */
   hasCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
 }

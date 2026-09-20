@@ -643,6 +643,7 @@ export class TaxonomyService {
           { path: this.o.taxonomyPath, content: this.o.renderTaxonomy(entries, version, now) },
         ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
+          paths: [this.o.taxonomyPath],
           subject: planned.subject,
           trailers: [
             ['Knoverge-Operation', operation.id],
