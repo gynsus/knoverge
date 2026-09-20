@@ -193,9 +193,11 @@ export const FRONTMATTER_KEY_ORDER = [
 export const ChangeKind = z.enum([
   'create',
   'update',
+  'move',
+  /** Frontmatter changed and the text did not: still a revision, still a commit. */
+  'metadata',
   'delete',
   'restore',
-  'move',
   'supersede',
   'superseded_by',
   'import',
@@ -276,3 +278,67 @@ export const KnowledgeListResponse = z.object({
   next_cursor: z.string().nullable(),
 });
 export type KnowledgeListResponse = z.infer<typeof KnowledgeListResponse>;
+
+/**
+ * Changing an item.
+ *
+ * `base_revision_id` and `base_content_hash` are what the caller read, and
+ * both are required: rule 6 says an update carries what it was based on, and a
+ * mismatch is a conflict rather than an overwrite. Every field left out is
+ * left alone; `categories` and `tags` replace the whole list when given.
+ */
+export const UpdateKnowledgeRequest = z.object({
+  item_id: KnowledgeItemId,
+  base_revision_id: RevisionId,
+  base_content_hash: z.string().min(1).max(80),
+  title: z.string().trim().min(1).max(300).optional(),
+  body: z.string().min(1).max(200_000).optional(),
+  type: ItemType.optional(),
+  language: LanguageTag.optional(),
+  categories: z.array(CategoryPath).max(20).optional(),
+  tags: z.array(Tag).max(50).optional(),
+  valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
+  valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
+  observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type UpdateKnowledgeRequest = z.infer<typeof UpdateKnowledgeRequest>;
+
+/**
+ * Removing an item from the current index.
+ *
+ * The file leaves the working tree and the history keeps it, so a delete is a
+ * commit like any other and is undone by `knowledge.restore`.
+ */
+export const DeleteKnowledgeRequest = z.object({
+  item_id: KnowledgeItemId,
+  base_revision_id: RevisionId,
+  base_content_hash: z.string().min(1).max(80),
+  request_id: z.string().max(128).optional(),
+});
+export type DeleteKnowledgeRequest = z.infer<typeof DeleteKnowledgeRequest>;
+
+export const RestoreKnowledgeRequest = z.object({
+  item_id: KnowledgeItemId,
+  request_id: z.string().max(128).optional(),
+});
+export type RestoreKnowledgeRequest = z.infer<typeof RestoreKnowledgeRequest>;
+
+/** One revision, as history shows it. */
+export const RevisionSummary = z.object({
+  id: RevisionId,
+  revision_number: z.number().int().positive(),
+  change_kind: ChangeKind,
+  title: z.string(),
+  markdown_path: z.string(),
+  content_hash: z.string(),
+  frontmatter_hash: z.string(),
+  git_commit: z.string(),
+  actor_id: z.string(),
+  created_at: z.iso.datetime({ offset: true }),
+});
+export type RevisionSummary = z.infer<typeof RevisionSummary>;
+
+export const RevisionsResponse = z.object({ revisions: z.array(RevisionSummary) });
+export type RevisionsResponse = z.infer<typeof RevisionsResponse>;

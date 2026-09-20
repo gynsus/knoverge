@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { KnowledgeListResponse, KnowledgeResponse } from '@knoverge/contracts';
+import { KnowledgeListResponse, KnowledgeResponse, RevisionsResponse } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -209,5 +209,157 @@ describe('creating a knowledge item', () => {
     });
     expect(res.statusCode, res.body).toBe(403);
     expect(res.json().code).toBe('FORBIDDEN');
+  });
+});
+
+describe('changing an item', () => {
+  const write = async (body: Record<string, unknown>) => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Backup policy',
+      body: 'Nightly, kept for thirty days.',
+      type: 'decision',
+      categories: ['architecture'],
+      ...body,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  };
+
+  it('refuses an update based on a revision that is no longer current', async () => {
+    const item = await write({ title: 'Concurrency' });
+    const stale = {
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+    };
+
+    const first = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      ...stale,
+      body: 'The first edit wins.',
+    });
+    expect(first.statusCode, first.body).toBe(200);
+
+    // The second caller read the same revision and would overwrite the first.
+    const second = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      ...stale,
+      body: 'The second edit must not silently win.',
+    });
+    expect(second.statusCode).toBe(409);
+    const error = second.json();
+    expect(error.code).toBe('REVISION_CONFLICT');
+    // The answer carries what the caller has to re-read.
+    expect(error.object_ids.current_revision_id).not.toBe(item.current_revision_id);
+    expect(error.object_ids.current_content_hash).toBeTruthy();
+  });
+
+  it('writes a new revision and keeps the old one readable', async () => {
+    const item = await write({ title: 'History' });
+    const updated = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          body: 'Nightly, kept for ninety days.',
+        })
+      ).json(),
+    ).item;
+    expect(updated.revision_number).toBe(2);
+    expect(updated.content_hash).not.toBe(item.content_hash);
+
+    const history = RevisionsResponse.parse(
+      (await admin.get(`/v1/knowledge.revisions?item_id=${item.id}`)).json(),
+    );
+    expect(history.revisions.map((r) => r.revision_number)).toEqual([2, 1]);
+    expect(history.revisions.map((r) => r.change_kind)).toEqual(['update', 'create']);
+    // Two revisions, two commits.
+    expect(history.revisions[0]!.git_commit).not.toBe(history.revisions[1]!.git_commit);
+  });
+
+  it('records a metadata-only change as its own revision', async () => {
+    const item = await write({ title: 'Metadata' });
+    const updated = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          tags: ['backups'],
+        })
+      ).json(),
+    ).item;
+    // The text did not change, so the content hash did not move — and it is
+    // still a new revision and a new commit.
+    expect(updated.content_hash).toBe(item.content_hash);
+    expect(updated.revision_number).toBe(2);
+    const history = RevisionsResponse.parse(
+      (await admin.get(`/v1/knowledge.revisions?item_id=${item.id}`)).json(),
+    );
+    expect(history.revisions[0]!.change_kind).toBe('metadata');
+    expect(history.revisions[0]!.frontmatter_hash).not.toBe(history.revisions[1]!.frontmatter_hash);
+  });
+
+  it('moves the file when the primary category changes', async () => {
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Operations' })).statusCode).toBe(
+      200,
+    );
+    const item = await write({ title: 'Relocation' });
+    const moved = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          categories: ['operations'],
+        })
+      ).json(),
+    ).item;
+    expect(moved.markdown_path).toBe('knowledge/operations/relocation.md');
+
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    // The file is where it moved to, and not where it was.
+    await expect(readFile(join(repository, moved.markdown_path), 'utf8')).resolves.toContain(
+      'Relocation',
+    );
+    await expect(readFile(join(repository, item.markdown_path), 'utf8')).rejects.toThrow();
+    // One commit, naming both paths.
+    const show = await gitIn(repository, ['show', '--name-status', '--format=%s', 'HEAD']);
+    expect(show).toContain('move(decision): Relocation');
+    expect(show).toContain(item.markdown_path);
+    expect(show).toContain(moved.markdown_path);
+  });
+
+  it('deletes logically and restores from history', async () => {
+    const item = await write({ title: 'Ephemeral' });
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+
+    const deleted = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.delete', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+        })
+      ).json(),
+    ).item;
+    expect(deleted.status).toBe('deleted');
+    // Gone from the working tree, still in the history.
+    await expect(readFile(join(repository, item.markdown_path), 'utf8')).rejects.toThrow();
+    expect(await gitIn(repository, ['show', `HEAD~1:${item.markdown_path}`])).toContain(
+      'Nightly, kept for thirty days.',
+    );
+    // And gone from the list a reader sees.
+    const list = KnowledgeListResponse.parse((await admin.get('/v1/knowledge.list')).json());
+    expect(list.items.find((i) => i.id === item.id)?.status).toBe('deleted');
+
+    const restored = KnowledgeResponse.parse(
+      (await admin.post('/v1/admin/knowledge.restore', { item_id: item.id })).json(),
+    ).item;
+    expect(restored.status).toBe('active');
+    expect(restored.body).toContain('Nightly, kept for thirty days.');
+    await expect(readFile(join(repository, restored.markdown_path), 'utf8')).resolves.toContain(
+      'Ephemeral',
+    );
   });
 });

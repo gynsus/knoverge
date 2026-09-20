@@ -51,6 +51,14 @@ export interface GitStore {
    * never stores its body, so reading one means reading the repository.
    */
   read(workspaceId: WorkspaceId, path: string): Promise<string | null>;
+  /**
+   * One file as it was at a commit, or null when it did not exist then.
+   *
+   * What makes history readable, and what a restore reads: a deleted file is
+   * gone from the working tree and still in every commit that had it.
+   */
+  readAt(workspaceId: WorkspaceId, commitHash: string, path: string): Promise<string | null>;
+  /** Removes files from the working tree. The history keeps them. */
   remove(workspaceId: WorkspaceId, paths: readonly string[]): Promise<void>;
   /** Returns the commit hash, or null when nothing changed. */
   commit(workspaceId: WorkspaceId, request: GitCommitRequest): Promise<string | null>;

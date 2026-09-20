@@ -2,6 +2,7 @@ import {
   CategorySlug,
   type ActorId,
   type Frontmatter,
+  type ChangeKind,
   type ItemType,
   type KnowledgeItemId,
   type RevisionId,
@@ -67,6 +68,29 @@ export interface KnowledgeServiceOptions {
   contentHash: (title: string, body: string) => string;
   frontmatterHash: (yaml: string) => string;
   clock?: Clock;
+}
+
+export interface DeleteItemInput {
+  itemId: KnowledgeItemId;
+  baseRevisionId: RevisionId;
+  baseContentHash: string;
+}
+
+export interface UpdateItemInput {
+  itemId: KnowledgeItemId;
+  /** What the caller read. A mismatch is a conflict, never an overwrite. */
+  baseRevisionId: RevisionId;
+  baseContentHash: string;
+  title?: string | undefined;
+  body?: string | undefined;
+  type?: ItemType | undefined;
+  language?: string | undefined;
+  /** Replaces the whole list when given; the first is still primary. */
+  categories?: readonly string[] | undefined;
+  tags?: readonly string[] | undefined;
+  validFrom?: string | null | undefined;
+  validUntil?: string | null | undefined;
+  observedAt?: string | null | undefined;
 }
 
 export interface CreateItemInput {
@@ -281,6 +305,237 @@ export class KnowledgeService {
     });
   }
 
+  /**
+   * Changes an item: a new revision and a new commit, always.
+   *
+   * The caller says which revision and which content it read, and a mismatch
+   * is a conflict rather than an overwrite (rule 6). Two people editing the
+   * same item is ordinary; one of them silently losing their work is not.
+   *
+   * A change of primary category moves the file, in the same commit, because
+   * the path is derived from the category and a file left behind would be an
+   * item the repository has twice.
+   */
+  async update(actor: ActorContext, input: UpdateItemInput): Promise<ItemResult> {
+    const current = await this.get(actor, input.itemId);
+    if (
+      current.revision.id !== input.baseRevisionId ||
+      current.revision.contentHash !== input.baseContentHash
+    ) {
+      throw new DomainError(
+        'REVISION_CONFLICT',
+        'the item changed since you read it; re-read it and apply your change to the current revision',
+        {
+          objectIds: {
+            knowledge_item: input.itemId,
+            current_revision_id: current.revision.id,
+            current_content_hash: current.revision.contentHash,
+          },
+        },
+      );
+    }
+
+    const title = (input.title ?? current.revision.title).trim();
+    if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
+    const body = (input.body ?? current.body).trim();
+    if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
+    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+      throw new DomainError('VALIDATION_ERROR', `the body may not exceed ${MAX_BODY_BYTES} bytes`);
+    }
+    const revisionId = newId('rev') as RevisionId;
+    let planned: PlannedUpdate | undefined;
+
+    return this.o.crossStore.run<ItemResult>(actor, {
+      type: 'update',
+      objectIds: { knowledge_item: input.itemId },
+      commit: async (operation) => {
+        const author = await this.authorOf(actor);
+        const now = this.clock.now();
+        await this.assertRepositoryIsOurs(actor.workspaceId);
+
+        const tree = await this.o.categories.list(actor.workspaceId, { includeArchived: true });
+        const chosen = this.resolveCategories(tree, input.categories ?? current.categories);
+        const directory = chosen[0] ? `knowledge/${chosen[0].path}` : UNCATEGORISED_DIRECTORY;
+        const previousPath = current.item.markdownPath;
+        const markdownPath = `${directory}/${current.item.slug}.md`;
+        const moved = markdownPath !== previousPath;
+        if (moved && (await this.o.items.findByPath(actor.workspaceId, markdownPath))) {
+          throw new DomainError('VALIDATION_ERROR', 'another item already holds that path', {
+            objectIds: { path: markdownPath },
+          });
+        }
+
+        const previous = current.revision.frontmatter;
+        // Both sides trimmed: the body read back from the file carries the
+        // trailing newline normalisation adds, and comparing against it
+        // unmodified made every metadata change look like a text change.
+        const bodyChanged = body !== current.body.trim();
+        const frontmatter: Frontmatter = {
+          ...previous,
+          title,
+          type: input.type ?? previous.type,
+          language: input.language ?? previous.language,
+          categories: chosen.map((c) => c.path),
+          tags: input.tags ? [...new Set(input.tags)].sort() : previous.tags,
+          // A new revision resets review unless a human made it
+          // (KNOWLEDGE_MODEL.md section 8): what was reviewed was the text
+          // that changed.
+          review: actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed',
+          valid_from: input.validFrom === undefined ? previous.valid_from : input.validFrom,
+          valid_until: input.validUntil === undefined ? previous.valid_until : input.validUntil,
+          observed_at: input.observedAt === undefined ? previous.observed_at : input.observedAt,
+          updated_at: now.toISOString(),
+        } as Frontmatter;
+
+        const rendered = this.o.renderItem({ frontmatter, body });
+        if (moved) await this.o.git.remove(actor.workspaceId, [previousPath]);
+        await this.o.git.write(actor.workspaceId, [{ path: markdownPath, content: rendered }]);
+        const kind = moved ? 'move' : bodyChanged ? 'update' : 'metadata';
+        const commitHash = await this.o.git.commit(actor.workspaceId, {
+          paths: moved ? [previousPath, markdownPath] : [markdownPath],
+          subject: `${moved ? 'move' : 'update'}(${frontmatter.type}): ${title}`,
+          trailers: [
+            ['Knoverge-Operation', operation.id],
+            ['Knoverge-Workspace', actor.workspaceId],
+            ['Knoverge-Actor', actor.actorId],
+            ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ['Knoverge-Change', `${input.itemId}@${revisionId} ${kind}`],
+          ],
+          author,
+          at: now,
+        });
+        if (commitHash === null) {
+          throw new DomainError('VALIDATION_ERROR', 'this change would alter nothing');
+        }
+        planned = { frontmatter, body, markdownPath, chosen, rendered, now, commitHash, kind };
+        return { commitHash, objectIds: { knowledge_item: input.itemId, path: markdownPath } };
+      },
+      record: async (tx, operation) => {
+        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the change was never planned');
+        const p = planned;
+        const revision = this.revisionOf(
+          actor,
+          input.itemId,
+          revisionId,
+          current.revision.revisionNumber + 1,
+          p,
+          operation.id,
+        );
+        await this.o.revisions.insert(tx, revision);
+        await this.o.items.update(tx, input.itemId, {
+          markdownPath: p.markdownPath,
+          language: p.frontmatter.language,
+          currentRevisionId: revisionId,
+          reviewState: p.frontmatter.review,
+          validFrom: p.frontmatter.valid_from ? new Date(p.frontmatter.valid_from) : null,
+          validUntil: p.frontmatter.valid_until ? new Date(p.frontmatter.valid_until) : null,
+          observedAt: p.frontmatter.observed_at ? new Date(p.frontmatter.observed_at) : null,
+          updatedAt: p.now,
+        });
+        await this.o.items.setCategories(
+          tx,
+          input.itemId,
+          p.chosen.map<ItemCategoryRecord>((category, index) => ({
+            knowledgeItemId: input.itemId,
+            categoryId: category.id,
+            isPrimary: index === 0,
+            position: index,
+          })),
+        );
+        await this.o.items.setTags(tx, actor.workspaceId, input.itemId, p.frontmatter.tags);
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: p.kind === 'move' ? 'knowledge.moved' : 'knowledge.updated',
+          objectType: 'knowledge_item',
+          objectId: input.itemId,
+          categoryIds: p.chosen.map((c) => c.id),
+          metadata: {
+            revision: revisionId,
+            before_revision: current.revision.id,
+            before_hash: current.revision.contentHash,
+            content_hash: revision.contentHash,
+            git_commit: p.commitHash,
+            change_kind: p.kind,
+          },
+        });
+        return {
+          item: (await this.o.items.findById(actor.workspaceId, input.itemId, tx)) as never,
+          revision,
+          categories: p.chosen.map((c) => c.path),
+          tags: p.frontmatter.tags,
+          body: p.body,
+        };
+      },
+    });
+  }
+
+  /**
+   * Removes an item from the current index.
+   *
+   * Logical: the file leaves the working tree and every commit that had it
+   * keeps it, so the knowledge is still there for anyone allowed to read
+   * history, and a restore is a commit rather than an archaeology exercise.
+   */
+  async delete(actor: ActorContext, input: DeleteItemInput): Promise<ItemResult> {
+    const current = await this.get(actor, input.itemId);
+    if (
+      current.revision.id !== input.baseRevisionId ||
+      current.revision.contentHash !== input.baseContentHash
+    ) {
+      throw new DomainError(
+        'REVISION_CONFLICT',
+        'the item changed since you read it; re-read it before deleting',
+        {
+          objectIds: {
+            knowledge_item: input.itemId,
+            current_revision_id: current.revision.id,
+            current_content_hash: current.revision.contentHash,
+          },
+        },
+      );
+    }
+    return this.retire(actor, current, 'delete');
+  }
+
+  /** Brings back an item a delete removed, at the content it had. */
+  async restore(actor: ActorContext, itemId: KnowledgeItemId): Promise<ItemResult> {
+    const item = await this.o.items.findById(actor.workspaceId, itemId);
+    if (!item) {
+      throw new DomainError('NOT_FOUND', 'knowledge item not found', {
+        objectIds: { knowledge_item: itemId },
+      });
+    }
+    if (item.status !== 'deleted') {
+      throw new DomainError('VALIDATION_ERROR', 'this item is not deleted');
+    }
+    const revision = item.currentRevisionId
+      ? await this.o.revisions.findById(actor.workspaceId, item.currentRevisionId)
+      : null;
+    if (!revision) {
+      throw new DomainError('INTERNAL_ERROR', 'the item has no current revision');
+    }
+    // The delete revision recorded the commit the file was removed in, so the
+    // content is in that commit's parent — which is where the previous
+    // revision's own commit is. Reading it is how a restore restores.
+    const previous = (await this.o.revisions.listForItem(itemId, 2))[1];
+    if (!previous) {
+      throw new DomainError('INTERNAL_ERROR', 'nothing to restore this item from');
+    }
+    const file = await this.o.git.readAt(
+      actor.workspaceId,
+      previous.gitCommitHash,
+      previous.markdownPath,
+    );
+    if (file === null) {
+      throw new DomainError(
+        'INTERNAL_ERROR',
+        'the commit this item was last written in no longer has its file',
+        { objectIds: { knowledge_item: itemId, commit: previous.gitCommitHash } },
+      );
+    }
+    const parsed = this.o.parseItem(file);
+    return this.reinstate(actor, item, revision, previous, parsed.body);
+  }
+
   /** One item with its body, read from the file that is canonical. */
   async get(actor: ActorContext, itemId: KnowledgeItemId): Promise<ItemResult> {
     const item = await this.o.items.findById(actor.workspaceId, itemId);
@@ -318,6 +573,21 @@ export class KnowledgeService {
     };
   }
 
+  /** Every revision of an item, newest first. */
+  async history(
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    limit = 50,
+  ): Promise<RevisionRecord[]> {
+    const item = await this.o.items.findById(actor.workspaceId, itemId);
+    if (!item) {
+      throw new DomainError('NOT_FOUND', 'knowledge item not found', {
+        objectIds: { knowledge_item: itemId },
+      });
+    }
+    return this.o.revisions.listForItem(itemId, limit);
+  }
+
   /** A page of items without their bodies: a list does not need the knowledge. */
   async list(actor: ActorContext, options: ListItemsOptions = {}): Promise<ItemSummary[]> {
     const items = await this.o.items.list(actor.workspaceId, options);
@@ -334,6 +604,239 @@ export class KnowledgeService {
       categories: categories.get(item.id) ?? [],
       tags: tags.get(item.id) ?? [],
     }));
+  }
+
+  /** The commit and the rows that take an item out of the working tree. */
+  private async retire(
+    actor: ActorContext,
+    current: ItemResult,
+    kind: 'delete',
+  ): Promise<ItemResult> {
+    const revisionId = newId('rev') as RevisionId;
+    let planned: PlannedUpdate | undefined;
+    const itemId = current.item.id;
+    return this.o.crossStore.run<ItemResult>(actor, {
+      type: 'delete',
+      objectIds: { knowledge_item: itemId },
+      commit: async (operation) => {
+        const author = await this.authorOf(actor);
+        const now = this.clock.now();
+        await this.assertRepositoryIsOurs(actor.workspaceId);
+        const frontmatter: Frontmatter = {
+          ...current.revision.frontmatter,
+          status: 'deleted',
+          updated_at: now.toISOString(),
+        } as Frontmatter;
+        await this.o.git.remove(actor.workspaceId, [current.item.markdownPath]);
+        const commitHash = await this.o.git.commit(actor.workspaceId, {
+          paths: [current.item.markdownPath],
+          subject: `delete(${frontmatter.type}): ${current.revision.title}`,
+          trailers: [
+            ['Knoverge-Operation', operation.id],
+            ['Knoverge-Workspace', actor.workspaceId],
+            ['Knoverge-Actor', actor.actorId],
+            ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ['Knoverge-Change', `${itemId}@${revisionId} ${kind}`],
+          ],
+          author,
+          at: now,
+        });
+        if (commitHash === null) {
+          throw new DomainError('INTERNAL_ERROR', 'the file was already gone from the tree');
+        }
+        planned = {
+          frontmatter,
+          body: current.body,
+          markdownPath: current.item.markdownPath,
+          chosen: [],
+          // The file is gone, so the frontmatter hash is taken from what the
+          // delete revision records rather than from a file on disk.
+          rendered: this.o.renderItem({ frontmatter, body: current.body }),
+          now,
+          commitHash,
+          kind,
+        };
+        return { commitHash, objectIds: { knowledge_item: itemId } };
+      },
+      record: async (tx, operation) => {
+        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the delete was never planned');
+        const p = planned;
+        const revision = this.revisionOf(
+          actor,
+          itemId,
+          revisionId,
+          current.revision.revisionNumber + 1,
+          p,
+          operation.id,
+        );
+        await this.o.revisions.insert(tx, revision);
+        await this.o.items.update(tx, itemId, {
+          status: 'deleted',
+          currentRevisionId: revisionId,
+          deletedAt: p.now,
+          updatedAt: p.now,
+        });
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: 'knowledge.deleted',
+          objectType: 'knowledge_item',
+          objectId: itemId,
+          metadata: {
+            revision: revisionId,
+            before_revision: current.revision.id,
+            git_commit: p.commitHash,
+          },
+        });
+        return { ...current, revision, item: { ...current.item, status: 'deleted' } };
+      },
+    });
+  }
+
+  /** The commit and the rows that put a deleted item back. */
+  private async reinstate(
+    actor: ActorContext,
+    item: KnowledgeItemRecord,
+    deleteRevision: RevisionRecord,
+    previous: RevisionRecord,
+    body: string,
+  ): Promise<ItemResult> {
+    const revisionId = newId('rev') as RevisionId;
+    let planned: PlannedUpdate | undefined;
+    return this.o.crossStore.run<ItemResult>(actor, {
+      type: 'restore',
+      objectIds: { knowledge_item: item.id },
+      commit: async (operation) => {
+        const author = await this.authorOf(actor);
+        const now = this.clock.now();
+        await this.assertRepositoryIsOurs(actor.workspaceId);
+        const tree = await this.o.categories.list(actor.workspaceId, { includeArchived: true });
+        // The categories the item had. One archived since is refused rather
+        // than quietly dropped: where the item belongs is part of the item.
+        const chosen = this.resolveCategories(tree, previous.frontmatter.categories);
+        const frontmatter: Frontmatter = {
+          ...previous.frontmatter,
+          status: 'active',
+          updated_at: now.toISOString(),
+        } as Frontmatter;
+        const rendered = this.o.renderItem({ frontmatter, body });
+        await this.o.git.write(actor.workspaceId, [
+          { path: previous.markdownPath, content: rendered },
+        ]);
+        const commitHash = await this.o.git.commit(actor.workspaceId, {
+          paths: [previous.markdownPath],
+          subject: `restore(${frontmatter.type}): ${previous.title}`,
+          trailers: [
+            ['Knoverge-Operation', operation.id],
+            ['Knoverge-Workspace', actor.workspaceId],
+            ['Knoverge-Actor', actor.actorId],
+            ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ['Knoverge-Change', `${item.id}@${revisionId} restore`],
+          ],
+          author,
+          at: now,
+        });
+        if (commitHash === null) {
+          throw new DomainError('INTERNAL_ERROR', 'the restore produced no commit');
+        }
+        planned = {
+          frontmatter,
+          body,
+          markdownPath: previous.markdownPath,
+          chosen,
+          rendered,
+          now,
+          commitHash,
+          kind: 'restore',
+        };
+        return { commitHash, objectIds: { knowledge_item: item.id } };
+      },
+      record: async (tx, operation) => {
+        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the restore was never planned');
+        const p = planned;
+        const revision = this.revisionOf(
+          actor,
+          item.id,
+          revisionId,
+          deleteRevision.revisionNumber + 1,
+          p,
+          operation.id,
+        );
+        await this.o.revisions.insert(tx, revision);
+        await this.o.items.update(tx, item.id, {
+          status: 'active',
+          markdownPath: p.markdownPath,
+          currentRevisionId: revisionId,
+          deletedAt: null,
+          updatedAt: p.now,
+        });
+        await this.o.items.setCategories(
+          tx,
+          item.id,
+          p.chosen.map<ItemCategoryRecord>((category, index) => ({
+            knowledgeItemId: item.id,
+            categoryId: category.id,
+            isPrimary: index === 0,
+            position: index,
+          })),
+        );
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: 'knowledge.restored',
+          objectType: 'knowledge_item',
+          objectId: item.id,
+          categoryIds: p.chosen.map((c) => c.id),
+          metadata: {
+            revision: revisionId,
+            restored_from: previous.id,
+            git_commit: p.commitHash,
+          },
+        });
+        return {
+          item: { ...item, status: 'active', currentRevisionId: revisionId, deletedAt: null },
+          revision,
+          categories: p.chosen.map((c) => c.path),
+          tags: p.frontmatter.tags,
+          body: p.body,
+        };
+      },
+    });
+  }
+
+  /** One revision row from a planned change, so create and update agree. */
+  private revisionOf(
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    revisionId: RevisionId,
+    revisionNumber: number,
+    planned: {
+      frontmatter: Frontmatter;
+      body: string;
+      markdownPath: string;
+      rendered: string;
+      now: Date;
+      commitHash: string;
+      kind?: ChangeKind;
+    },
+    operationId: string,
+  ): RevisionRecord {
+    return {
+      id: revisionId,
+      knowledgeItemId: itemId,
+      workspaceId: actor.workspaceId,
+      revisionNumber,
+      contentHash: this.o.contentHash(planned.frontmatter.title, planned.body),
+      // The whole file minus the body, so a metadata-only change is visible as
+      // a different revision even though the content hash did not move.
+      frontmatterHash: this.o.frontmatterHash(
+        planned.rendered.slice(0, planned.rendered.indexOf('\n---\n') + 5),
+      ),
+      gitCommitHash: planned.commitHash,
+      title: planned.frontmatter.title,
+      markdownPath: planned.markdownPath,
+      frontmatter: planned.frontmatter,
+      changeKind: planned.kind ?? 'create',
+      createdByActorId: actor.actorId,
+      createdAt: planned.now,
+      operationId,
+    };
   }
 
   private async decorate(
@@ -413,6 +916,17 @@ export class KnowledgeService {
       email: `${actor.actorId}@knoverge.local`,
     };
   }
+}
+
+interface PlannedUpdate {
+  frontmatter: Frontmatter;
+  body: string;
+  markdownPath: string;
+  chosen: CategoryRecord[];
+  rendered: string;
+  now: Date;
+  commitHash: string;
+  kind: ChangeKind;
 }
 
 interface PlannedItem {
