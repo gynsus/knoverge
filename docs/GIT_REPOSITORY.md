@@ -73,9 +73,9 @@ sources:
     role: supporting
 relations:
   - type: supersedes
-    target: kn_01J8Z2A0C1D2E3F4G5H6J7K8L9
+    target: kn_01J8Z2A0C1D2E3F4G5H6J7K8M9
   - type: implements
-    target: kn_01J8Z1B9C8D7E6F5G4H3J2K1L0
+    target: kn_01J8Z1B9C8D7E6F5G4H3J2K1M0
     valid_from: 2026-09-19T00:00:00Z
 external:
   source_system: claude-code
@@ -92,7 +92,9 @@ Field rules:
 - `sources` and `relations` are a portable projection of PostgreSQL data; PostgreSQL remains the queryable authority, but the two must agree and the integrity checker verifies it;
 - `relations.target` is a portable item id; item ids are stable across export/import;
 - no secrets, tokens, embeddings, or user emails;
-- keys are written in the order above; unknown keys are rejected by the parser.
+- keys are written in the order above; unknown keys are rejected by the parser;
+- a field with nothing in it is left out rather than written as an empty list, so the file stays readable — except `valid_from`, `valid_until` and `observed_at`, which are written as `null`, because for an instant "unset" and "explicitly none" are not the same statement;
+- item ids and revision ids are ULIDs in Crockford base32, which has no `I`, `L`, `O` or `U`.
 
 Every field in frontmatter is part of the revision. Changing any of them creates a new revision and a Git commit.
 

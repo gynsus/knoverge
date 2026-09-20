@@ -404,7 +404,7 @@ sources:
     role: primary
 relations:
   - type: supersedes
-    target: kn_01J8Z2A0C1D2E3F4G5H6J7K8L9
+    target: kn_01J8Z2A0C1D2E3F4G5H6J7K8M9
 ---
 
 Passwordless login uses a six-digit email code.

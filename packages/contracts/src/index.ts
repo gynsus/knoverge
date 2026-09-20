@@ -4,6 +4,7 @@ export * from './errors.ts';
 export * from './events.ts';
 export * from './health.ts';
 export * from './identity.ts';
+export * from './knowledge.ts';
 export * from './ids.ts';
 export * from './policy.ts';
 export * from './taxonomy.ts';

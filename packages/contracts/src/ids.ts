@@ -55,6 +55,15 @@ export type EventId = z.infer<typeof EventId>;
 export const CategoryId = idSchema('cat');
 export type CategoryId = z.infer<typeof CategoryId>;
 
+export const KnowledgeItemId = idSchema('kn');
+export type KnowledgeItemId = z.infer<typeof KnowledgeItemId>;
+export const RevisionId = idSchema('rev');
+export type RevisionId = z.infer<typeof RevisionId>;
+export const SourceReferenceId = idSchema('src');
+export type SourceReferenceId = z.infer<typeof SourceReferenceId>;
+export const RelationId = idSchema('rel');
+export type RelationId = z.infer<typeof RelationId>;
+
 export const PolicyRuleId = idSchema('rule');
 export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
 export const PermissionGrantId = idSchema('grant');
