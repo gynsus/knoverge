@@ -181,7 +181,9 @@ Knoverge-Change: kn_01J...OLD@rev_01J...B superseded_by
 Knoverge-Taxonomy-Version: 43
 ```
 
-Subject prefixes: `create`, `update`, `delete`, `restore`, `move`, `supersede`, `taxonomy`, `import`.
+Subject prefixes: `create`, `update`, `delete`, `restore`, `move`, `supersede`, `taxonomy`, `import`. An item's subject carries its type, as `create(decision): Authentication strategy`.
+
+An item with no category lives at `knowledge/_uncategorised/<slug>.md`, so every item has a path and the file layout never has a hole in it.
 
 `Knoverge-Change` is repeated once per revision produced by the commit, in the form `<item id>@<revision id> <change kind>`. `Knoverge-Taxonomy-Version` is present when the commit rewrote `taxonomy.yaml`. Together with the file contents these trailers let recovery rebuild every `KnowledgeRevision` row of the commit unambiguously.
 

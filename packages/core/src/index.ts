@@ -1,5 +1,22 @@
 export type { ActorContext } from './actor-context.ts';
 export {
+  KnowledgeService,
+  MAX_BODY_BYTES,
+  UNCATEGORISED_DIRECTORY,
+  type CreateItemInput,
+  type ItemResult,
+  type ItemSummary,
+  type KnowledgeServiceOptions,
+} from './knowledge/service.ts';
+export type {
+  ItemCategoryRecord,
+  KnowledgeItemRecord,
+  KnowledgeRepository,
+  ListItemsOptions,
+  RevisionRecord,
+  RevisionRepository,
+} from './knowledge/repository.ts';
+export {
   AuthorizationAdminService,
   type AuthorizationAdminOptions,
   type GrantInput,

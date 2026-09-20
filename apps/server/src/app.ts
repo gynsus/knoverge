@@ -18,6 +18,7 @@ import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
 import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
+import { registerKnowledgeRoutes } from './routes/knowledge.ts';
 import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerOpenApi } from './routes/openapi.ts';
 import type { Services } from './services.ts';
@@ -89,6 +90,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerAdminAgentRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
     registerAdminWorkspaceRoutes(app, options.services);
+    registerKnowledgeRoutes(app, options.services);
     registerTaxonomyRoutes(app, options.services);
   }
 

@@ -116,12 +116,17 @@ POST /v1/admin/permissions.revoke
 GET  /v1/admin/policy.rules
 POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
+GET  /v1/knowledge.list                     items without their bodies
+GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
+POST /v1/admin/knowledge.create             a person writes an item directly
 POST /v1/admin/taxonomy.create
 POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
 POST /v1/admin/taxonomy.restore
 POST /v1/admin/taxonomy.merge              (arrives with knowledge items, Milestone 2)
+POST /v1/admin/knowledge.update             (Milestone 2)
+POST /v1/admin/knowledge.delete             (Milestone 2)
 POST /v1/admin/knowledge.restore            (Milestone 2)
 POST /v1/admin/knowledge.rename_slug        (Milestone 2)
 POST /v1/admin/embedding_profile.set        (Milestone 6)

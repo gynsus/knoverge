@@ -37,6 +37,9 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     async write(workspaceId: WorkspaceId, files: readonly GitFile[]) {
       await open(workspaceId).write(files);
     },
+    async read(workspaceId: WorkspaceId, path: string) {
+      return open(workspaceId).read(path);
+    },
     async remove(workspaceId: WorkspaceId, paths: readonly string[]) {
       await open(workspaceId).remove(paths);
     },
