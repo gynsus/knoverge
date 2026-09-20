@@ -61,6 +61,19 @@ export function withArchivedSubtree(
   );
 }
 
+/**
+ * One order for aliases.
+ *
+ * The file is rendered from the projection and the database returns its own
+ * order, so without a shared comparator the file a change commits is not the
+ * file a re-render of the database produces: an integrity check would flag
+ * every alias write, and the next unrelated commit would carry a spurious diff
+ * re-sorting somebody else's aliases.
+ */
+export function sortedAliases(aliases: readonly string[]): string[] {
+  return [...aliases].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
 /** The ids a subtree change touches, which is what the event records. */
 export function subtreeIds(
   categories: readonly CategoryRecord[],

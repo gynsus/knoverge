@@ -106,6 +106,24 @@ async function main(): Promise<void> {
           'database migrations applied',
         );
       }
+      // Before anything is served that could write: an operation left
+      // unfinished by a crash blocks its workspace, and this is what clears it.
+      const reports = await services.recovery.recoverAll();
+      for (const [workspaceId, report] of Object.entries(reports)) {
+        const level = report.unresolved.length > 0 ? 'error' : 'warn';
+        logger[level](
+          {
+            workspaceId,
+            examined: report.examined,
+            failed: report.failed,
+            recovered: report.recovered,
+            unresolved: report.unresolved,
+          },
+          report.unresolved.length > 0
+            ? 'a change to this workspace cannot be resolved automatically; the workspace will refuse writes until an operator resolves it'
+            : 'interrupted changes resolved',
+        );
+      }
       await jobs?.start();
     },
     { logger, name: 'database bootstrap', signal: stopping.signal },

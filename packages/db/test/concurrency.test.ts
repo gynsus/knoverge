@@ -9,6 +9,7 @@ import { sql } from 'drizzle-orm';
 
 import type { ActorContext } from '@knoverge/core';
 import {
+  sortedAliases,
   AuthorizationService,
   BootstrapService,
   CrossStoreWriter,
@@ -22,7 +23,13 @@ import {
 } from '@knoverge/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
+import {
+  TAXONOMY_PATH,
+  createGitStore,
+  parseTaxonomy,
+  renderTaxonomy,
+  type FlatCategory,
+} from '@knoverge/git-store';
 
 import {
   createDatabase,
@@ -116,14 +123,20 @@ beforeAll(async () => {
   // A real repository on disk: these tests are about what two writers do to
   // each other, and a stub would hide a lock that is not actually held.
   repoRoot = await mkdtemp(join(tmpdir(), 'knoverge-taxonomy-'));
+  const git = createGitStore({ dataDir: repoRoot });
   taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
     aliases: repositories.aliases,
     versions: repositories.taxonomyVersions,
     ledger,
-    crossStore: new CrossStoreWriter({ uow, operations: repositories.operations }),
-    git: createGitStore({ dataDir: repoRoot }),
+    crossStore: new CrossStoreWriter({
+      uow,
+      operations: repositories.operations,
+      commitExists: (workspaceId, operationId) =>
+        git.hasCommitForOperation(workspaceId, operationId),
+    }),
+    git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
     workspaces: {
@@ -338,23 +351,57 @@ describe('the tree written to the repository is the tree the database ends up wi
    * of what the SQL statements do, and two implementations of one rule drift.
    * Each case here applies a real mutation and compares the two.
    */
-  const shape = (
-    categories: { path: string; slug: string; parentId: string | null; status: string }[],
-  ) =>
+  /** Everything the file is able to say, in one comparable string. */
+  const shape = (categories: readonly FlatCategory[]) =>
     categories
-      .map((c) => `${c.path}|${c.slug}|${c.parentId ?? '-'}|${c.status}`)
+      .map((c) =>
+        [
+          c.path,
+          c.slug,
+          c.name,
+          c.status,
+          c.description ?? '-',
+          c.aliases.join(','),
+          c.inclusionGuidance.join('|'),
+          c.exclusionGuidance.join('|'),
+        ].join(' :: '),
+      )
       .sort()
       .join('\n');
 
-  const treeFromDatabase = async () =>
-    shape(await repositories.categories.list(workspaceId, { includeArchived: true }));
+  const treeFromDatabase = async (): Promise<FlatCategory[]> => {
+    const categories = await repositories.categories.list(workspaceId, { includeArchived: true });
+    const aliases = await repositories.aliases.listForWorkspace(workspaceId);
+    return categories.map((category) => ({
+      path: category.path,
+      slug: category.slug,
+      name: category.name,
+      status: category.status,
+      description: category.description,
+      aliases: sortedAliases(
+        aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
+      ),
+      inclusionGuidance: category.inclusionGuidance,
+      exclusionGuidance: category.exclusionGuidance,
+    }));
+  };
 
-  const treeFromFile = async () => {
-    const yaml = await readFile(
-      join(repoRoot, 'repositories', workspaceId, 'taxonomy.yaml'),
-      'utf8',
-    );
-    return yaml;
+  const readTaxonomyFile = () =>
+    readFile(join(repoRoot, 'repositories', workspaceId, 'taxonomy.yaml'), 'utf8');
+
+  const treeFromFile = async () => parseTaxonomy(await readTaxonomyFile());
+
+  /**
+   * The file parsed back and the database read out, compared field by field.
+   *
+   * Asserting that the database equals itself, or that the file merely mentions
+   * each slug, passes whatever the file contains — including a category the
+   * file has and the database does not.
+   */
+  const expectAgreement = async () => {
+    const fromFile = await treeFromFile();
+    expect(shape(fromFile.categories)).toBe(shape(await treeFromDatabase()));
+    expect(fromFile.version).toBe(await repositories.taxonomyVersions.current(workspaceId));
   };
 
   it('agrees after a create, a rename, a move and an archive', async () => {
@@ -371,18 +418,18 @@ describe('the tree written to the repository is the tree the database ends up wi
     // After each mutation the file and the database describe the same tree.
     for (const mutate of [
       () =>
-        taxonomy.update(context('p-rename'), { categoryId: root.id, slug: 'projection-renamed' }),
+        taxonomy.update(context('p-rename'), {
+          categoryId: root.id,
+          slug: 'projection-renamed',
+          description: 'A renamed root.',
+          aliases: ['Zeta', 'Alpha', 'Mid'],
+          inclusionGuidance: ['keep this'],
+        }),
       () => taxonomy.move(context('p-move'), child.id, elsewhere.id),
       () => taxonomy.archive(context('p-archive'), elsewhere.id),
     ]) {
       await mutate();
-      const fromDb = await repositories.categories.list(workspaceId, { includeArchived: true });
-      const file = await treeFromFile();
-      for (const category of fromDb) {
-        // Every path and status in the database appears in the file.
-        expect(file).toContain(`slug: ${category.slug}`);
-      }
-      expect(await treeFromDatabase()).toBe(shape(fromDb));
+      await expectAgreement();
     }
   });
 
@@ -390,9 +437,8 @@ describe('the tree written to the repository is the tree the database ends up wi
     const before = await repositories.taxonomyVersions.current(workspaceId);
     const result = await taxonomy.create(context('p-version'), { name: 'Projection version' });
     expect(result.taxonomyVersion).toBe(before + 1);
-    const yaml = await treeFromFile();
     // The file carries the version the database recorded for this change.
-    expect(yaml).toContain(`version: ${result.taxonomyVersion}`);
+    expect((await treeFromFile()).version).toBe(result.taxonomyVersion);
   });
 
   it('leaves no unfinished operation behind', async () => {

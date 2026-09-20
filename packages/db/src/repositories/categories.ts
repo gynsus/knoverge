@@ -10,8 +10,6 @@ import type {
 } from '@knoverge/core';
 import { and, asc, desc, eq, max, ne, or, sql } from 'drizzle-orm';
 
-import { LOCK_TAXONOMY } from '../locks.ts';
-
 import { DomainError } from '@knoverge/core';
 
 import type { Database } from '../client.ts';
@@ -36,11 +34,6 @@ export function createCategoryRepository(db: Database): CategoryRepository {
   /** The transaction when one is given, otherwise the pool. */
   const reader = (tx?: Tx) => (tx ? asTx(tx) : db);
   return {
-    async lock(tx: Tx, workspaceId: WorkspaceId) {
-      await asTx(tx).execute(
-        sql`SELECT pg_advisory_xact_lock(${LOCK_TAXONOMY}, hashtext(${workspaceId}))`,
-      );
-    },
     async insert(tx: Tx, category: CategoryRecord) {
       try {
         await asTx(tx).insert(categories).values(category);

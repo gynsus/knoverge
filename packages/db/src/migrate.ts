@@ -86,6 +86,11 @@ export async function runMigrations(
   const gate = await db.$client.connect();
   try {
     await gate.query('BEGIN');
+    // Migrations are the one place a statement may legitimately take minutes:
+    // waiting for the lock while another replica migrates, and rewriting a
+    // table once it has it. The pool's default would abort both.
+    await gate.query('SET LOCAL statement_timeout = 0');
+    await gate.query('SET LOCAL idle_in_transaction_session_timeout = 0');
     await gate.query('SELECT pg_advisory_xact_lock($1, $2)', [LOCK_MIGRATIONS, 0]);
     const before = await getMigrationStatus(db, migrationsFolder);
     await migrate(db, {

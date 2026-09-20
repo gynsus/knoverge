@@ -39,16 +39,6 @@ export interface CategoryRepository {
   insert(tx: Tx, category: CategoryRecord): Promise<void>;
   update(tx: Tx, id: CategoryId, patch: CategoryPatch): Promise<void>;
   /**
-   * Takes the workspace's taxonomy lock for the rest of the transaction.
-   *
-   * A mutation validates against the tree and then rewrites it, so the check
-   * and the act have to be one step. Without this the lock was taken when the
-   * version was allocated, near the end, and serialised only the version
-   * number: two mutations could each validate against a tree the other was
-   * about to change.
-   */
-  lock(tx: Tx, workspaceId: WorkspaceId): Promise<void>;
-  /**
    * Reads pass the transaction when they are part of a check-then-act. Without
    * it they go through the pool and cannot see what the transaction holding the
    * lock has already written.

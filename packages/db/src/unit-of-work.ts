@@ -29,6 +29,42 @@ export function asTx(tx: Tx): DrizzleTx {
  */
 const WORKSPACE_LOCK_TIMEOUT_MS = 30_000;
 
+/**
+ * Serialises writes to one workspace inside this process before any connection
+ * is taken.
+ *
+ * A canonical write needs two connections at its peak: the one holding the lock
+ * for the whole write, and one for each transaction it opens in between. If
+ * waiting writers each held a connection, enough of them would take every
+ * connection in the pool and the one writer holding the lock could not open the
+ * transaction that would let it finish — a deadlock with no timeout, because
+ * `pool.connect()` waits forever by default.
+ *
+ * Queueing in memory first means a waiter costs nothing but a promise. The
+ * advisory lock behind it is still what makes the exclusion real, because a
+ * second process shares no memory with this one.
+ */
+class WorkspaceQueue {
+  private readonly tails = new Map<string, Promise<unknown>>();
+
+  run<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const previous = this.tails.get(key) ?? Promise.resolve();
+    // Never rejects, so one failed write does not cancel the queue behind it.
+    const mine = previous.then(fn, fn);
+    const tail = mine.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.tails.set(key, tail);
+    void tail.then(() => {
+      // Only if nobody queued behind us, or the map grows one entry per
+      // workspace that was ever written to.
+      if (this.tails.get(key) === tail) this.tails.delete(key);
+    });
+    return mine;
+  }
+}
+
 /** Serialisation failure and deadlock: PostgreSQL asks the client to retry. */
 const RETRYABLE = new Set(['40001', '40P01']);
 const MAX_ATTEMPTS = 3;
@@ -64,6 +100,7 @@ async function withRetry<T>(run: () => Promise<T>): Promise<T> {
  * the caller, so ordinary contention does not surface as an internal error.
  */
 export function createUnitOfWork(db: Database): UnitOfWork {
+  const queue = new WorkspaceQueue();
   return {
     run: (fn) => withRetry(() => db.transaction((tx) => fn(tx as unknown as Tx))),
     runExclusive: (key, fn) =>
@@ -75,50 +112,56 @@ export function createUnitOfWork(db: Database): UnitOfWork {
           return fn(tx as unknown as Tx);
         }),
       ),
-    async withWorkspaceLock(workspaceId, fn) {
-      // A connection of its own, held for the whole write, because the callback
-      // opens its own transactions and commits to Git in between: a
-      // transaction-scoped lock would be gone before the commit.
-      //
-      // The lock is tried rather than waited on, and a caller that does not get
-      // it lets its connection go before sleeping. Waiting while holding one
-      // deadlocks the pool as soon as there are more waiting writers than
-      // connections: every connection is held by somebody waiting, and the one
-      // writer that holds the lock cannot get a connection to do its work.
-      const deadline = Date.now() + WORKSPACE_LOCK_TIMEOUT_MS;
-      for (let attempt = 1; ; attempt += 1) {
-        const gate = await db.$client.connect();
-        const attempted = await gate.query<{ locked: boolean }>(
-          'SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked',
-          [LOCK_WORKSPACE_WRITE, workspaceId],
-        );
-        if (attempted.rows[0]?.locked === true) {
-          try {
-            // Not retried: the callback may have committed to Git, and a commit
-            // cannot be undone by running the callback again.
-            return await fn();
-          } finally {
-            await gate
-              .query('SELECT pg_advisory_unlock($1, hashtext($2))', [
-                LOCK_WORKSPACE_WRITE,
-                workspaceId,
-              ])
-              .catch(() => undefined);
-            gate.release();
-          }
-        }
-        gate.release();
-        if (Date.now() >= deadline) {
+    withWorkspaceLock(workspaceId, fn) {
+      // In-process first, so that at most one call per workspace ever holds a
+      // connection while waiting, and then the advisory lock for the writers
+      // this process cannot see.
+      return queue.run(workspaceId, async () => {
+        // A connection of its own, held for the whole write, because the
+        // callback opens its own transactions and commits to Git in between: a
+        // transaction-scoped lock would be gone before the commit.
+        const gate = await db.$client.connect().catch(() => {
+          throw new DomainError('RATE_LIMITED', 'the server is busy; try again shortly', {
+            objectIds: { workspace_id: workspaceId },
+          });
+        });
+        try {
+          // The wait is bounded by the server, so it is bounded even if this
+          // process stops paying attention. A lock held by a backend whose
+          // client is gone answers here rather than hanging.
+          await gate.query(`SET lock_timeout = ${WORKSPACE_LOCK_TIMEOUT_MS}`);
+          await gate.query('SELECT pg_advisory_lock($1, hashtext($2))', [
+            LOCK_WORKSPACE_WRITE,
+            workspaceId,
+          ]);
+        } catch (error) {
+          gate.release();
           throw new DomainError(
             'RATE_LIMITED',
             'another change to this workspace is still in progress; try again shortly',
-            { objectIds: { workspace_id: workspaceId } },
+            { objectIds: { workspace_id: workspaceId }, cause: error },
           );
         }
-        // Backs off, with jitter so several waiters do not wake together.
-        const wait = Math.min(200, 5 * attempt) + Math.random() * 20;
-        await new Promise((resolve) => setTimeout(resolve, wait));
-      }
+        try {
+          // Not retried: the callback may have committed to Git, and a commit
+          // cannot be undone by running the callback again.
+          return await fn();
+        } finally {
+          // A session-scoped lock outlives the query that took it, and a pooled
+          // connection is not a session that ends. If the unlock did not
+          // report success the connection is destroyed rather than returned,
+          // because returning it would leave the workspace locked until the
+          // pool happened to recycle that client, which it does not do.
+          const released = await gate
+            .query<{ ok: boolean }>('SELECT pg_advisory_unlock($1, hashtext($2)) AS ok', [
+              LOCK_WORKSPACE_WRITE,
+              workspaceId,
+            ])
+            .then((result) => result.rows[0]?.ok === true)
+            .catch(() => false);
+          gate.release(released ? undefined : new Error('workspace lock was not released'));
+        }
+      });
     },
   };
 }

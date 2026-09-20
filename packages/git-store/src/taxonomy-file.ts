@@ -1,4 +1,4 @@
-import { stringify } from 'yaml';
+import { parse, stringify } from 'yaml';
 
 /** A category as the repository records it. */
 export interface TaxonomyNode {
@@ -30,6 +30,36 @@ export interface FlatCategory {
   aliases: string[];
   inclusionGuidance: string[];
   exclusionGuidance: string[];
+}
+
+/**
+ * Reads the tree back out of the file, flattened the way PostgreSQL holds it.
+ *
+ * The file is canonical, so being able to read it is what makes the database an
+ * index rather than the record: an integrity check compares the two, and a
+ * reader outside Knoverge needs no code of ours at all.
+ */
+export function parseTaxonomy(text: string): { version: number; categories: FlatCategory[] } {
+  const file = parse(text) as TaxonomyFile | null;
+  const categories: FlatCategory[] = [];
+  const walk = (nodes: readonly TaxonomyNode[] | undefined, prefix: string): void => {
+    for (const node of nodes ?? []) {
+      const path = prefix === '' ? node.slug : `${prefix}/${node.slug}`;
+      categories.push({
+        path,
+        slug: node.slug,
+        name: node.name,
+        status: node.status,
+        description: node.description ?? null,
+        aliases: node.aliases ?? [],
+        inclusionGuidance: node.inclusion_guidance ?? [],
+        exclusionGuidance: node.exclusion_guidance ?? [],
+      });
+      walk(node.children, path);
+    }
+  };
+  walk(file?.categories, '');
+  return { version: file?.version ?? 0, categories };
 }
 
 /**
