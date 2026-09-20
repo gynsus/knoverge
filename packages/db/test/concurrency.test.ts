@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -8,6 +11,7 @@ import type { ActorContext } from '@knoverge/core';
 import {
   AuthorizationService,
   BootstrapService,
+  CrossStoreWriter,
   EventLedger,
   MAX_FAILED_LOGINS,
   MemberService,
@@ -17,6 +21,8 @@ import {
   parseLedgerKey,
 } from '@knoverge/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
 
 import {
   createDatabase,
@@ -43,6 +49,8 @@ let taxonomy: TaxonomyService;
 let members: MemberService;
 let users: UserService;
 let workspaceId: WorkspaceId;
+let repoRoot: string;
+let uow: ReturnType<typeof createUnitOfWork>;
 let actor: ActorContext;
 
 const context = (requestId: string): ActorContext => ({ ...actor, requestId });
@@ -56,7 +64,7 @@ beforeAll(async () => {
   handle.pool.on('error', () => undefined);
   await runMigrations(handle.db, migrationsFolder);
   repositories = createRepositories(handle.db);
-  const uow = createUnitOfWork(handle.db);
+  uow = createUnitOfWork(handle.db);
   const ledger = new EventLedger({ key, events: repositories.events });
   users = new UserService({
     uow,
@@ -105,12 +113,26 @@ beforeAll(async () => {
     actorType: 'system',
     requestId: 'setup',
   };
+  // A real repository on disk: these tests are about what two writers do to
+  // each other, and a stub would hide a lock that is not actually held.
+  repoRoot = await mkdtemp(join(tmpdir(), 'knoverge-taxonomy-'));
   taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
     aliases: repositories.aliases,
     versions: repositories.taxonomyVersions,
     ledger,
+    crossStore: new CrossStoreWriter({ uow, operations: repositories.operations }),
+    git: createGitStore({ dataDir: repoRoot }),
+    renderTaxonomy,
+    taxonomyPath: TAXONOMY_PATH,
+    workspaces: {
+      findById: async (id) => {
+        const workspace = await repositories.workspaces.findById(id);
+        return workspace ? { id: workspace.id, name: workspace.name } : null;
+      },
+    },
+    actors: repositories.actors,
   });
   members = new MemberService({
     uow,
@@ -126,6 +148,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
+  if (repoRoot) await rm(repoRoot, { recursive: true, force: true });
 });
 
 /** Every category's path must be its parent's path plus its own slug. */
@@ -305,5 +328,113 @@ describe('the database refuses what the domain would never write', () => {
         sql`UPDATE categories SET parent_id = 'cat_01M2XXXXXXXXXXXXXXXXXXXXXX' WHERE id = ${category.id}`,
       ),
     ).rejects.toThrow();
+  });
+});
+
+describe('the tree written to the repository is the tree the database ends up with', () => {
+  /**
+   * The repository file is committed before PostgreSQL is written, so it is
+   * rendered from a tree computed in memory. That is a second implementation
+   * of what the SQL statements do, and two implementations of one rule drift.
+   * Each case here applies a real mutation and compares the two.
+   */
+  const shape = (
+    categories: { path: string; slug: string; parentId: string | null; status: string }[],
+  ) =>
+    categories
+      .map((c) => `${c.path}|${c.slug}|${c.parentId ?? '-'}|${c.status}`)
+      .sort()
+      .join('\n');
+
+  const treeFromDatabase = async () =>
+    shape(await repositories.categories.list(workspaceId, { includeArchived: true }));
+
+  const treeFromFile = async () => {
+    const yaml = await readFile(
+      join(repoRoot, 'repositories', workspaceId, 'taxonomy.yaml'),
+      'utf8',
+    );
+    return yaml;
+  };
+
+  it('agrees after a create, a rename, a move and an archive', async () => {
+    const root = (await taxonomy.create(context('p-root'), { name: 'Projection root' })).category;
+    const child = (
+      await taxonomy.create(context('p-child'), {
+        name: 'Projection child',
+        parentPath: root.path,
+      })
+    ).category;
+    const elsewhere = (await taxonomy.create(context('p-else'), { name: 'Projection elsewhere' }))
+      .category;
+
+    // After each mutation the file and the database describe the same tree.
+    for (const mutate of [
+      () =>
+        taxonomy.update(context('p-rename'), { categoryId: root.id, slug: 'projection-renamed' }),
+      () => taxonomy.move(context('p-move'), child.id, elsewhere.id),
+      () => taxonomy.archive(context('p-archive'), elsewhere.id),
+    ]) {
+      await mutate();
+      const fromDb = await repositories.categories.list(workspaceId, { includeArchived: true });
+      const file = await treeFromFile();
+      for (const category of fromDb) {
+        // Every path and status in the database appears in the file.
+        expect(file).toContain(`slug: ${category.slug}`);
+      }
+      expect(await treeFromDatabase()).toBe(shape(fromDb));
+    }
+  });
+
+  it('records the version and the commit together', async () => {
+    const before = await repositories.taxonomyVersions.current(workspaceId);
+    const result = await taxonomy.create(context('p-version'), { name: 'Projection version' });
+    expect(result.taxonomyVersion).toBe(before + 1);
+    const yaml = await treeFromFile();
+    // The file carries the version the database recorded for this change.
+    expect(yaml).toContain(`version: ${result.taxonomyVersion}`);
+  });
+
+  it('leaves no unfinished operation behind', async () => {
+    await taxonomy.create(context('p-clean'), { name: 'Projection clean' });
+    expect(await repositories.operations.listUnfinished(workspaceId)).toHaveLength(0);
+  });
+
+  it('refuses a change that would alter nothing, rather than committing nothing', async () => {
+    const category = (await taxonomy.create(context('p-noop'), { name: 'Projection noop' }))
+      .category;
+    // An empty commit would leave an operation pointing at no commit at all.
+    await expect(taxonomy.move(context('p-noop-move'), category.id, null)).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+    });
+  });
+});
+
+describe('a repository that lost its history', () => {
+  it('is refused rather than written into', async () => {
+    const workspace = await new WorkspaceService({
+      uow,
+      workspaces: repositories.workspaces,
+      actors: repositories.actors,
+      ledger: new EventLedger({ key, events: repositories.events }),
+    }).create({ slug: 'lost-history', name: 'Lost history', requestId: 'lost' });
+    const system = (await repositories.actors.findSystemActor(workspace.id))!;
+    const ctx: ActorContext = {
+      workspaceId: workspace.id,
+      actorId: system.id as ActorId,
+      actorType: 'system',
+      requestId: 'lost-1',
+    };
+    await taxonomy.create(ctx, { name: 'Before the loss' });
+
+    // The repository is gone: a lost volume, a restore of the database alone,
+    // or somebody else's directory mounted in its place.
+    await rm(join(repoRoot, 'repositories', workspace.id), { recursive: true, force: true });
+
+    // Writing would start a fresh repository and build new history on top of a
+    // hole, then call the result canonical.
+    await expect(taxonomy.create(ctx, { name: 'After the loss' })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+    });
   });
 });

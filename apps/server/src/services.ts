@@ -11,8 +11,10 @@ import {
   AuthorizationService,
   BootstrapService,
   EventLedger,
+  CrossStoreWriter,
   IdempotencyService,
   MaintenanceService,
+  RecoveryService,
   MemberService,
   TaxonomyService,
   SessionService,
@@ -26,12 +28,15 @@ import {
   createUnitOfWork,
   type DatabaseHandle,
 } from '@knoverge/db';
+import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
 
 export interface ServicesConfig {
   databaseUrl: string;
   ledgerKey: LedgerKey;
   /** Peppers agent credential hashes so a leaked database cannot be brute-forced offline. */
   tokenPepper: string;
+  /** Workspace repositories live under this directory. */
+  dataDir: string;
   poolMax?: number;
 }
 
@@ -97,12 +102,30 @@ export function createServices(config: ServicesConfig) {
     sessions: repositories.sessions,
     idempotency,
   });
+  const git = createGitStore({ dataDir: config.dataDir });
+  const crossStore = new CrossStoreWriter({ uow, operations: repositories.operations });
+  const recovery = new RecoveryService({
+    uow,
+    operations: repositories.operations,
+    commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
+  });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
     aliases: repositories.aliases,
     versions: repositories.taxonomyVersions,
     ledger,
+    crossStore,
+    git,
+    renderTaxonomy,
+    taxonomyPath: TAXONOMY_PATH,
+    workspaces: {
+      findById: async (workspaceId) => {
+        const workspace = await repositories.workspaces.findById(workspaceId);
+        return workspace ? { id: workspace.id, name: workspace.name } : null;
+      },
+    },
+    actors: repositories.actors,
   });
   const members = new MemberService({
     uow,
@@ -131,6 +154,7 @@ export function createServices(config: ServicesConfig) {
     authorizationAdmin,
     idempotency,
     maintenance,
+    recovery,
     members,
     taxonomy,
     users,

@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -24,6 +27,7 @@ const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations'
 const ok = { status: 'ok' as const };
 
 let container: StartedPostgreSqlContainer;
+let dataDir: string;
 let services: Services;
 let app: FastifyInstance;
 let owner: Browser;
@@ -74,9 +78,12 @@ const VIEWER_PASSWORD = 'nine amber kettles wander';
 const ADMIN = { email: 'second@example.com', password: 'seven purple lanterns drift' };
 
 beforeAll(async () => {
+  dataDir = await mkdtemp(join(tmpdir(), 'knoverge-test-'));
   container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
   services = createServices({
     databaseUrl: container.getConnectionUri(),
+    // Each suite writes its workspace repositories to a directory of its own.
+    dataDir: dataDir,
     ledgerKey: parseLedgerKey('7a'.repeat(32)),
     tokenPepper: '8b'.repeat(32),
     poolMax: 4,
@@ -115,6 +122,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  if (dataDir) await rm(dataDir, { recursive: true, force: true });
   await app?.close();
   await services?.close();
   await container?.stop();

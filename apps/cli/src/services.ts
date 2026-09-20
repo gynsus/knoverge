@@ -10,6 +10,7 @@ import {
   AuthorizationAdminService,
   AuthorizationService,
   BootstrapService,
+  CrossStoreWriter,
   EventLedger,
   IdempotencyService,
   MaintenanceService,
@@ -20,6 +21,7 @@ import {
   parseLedgerKey,
 } from '@knoverge/core';
 import { createDatabase, createRepositories, createUnitOfWork } from '@knoverge/db';
+import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -49,7 +51,13 @@ function lazy<T>(build: () => T): () => T {
  * configuration error.
  */
 export function createServices() {
-  const database = createDatabase({ connectionString: required('KNOVERGE_DATABASE_URL'), max: 2 });
+  const database = createDatabase({
+    connectionString: required('KNOVERGE_DATABASE_URL'),
+    // A canonical write holds one connection for the workspace lock and opens
+    // transactions on others, so two leaves nothing spare and any read during
+    // a write would wait for a connection that the write itself is holding.
+    max: 5,
+  });
   const uow = createUnitOfWork(database.db);
   const repositories = createRepositories(database.db);
 
@@ -122,6 +130,8 @@ export function createServices() {
       authorization: authorization(),
     });
   });
+  const git = lazy(() => createGitStore({ dataDir: required('KNOVERGE_DATA_DIR') }));
+  const crossStore = lazy(() => new CrossStoreWriter({ uow, operations: repositories.operations }));
   const taxonomy = lazy(
     () =>
       new TaxonomyService({
@@ -130,6 +140,17 @@ export function createServices() {
         aliases: repositories.aliases,
         versions: repositories.taxonomyVersions,
         ledger: ledger(),
+        crossStore: crossStore(),
+        git: git(),
+        renderTaxonomy,
+        taxonomyPath: TAXONOMY_PATH,
+        workspaces: {
+          findById: async (workspaceId) => {
+            const workspace = await repositories.workspaces.findById(workspaceId);
+            return workspace ? { id: workspace.id, name: workspace.name } : null;
+          },
+        },
+        actors: repositories.actors,
       }),
   );
   const workspaces = lazy(

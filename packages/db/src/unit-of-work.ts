@@ -1,4 +1,4 @@
-import type { Tx, UnitOfWork } from '@knoverge/core';
+import { DomainError, type Tx, type UnitOfWork } from '@knoverge/core';
 import { sql } from 'drizzle-orm';
 
 import { LOCK_NAMED, LOCK_WORKSPACE_WRITE } from './locks.ts';
@@ -19,6 +19,15 @@ export type DrizzleTx = PgTransaction<
 export function asTx(tx: Tx): DrizzleTx {
   return tx as unknown as DrizzleTx;
 }
+
+/**
+ * How long a write waits for the workspace lock before giving up.
+ *
+ * Generous, because the queue is other writes to the same workspace and each
+ * is short; long enough that ordinary contention never surfaces, short enough
+ * that a caller is not left hanging on a stuck one.
+ */
+const WORKSPACE_LOCK_TIMEOUT_MS = 30_000;
 
 /** Serialisation failure and deadlock: PostgreSQL asks the client to retry. */
 const RETRYABLE = new Set(['40001', '40P01']);
@@ -67,29 +76,48 @@ export function createUnitOfWork(db: Database): UnitOfWork {
         }),
       ),
     async withWorkspaceLock(workspaceId, fn) {
-      // A connection of its own, held for the whole write. The callback opens
-      // its own transactions on other connections and commits to Git in
-      // between, so a transaction-scoped lock would be gone before the commit.
-      // Not retried: the callback may have committed to Git, and a commit
-      // cannot be undone by running the callback again.
-      const gate = await db.$client.connect();
-      try {
-        await gate.query('SELECT pg_advisory_lock($1, hashtext($2))', [
-          LOCK_WORKSPACE_WRITE,
-          workspaceId,
-        ]);
-        try {
-          return await fn();
-        } finally {
-          await gate
-            .query('SELECT pg_advisory_unlock($1, hashtext($2))', [
-              LOCK_WORKSPACE_WRITE,
-              workspaceId,
-            ])
-            .catch(() => undefined);
+      // A connection of its own, held for the whole write, because the callback
+      // opens its own transactions and commits to Git in between: a
+      // transaction-scoped lock would be gone before the commit.
+      //
+      // The lock is tried rather than waited on, and a caller that does not get
+      // it lets its connection go before sleeping. Waiting while holding one
+      // deadlocks the pool as soon as there are more waiting writers than
+      // connections: every connection is held by somebody waiting, and the one
+      // writer that holds the lock cannot get a connection to do its work.
+      const deadline = Date.now() + WORKSPACE_LOCK_TIMEOUT_MS;
+      for (let attempt = 1; ; attempt += 1) {
+        const gate = await db.$client.connect();
+        const attempted = await gate.query<{ locked: boolean }>(
+          'SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked',
+          [LOCK_WORKSPACE_WRITE, workspaceId],
+        );
+        if (attempted.rows[0]?.locked === true) {
+          try {
+            // Not retried: the callback may have committed to Git, and a commit
+            // cannot be undone by running the callback again.
+            return await fn();
+          } finally {
+            await gate
+              .query('SELECT pg_advisory_unlock($1, hashtext($2))', [
+                LOCK_WORKSPACE_WRITE,
+                workspaceId,
+              ])
+              .catch(() => undefined);
+            gate.release();
+          }
         }
-      } finally {
         gate.release();
+        if (Date.now() >= deadline) {
+          throw new DomainError(
+            'RATE_LIMITED',
+            'another change to this workspace is still in progress; try again shortly',
+            { objectIds: { workspace_id: workspaceId } },
+          );
+        }
+        // Backs off, with jitter so several waiters do not wake together.
+        const wait = Math.min(200, 5 * attempt) + Math.random() * 20;
+        await new Promise((resolve) => setTimeout(resolve, wait));
       }
     },
   };

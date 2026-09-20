@@ -18,3 +18,4 @@ export {
   type TaxonomyFile,
   type TaxonomyNode,
 } from './taxonomy-file.ts';
+export { createGitStore, type GitStoreOptions } from './store.ts';

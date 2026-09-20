@@ -23,7 +23,9 @@ export interface UnitOfWork {
    * that dies loses the connection and the lock with it, which is what leaves
    * the operation row for recovery rather than a lock nobody can release.
    *
-   * It needs a spare connection, so the pool must allow at least two.
+   * It holds a connection of its own for the whole call, and the work inside
+   * opens transactions on others, so the pool needs room for both. Two is the
+   * bare minimum and leaves nothing for a read; four or more is sensible.
    */
   withWorkspaceLock<T>(workspaceId: string, fn: () => Promise<T>): Promise<T>;
 }

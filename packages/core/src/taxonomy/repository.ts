@@ -115,7 +115,7 @@ export interface AliasRecord {
 
 export interface AliasRepository {
   replaceForCategory(tx: Tx, categoryId: CategoryId, aliases: AliasRecord[]): Promise<void>;
-  listForWorkspace(workspaceId: WorkspaceId): Promise<AliasRecord[]>;
+  listForWorkspace(workspaceId: WorkspaceId, tx?: Tx): Promise<AliasRecord[]>;
   findByNormalised(
     workspaceId: WorkspaceId,
     normalised: string,
@@ -125,9 +125,24 @@ export interface AliasRepository {
 
 export interface TaxonomyVersionRepository {
   current(workspaceId: WorkspaceId, tx?: Tx): Promise<number>;
+  /** The newest version and the commit that wrote it, when there is one. */
+  latest(
+    workspaceId: WorkspaceId,
+  ): Promise<{ version: number; gitCommitHash: string | null } | null>;
   /**
-   * Inserts the next version inside the caller's transaction and returns it.
-   * The caller holds the taxonomy lock, so the number cannot be claimed twice.
+   * Records the version this change produced, with the commit that wrote
+   * `taxonomy.yaml`.
+   *
+   * The number is decided by the caller rather than allocated here: the
+   * repository file carries it and is committed before PostgreSQL is written,
+   * so it has to be known first. The workspace write lock is what makes that
+   * safe, since no other writer can be inside the workspace at the time.
    */
-  bump(tx: Tx, workspaceId: WorkspaceId, at: Date): Promise<number>;
+  bump(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    at: Date,
+    version: number,
+    gitCommitHash: string,
+  ): Promise<void>;
 }

@@ -223,8 +223,8 @@ export function createAliasRepository(db: Database): AliasRepository {
         rethrowUniqueViolation(err, 'one of these aliases is already in use');
       }
     },
-    async listForWorkspace(workspaceId: WorkspaceId) {
-      const rows = await db
+    async listForWorkspace(workspaceId: WorkspaceId, tx?: Tx) {
+      const rows = await (tx ? asTx(tx) : db)
         .select()
         .from(categoryAliases)
         .where(eq(categoryAliases.workspaceId, workspaceId))
@@ -256,19 +256,25 @@ export function createTaxonomyVersionRepository(db: Database): TaxonomyVersionRe
         .where(eq(taxonomyVersions.workspaceId, workspaceId));
       return row?.version ?? 0;
     },
-    async bump(tx: Tx, workspaceId: WorkspaceId, at: Date) {
-      const t = asTx(tx);
-      // The caller holds the taxonomy lock from the start of its transaction,
-      // which is what makes this read-then-insert safe.
-      const [current] = await t
-        .select({ version: taxonomyVersions.version })
+    async latest(workspaceId: WorkspaceId) {
+      const rows = await db
+        .select({
+          version: taxonomyVersions.version,
+          gitCommitHash: taxonomyVersions.gitCommitHash,
+        })
         .from(taxonomyVersions)
         .where(eq(taxonomyVersions.workspaceId, workspaceId))
         .orderBy(desc(taxonomyVersions.version))
         .limit(1);
-      const next = (current?.version ?? 0) + 1;
-      await t.insert(taxonomyVersions).values({ workspaceId, version: next, createdAt: at });
-      return next;
+      return rows[0] ?? null;
+    },
+    async bump(tx: Tx, workspaceId: WorkspaceId, at: Date, version: number, gitCommitHash: string) {
+      // The unique index on (workspace, version) is the backstop: if two
+      // writers ever reached here with one number, the second fails rather
+      // than quietly sharing a version with a different commit.
+      await asTx(tx)
+        .insert(taxonomyVersions)
+        .values({ workspaceId, version, gitCommitHash, createdAt: at });
     },
   };
 }

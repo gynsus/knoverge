@@ -41,6 +41,7 @@ async function main(): Promise<void> {
     databaseUrl: config.databaseUrl,
     ledgerKey: config.ledgerKey,
     tokenPepper: config.tokenPepper,
+    dataDir: config.dataDir,
   });
   const database = services.database;
   database.pool.on('error', (err) => logger.error({ err }, 'idle database client error'));

@@ -28,6 +28,7 @@
     "pg": "catalog:"
   },
   "devDependencies": {
+    "@knoverge/git-store": "workspace:*",
     "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
     "@types/pg": "catalog:",
