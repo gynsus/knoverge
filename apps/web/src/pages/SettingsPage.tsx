@@ -16,6 +16,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { adminApi } from '../api/admin.ts';
+import { LanguageSwitcher } from '../components/LanguageSwitcher.tsx';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { useAuth } from '../auth/use-auth.ts';
 
@@ -70,6 +71,13 @@ export function SettingsPage() {
               <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{me.user.email}</code>
             </p>
           )}
+          <Field
+            label={t('language.label')}
+            hint={t('settings.language_hint')}
+            className="mb-6 max-w-md"
+          >
+            <LanguageSwitcher />
+          </Field>
           <form onSubmit={submit} className="grid gap-4">
             <fieldset
               disabled={changePassword.isPending}

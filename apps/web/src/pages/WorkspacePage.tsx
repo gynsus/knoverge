@@ -80,7 +80,7 @@ function MemberRow({
               disabled={update.isPending}
             >
               {update.isPending ? t('common.working') : t('workspace.apply_role')}
-            </Button>{' '}
+            </Button>
             <Button type="button" onClick={() => setPendingRole(null)}>
               {t('common.cancel')}
             </Button>
@@ -102,7 +102,7 @@ function MemberRow({
             <span>{t('workspace.confirm_remove', { name: member.display_name })}</span>{' '}
             <Button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
               {remove.isPending ? t('common.working') : t('workspace.confirm')}
-            </Button>{' '}
+            </Button>
             <Button type="button" onClick={() => setConfirmingRemoval(false)}>
               {t('common.cancel')}
             </Button>
@@ -154,7 +154,7 @@ function WorkspaceSettingsForm({
   };
 
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={submit} className="grid gap-4">
       <fieldset disabled={!canAdminister || save.isPending} className="grid gap-4 border-0 p-0">
         <Field label={t('workspace.name')}>
           <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
@@ -181,7 +181,7 @@ function WorkspaceSettingsForm({
       <ErrorNotice error={save.error} />
       {saved && <p role="status">{t('workspace.saved')}</p>}
       {canAdminister && (
-        <Button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={save.isPending} className="justify-self-start">
           {save.isPending ? t('common.working') : t('workspace.save')}
         </Button>
       )}
@@ -290,7 +290,7 @@ export function WorkspacePage() {
           <Card aria-labelledby="add-member-title" className="grid gap-3 p-4 sm:p-6">
             <CardTitle id="add-member-title">{t('workspace.add_member')}</CardTitle>
             <p>{t('workspace.add_member_intro')}</p>
-            <form onSubmit={submitMember}>
+            <form onSubmit={submitMember} className="grid gap-4">
               <fieldset disabled={addMember.isPending} className="grid gap-4 border-0 p-0">
                 <Field label={t('fields.email')}>
                   <Input
@@ -326,7 +326,7 @@ export function WorkspacePage() {
                 </Field>
               </fieldset>
               <ErrorNotice error={addMember.error} />
-              <Button type="submit" disabled={addMember.isPending}>
+              <Button type="submit" disabled={addMember.isPending} className="justify-self-start">
                 {addMember.isPending ? t('common.working') : t('workspace.add')}
               </Button>
             </form>

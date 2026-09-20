@@ -70,6 +70,9 @@ export function AppShell() {
             <h1 className="text-xl font-semibold tracking-tight">{t('app.name')}</h1>
             <p className="text-sm text-muted-foreground">{t('app.tagline')}</p>
           </div>
+          {/* Kept here and nowhere else in the chrome: somebody choosing a
+              language before they have an account has no settings page to go
+              to, and the first thing a new operator sees is this screen. */}
           <LanguageSwitcher />
         </header>
         <main id="main" tabIndex={-1} className="grid gap-4">
@@ -148,9 +151,6 @@ export function AppShell() {
       <SidebarInset>
         <header className="flex items-center gap-2 border-b border-border px-4 py-2">
           <SidebarTrigger aria-label={t('nav.toggle_sidebar')} />
-          <div className="ml-auto flex items-center gap-2">
-            <LanguageSwitcher />
-          </div>
         </header>
         <div id="main" tabIndex={-1} className="grid gap-4 p-4 sm:p-6">
           <Outlet />

@@ -9,11 +9,13 @@ import {
 } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
+import { Label } from 'radix-ui';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -109,7 +111,7 @@ export function PolicyPage() {
                   <TableCell label={t('common.actions')}>
                     <Button type="button" onClick={() => setEditing(rule)}>
                       {t('policy.edit')}
-                    </Button>{' '}
+                    </Button>
                     <Button
                       type="button"
                       onClick={() => remove.mutate(rule.id)}
@@ -189,7 +191,7 @@ function RuleForm({
         {rule ? t('policy.edit_rule') : t('policy.new_rule')}
       </CardTitle>
       <p>{t('policy.form_intro')}</p>
-      <form onSubmit={submit}>
+      <form onSubmit={submit} className="grid gap-4">
         <fieldset disabled={save.isPending} className="grid gap-4 border-0 p-0">
           <Field label={t('policy.priority')} hint={t('policy.priority_hint')}>
             <Input
@@ -253,21 +255,21 @@ function RuleForm({
               ))}
             </Select>
           </Field>
-          <p className="field">
-            <label>
-              <Input
-                type="checkbox"
-                checked={enabled}
-                onChange={(e) => setEnabled(e.target.checked)}
-              />{' '}
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="rule-enabled"
+              checked={enabled}
+              onCheckedChange={(value: boolean | 'indeterminate') => setEnabled(value === true)}
+            />
+            <Label.Root htmlFor="rule-enabled" className="text-sm font-medium">
               {t('policy.enabled')}
-            </label>
-          </p>
+            </Label.Root>
+          </div>
         </fieldset>
         <ErrorNotice error={save.error} />
-        <Button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={save.isPending} className="justify-self-start">
           {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
-        </Button>{' '}
+        </Button>
         {rule && (
           <Button type="button" onClick={onCancel}>
             {t('common.cancel')}

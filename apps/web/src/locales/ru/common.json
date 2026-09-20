@@ -220,15 +220,16 @@
   "settings": {
     "account": "Учётная запись",
     "change_password": "Сменить пароль",
+    "client": "Клиент",
     "current_password": "Текущий пароль",
+    "language_hint": "Запоминается в этом браузере. Выбор в профиле появится вместе с редактированием профиля.",
     "new_password": "Новый пароль",
     "password_changed": "Пароль изменён. Остальные сеансы завершены.",
+    "revoke": "Завершить",
     "sessions": "Сеансы",
     "started": "Начат",
-    "client": "Клиент",
-    "unknown_client": "Неизвестно",
     "this_session": "(это устройство)",
-    "revoke": "Завершить"
+    "unknown_client": "Неизвестно"
   },
   "workspace": {
     "add": "Добавить",

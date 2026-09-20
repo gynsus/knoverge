@@ -24,6 +24,19 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   };
 }
 
+/**
+ * jsdom implements no ResizeObserver, and Radix measures elements with one.
+ * A stub that observes nothing is enough: the tests assert behaviour, not
+ * layout, and jsdom reports every box as zero anyway.
+ */
+if (typeof globalThis.ResizeObserver !== 'function') {
+  globalThis.ResizeObserver = class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  } as unknown as typeof ResizeObserver;
+}
+
 afterEach(() => {
   cleanup();
 });
