@@ -42,8 +42,11 @@
     "logout": "Sign out",
     "policy": "Policy",
     "settings": "Settings",
+    "sidebar_description": "The navigation for this workspace.",
+    "sidebar_edge": "Navigation edge: show or hide",
     "skip_to_content": "Skip to content",
     "taxonomy": "Taxonomy",
+    "toggle_sidebar": "Show or hide the navigation",
     "workspace": "Workspace",
     "workspace_label": "Workspace"
   },

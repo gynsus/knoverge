@@ -696,3 +696,42 @@ describe('managing an agent', () => {
     );
   });
 });
+
+describe('the navigation rail', () => {
+  it('keeps the label of every entry, so a collapsed rail is still readable', async () => {
+    mockApi(SIGNED_IN);
+    renderApp('/');
+    // The tooltip is for a pointer and a touch screen has none, so the label
+    // stays in the markup rather than being replaced by one.
+    const taxonomy = await screen.findByRole('link', { name: 'Taxonomy' });
+    expect(taxonomy).toHaveAccessibleName('Taxonomy');
+    expect(screen.getByRole('button', { name: 'Show or hide the navigation' })).toBeInTheDocument();
+  });
+
+  it('marks the page you are on', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/agents.list': () => json({ agents: [] }) });
+    renderApp('/agents');
+    const agents = await screen.findByRole('link', { name: 'Agents' });
+    expect(agents).toHaveAttribute('data-active', 'true');
+  });
+
+  it('remembers whether it was open, without telling the server', async () => {
+    // The generated component keeps this in a cookie, which is sent with every
+    // request for no reason.
+    window.localStorage.setItem('knoverge.sidebar', 'false');
+    mockApi(SIGNED_IN);
+    renderApp('/');
+    await screen.findByRole('link', { name: 'Overview' });
+    expect(document.cookie).not.toContain('sidebar');
+  });
+
+  it('shows no rail to somebody who is not signed in', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: false, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-token' }),
+    });
+    renderApp('/login');
+    await screen.findByRole('heading', { name: 'Sign in' });
+    expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
+  });
+});

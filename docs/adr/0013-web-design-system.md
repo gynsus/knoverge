@@ -54,6 +54,22 @@ would otherwise discard.
 Every cell therefore has to pass a `label`, and it comes from the message
 catalogue like any other text a person reads.
 
+### Navigation is a rail on the left
+
+The sidebar is shadcn's, collapsing to icons on a desktop and opening as a
+drawer on a phone. It is there because of what comes next rather than what is
+there now: six links fit across the top, but the category tree becomes the
+navigator for knowledge items in Milestone 2, and a tree belongs down the side
+where it can stay put while you read.
+
+Three changes to the generated component. Whether it is open is kept in local
+storage rather than a cookie, because a cookie is sent to the server with every
+request and the server has no use for it. The label of each entry stays in the
+markup when the rail is collapsed, so the accessible name survives; the tooltip
+is for a pointer, and a touch screen has none. And the drag rail was given a
+name of its own, because it and the toggle button both open the sidebar and two
+controls with one name is a maze for anyone listing the buttons on a page.
+
 ### The native select stays
 
 shadcn ships a Radix listbox, and it is right where a plain select cannot do
@@ -66,6 +82,15 @@ keeps working when JavaScript does not.
 - `apps/web/src/components/ui` is generated code in shadcn's shape, so
   `shadcn add` keeps working. Lint's fast-refresh rule is switched off there,
   because exporting a variant helper beside its component is that shape.
+- Generated components need three edits every time, and the lint rules catch
+  each one: the helper is imported from `@/lib/utils` rather than from the `cn`
+  package, because four lines we already have is not worth a dependency; every
+  visible or spoken string goes through the message catalogue, including the
+  screen-reader-only ones the generator writes in English; and React's rules
+  are enforced, which caught a hook that set state inside an effect and a
+  component that called `Math.random()` during render.
+- Radix arrives through the single `radix-ui` package the generator targets,
+  rather than one package per primitive.
 - Tailwind compiles to a static stylesheet, so the content security policy
   keeps `style-src 'self'` with no exception. A library that injected styles at
   runtime would have needed one, or a nonce.

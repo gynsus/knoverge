@@ -1,4 +1,4 @@
-import { Label } from '@radix-ui/react-label';
+import { Label } from 'radix-ui';
 import { cloneElement, isValidElement, useId, type ReactNode } from 'react';
 
 import { cn } from '@/lib/utils';
@@ -34,9 +34,9 @@ export function Field({ label, hint, className, children }: FieldProps) {
     : children;
   return (
     <div className={cn('grid gap-1.5', className)}>
-      <Label htmlFor={controlId} className="text-sm font-medium">
+      <Label.Root htmlFor={controlId} className="text-sm font-medium">
         {label}
-      </Label>
+      </Label.Root>
       {described}
       {hint && (
         <p id={hintId} className="text-xs text-muted-foreground">
