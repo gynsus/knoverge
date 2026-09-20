@@ -185,7 +185,7 @@ Subject prefixes: `create`, `update`, `delete`, `restore`, `move`, `supersede`, 
 
 An item with no category lives at `knowledge/_uncategorised/<slug>.md`, so every item has a path and the file layout never has a hole in it.
 
-`Knoverge-Change` is repeated once per revision produced by the commit, in the form `<item id>@<revision id> <change kind>`. `Knoverge-Taxonomy-Version` is present when the commit rewrote `taxonomy.yaml`. Together with the file contents these trailers let recovery rebuild every `KnowledgeRevision` row of the commit unambiguously.
+`Knoverge-Category` is present on a taxonomy commit, as `<category id> <create|update|move|archive|restore>`. The file carries the whole tree; this is the one thing it cannot say, because a path is not an identity and a rename makes that plain. `Knoverge-Change` is repeated once per revision produced by the commit, in the form `<item id>@<revision id> <change kind>`. `Knoverge-Taxonomy-Version` is present when the commit rewrote `taxonomy.yaml`. Together with the file contents these trailers let recovery rebuild every `KnowledgeRevision` row of the commit unambiguously.
 
 What Git alone can restore: canonical knowledge, taxonomy snapshots and the revision topology. What it cannot restore: users, memberships, permissions, policy, proposals, review decisions, sync state and the audit ledger. A full restore needs the PostgreSQL backup as well.
 

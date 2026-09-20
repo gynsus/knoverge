@@ -108,8 +108,12 @@ export interface TaxonomyFileEntry {
  * The file is committed before PostgreSQL is touched, which is why the result
  * has to be computed rather than read back.
  */
+/** What a taxonomy commit did, so recovery can rebuild the row it never wrote. */
+export type TaxonomyChangeKind = 'create' | 'update' | 'move' | 'archive' | 'restore';
+
 interface PlannedChange {
   subject: string;
+  kind: TaxonomyChangeKind;
   objectIds: Record<string, unknown>;
   /** The whole tree as it will be once this is applied. */
   categories: CategoryRecord[];
@@ -333,6 +337,7 @@ export class TaxonomyService {
       };
       return {
         subject: `taxonomy: create ${path}`,
+        kind: 'create',
         objectIds: { category: id, path },
         categories: withCategory(tree.categories, category),
         aliases: new Map(tree.aliases).set(id, aliases),
@@ -397,6 +402,7 @@ export class TaxonomyService {
       if (aliases !== undefined) nextAliases.set(category.id, aliases);
       return {
         subject: `taxonomy: update ${newPath ?? category.path}`,
+        kind: 'update',
         objectIds: { category: category.id, path: newPath ?? category.path },
         categories: withUpdate(
           tree.categories,
@@ -495,6 +501,7 @@ export class TaxonomyService {
       const moved = subtreeIds(tree.categories, category.path);
       return {
         subject: `taxonomy: move ${category.path} to ${newPath}`,
+        kind: 'move',
         objectIds: { category: category.id, path: newPath, previous_path: category.path },
         categories: withMove(tree.categories, category.id, parent?.id ?? null, {
           from: category.path,
@@ -543,6 +550,7 @@ export class TaxonomyService {
       }
       return {
         subject: `taxonomy: archive ${category.path}`,
+        kind: 'archive',
         objectIds: { category: category.id, path: category.path },
         categories: withSubtreeStatus(tree.categories, category.path, 'active', 'archived'),
         aliases: tree.aliases,
@@ -598,6 +606,7 @@ export class TaxonomyService {
       }
       return {
         subject: `taxonomy: restore ${category.path}`,
+        kind: 'restore',
         objectIds: { category: category.id, path: category.path },
         categories: withSubtreeStatus(tree.categories, category.path, 'archived', 'active'),
         aliases: tree.aliases,
@@ -746,6 +755,10 @@ export class TaxonomyService {
             ['Knoverge-Actor', actor.actorId],
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
             ['Knoverge-Taxonomy-Version', String(version)],
+            // Which category this commit acted on and what happened to it.
+            // The file carries the whole tree; this is the one thing the file
+            // cannot say, because a path is not an identity.
+            ['Knoverge-Category', `${planned.objectIds['category'] as string} ${planned.kind}`],
           ],
           author,
           at: now,
