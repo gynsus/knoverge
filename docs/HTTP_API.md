@@ -120,6 +120,8 @@ GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
 GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 POST /v1/admin/knowledge.create             a person writes an item directly
+                                            carries sources and relations; a source with a
+                                            locator makes the item source-backed
 POST /v1/admin/knowledge.update             requires base_revision_id and base_content_hash
 POST /v1/admin/knowledge.delete             logical: the file leaves the tree, the history keeps it
 POST /v1/admin/knowledge.restore            brings a deleted item back from its last revision

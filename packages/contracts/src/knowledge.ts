@@ -239,6 +239,8 @@ export type KnowledgeItemSummary = z.infer<typeof KnowledgeItemSummary>;
 /** The item with the knowledge itself, which a list deliberately omits. */
 export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
   body: z.string(),
+  sources: z.array(FrontmatterSource),
+  relations: z.array(FrontmatterRelation),
   content_hash: z.string(),
   frontmatter_hash: z.string(),
   revision_number: z.number().int().positive(),
@@ -264,6 +266,10 @@ export const CreateKnowledgeRequest = z.object({
   valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
   observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
   external: FrontmatterExternal.optional(),
+  /** Where the knowledge came from. One with a locator makes it source-backed. */
+  sources: z.array(FrontmatterSource).max(50).default([]),
+  /** How it connects to other items. Replaced whole, like tags. */
+  relations: z.array(FrontmatterRelation).max(50).default([]),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
 });
@@ -300,6 +306,8 @@ export const UpdateKnowledgeRequest = z.object({
   valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
   valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
   observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  sources: z.array(FrontmatterSource).max(50).optional(),
+  relations: z.array(FrontmatterRelation).max(50).optional(),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
 });

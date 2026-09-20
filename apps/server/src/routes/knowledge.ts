@@ -68,6 +68,8 @@ function detail(result: ItemResult): KnowledgeItemDetail {
     created_at: item.createdAt.toISOString(),
     updated_at: item.updatedAt.toISOString(),
     body: result.body,
+    sources: revision.frontmatter.sources,
+    relations: revision.frontmatter.relations,
     content_hash: revision.contentHash,
     frontmatter_hash: revision.frontmatterHash,
     revision_number: revision.revisionNumber,
@@ -117,6 +119,8 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         validFrom: request.body.valid_from,
         validUntil: request.body.valid_until,
         observedAt: request.body.observed_at,
+        relations: request.body.relations,
+        sources: request.body.sources,
         external: request.body.external,
       });
       return { item: detail(result) };
@@ -145,6 +149,8 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         validFrom: request.body.valid_from,
         validUntil: request.body.valid_until,
         observedAt: request.body.observed_at,
+        sources: request.body.sources,
+        relations: request.body.relations,
       });
       return { item: detail(result) };
     },

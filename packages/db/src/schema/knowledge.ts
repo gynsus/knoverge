@@ -6,6 +6,7 @@ import {
   integer,
   pgTable,
   primaryKey,
+  real,
   uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -141,3 +142,77 @@ export const knowledgeItemRelations = relations(knowledgeItems, ({ many }) => ({
   categories: many(knowledgeItemCategories),
   tags: many(knowledgeItemTags),
 }));
+
+/**
+ * A source the knowledge came from. Deduplicated per workspace by whatever
+ * identifies it — a URI, an external record — so citing the same page twice is
+ * one row and the graph of what rests on what stays readable.
+ */
+export const sourceReferences = pgTable(
+  'source_references',
+  {
+    id: id('id').primaryKey(),
+    workspaceId: id('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    sourceType: varchar('source_type', { length: 32 }).notNull(),
+    uri: varchar('uri', { length: 2048 }),
+    externalSystem: varchar('external_system', { length: 64 }),
+    externalKey: varchar('external_key', { length: 512 }),
+    attachmentId: id('attachment_id'),
+    sourceModifiedAt: timestampTz('source_modified_at'),
+    /** The raw source's fingerprint, not the knowledge content hash. */
+    sourceContentHash: varchar('source_content_hash', { length: 80 }),
+    confidence: real('confidence'),
+    metadata: json('metadata').notNull().default({}),
+    createdAt: timestampTz('created_at').notNull(),
+  },
+  (t) => [index('source_references_workspace_idx').on(t.workspaceId, t.sourceType)],
+);
+
+/** Which sources a revision rested on, and in what role. */
+export const revisionSources = pgTable(
+  'revision_sources',
+  {
+    revisionId: id('revision_id')
+      .notNull()
+      .references(() => knowledgeRevisions.id, { onDelete: 'cascade' }),
+    sourceReferenceId: id('source_reference_id')
+      .notNull()
+      .references(() => sourceReferences.id, { onDelete: 'cascade' }),
+    evidenceRole: varchar('evidence_role', { length: 16 }).notNull().default('primary'),
+    position: integer('position').notNull(),
+  },
+  (t) => [
+    primaryKey({ name: 'revision_sources_pk', columns: [t.revisionId, t.sourceReferenceId] }),
+  ],
+);
+
+/**
+ * How one item connects to another. Removal is logical: a relation that was
+ * once true is part of the history of both items.
+ */
+export const knowledgeRelations = pgTable(
+  'knowledge_relations',
+  {
+    id: id('id').primaryKey(),
+    workspaceId: id('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    fromItemId: id('from_item_id')
+      .notNull()
+      .references(() => knowledgeItems.id, { onDelete: 'cascade' }),
+    relationType: varchar('relation_type', { length: 24 }).notNull(),
+    toItemId: id('to_item_id')
+      .notNull()
+      .references(() => knowledgeItems.id, { onDelete: 'cascade' }),
+    validFrom: timestampTz('valid_from'),
+    validUntil: timestampTz('valid_until'),
+    createdByActorId: id('created_by_actor_id')
+      .notNull()
+      .references(() => actors.id),
+    createdAt: timestampTz('created_at').notNull(),
+    removedAt: timestampTz('removed_at'),
+  },
+  (t) => [index('knowledge_relations_to_idx').on(t.toItemId, t.relationType)],
+);

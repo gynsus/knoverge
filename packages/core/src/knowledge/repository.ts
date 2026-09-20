@@ -10,6 +10,11 @@ import type {
   WorkspaceId,
   ActorId,
   CategoryId,
+  EvidenceRole,
+  RelationId,
+  RelationType,
+  SourceReferenceId,
+  SourceType,
 } from '@knoverge/contracts';
 
 import type { Tx } from '../ports/unit-of-work.ts';
@@ -149,4 +154,82 @@ export interface RevisionRepository {
    * repository this workspace's history belongs to.
    */
   latestCommit(workspaceId: WorkspaceId, tx?: Tx): Promise<string | null>;
+}
+
+/** A source the knowledge rests on, deduplicated per workspace. */
+export interface SourceRecord {
+  id: SourceReferenceId;
+  workspaceId: WorkspaceId;
+  sourceType: SourceType;
+  uri: string | null;
+  externalSystem: string | null;
+  externalKey: string | null;
+  attachmentId: string | null;
+  sourceModifiedAt: Date | null;
+  /** The raw source's fingerprint, not the knowledge content hash. */
+  sourceContentHash: string | null;
+  confidence: number | null;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}
+
+export interface RevisionSourceRecord {
+  revisionId: RevisionId;
+  sourceReferenceId: SourceReferenceId;
+  evidenceRole: EvidenceRole;
+  position: number;
+}
+
+export interface RelationRecord {
+  id: RelationId;
+  workspaceId: WorkspaceId;
+  fromItemId: KnowledgeItemId;
+  relationType: RelationType;
+  toItemId: KnowledgeItemId;
+  validFrom: Date | null;
+  validUntil: Date | null;
+  createdByActorId: ActorId;
+  createdAt: Date;
+  removedAt: Date | null;
+}
+
+export interface SourceRepository {
+  /**
+   * Finds or creates the sources, in order, and returns their ids.
+   *
+   * Deduplicated by whatever identifies a source — its URI, or its record in
+   * another system — so citing the same page from ten items is one row and the
+   * graph of what rests on what stays readable.
+   */
+  ensure(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    sources: readonly Omit<SourceRecord, 'id' | 'workspaceId' | 'createdAt'>[],
+    at: Date,
+  ): Promise<SourceReferenceId[]>;
+  attachToRevision(tx: Tx, rows: readonly RevisionSourceRecord[]): Promise<void>;
+  /** The sources a revision rested on, in the order it listed them. */
+  forRevision(revisionId: RevisionId): Promise<(SourceRecord & { role: EvidenceRole })[]>;
+}
+
+export interface RelationRepository {
+  /**
+   * Makes the live relations of an item exactly this set: anything missing is
+   * removed logically, anything new is added, and what is unchanged is left
+   * alone so its creation time survives.
+   */
+  replaceForItem(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    fromItemId: KnowledgeItemId,
+    wanted: readonly Omit<
+      RelationRecord,
+      'id' | 'workspaceId' | 'fromItemId' | 'createdAt' | 'removedAt'
+    >[],
+    at: Date,
+  ): Promise<void>;
+  /** The live relations an item points at. */
+  listForItem(workspaceId: WorkspaceId, fromItemId: KnowledgeItemId): Promise<RelationRecord[]>;
+  /** The live relations pointing at an item, which is the other direction. */
+  listPointingAt(workspaceId: WorkspaceId, toItemId: KnowledgeItemId): Promise<RelationRecord[]>;
 }

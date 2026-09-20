@@ -360,6 +360,10 @@ relates_to
 and storing both directions gives two rows that can disagree. A reader wanting
 that view asks for relations pointing at the item.
 
+Relations are replaced whole, like tags, and removal is logical: a relation that
+was once true is part of the history of both items. An item may not relate to
+itself.
+
 ## 11. Provenance
 
 Every knowledge item must be traceable to one or more source references.
@@ -380,7 +384,9 @@ other_knowledge_item
 
 The source record stores identifiers and hashes where possible.
 
-Sources are stored in PostgreSQL and mirrored into frontmatter.
+Sources are stored in PostgreSQL and mirrored into frontmatter. They are attached to the **revision** rather than to the item: which sources were cited is part of what a revision said, so an older revision keeps its own after the item moves on.
+
+A source is deduplicated per workspace by whatever identifies it — a URI, or a record in another system — so citing one page from ten items is one row. A source with neither, such as a person saying something, is its own occurrence and is not deduplicated against anything.
 
 ## 12. Summaries
 

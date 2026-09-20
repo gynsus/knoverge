@@ -28,6 +28,7 @@ export {
 export { createRepositories, type Repositories } from './repositories/index.ts';
 export { createKnowledgeRepository, createRevisionRepository } from './repositories/knowledge.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
+export { createRelationRepository, createSourceRepository } from './repositories/sources.ts';
 export { createSessionRepository } from './repositories/sessions.ts';
 export { createUserRepository } from './repositories/users.ts';
 export { createActorRepository, createWorkspaceRepository } from './repositories/workspaces.ts';
