@@ -105,7 +105,7 @@ The Markdown body is the knowledge itself, written for humans. A title heading i
 `content_hash` identifies the knowledge content independent of metadata.
 
 ```text
-content_hash = "sha256:" + hex(sha256(utf8(normalise(title) + "\n\n" + normalise(body))))
+content_hash = "sha256:" + hex(sha256(utf8(normalise(title) + "\n" + normalise(body))))
 ```
 
 Normalisation:
@@ -113,8 +113,14 @@ Normalisation:
 1. Unicode NFC;
 2. CRLF and CR to LF;
 3. strip trailing whitespace on every line;
-4. collapse three or more consecutive blank lines to two;
+4. collapse a run of blank lines to one;
 5. exactly one trailing newline.
+
+Normalisation already leaves exactly one trailing newline, so the single `\n`
+joining the two parts is the blank line between them. An independent
+implementation must produce the same bytes: this is the value agents compare
+during reconciliation, and a digest that differs by one newline is a digest
+that never matches.
 
 Frontmatter is excluded, so recategorising, retagging, or changing review state does not change `content_hash`. This is what agents compare during reconciliation (`candidate_content_hash`). It is distinct from `source_content_hash`, which fingerprints an agent's raw source material.
 
@@ -182,7 +188,13 @@ Commits are not signed in MVP. GPG/SSH signing may be added behind configuration
 
 ## 9. External edits
 
-Editing the repository directly (outside Knoverge) is **unsupported in MVP**. The server treats an unexpected HEAD as an integrity error and refuses writes to that workspace until an operator runs `knoverge integrity check`.
+Editing the repository directly (outside Knoverge) is **unsupported in MVP**.
+
+What the server enforces today: PostgreSQL records the commit that wrote each taxonomy version, and a write is refused when the branch no longer leads back to that commit. A repository that was lost, replaced, restored from an older backup, or rewritten with `reset`, `rebase` or `filter-branch` therefore stops accepting writes rather than stacking new history on a hole. Reachability is the test, not mere presence: an object a reset left behind would otherwise pass until garbage collection ran and fail afterwards, which is the same repository giving two answers.
+
+What it does not enforce yet: a commit an operator added on top of HEAD is not noticed, because it does not contradict anything the database recorded. Recording and comparing HEAD, and the `knoverge integrity check` command that repairs a workspace the guard has locked, arrive in Milestone 9.
+
+Knoverge stages only the paths the operation itself wrote, so an unrelated file left in the working tree is never folded into a domain commit, and a change that alters no canonical byte does not become a commit because something else was lying in the directory.
 
 A later milestone adds an importer that validates externally created commits and records them as revisions with `source_type = git_commit`.
 
