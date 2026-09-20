@@ -212,68 +212,73 @@ export function TaxonomyPage() {
           <CardTitle id="category-detail-title" tabIndex={-1} ref={detailHeading}>
             {selected.name}
           </CardTitle>
-          <Field label={t('taxonomy.rename')}>
-            <Input
-              value={draft.name}
-              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              maxLength={120}
-            />
-          </Field>
-          <Field label={t('taxonomy.slug')} hint={t('taxonomy.slug_hint')}>
-            <Input
-              value={draft.slug}
-              onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-              maxLength={64}
-            />
-          </Field>
-          <Field label={t('taxonomy.description')}>
-            <Textarea
-              rows={3}
-              value={draft.description}
-              onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-              maxLength={2000}
-            />
-          </Field>
-          <Field label={t('taxonomy.inclusion')} hint={t('taxonomy.guidance_hint')}>
-            <Textarea
-              rows={3}
-              value={draft.inclusion}
-              onChange={(e) => setDraft({ ...draft, inclusion: e.target.value })}
-            />
-          </Field>
-          <Field label={t('taxonomy.exclusion')} hint={t('taxonomy.guidance_hint')}>
-            <Textarea
-              rows={3}
-              value={draft.exclusion}
-              onChange={(e) => setDraft({ ...draft, exclusion: e.target.value })}
-            />
-          </Field>
-          <Field label={t('taxonomy.aliases')} hint={t('taxonomy.aliases_hint')}>
-            <Input
-              value={draft.aliases}
-              onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
-            />
-          </Field>
-          <Field label={t('taxonomy.move_to')} hint={t('taxonomy.parent_hint')}>
-            <Select
-              value={selected.parent_id ?? ''}
-              onChange={(e) =>
-                move.mutate({ category: selected, parentId: e.target.value || null })
-              }
-              disabled={move.isPending}
-            >
-              <option value="">{t('taxonomy.no_parent')}</option>
-              {categories
-                // A category cannot move into its own subtree, and the server
-                // refuses it, so it is not offered.
-                .filter((c) => c.id !== selected.id && !c.path.startsWith(`${selected.path}/`))
-                .map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.path}
-                  </option>
-                ))}
-            </Select>
-          </Field>
+          {/* The same wrapper the create form uses, so the two cards edit the
+              same fields at the same width. Without it these were as wide as
+              the monitor while the form below was capped. */}
+          <FieldSet>
+            <Field label={t('taxonomy.rename')}>
+              <Input
+                value={draft.name}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                maxLength={120}
+              />
+            </Field>
+            <Field label={t('taxonomy.slug')} hint={t('taxonomy.slug_hint')}>
+              <Input
+                value={draft.slug}
+                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
+                maxLength={64}
+              />
+            </Field>
+            <Field label={t('taxonomy.description')}>
+              <Textarea
+                rows={3}
+                value={draft.description}
+                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+                maxLength={2000}
+              />
+            </Field>
+            <Field label={t('taxonomy.inclusion')} hint={t('taxonomy.guidance_hint')}>
+              <Textarea
+                rows={3}
+                value={draft.inclusion}
+                onChange={(e) => setDraft({ ...draft, inclusion: e.target.value })}
+              />
+            </Field>
+            <Field label={t('taxonomy.exclusion')} hint={t('taxonomy.guidance_hint')}>
+              <Textarea
+                rows={3}
+                value={draft.exclusion}
+                onChange={(e) => setDraft({ ...draft, exclusion: e.target.value })}
+              />
+            </Field>
+            <Field label={t('taxonomy.aliases')} hint={t('taxonomy.aliases_hint')}>
+              <Input
+                value={draft.aliases}
+                onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
+              />
+            </Field>
+            <Field label={t('taxonomy.move_to')} hint={t('taxonomy.parent_hint')}>
+              <Select
+                value={selected.parent_id ?? ''}
+                onChange={(e) =>
+                  move.mutate({ category: selected, parentId: e.target.value || null })
+                }
+                disabled={move.isPending}
+              >
+                <option value="">{t('taxonomy.no_parent')}</option>
+                {categories
+                  // A category cannot move into its own subtree, and the server
+                  // refuses it, so it is not offered.
+                  .filter((c) => c.id !== selected.id && !c.path.startsWith(`${selected.path}/`))
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.path}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+          </FieldSet>
           <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
               {t('taxonomy.save')}
@@ -297,7 +302,7 @@ export function TaxonomyPage() {
                 >
                   {t('taxonomy.confirm')}
                 </Button>
-                <Button type="button" onClick={() => setConfirmingArchive(false)}>
+                <Button variant="outline" type="button" onClick={() => setConfirmingArchive(false)}>
                   {t('common.cancel')}
                 </Button>
               </>
