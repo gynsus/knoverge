@@ -126,6 +126,10 @@ our licence. ADR 0013 records the decision, including why colour is expressed
 as semantic tokens with no `dark:` variant, and why a table becomes a labelled
 list on a phone.
 
+Forms are `grid gap-4` and their submit button carries `justify-self-start`.
+Both matter: without the gap the button sits against the last field, and
+without the alignment a grid stretches it across the card.
+
 Two rules follow from it. A cell in `ui/table.tsx` must pass a `label`, because
 that heading is what a narrow screen shows beside the value. And the native
 `select` is used for short lists of fixed values, because it is what a phone

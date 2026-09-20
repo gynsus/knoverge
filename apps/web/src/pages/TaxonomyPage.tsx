@@ -161,7 +161,7 @@ export function TaxonomyPage() {
                 }}
               >
                 {category.name}
-              </Button>{' '}
+              </Button>
               <code>{category.path}</code>
               {category.status !== 'active' && <> [{t(`taxonomy.statuses.${category.status}`)}]</>}
               {category.aliases.length > 0 && <> ({category.aliases.join(', ')})</>}
@@ -236,28 +236,28 @@ export function TaxonomyPage() {
                 ))}
             </Select>
           </Field>
-          <p>
+          <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
               {t('taxonomy.save')}
-            </Button>{' '}
+            </Button>
             <Button
               type="button"
               onClick={() => archive.mutate(selected)}
               disabled={archive.isPending || selected.status === 'archived'}
             >
               {t('taxonomy.archive')}
-            </Button>{' '}
+            </Button>
             <Button type="button" onClick={() => setSelected(null)}>
               {t('common.close')}
             </Button>
-          </p>
+          </div>
           <ErrorNotice error={save.error ?? move.error ?? archive.error} />
         </Card>
       )}
 
       <Card aria-labelledby="new-category-title" className="grid gap-3 p-4 sm:p-6">
         <CardTitle id="new-category-title">{t('taxonomy.new')}</CardTitle>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} className="grid gap-4">
           <fieldset disabled={create.isPending} className="grid gap-4 border-0 p-0">
             <Field label={t('taxonomy.name')} hint={t('taxonomy.name_hint')}>
               <Input
@@ -279,7 +279,7 @@ export function TaxonomyPage() {
             </Field>
           </fieldset>
           <ErrorNotice error={create.error} />
-          <Button type="submit" disabled={create.isPending}>
+          <Button type="submit" disabled={create.isPending} className="justify-self-start">
             {create.isPending ? t('common.working') : t('taxonomy.create')}
           </Button>
         </form>

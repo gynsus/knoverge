@@ -247,14 +247,14 @@ export function AgentsPage() {
               <option value="trusted">{t('agents.tiers.trusted')}</option>
             </Select>
           </Field>
-          <p>
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               onClick={() => issue.mutate(expanded)}
               disabled={issue.isPending || current?.status !== 'active'}
             >
               {t('agents.issue_token')}
-            </Button>{' '}
+            </Button>
             {current?.status === 'disabled' ? (
               // A disabled agent could never be brought back from the browser,
               // although the contract has always allowed it.
@@ -274,7 +274,7 @@ export function AgentsPage() {
                 {t('agents.disable')}
               </Button>
             )}
-          </p>
+          </div>
           <p>
             <small>{t('agents.disable_hint')}</small>
           </p>
@@ -285,7 +285,7 @@ export function AgentsPage() {
 
       <Card aria-labelledby="new-agent-title" className="grid gap-3 p-4 sm:p-6">
         <CardTitle id="new-agent-title">{t('agents.new')}</CardTitle>
-        <form onSubmit={submit}>
+        <form onSubmit={submit} className="grid gap-4">
           <fieldset disabled={create.isPending} className="grid gap-4 border-0 p-0">
             <Field label={t('agents.name')}>
               <Input
@@ -310,7 +310,7 @@ export function AgentsPage() {
             </Field>
           </fieldset>
           <ErrorNotice error={create.error} />
-          <Button type="submit" disabled={create.isPending}>
+          <Button type="submit" disabled={create.isPending} className="justify-self-start">
             {create.isPending ? t('common.working') : t('agents.create')}
           </Button>
         </form>

@@ -220,15 +220,16 @@
   "settings": {
     "account": "Account",
     "change_password": "Change password",
+    "client": "Client",
     "current_password": "Current password",
+    "language_hint": "Remembered in this browser. Choosing it in your profile arrives with profile editing.",
     "new_password": "New password",
     "password_changed": "Password changed. Other sessions were signed out.",
+    "revoke": "Sign out",
     "sessions": "Sessions",
     "started": "Started",
-    "client": "Client",
-    "unknown_client": "Unknown",
     "this_session": "(this device)",
-    "revoke": "Sign out"
+    "unknown_client": "Unknown"
   },
   "workspace": {
     "add": "Add member",

@@ -735,3 +735,63 @@ describe('the navigation rail', () => {
     expect(screen.queryByRole('link', { name: 'Overview' })).not.toBeInTheDocument();
   });
 });
+
+describe('where the language is chosen', () => {
+  it('is on the settings page, not in the chrome of every page', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/account/sessions': () => json({ sessions: [] }),
+    });
+    renderApp('/settings');
+    expect(await screen.findByRole('combobox', { name: 'Language' })).toBeInTheDocument();
+  });
+
+  it('is not on another signed-in page', async () => {
+    mockApi(SIGNED_IN);
+    renderApp('/');
+    await screen.findByText('Your workspaces');
+    expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument();
+  });
+
+  it('stays on the sign-in page, where there are no settings to go to', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: false, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-token' }),
+    });
+    renderApp('/login');
+    await screen.findByRole('heading', { name: 'Sign in' });
+    expect(screen.getByRole('combobox', { name: 'Language' })).toBeInTheDocument();
+  });
+});
+
+describe('a form leaves room around its button', () => {
+  it('separates the submit button from the last field on every form', async () => {
+    // The forms written by hand had a gap and the ones migrated mechanically
+    // did not, so a button sat against the field above it.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 0, categories: [] }),
+    });
+    renderApp('/taxonomy');
+    const submit = await screen.findByRole('button', { name: 'Add category' });
+    const form = submit.closest('form');
+    expect(form?.className).toContain('gap-4');
+    // And it is not stretched across the card by the grid it sits in.
+    expect(submit.className).toContain('justify-self-start');
+  });
+});
+
+describe('a checkbox is a checkbox', () => {
+  it('renders the rule toggle as one, with a label beside it', async () => {
+    // The migration turned every input into the text Input, which made this a
+    // full-width text box with a tick floating in the middle of it.
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/policy.rules': () => json({ rules: [] }) });
+    renderApp('/policy');
+    const enabled = await screen.findByRole('checkbox', { name: 'Enabled' });
+    expect(enabled).toBeChecked();
+    const user = userEvent.setup();
+    await user.click(enabled);
+    expect(enabled).not.toBeChecked();
+  });
+});
