@@ -56,4 +56,12 @@ export interface OperationRepository {
    * take the write lock of every workspace to find the few that need it.
    */
   workspacesUnfinished(limit?: number): Promise<WorkspaceId[]>;
+  /**
+   * Removes operations that were decided before a moment, across workspaces.
+   *
+   * Only decided ones: an unfinished operation is what recovery reads, and
+   * removing one would let the next write proceed over a repository the
+   * database does not agree with.
+   */
+  deleteDecidedBefore(tx: Tx, before: Date): Promise<number>;
 }

@@ -603,6 +603,8 @@ The request context columns are not decoration. Recovery rebuilds a ledger event
 
 A commit hash and the state agree by constraint: `pending` and `failed` have none, and `git_committed`, `db_committed` and `recovered` have one.
 
+A workspace holding a `pending` or `git_committed` operation refuses to be written to, and recovery runs at startup to resolve them. Decided rows — `db_committed`, `failed`, `recovered` — are history and are pruned by maintenance after thirty days; unfinished ones are never pruned at any age, because removing one would let the next write proceed over a repository the database does not agree with.
+
 ## 24. Agent sync state
 
 ```text

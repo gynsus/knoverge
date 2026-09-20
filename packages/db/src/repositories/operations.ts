@@ -1,6 +1,6 @@
 import type { ActorId, AgentId, WorkspaceId } from '@knoverge/contracts';
 import type { OperationPatch, OperationRecord, OperationRepository, Tx } from '@knoverge/core';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, lt } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { operations } from '../schema/operations.ts';
@@ -22,6 +22,9 @@ function toOperation(row: typeof operations.$inferSelect): OperationRecord {
 /** Operations that started and never reached db_committed. */
 const UNFINISHED = ['pending', 'git_committed'];
 
+/** Operations nothing will look at again. */
+const DECIDED = ['db_committed', 'failed', 'recovered'];
+
 export function createOperationRepository(db: Database): OperationRepository {
   return {
     async insert(tx: Tx, operation: OperationRecord) {
@@ -40,6 +43,13 @@ export function createOperationRepository(db: Database): OperationRepository {
         .where(and(eq(operations.workspaceId, workspaceId), eq(operations.id, id)))
         .limit(1);
       return rows[0] ? toOperation(rows[0]) : null;
+    },
+    async deleteDecidedBefore(tx: Tx, before: Date) {
+      const rows = await asTx(tx)
+        .delete(operations)
+        .where(and(inArray(operations.state, DECIDED), lt(operations.updatedAt, before)))
+        .returning({ id: operations.id });
+      return rows.length;
     },
     async workspacesUnfinished(limit = 1000) {
       const rows = await db

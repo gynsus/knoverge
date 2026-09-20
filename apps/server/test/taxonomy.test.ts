@@ -313,6 +313,23 @@ describe('archiving and listing', () => {
     expect(archived.every((c) => c.status === 'archived')).toBe(true);
   });
 
+  it('refuses a taxonomy file larger than the limit', async () => {
+    // The whole file is rewritten and committed by every change, so its size is
+    // paid again on each one. Guidance is the cheapest way to make it large.
+    const guidance = Array.from({ length: 50 }, () => 'x'.repeat(500));
+    let refused: { statusCode: number; body: string } | null = null;
+    for (let n = 0; n < 40 && refused === null; n += 1) {
+      const res = await admin.post('/v1/admin/taxonomy.create', {
+        name: `Bulky ${n}`,
+        inclusion_guidance: guidance,
+        exclusion_guidance: guidance,
+      });
+      if (res.statusCode !== 200) refused = { statusCode: res.statusCode, body: res.body };
+    }
+    expect(refused?.statusCode, refused?.body ?? 'nothing was refused').toBe(400);
+    expect(JSON.parse(refused!.body)).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('filters by root path and depth, and can omit guidance', async () => {
     const root = await create({ name: 'Filter root', inclusion_guidance: ['keep this'] });
     const child = await create({ name: 'Filter child', parent_path: root.category.path });

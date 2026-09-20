@@ -102,6 +102,7 @@ export function createServices() {
       new MaintenanceService({
         uow,
         sessions: repositories.sessions,
+        operations: repositories.operations,
         idempotency: idempotency(),
       }),
   );

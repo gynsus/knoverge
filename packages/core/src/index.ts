@@ -98,7 +98,9 @@ export type {
   TaxonomyVersionRepository,
 } from './taxonomy/repository.ts';
 export {
+  MAX_CATEGORIES_PER_WORKSPACE,
   MAX_CATEGORY_DEPTH,
+  MAX_TAXONOMY_BYTES,
   TaxonomyService,
   normaliseAlias,
   slugify,
@@ -130,6 +132,7 @@ export {
 } from './workspace/service.ts';
 export {
   MaintenanceService,
+  OPERATION_RETENTION_MS,
   SESSION_RETENTION_MS,
   type MaintenanceOptions,
   type MaintenanceResult,
