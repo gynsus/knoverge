@@ -48,6 +48,19 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+# Declared external so that `docker compose down -v` cannot remove them.
+# Compose only deletes volumes it created, and these are created once by hand:
+#
+#     docker volume create knoverge-postgres
+#     docker volume create knoverge-data
+#
+# The cost is that first run needs those two commands, and that wiping an
+# installation on purpose is an explicit `docker volume rm`. That is the right
+# way round: losing a knowledge base should take more typing than keeping it.
 volumes:
   knoverge-postgres:
+    external: true
+    name: ${KNOVERGE_POSTGRES_VOLUME:-knoverge-postgres}
   knoverge-data:
+    external: true
+    name: ${KNOVERGE_DATA_VOLUME:-knoverge-data}

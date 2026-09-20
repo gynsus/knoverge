@@ -30,8 +30,16 @@ Expected workflow:
 git clone <repository>
 cd knoverge
 cp .env.example .env
+docker volume create knoverge-postgres
+docker volume create knoverge-data
 docker compose up -d
 ```
+
+The two volumes are created by hand, once, and declared `external` in
+`docker-compose.yml`. Compose only ever removes volumes it created itself, so
+this is what keeps `docker compose down -v` from taking the database and the
+workspace repositories with it. Starting without them fails immediately and
+says which one is missing.
 
 Then:
 
@@ -230,6 +238,41 @@ Connection examples for common MCP clients (Claude Code, Cursor, generic Streama
 ```bash
 # local stdio bridge for clients without remote MCP support
 KNOVERGE_URL=https://knoverge.example.com KNOVERGE_TOKEN=knv_... knoverge mcp stdio
+```
+
+## 8a. What does and does not destroy data
+
+The database lives in the `knoverge-postgres` volume and the workspace Git
+repositories in `knoverge-data`. Both survive everything that happens to the
+containers:
+
+- a container crash — `restart: unless-stopped` brings it back;
+- `docker compose stop`, `docker compose restart`, `docker compose down`;
+- rebuilding the image, `docker compose up -d --build`;
+- rebooting the host.
+
+Three commands destroy them, and nothing else does:
+
+```bash
+docker compose down -v            # refused: the volumes are external
+docker volume rm knoverge-data    # this is the one that means it
+docker system prune --volumes     # takes every unused volume on the machine
+```
+
+The first is listed because it is the one people reach for. With external
+volumes it removes the network and the containers and leaves the data alone.
+`docker system prune --volumes` is still dangerous: it does not care who
+created a volume, only that nothing is using it, so never run it while the
+stack is down.
+
+An installation that predates external volumes has its data in
+`knoverge_knoverge-postgres` and `knoverge_knoverge-data` — Compose prefixed
+them with the project name. Point the new declarations at the old volumes
+instead of copying anything:
+
+```bash
+KNOVERGE_POSTGRES_VOLUME=knoverge_knoverge-postgres
+KNOVERGE_DATA_VOLUME=knoverge_knoverge-data
 ```
 
 ## 9. Backups
