@@ -179,7 +179,7 @@ Recovery runs at startup, before anything is served, and repairs what it can:
 
 - `pending` with no matching commit: mark `failed`;
 - `pending` with a commit naming it: the process died between committing and recording the hash; report for an operator.
-- `git_committed` without revision row: complete the PostgreSQL side from the commit trailers, mark `recovered`. Not implemented for the taxonomy yet — the trailers do not yet name the categories a commit changed — so such an operation is reported and its workspace stays closed to writes;
+- `git_committed` without revision row: complete the PostgreSQL side from the commit and mark `recovered`. `Knoverge-Change` names the item, the revision and the change kind; the file at that commit carries the whole state of the item, because the frontmatter is the canonical record rather than a summary of one; and the operation row carries the request context the trailers do not. Taxonomy operations are not yet recoverable this way — a taxonomy commit names no per-category change — so one is reported and its workspace stays closed to writes;
 - revision row without commit: impossible by construction (Git commits first), report as corruption.
 
 Do not hide cross-store failure cases.

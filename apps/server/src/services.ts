@@ -16,6 +16,7 @@ import {
   MaintenanceService,
   RecoveryService,
   MemberService,
+  KnowledgeRecovery,
   KnowledgeService,
   TaxonomyService,
   SessionService,
@@ -121,10 +122,24 @@ export function createServices(config: ServicesConfig) {
     operations: repositories.operations,
     commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
   });
+  // What finishes a knowledge write that reached Git and no further. Without
+  // it such an operation stays unresolved and its workspace refuses writes.
+  const knowledgeRecovery = new KnowledgeRecovery({
+    uow,
+    items: repositories.knowledge,
+    revisions: repositories.revisions,
+    categories: repositories.categories,
+    ledger,
+    git,
+    parseItem,
+    contentHash,
+    frontmatterHash,
+  });
   const recovery = new RecoveryService({
     uow,
     operations: repositories.operations,
     commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
+    completeFromCommit: (operation) => knowledgeRecovery.complete(operation),
   });
   const knowledge = new KnowledgeService({
     uow,
