@@ -49,7 +49,7 @@ One port. Exact port may change during implementation, but the final project mus
 Required persistent data:
 
 - PostgreSQL;
-- `KNOVERGE_DATA_DIR` (workspace Git repositories and attachments).
+- `KNOVERGE_DATA_DIR` (workspace Git repositories and attachments). Required by the `knoverge` command line as well as the server, and it must name the same directory: pointed elsewhere, the command line would create a second, empty repository for the workspace, and the integrity guard would then refuse to write to it.
 
 Logical volumes:
 
@@ -102,7 +102,9 @@ KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
 NODE_ENV                      development | test | production
 
-Read but not yet used, because the features they configure do not exist:
+Not read yet. The features they configure do not exist, and the configuration
+schema ignores unknown variables, so setting one of these today has no effect
+at all — not even a warning:
 
 KNOVERGE_LLM_PROVIDER         (Milestone 6) disabled | openai_compatible | anthropic | ollama
 KNOVERGE_LLM_BASE_URL         (Milestone 6)
