@@ -1,3 +1,4 @@
+import type { WorkspaceId } from '@knoverge/contracts';
 import {
   dummyPasswordHash,
   generateOpaqueToken,
@@ -156,6 +157,18 @@ export function createServices(config: ServicesConfig) {
     completeFromCommit: async (operation) =>
       (await knowledgeRecovery.complete(operation)) || (await taxonomyRecovery.complete(operation)),
   });
+  const workspaceLookup = {
+    findById: async (workspaceId: WorkspaceId) => {
+      const workspace = await repositories.workspaces.findById(workspaceId);
+      return workspace
+        ? {
+            id: workspace.id,
+            name: workspace.name,
+            defaultLanguage: workspace.defaultLanguage,
+          }
+        : null;
+    },
+  };
   const knowledge = new KnowledgeService({
     uow,
     items: repositories.knowledge,
@@ -165,12 +178,7 @@ export function createServices(config: ServicesConfig) {
     categories: repositories.categories,
     versions: repositories.taxonomyVersions,
     actors: repositories.actors,
-    workspaces: {
-      findById: async (workspaceId) => {
-        const workspace = await repositories.workspaces.findById(workspaceId);
-        return workspace ? { id: workspace.id, name: workspace.name } : null;
-      },
-    },
+    workspaces: workspaceLookup,
     ledger,
     crossStore,
     git,

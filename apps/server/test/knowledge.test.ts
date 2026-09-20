@@ -148,6 +148,30 @@ describe('creating a knowledge item', () => {
     expect(got.item.content_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   });
 
+  it('takes the language from the workspace when the caller does not say', async () => {
+    // A hard-coded 'en' made every item in a Russian workspace claim to be
+    // English, which is what drives the full-text search configuration.
+    expect(
+      (await admin.post('/v1/admin/workspace.update', { default_language: 'ru' })).statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Заметка',
+      body: 'Написана по-русски.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(KnowledgeResponse.parse(res.json()).item.language).toBe('ru');
+    // An explicit language still wins over the workspace's.
+    const explicit = await admin.post('/v1/admin/knowledge.create', {
+      title: 'A note',
+      body: 'Written in English.',
+      type: 'fact',
+      language: 'en',
+    });
+    expect(KnowledgeResponse.parse(explicit.json()).item.language).toBe('en');
+    await admin.post('/v1/admin/workspace.update', { default_language: 'en' });
+  });
+
   it('gives a second item with the same title a slug of its own', async () => {
     const res = await admin.post('/v1/admin/knowledge.create', {
       title: 'Authentication strategy',

@@ -93,7 +93,9 @@ export interface ActorLookup {
 }
 
 export interface WorkspaceLookup {
-  findById(workspaceId: WorkspaceId): Promise<{ id: WorkspaceId; name: string } | null>;
+  findById(
+    workspaceId: WorkspaceId,
+  ): Promise<{ id: WorkspaceId; name: string; defaultLanguage: string } | null>;
 }
 
 export interface KnowledgeServiceOptions {
@@ -230,7 +232,10 @@ export class KnowledgeService {
         const slug = this.parseSlug(this.o.uniqueSlug(wanted, new Set(taken)));
         const markdownPath = `${directory}/${slug}.md`;
 
-        const language = input.language ?? 'en';
+        // The workspace's own language when the caller does not say. A
+        // hard-coded 'en' made every item in a Russian workspace claim to be
+        // English, which drives the full-text search configuration.
+        const language = input.language ?? workspace.defaultLanguage;
         const frontmatter: Frontmatter = {
           id: itemId,
           title,
