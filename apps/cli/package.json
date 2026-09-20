@@ -17,13 +17,15 @@
   },
   "dependencies": {
     "@knoverge/auth": "workspace:*",
-    "@node-rs/argon2": "catalog:",
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",
+    "@knoverge/git-store": "workspace:*",
+    "@node-rs/argon2": "catalog:",
     "commander": "catalog:",
     "drizzle-orm": "catalog:",
-    "pg": "catalog:"
+    "pg": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

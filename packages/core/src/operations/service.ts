@@ -21,7 +21,16 @@ export interface CrossStoreWrite<T> {
    * commit that happened cannot be made not to have happened, so a failure
    * here leaves the operation pending for recovery to abandon.
    */
-  commit(operation: OperationRecord): Promise<{ commitHash: string; taxonomyVersion?: number }>;
+  commit(operation: OperationRecord): Promise<{
+    commitHash: string;
+    taxonomyVersion?: number;
+    /**
+     * What the write turned out to be about. Validation happens inside this
+     * step, because it has to run under the lock and before anything is
+     * written, so the pending row is recorded before the ids are known.
+     */
+    objectIds?: Record<string, unknown>;
+  }>;
   /**
    * The PostgreSQL side, in one transaction: revision metadata, the object,
    * the ledger event. Runs after the commit exists, so it can record its hash.
@@ -90,6 +99,7 @@ export class CrossStoreWriter {
         gitCommitHash: committed.commitHash,
         taxonomyVersion:
           committed.taxonomyVersion === undefined ? null : String(committed.taxonomyVersion),
+        objectIds: committed.objectIds ?? operation.objectIds,
         updatedAt: this.clock.now(),
       };
       await this.o.uow.run((tx) =>
@@ -97,6 +107,7 @@ export class CrossStoreWriter {
           state: afterCommit.state,
           gitCommitHash: afterCommit.gitCommitHash,
           taxonomyVersion: afterCommit.taxonomyVersion,
+          objectIds: afterCommit.objectIds,
           updatedAt: afterCommit.updatedAt,
         }),
       );

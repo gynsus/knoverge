@@ -21,11 +21,12 @@
     "@fastify/static": "catalog:",
     "@fastify/swagger": "catalog:",
     "@knoverge/auth": "workspace:*",
-    "@node-rs/argon2": "catalog:",
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",
+    "@knoverge/git-store": "workspace:*",
     "@knoverge/policy": "workspace:*",
+    "@node-rs/argon2": "catalog:",
     "drizzle-orm": "catalog:",
     "fastify": "catalog:",
     "fastify-type-provider-zod": "catalog:",
@@ -33,6 +34,7 @@
     "pg": "catalog:",
     "pg-boss": "catalog:",
     "pino": "catalog:",
+    "yaml": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {

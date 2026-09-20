@@ -151,3 +151,11 @@ export {
   type RecoveryOptions,
   type RecoveryReport,
 } from './operations/recovery.ts';
+export type { CommitAuthor, GitCommitRequest, GitFile, GitStore } from './ports/git-store.ts';
+export {
+  subtreeIds,
+  withArchivedSubtree,
+  withCategory,
+  withMove,
+  withUpdate,
+} from './taxonomy/projection.ts';

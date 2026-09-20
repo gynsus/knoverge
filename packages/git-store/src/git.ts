@@ -149,6 +149,16 @@ export class WorkspaceGitRepository {
     }
   }
 
+  /** Whether a commit is in this repository's history. */
+  async hasCommit(commitHash: string): Promise<boolean> {
+    try {
+      const type = await this.git(['cat-file', '-t', commitHash]);
+      return type.trim() === 'commit';
+    } catch {
+      return false;
+    }
+  }
+
   /** The trailers of a commit, in order, so recovery can rebuild from them. */
   async trailersOf(commitHash: string): Promise<[string, string][]> {
     const body = await this.git(['log', '--format=%B', '--max-count=1', commitHash]);

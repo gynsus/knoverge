@@ -403,6 +403,9 @@ importers:
       '@knoverge/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@knoverge/git-store':
+        specifier: workspace:*
+        version: link:../../packages/git-store
       '@node-rs/argon2':
         specifier: 'catalog:'
         version: 2.2.1
@@ -415,6 +418,9 @@ importers:
       pg:
         specifier: 'catalog:'
         version: 8.23.0
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -464,6 +470,9 @@ importers:
       '@knoverge/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@knoverge/git-store':
+        specifier: workspace:*
+        version: link:../../packages/git-store
       '@knoverge/policy':
         specifier: workspace:*
         version: link:../../packages/policy
@@ -491,6 +500,9 @@ importers:
       pino:
         specifier: 'catalog:'
         version: 10.3.1
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.5
@@ -674,6 +686,9 @@ importers:
         specifier: 'catalog:'
         version: 8.23.0
     devDependencies:
+      '@knoverge/git-store':
+        specifier: workspace:*
+        version: link:../git-store
       '@testcontainers/postgresql':
         specifier: 'catalog:'
         version: 12.1.0
@@ -695,6 +710,12 @@ importers:
 
   packages/git-store:
     dependencies:
+      '@knoverge/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@knoverge/core':
+        specifier: workspace:*
+        version: link:../core
       yaml:
         specifier: 'catalog:'
         version: 2.9.1

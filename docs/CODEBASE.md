@@ -105,6 +105,22 @@ copy of the rule in the browser drifts from it. A reviewer granted an action
 explicitly would otherwise be shown a control they are entitled to use, and a
 viewer would be shown forms whose every submission is refused.
 
+## The taxonomy is the first thing in the repository
+
+Every taxonomy change rewrites `taxonomy.yaml` in the same commit, which is
+what `docs/GIT_REPOSITORY.md` section 6 requires, so the four mutations are the
+first cross-store writers.
+
+The file is committed before PostgreSQL is written, so it is rendered from a
+tree computed in memory by `packages/core/src/taxonomy/projection.ts`. That is
+a second implementation of what the SQL statements do, and two implementations
+of one rule drift, so `packages/db/test/concurrency.test.ts` applies every
+mutation to a real database and compares the two.
+
+A read inside one of these writes takes the transaction. Through the pool it
+would need a connection the write is already holding, and it could not see what
+the transaction has written either.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes
