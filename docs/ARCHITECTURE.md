@@ -125,17 +125,19 @@ Use ordinary PostgreSQL FTS with per-language configurations before considering 
 
 ### Git store
 
-One non-bare Git repository per workspace at `KNOVERGE_DATA_DIR/workspaces/<workspace_id>/repo`.
+One non-bare Git repository per workspace at `KNOVERGE_DATA_DIR/repositories/<workspace_id>`.
 
 Git operations run through the Git CLI behind the `GitStore` interface in `packages/git-store`. See ADR 0006.
 
 The repository is self-describing and navigable by humans. Layout, frontmatter, hashing and commit conventions are defined in `GIT_REPOSITORY.md` and ADR 0002.
 
-Repository mutations are serialised per workspace with an in-process mutex plus a PostgreSQL advisory lock, so multiple server processes remain safe.
+Repository mutations are serialised per workspace by an in-process queue in front of a PostgreSQL advisory lock: the queue keeps waiting writers from holding connections the writer at the head still needs, and the advisory lock is what makes the exclusion hold across processes. See ADR 0012.
+
+Every invocation names its repository explicitly and runs in an allowlisted environment with system and global configuration switched off, so neither a data directory placed inside another working tree nor an operator's own Git configuration can redirect or subvert a canonical write. See `SECURITY.md` section 13a.
 
 ### Attachment store
 
-Original uploaded files (later milestone) live on the local filesystem under `KNOVERGE_DATA_DIR/workspaces/<workspace_id>/attachments/<sha256>`, content-addressed. They are not committed to Git. Text extracted from them becomes ordinary `document` knowledge items. See ADR 0008.
+Original uploaded files (later milestone) live on the local filesystem under `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`, content-addressed. They are not committed to Git. Text extracted from them becomes ordinary `document` knowledge items. See ADR 0008.
 
 ## 4. Cross-store consistency
 
@@ -167,10 +169,13 @@ failed
 recovered
 ```
 
-A startup job and the integrity checker repair incomplete operations:
+A workspace holding an unfinished operation refuses to be written to. Writing on top of one would re-render the canonical file from a database that is missing what the repository already has, silently deleting a committed change and taking its version number.
+
+Recovery runs at startup, before anything is served, and repairs what it can:
 
 - `pending` with no matching commit: mark `failed`;
-- `git_committed` without revision row: complete the PostgreSQL side from the commit trailers, mark `recovered`;
+- `pending` with a commit naming it: the process died between committing and recording the hash; report for an operator.
+- `git_committed` without revision row: complete the PostgreSQL side from the commit trailers, mark `recovered`. Not implemented for the taxonomy yet — the trailers do not yet name the categories a commit changed — so such an operation is reported and its workspace stays closed to writes;
 - revision row without commit: impossible by construction (Git commits first), report as corruption.
 
 Do not hide cross-store failure cases.

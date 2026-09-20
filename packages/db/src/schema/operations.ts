@@ -1,4 +1,4 @@
-import { index, pgTable, varchar } from 'drizzle-orm/pg-core';
+import { bigint, index, pgTable, varchar } from 'drizzle-orm/pg-core';
 
 import { actors } from './actors.ts';
 import { id, json, timestampTz } from './common.ts';
@@ -30,7 +30,9 @@ export const operations = pgTable(
     objectIds: json('object_ids').notNull(),
     intendedPayloadHash: varchar('intended_payload_hash', { length: 80 }),
     gitCommitHash: varchar('git_commit_hash', { length: 64 }),
-    taxonomyVersion: varchar('taxonomy_version', { length: 20 }),
+    // A number, so an integrity check can order and join it against
+    // taxonomy_versions.version.
+    taxonomyVersion: bigint('taxonomy_version', { mode: 'number' }),
     requestId: varchar('request_id', { length: 128 }).notNull(),
     sessionId: varchar('session_id', { length: 128 }),
     agentId: id('agent_id'),

@@ -14,6 +14,12 @@
  * transactions that take the others.
  */
 export const LOCK_NAMED = 1;
+/**
+ * Reserved. The workspace write lock replaced it: a taxonomy mutation validates
+ * against the tree and rewrites it in one operation that spans a Git commit, so
+ * the exclusion has to outlive a transaction. The number is kept so a future
+ * transaction-scoped taxonomy lock does not collide with an older one.
+ */
 export const LOCK_TAXONOMY = 2;
 export const LOCK_LEDGER = 3;
 export const LOCK_MIGRATIONS = 4;

@@ -103,7 +103,11 @@ export function createServices(config: ServicesConfig) {
     idempotency,
   });
   const git = createGitStore({ dataDir: config.dataDir });
-  const crossStore = new CrossStoreWriter({ uow, operations: repositories.operations });
+  const crossStore = new CrossStoreWriter({
+    uow,
+    operations: repositories.operations,
+    commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
+  });
   const recovery = new RecoveryService({
     uow,
     operations: repositories.operations,

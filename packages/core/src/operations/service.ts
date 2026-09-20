@@ -1,3 +1,5 @@
+import type { WorkspaceId } from '@knoverge/contracts';
+
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -9,6 +11,11 @@ import type { OperationRecord, OperationRepository, OperationType } from './repo
 export interface CrossStoreOptions {
   uow: UnitOfWork;
   operations: OperationRepository;
+  /**
+   * Whether a commit naming an operation exists. Asked before an interrupted
+   * write is closed, and before a new write is allowed to proceed.
+   */
+  commitExists(workspaceId: WorkspaceId, operationId: string): Promise<boolean>;
   clock?: Clock;
 }
 
@@ -60,6 +67,7 @@ export class CrossStoreWriter {
 
   async run<T>(actor: ActorContext, write: CrossStoreWrite<T>): Promise<T> {
     return this.o.uow.withWorkspaceLock(actor.workspaceId, async () => {
+      await this.assertNothingUnfinished(actor.workspaceId);
       const now = this.clock.now();
       const operation: OperationRecord = {
         id: newId('op'),
@@ -87,9 +95,7 @@ export class CrossStoreWriter {
       try {
         committed = await write.commit(operation);
       } catch (error) {
-        // Nothing was committed, or we cannot tell. Recovery decides by looking
-        // for a commit that names this operation.
-        await this.fail(operation, error);
+        await this.close(operation, error);
         throw error;
       }
 
@@ -97,8 +103,7 @@ export class CrossStoreWriter {
         ...operation,
         state: 'git_committed',
         gitCommitHash: committed.commitHash,
-        taxonomyVersion:
-          committed.taxonomyVersion === undefined ? null : String(committed.taxonomyVersion),
+        taxonomyVersion: committed.taxonomyVersion ?? null,
         objectIds: committed.objectIds ?? operation.objectIds,
         updatedAt: this.clock.now(),
       };
@@ -125,11 +130,50 @@ export class CrossStoreWriter {
     });
   }
 
-  private async fail(operation: OperationRecord, error: unknown): Promise<void> {
+  /**
+   * Refuses to start a write while an earlier one in this workspace is
+   * unfinished.
+   *
+   * An interrupted write leaves the repository holding a change PostgreSQL does
+   * not have. Writing on top of that state re-renders the whole file from a
+   * database that is missing the change, so the next commit silently deletes
+   * the earlier one — and takes its taxonomy version number, because the number
+   * is only recorded when PostgreSQL commits. Stopping is the only safe answer:
+   * the two stores disagree, and this process cannot tell which is right.
+   *
+   * Startup recovery resolves these, so the ordinary case is that a workspace
+   * is never seen in this state at all.
+   */
+  private async assertNothingUnfinished(workspaceId: WorkspaceId): Promise<void> {
+    const unfinished = await this.o.operations.listUnfinished(workspaceId, 1);
+    const blocking = unfinished[0];
+    if (!blocking) return;
+    throw new DomainError(
+      'INTERNAL_ERROR',
+      'an earlier change to this workspace did not finish, so the repository and the database may disagree; run the server once to let it recover, or ask an operator to look at the operation named here',
+      { objectIds: { workspace_id: workspaceId, operation: blocking.id, state: blocking.state } },
+    );
+  }
+
+  /**
+   * Closes an operation whose commit step threw.
+   *
+   * Asks Git first, because the throw may have come after the commit — the
+   * store commits and then reads the hash back, and anything between the two
+   * lands here. `failed` is terminal and recovery never looks at it again, so
+   * calling a write that did commit `failed` abandons a commit that is already
+   * in history. When a commit exists the row is left `pending` for recovery,
+   * with the error recorded so an operator can see what happened.
+   */
+  private async close(operation: OperationRecord, error: unknown): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
+    const committed = await this.o
+      .commitExists(operation.workspaceId, operation.id)
+      // Cannot tell, so assume the worse of the two: leave it for recovery.
+      .catch(() => true);
     await this.o.uow.run((tx) =>
       this.o.operations.update(tx, operation.workspaceId, operation.id, {
-        state: 'failed',
+        state: committed ? 'pending' : 'failed',
         error: { message },
         updatedAt: this.clock.now(),
       }),

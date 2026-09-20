@@ -588,7 +588,7 @@ Operation
 - object_ids_json
 - intended_payload_hash nullable
 - git_commit_hash nullable
-- taxonomy_version nullable
+- taxonomy_version bigint nullable, so it can be compared with taxonomy_versions.version
 - request_id
 - session_id nullable
 - agent_id nullable
