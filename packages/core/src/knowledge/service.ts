@@ -3,6 +3,9 @@ import {
   type ActorId,
   type Frontmatter,
   type ChangeKind,
+  type EvidenceState,
+  type FrontmatterRelation,
+  type FrontmatterSource,
   type ItemType,
   type KnowledgeItemId,
   type RevisionId,
@@ -17,7 +20,7 @@ import type { CrossStoreWriter } from '../operations/service.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { CommitAuthor, GitStore } from '../ports/git-store.ts';
-import type { UnitOfWork } from '../ports/unit-of-work.ts';
+import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type {
   CategoryRecord,
   CategoryRepository,
@@ -26,11 +29,27 @@ import type {
 import type {
   ItemCategoryRecord,
   ListItemsOptions,
+  RelationRepository,
+  SourceRepository,
   KnowledgeItemRecord,
   KnowledgeRepository,
   RevisionRecord,
   RevisionRepository,
 } from './repository.ts';
+
+/**
+ * `source_backed` needs a source somebody else could check: a locator, or a
+ * fingerprint of the bytes (KNOWLEDGE_MODEL.md section 8). A source with
+ * neither is an assertion about where something came from, not evidence of it.
+ *
+ * `corroborated` is two or more independent sources and is decided by review
+ * rather than by counting, so nothing here ever sets it.
+ */
+export function evidenceFrom(sources: readonly FrontmatterSource[]): EvidenceState {
+  return sources.some((s) => s.uri !== undefined || s.content_hash !== undefined)
+    ? 'source_backed'
+    : 'none';
+}
 
 /** Where an item with no category lives, so every item still has a path. */
 export const UNCATEGORISED_DIRECTORY = 'knowledge/_uncategorised';
@@ -53,6 +72,8 @@ export interface KnowledgeServiceOptions {
   uow: UnitOfWork;
   items: KnowledgeRepository;
   revisions: RevisionRepository;
+  sources: SourceRepository;
+  relations: RelationRepository;
   categories: CategoryRepository;
   versions: TaxonomyVersionRepository;
   actors: ActorLookup;
@@ -91,6 +112,8 @@ export interface UpdateItemInput {
   validFrom?: string | null | undefined;
   validUntil?: string | null | undefined;
   observedAt?: string | null | undefined;
+  sources?: readonly FrontmatterSource[] | undefined;
+  relations?: readonly FrontmatterRelation[] | undefined;
 }
 
 export interface CreateItemInput {
@@ -106,6 +129,8 @@ export interface CreateItemInput {
   validUntil?: string | null | undefined;
   observedAt?: string | null | undefined;
   external?: { source_system: string; external_key: string } | undefined;
+  sources?: readonly FrontmatterSource[] | undefined;
+  relations?: readonly FrontmatterRelation[] | undefined;
 }
 
 /** An item as a list shows it: everything but the knowledge itself. */
@@ -187,18 +212,19 @@ export class KnowledgeService {
           categories: chosen.map((c) => c.path),
           tags: [...new Set(input.tags ?? [])].sort(),
           review: actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed',
-          evidence: 'none',
+          evidence: evidenceFrom(input.sources ?? []),
           disputed: false,
           valid_from: input.validFrom ?? null,
           valid_until: input.validUntil ?? null,
           observed_at: input.observedAt ?? null,
           created_at: now.toISOString(),
           updated_at: now.toISOString(),
-          sources: [],
-          relations: [],
+          sources: [...(input.sources ?? [])],
+          relations: [...(input.relations ?? [])],
           ...(input.external ? { external: input.external } : {}),
         } as Frontmatter;
 
+        await this.assertRelationTargets(actor.workspaceId, itemId, frontmatter.relations);
         const rendered = this.o.renderItem({ frontmatter, body });
         await this.o.git.write(actor.workspaceId, [{ path: markdownPath, content: rendered }]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
@@ -235,7 +261,7 @@ export class KnowledgeService {
           language: p.frontmatter.language,
           currentRevisionId: revisionId,
           reviewState: p.frontmatter.review,
-          evidenceState: 'none',
+          evidenceState: p.frontmatter.evidence,
           disputed: false,
           validFrom: p.frontmatter.valid_from ? new Date(p.frontmatter.valid_from) : null,
           validUntil: p.frontmatter.valid_until ? new Date(p.frontmatter.valid_until) : null,
@@ -280,6 +306,8 @@ export class KnowledgeService {
           })),
         );
         await this.o.items.setTags(tx, actor.workspaceId, itemId, p.frontmatter.tags);
+        await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
+        await this.writeRelations(tx, actor, itemId, p.frontmatter.relations, p.now);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.created',
           objectType: 'knowledge_item',
@@ -381,12 +409,16 @@ export class KnowledgeService {
           // (KNOWLEDGE_MODEL.md section 8): what was reviewed was the text
           // that changed.
           review: actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed',
+          sources: input.sources ? [...input.sources] : previous.sources,
+          relations: input.relations ? [...input.relations] : previous.relations,
+          evidence: evidenceFrom(input.sources ?? previous.sources),
           valid_from: input.validFrom === undefined ? previous.valid_from : input.validFrom,
           valid_until: input.validUntil === undefined ? previous.valid_until : input.validUntil,
           observed_at: input.observedAt === undefined ? previous.observed_at : input.observedAt,
           updated_at: now.toISOString(),
         } as Frontmatter;
 
+        await this.assertRelationTargets(actor.workspaceId, input.itemId, frontmatter.relations);
         const rendered = this.o.renderItem({ frontmatter, body });
         if (moved) await this.o.git.remove(actor.workspaceId, [previousPath]);
         await this.o.git.write(actor.workspaceId, [{ path: markdownPath, content: rendered }]);
@@ -427,6 +459,7 @@ export class KnowledgeService {
           language: p.frontmatter.language,
           currentRevisionId: revisionId,
           reviewState: p.frontmatter.review,
+          evidenceState: p.frontmatter.evidence,
           validFrom: p.frontmatter.valid_from ? new Date(p.frontmatter.valid_from) : null,
           validUntil: p.frontmatter.valid_until ? new Date(p.frontmatter.valid_until) : null,
           observedAt: p.frontmatter.observed_at ? new Date(p.frontmatter.observed_at) : null,
@@ -443,6 +476,8 @@ export class KnowledgeService {
           })),
         );
         await this.o.items.setTags(tx, actor.workspaceId, input.itemId, p.frontmatter.tags);
+        await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
+        await this.writeRelations(tx, actor, input.itemId, p.frontmatter.relations, p.now);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: p.kind === 'move' ? 'knowledge.moved' : 'knowledge.updated',
           objectType: 'knowledge_item',
@@ -798,6 +833,99 @@ export class KnowledgeService {
         };
       },
     });
+  }
+
+  /**
+   * The sources a revision rested on. Attached to the revision rather than to
+   * the item, because which sources were cited is part of what the revision
+   * said — an older revision keeps its own even after the item moves on.
+   */
+  private async writeSources(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    revisionId: RevisionId,
+    sources: readonly FrontmatterSource[],
+    at: Date,
+  ): Promise<void> {
+    if (sources.length === 0) return;
+    const ids = await this.o.sources.ensure(
+      tx,
+      workspaceId,
+      sources.map((source) => ({
+        sourceType: source.type,
+        uri: source.uri ?? null,
+        externalSystem: source.client ?? null,
+        externalKey: source.external_key ?? null,
+        attachmentId: null,
+        sourceModifiedAt: null,
+        sourceContentHash: source.content_hash ?? null,
+        confidence: null,
+        metadata: source.session_id ? { session_id: source.session_id } : {},
+      })),
+      at,
+    );
+    await this.o.sources.attachToRevision(
+      tx,
+      ids.map((sourceReferenceId, index) => ({
+        revisionId,
+        sourceReferenceId,
+        evidenceRole: sources[index]!.role,
+        position: index,
+      })),
+    );
+  }
+
+  /**
+   * The item's live relations, made exactly what the frontmatter says.
+   *
+   * The file carries the portable copy and PostgreSQL the queryable one, and
+   * rule 2 makes the database the authority for querying — so the two are
+   * written together or not at all.
+   */
+  /**
+   * Refuses a relation whose target is not an item in this workspace.
+   *
+   * The foreign key would catch it too, but as an internal error on the way
+   * out — a caller who mistyped an id deserves to be told that, and told it
+   * before anything was committed to Git.
+   */
+  private async assertRelationTargets(
+    workspaceId: WorkspaceId,
+    itemId: KnowledgeItemId,
+    relations: readonly FrontmatterRelation[],
+  ): Promise<void> {
+    for (const relation of relations) {
+      if (relation.target === itemId) {
+        throw new DomainError('VALIDATION_ERROR', 'an item cannot relate to itself');
+      }
+      if (!(await this.o.items.findById(workspaceId, relation.target))) {
+        throw new DomainError('NOT_FOUND', `no knowledge item ${relation.target}`, {
+          objectIds: { knowledge_item: relation.target },
+        });
+      }
+    }
+  }
+
+  private async writeRelations(
+    tx: Tx,
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    relations: readonly FrontmatterRelation[],
+    at: Date,
+  ): Promise<void> {
+    await this.o.relations.replaceForItem(
+      tx,
+      actor.workspaceId,
+      itemId,
+      relations.map((relation) => ({
+        relationType: relation.type,
+        toItemId: relation.target,
+        validFrom: relation.valid_from ? new Date(relation.valid_from) : null,
+        validUntil: relation.valid_until ? new Date(relation.valid_until) : null,
+        createdByActorId: actor.actorId,
+      })),
+      at,
+    );
   }
 
   /** One revision row from a planned change, so create and update agree. */

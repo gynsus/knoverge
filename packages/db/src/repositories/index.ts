@@ -12,6 +12,7 @@ import { createMembershipRepository } from './memberships.ts';
 import { createSessionRepository } from './sessions.ts';
 import { createUserRepository } from './users.ts';
 import { createKnowledgeRepository, createRevisionRepository } from './knowledge.ts';
+import { createRelationRepository, createSourceRepository } from './sources.ts';
 import { createOperationRepository } from './operations.ts';
 import { createActorRepository, createWorkspaceRepository } from './workspaces.ts';
 
@@ -32,6 +33,8 @@ export function createRepositories(db: Database) {
     operations: createOperationRepository(db),
     knowledge: createKnowledgeRepository(db),
     revisions: createRevisionRepository(db),
+    sources: createSourceRepository(db),
+    relations: createRelationRepository(db),
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
     memberships: createMembershipRepository(db),

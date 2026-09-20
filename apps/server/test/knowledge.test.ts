@@ -363,3 +363,113 @@ describe('changing an item', () => {
     );
   });
 });
+
+describe('sources and relations', () => {
+  it('records a source, makes the item source-backed, and mirrors it into the file', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Backed by a spec',
+      body: 'The specification says so.',
+      type: 'fact',
+      sources: [{ type: 'web_url', uri: 'https://example.com/spec', role: 'primary' }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = KnowledgeResponse.parse(res.json()).item;
+    // A source somebody else can check is what makes it evidence.
+    expect(item.evidence_state).toBe('source_backed');
+    expect(item.sources).toEqual([
+      { type: 'web_url', uri: 'https://example.com/spec', role: 'primary' },
+    ]);
+
+    const file = await readFile(
+      join(dataDir, 'repositories', item.workspace_id, item.markdown_path),
+      'utf8',
+    );
+    expect(file).toContain('https://example.com/spec');
+  });
+
+  it('leaves a source with no locator as an assertion, not evidence', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Somebody said so',
+      body: 'Heard in a meeting.',
+      type: 'observation',
+      sources: [{ type: 'human_input', role: 'primary' }],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(KnowledgeResponse.parse(res.json()).item.evidence_state).toBe('none');
+  });
+
+  it('relates two items, and replaces the whole list on update', async () => {
+    const one = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The older decision',
+          body: 'What we decided first.',
+          type: 'decision',
+        })
+      ).json(),
+    ).item;
+    const two = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The newer decision',
+          body: 'What we decided instead.',
+          type: 'decision',
+          relations: [{ type: 'supersedes', target: one.id }],
+        })
+      ).json(),
+    ).item;
+    expect(two.relations).toEqual([{ type: 'supersedes', target: one.id }]);
+
+    // Replaced whole, like tags: dropping it from the list removes it.
+    const updated = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: two.id,
+          base_revision_id: two.current_revision_id,
+          base_content_hash: two.content_hash,
+          relations: [],
+        })
+      ).json(),
+    ).item;
+    expect(updated.relations).toEqual([]);
+    // And the file agrees, because the frontmatter is the portable copy.
+    const file = await readFile(
+      join(dataDir, 'repositories', updated.workspace_id, updated.markdown_path),
+      'utf8',
+    );
+    expect(file).not.toContain('supersedes');
+  });
+
+  it('refuses a relation to an item that does not exist', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Points at nothing',
+      body: 'Body.',
+      type: 'fact',
+      relations: [{ type: 'relates_to', target: 'kn_01M2ZZZZZZZZZZZZZZZZZZZZZZ' }],
+    });
+    // A mistyped id is the caller's mistake, so it reads as one rather than as
+    // an internal error on the way out of a foreign key.
+    expect(res.statusCode, res.body).toBe(404);
+    expect(res.json().message).toMatch(/no knowledge item/);
+  });
+
+  it('refuses an item that relates to itself', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Self referential',
+          body: 'Body.',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const res = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      relations: [{ type: 'relates_to', target: item.id }],
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/relate to itself/);
+  });
+});

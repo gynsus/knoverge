@@ -125,6 +125,8 @@ beforeAll(async () => {
     uow,
     items: repositories.knowledge,
     revisions: repositories.revisions,
+    sources: repositories.sources,
+    relations: repositories.relations,
     categories: repositories.categories,
     versions: repositories.taxonomyVersions,
     actors: repositories.actors,

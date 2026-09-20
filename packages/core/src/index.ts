@@ -14,8 +14,13 @@ export type {
   KnowledgeItemRecord,
   KnowledgeRepository,
   ListItemsOptions,
+  RelationRecord,
+  RelationRepository,
   RevisionRecord,
   RevisionRepository,
+  RevisionSourceRecord,
+  SourceRecord,
+  SourceRepository,
 } from './knowledge/repository.ts';
 export {
   AuthorizationAdminService,
