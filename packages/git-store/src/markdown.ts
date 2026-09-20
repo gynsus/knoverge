@@ -21,6 +21,16 @@ export class MarkdownError extends Error {
 const FENCE = '---';
 
 /**
+ * How large the frontmatter block may be.
+ *
+ * The body may be long — a `document` item is meant to be — but the metadata
+ * has no legitimate reason to be, and it is the part that gets parsed into
+ * structures before anything validates it. The schema's own limits add up to
+ * well under this.
+ */
+const MAX_FRONTMATTER_BYTES = 64 * 1024;
+
+/**
  * Renders an item to the file the repository stores.
  *
  * Keys are written in the order `docs/GIT_REPOSITORY.md` section 3 fixes, and a
@@ -68,6 +78,9 @@ export function parseItem(text: string): MarkdownItem {
     throw new MarkdownError('the frontmatter block is never closed');
   }
   const yaml = normalised.slice(FENCE.length + 1, end + 1);
+  if (Buffer.byteLength(yaml, 'utf8') > MAX_FRONTMATTER_BYTES) {
+    throw new MarkdownError(`the frontmatter block is larger than ${MAX_FRONTMATTER_BYTES} bytes`);
+  }
   const after = normalised.slice(end + 1 + FENCE.length);
   if (after !== '' && !after.startsWith('\n')) {
     throw new MarkdownError('the closing fence must be on a line of its own');
