@@ -48,6 +48,35 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Not started by default: a complete installation is one application
+  # container plus PostgreSQL (rule 10), and an operator with their own backup
+  # arrangement should not be given a second one. Start it with
+  # `docker compose --profile backup up -d`.
+  backup:
+    image: pgvector/pgvector:pg17
+    profiles: ['backup']
+    environment:
+      PGPASSWORD: ${KNOVERGE_POSTGRES_PASSWORD:?set a database password in .env}
+      KNOVERGE_POSTGRES_HOST: postgres
+      KNOVERGE_POSTGRES_DB: ${KNOVERGE_POSTGRES_DB:-knoverge}
+      KNOVERGE_POSTGRES_USER: ${KNOVERGE_POSTGRES_USER:-knoverge}
+      KNOVERGE_DATA_DIR: /data
+      KNOVERGE_BACKUP_DIR: /backups
+      KNOVERGE_BACKUP_INTERVAL: ${KNOVERGE_BACKUP_INTERVAL:-86400}
+      KNOVERGE_BACKUP_KEEP: ${KNOVERGE_BACKUP_KEEP:-14}
+    volumes:
+      # Read-only: this container copies the canonical data and has no reason
+      # to be able to change it.
+      - knoverge-data:/data:ro
+      - knoverge-backups:/backups
+      - ./infra/backup/backup.sh:/backup.sh:ro
+      - ./infra/backup/loop.sh:/loop.sh:ro
+    entrypoint: ['/bin/sh', '/loop.sh']
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
 # Declared external so that `docker compose down -v` cannot remove them.
 # Compose only deletes volumes it created, and these are created once by hand:
 #
@@ -64,3 +93,6 @@ volumes:
   knoverge-data:
     external: true
     name: ${KNOVERGE_DATA_VOLUME:-knoverge-data}
+  knoverge-backups:
+    external: true
+    name: ${KNOVERGE_BACKUP_VOLUME:-knoverge-backups}

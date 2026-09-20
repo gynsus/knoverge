@@ -277,32 +277,72 @@ KNOVERGE_DATA_VOLUME=knoverge_knoverge-data
 
 ## 9. Backups
 
-A complete backup contains:
+A complete backup contains the database, the data directory and the secrets. The
+first two are taken together by the `backup` service; the third is yours to keep
+somewhere else.
 
-### PostgreSQL
+```bash
+docker volume create knoverge-backups
+docker compose --profile backup up -d
+```
 
-Use `pg_dump` or scheduled database snapshots.
+It is a profile rather than a default service because a complete installation is
+one application container plus PostgreSQL, and an operator with their own backup
+arrangement should not be handed a second one. Each run writes a directory named
+for its UTC timestamp:
 
-### Data directory
+```text
+/backups/20260920T110514Z/postgres.dump   pg_dump --format=custom
+/backups/20260920T110514Z/data.tar.gz     the workspace repositories
+/backups/20260920T110514Z/manifest.txt    what was taken, and in what order
+```
 
-Archive/snapshot `KNOVERGE_DATA_DIR`.
+`KNOVERGE_BACKUP_INTERVAL` (default 86400) and `KNOVERGE_BACKUP_KEEP` (default
+14) set the schedule and the retention window. A run that dies half way leaves a
+`.partial` directory that rotation ignores and a restore cannot mistake for a
+whole backup.
+
+### Why the database is dumped before the data directory
+
+A canonical write commits to Git and then to PostgreSQL (section 4 of
+`ARCHITECTURE.md`). A backup taken while one is in flight is therefore skewed,
+and the order decides which way:
+
+- **database first, then the repositories** — the archive may hold a commit the
+  dump does not know about. That is an unfinished operation, which recovery
+  detects at startup: the workspace refuses writes and says which operation is
+  unresolved.
+- **repositories first, then the database** — the dump may hold a revision row
+  whose commit is not in the archive. The architecture calls that corruption,
+  and nothing can repair it, because the knowledge itself is the part that is
+  missing.
+
+So the script dumps first. The skew is not eliminated — only `knoverge backup`
+(Milestone 9), which takes the workspace write lock for the duration, will do
+that — but it is pushed onto the side that is detectable and repairable.
 
 ### Secrets
 
-The `.env` secrets, stored separately from the data backups.
-
-Backups should share a coordinated timestamp. `knoverge backup` (Milestone 9) pauses writes briefly, dumps the database and archives the data directory in one run.
+The `.env` secrets, stored separately from the data backups. A backup without
+`KNOVERGE_LEDGER_KEY` restores a ledger nobody can verify.
 
 ## 10. Restore
 
 Restore order:
 
 1. stop application writes;
-2. restore PostgreSQL;
-3. restore the data directory;
-4. run `knoverge ledger verify` (and `knoverge integrity check` once the Git store ships);
+2. restore PostgreSQL — `pg_restore --dbname=knoverge postgres.dump`;
+3. restore the data directory — `tar -xzf data.tar.gz -C "$KNOVERGE_DATA_DIR"`;
+4. run `knoverge ledger verify` (and `knoverge integrity check` once it ships in Milestone 9);
 5. rebuild search/embedding indexes if needed;
-6. start application.
+6. start application. Startup recovery resolves any operation the backup caught mid-flight, and reports any it cannot.
+
+The drill itself is covered by a test: `packages/db/test/restore.test.ts` takes a
+dump of a real database, restores it into another, and checks that the ledger
+chain still verifies, that the taxonomy still agrees with the archived
+repository, and that no unfinished operation came back to close the workspace. A
+backup nobody has restored is not a backup, and a restore procedure nothing runs
+is not a procedure.
 
 ## 11. Upgrades
 
