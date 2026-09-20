@@ -5,19 +5,26 @@ import type {
   CategoryResponse,
   CreateAgentRequest,
   CreateCategoryRequest,
+  CreateKnowledgeRequest,
   CredentialsResponse,
+  DeleteKnowledgeRequest,
   IssueCredentialRequest,
   IssueCredentialResponse,
+  KnowledgeDiffResponse,
+  KnowledgeListResponse,
+  KnowledgeResponse,
   MoveCategoryRequest,
   OkResponse,
   PolicyRuleResponse,
   PolicyRulesResponse,
+  RevisionsResponse,
   SessionsResponse,
   TaxonomyListResponse,
   MembersResponse,
   UpdateAgentRequest,
   UpsertPolicyRuleRequest,
   UpdateCategoryRequest,
+  UpdateKnowledgeRequest,
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
   WorkspaceResponse,
@@ -75,6 +82,29 @@ export const adminApi = {
       }),
     removeMember: (userId: string) =>
       apiPost<OkResponse>('/v1/admin/members.remove', { user_id: userId }),
+  },
+  knowledge: {
+    list: (signal?: AbortSignal) => apiGet<KnowledgeListResponse>('/v1/knowledge.list', signal),
+    get: (itemId: string, signal?: AbortSignal) =>
+      apiGet<KnowledgeResponse>(`/v1/knowledge.get?item_id=${encodeURIComponent(itemId)}`, signal),
+    revisions: (itemId: string, signal?: AbortSignal) =>
+      apiGet<RevisionsResponse>(
+        `/v1/knowledge.revisions?item_id=${encodeURIComponent(itemId)}`,
+        signal,
+      ),
+    diff: (itemId: string, from: string, to: string, signal?: AbortSignal) =>
+      apiGet<KnowledgeDiffResponse>(
+        `/v1/knowledge.diff?item_id=${encodeURIComponent(itemId)}&from_revision_id=${encodeURIComponent(from)}&to_revision_id=${encodeURIComponent(to)}`,
+        signal,
+      ),
+    create: (body: CreateKnowledgeRequest) =>
+      apiPost<KnowledgeResponse>('/v1/admin/knowledge.create', body),
+    update: (body: UpdateKnowledgeRequest) =>
+      apiPost<KnowledgeResponse>('/v1/admin/knowledge.update', body),
+    remove: (body: DeleteKnowledgeRequest) =>
+      apiPost<KnowledgeResponse>('/v1/admin/knowledge.delete', body),
+    restore: (itemId: string) =>
+      apiPost<KnowledgeResponse>('/v1/admin/knowledge.restore', { item_id: itemId }),
   },
   account: {
     sessions: (signal?: AbortSignal) => apiGet<SessionsResponse>('/v1/auth/sessions', signal),

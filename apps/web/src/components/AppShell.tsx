@@ -2,6 +2,7 @@ import type { PermissionAction } from '@knoverge/contracts';
 import {
   BookOpenText,
   Bot,
+  Building2,
   FolderTree,
   LayoutDashboard,
   LogOut,
@@ -43,10 +44,11 @@ import { LanguageSwitcher } from './LanguageSwitcher.tsx';
  */
 const NAV = [
   { to: '/', key: 'home', icon: LayoutDashboard },
+  { to: '/knowledge', key: 'knowledge', icon: BookOpenText, needs: 'knowledge.read' },
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },
   { to: '/agents', key: 'agents', icon: Bot, needs: 'agent.manage' },
   { to: '/policy', key: 'policy', icon: ShieldCheck, needs: 'policy.manage' },
-  { to: '/workspace', key: 'workspace', icon: BookOpenText },
+  { to: '/workspace', key: 'workspace', icon: Building2 },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const satisfies readonly {
   to: string;

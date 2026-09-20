@@ -881,3 +881,113 @@ describe('a subheading stands apart from the fields under it', () => {
     expect(legend.className).toContain('font-semibold');
   });
 });
+
+describe('knowledge page', () => {
+  const ITEM = {
+    id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    slug: 'authentication-strategy',
+    markdown_path: 'knowledge/architecture/authentication-strategy.md',
+    title: 'Authentication strategy',
+    type: 'decision',
+    status: 'active',
+    language: 'en',
+    current_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    review_state: 'human_reviewed',
+    evidence_state: 'none',
+    disputed: false,
+    categories: ['architecture'],
+    tags: ['auth'],
+    valid_from: null,
+    valid_until: null,
+    observed_at: null,
+    created_at: '2026-09-19T00:00:00.000Z',
+    updated_at: '2026-09-19T00:00:00.000Z',
+  };
+  const DETAIL = {
+    ...ITEM,
+    body: 'Passwordless login uses a six-digit email code.\n',
+    sources: [],
+    relations: [],
+    content_hash: 'sha256:' + 'a'.repeat(64),
+    frontmatter_hash: 'sha256:' + 'b'.repeat(64),
+    revision_number: 1,
+  };
+  const ROUTES = {
+    ...SIGNED_IN,
+    'GET /v1/knowledge.list': () => json({ items: [ITEM], next_cursor: null }),
+    [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: DETAIL }),
+    [`GET /v1/knowledge.revisions?item_id=${ITEM.id}`]: () =>
+      json({
+        revisions: [
+          {
+            id: DETAIL.current_revision_id,
+            revision_number: 1,
+            change_kind: 'create',
+            title: ITEM.title,
+            markdown_path: ITEM.markdown_path,
+            content_hash: DETAIL.content_hash,
+            frontmatter_hash: DETAIL.frontmatter_hash,
+            git_commit: 'c'.repeat(40),
+            actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+            created_at: '2026-09-19T00:00:00.000Z',
+          },
+        ],
+      }),
+  };
+
+  it('opens an item and sends the revision it was based on', async () => {
+    const calls = mockApi({
+      ...ROUTES,
+      'POST /v1/admin/knowledge.update': () => json({ item: { ...DETAIL, revision_number: 2 } }),
+    });
+    renderApp('/knowledge');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: ITEM.title }));
+
+    // Scoped to the editor: the form for a new item carries the same labels,
+    // which is why both are named regions.
+    const editor = within(await screen.findByRole('region', { name: ITEM.title }));
+    const body = editor.getByLabelText('Text');
+    await user.clear(body);
+    await user.type(body, 'Rewritten.');
+    await user.click(editor.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/knowledge.update')).toBeTruthy(),
+    );
+    // Rule 6: an edit says what it was based on, so the server can refuse it
+    // rather than overwrite somebody else's work.
+    expect(calls.find((c) => c.url === '/v1/admin/knowledge.update')?.body).toMatchObject({
+      item_id: ITEM.id,
+      base_revision_id: DETAIL.current_revision_id,
+      base_content_hash: DETAIL.content_hash,
+    });
+  });
+
+  it('tells the person when somebody else changed the item first', async () => {
+    mockApi({
+      ...ROUTES,
+      'POST /v1/admin/knowledge.update': () =>
+        json(
+          {
+            code: 'REVISION_CONFLICT',
+            message: 'the item changed since you read it',
+            retryable: false,
+          },
+          409,
+        ),
+    });
+    renderApp('/knowledge');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: ITEM.title }));
+    const editor = within(await screen.findByRole('region', { name: ITEM.title }));
+    await user.click(editor.getByRole('button', { name: 'Save' }));
+
+    // A conflict is the one answer this page must not swallow — and it is
+    // shown from the catalogue by error code, not as the server's own wording.
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Someone changed this while you were editing. Reload and try again.',
+    );
+  });
+});
