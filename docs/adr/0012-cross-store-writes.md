@@ -132,7 +132,6 @@ seen in this state.
   an exhausted pool has to produce a failed request, never a process that stops
   answering.
 - A crash between the Git commit and the PostgreSQL transaction blocks its workspace
-  until recovery resolves it. A knowledge write is resolved at the next startup from
-  the commit alone. A taxonomy write is not yet: a taxonomy commit names no
-  per-category change, so it is reported as unresolved and the workspace stays closed
-  to writes — loud and safe, rather than quiet and wrong.
+  until recovery resolves it, which the next startup does for both knowledge and
+  taxonomy writes. A commit made before the per-object trailers existed cannot be
+  rebuilt and is reported as unresolved rather than guessed at.

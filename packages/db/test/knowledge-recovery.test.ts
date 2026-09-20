@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,7 @@ import {
   KnowledgeRecovery,
   KnowledgeService,
   RecoveryService,
+  TaxonomyRecovery,
   TaxonomyService,
   UserService,
   WorkspaceService,
@@ -24,6 +25,7 @@ import {
   createGitStore,
   frontmatterHash,
   parseItem,
+  parseTaxonomy,
   renderItem,
   renderTaxonomy,
   slugifyTitle,
@@ -56,6 +58,8 @@ let actor: ActorContext;
 let repositories: ReturnType<typeof createRepositories>;
 let knowledge: KnowledgeService;
 let crashing: KnowledgeService;
+let taxonomy: TaxonomyService;
+let crashingTaxonomy: TaxonomyService;
 let recovery: RecoveryService;
 
 beforeAll(async () => {
@@ -155,7 +159,7 @@ beforeAll(async () => {
   } as unknown as Writer;
   crashing = new KnowledgeService({ ...shared, crossStore: stopsAfterCommit });
 
-  const taxonomy = new TaxonomyService({
+  const taxonomyOptions = {
     uow,
     categories: repositories.categories,
     aliases: repositories.aliases,
@@ -167,15 +171,17 @@ beforeAll(async () => {
     taxonomyPath: TAXONOMY_PATH,
     workspaces,
     actors: repositories.actors,
-  });
+  };
+  taxonomy = new TaxonomyService({ ...taxonomyOptions, crossStore });
+  crashingTaxonomy = new TaxonomyService({ ...taxonomyOptions, crossStore: stopsAfterCommit });
   await taxonomy.create(actor, { name: 'Architecture' });
 
   recovery = new RecoveryService({
     uow,
     operations: repositories.operations,
     commitExists: (ws, operationId) => git.hasCommitForOperation(ws, operationId),
-    completeFromCommit: (operation) =>
-      new KnowledgeRecovery({
+    completeFromCommit: async (operation) =>
+      (await new KnowledgeRecovery({
         uow,
         items: repositories.knowledge,
         revisions: repositories.revisions,
@@ -185,7 +191,17 @@ beforeAll(async () => {
         parseItem,
         contentHash,
         frontmatterHash,
-      }).complete(operation),
+      }).complete(operation)) ||
+      (await new TaxonomyRecovery({
+        uow,
+        categories: repositories.categories,
+        aliases: repositories.aliases,
+        versions: repositories.taxonomyVersions,
+        ledger,
+        git,
+        taxonomyPath: TAXONOMY_PATH,
+        parseTaxonomy,
+      }).complete(operation)),
   });
 }, 180_000);
 
@@ -262,5 +278,80 @@ describe('a create that reached Git and no further', () => {
     const second = await recovery.recover(workspaceId);
     expect(second.recovered).toEqual([operation!.id]);
     expect(await repositories.revisions.listForItem(itemId as never)).toHaveLength(1);
+  });
+});
+
+describe('a taxonomy change that reached Git and no further', () => {
+  /** What the database says the tree is, in one comparable string. */
+  const tree = async () =>
+    (await repositories.categories.list(workspaceId, { includeArchived: true }))
+      .map((c) => `${c.path}|${c.slug}|${c.name}|${c.status}|${c.parentId ?? '-'}`)
+      .sort()
+      .join('\n');
+
+  it('recovers each kind of change, to the state the ordinary path produces', async () => {
+    // Every mutation twice: once through a writer that never reaches
+    // PostgreSQL, then recovered; the result must be what the ordinary path
+    // would have written. Two implementations of one rule drift, so this is
+    // what holds them together.
+    const root = (await taxonomy.create(actor, { name: 'Recoverable' })).category;
+    await taxonomy.create(actor, { name: 'Child', parentPath: root.path });
+
+    const cases: { name: string; run: () => Promise<unknown> }[] = [
+      { name: 'create', run: () => crashingTaxonomy.create(actor, { name: 'Added by a crash' }) },
+      {
+        name: 'update',
+        run: () =>
+          crashingTaxonomy.update(actor, {
+            categoryId: root.id,
+            slug: 'renamed-by-a-crash',
+            description: 'Set while the process died.',
+            aliases: ['Zeta', 'Alpha'],
+          }),
+      },
+      { name: 'archive', run: () => crashingTaxonomy.archive(actor, root.id) },
+      { name: 'restore', run: () => crashingTaxonomy.restore(actor, root.id) },
+    ];
+
+    for (const { name, run } of cases) {
+      await expect(run(), name).rejects.toThrow('the process stops here');
+      const [operation] = await repositories.operations.listUnfinished(workspaceId);
+      expect(operation?.state, name).toBe('git_committed');
+
+      const report = await recovery.recover(workspaceId);
+      expect(report.recovered, `${name}: ${JSON.stringify(report)}`).toEqual([operation!.id]);
+
+      // The version row points at the commit, and the tree matches the file
+      // that commit wrote — which is the whole claim.
+      const version = await repositories.taxonomyVersions.latest(workspaceId);
+      expect(version?.gitCommitHash, name).toBe(operation!.gitCommitHash);
+      const file = parseTaxonomy(
+        await readFile(join(repoRoot, 'repositories', workspaceId, TAXONOMY_PATH), 'utf8'),
+      );
+      const fromFile = file.categories
+        .map((c) => `${c.path}|${c.slug}|${c.name}|${c.status}`)
+        .sort()
+        .join('\n');
+      const fromDatabase = (await tree())
+        .split('\n')
+        .map((line) => line.split('|').slice(0, 4).join('|'))
+        .sort()
+        .join('\n');
+      expect(fromDatabase, name).toBe(fromFile);
+
+      // And the workspace takes writes again.
+      await expect(taxonomy.create(actor, { name: `After ${name}` }), name).resolves.toBeTruthy();
+    }
+
+    // The rename carried its aliases and its description through recovery.
+    const renamed = await repositories.categories.findById(workspaceId, root.id);
+    expect(renamed?.description).toBe('Set while the process died.');
+    const aliases = await repositories.aliases.listForWorkspace(workspaceId);
+    expect(
+      aliases
+        .filter((a) => a.categoryId === root.id)
+        .map((a) => a.alias)
+        .sort(),
+    ).toEqual(['Alpha', 'Zeta']);
   });
 });

@@ -1,6 +1,11 @@
 export type { ActorContext } from './actor-context.ts';
 export { KnowledgeRecovery, type KnowledgeRecoveryOptions } from './knowledge/recovery.ts';
 export {
+  TaxonomyRecovery,
+  type TaxonomyFileCategory,
+  type TaxonomyRecoveryOptions,
+} from './taxonomy/recovery.ts';
+export {
   KnowledgeService,
   MAX_BODY_BYTES,
   UNCATEGORISED_DIRECTORY,

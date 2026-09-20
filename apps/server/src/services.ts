@@ -18,6 +18,7 @@ import {
   MemberService,
   KnowledgeRecovery,
   KnowledgeService,
+  TaxonomyRecovery,
   TaxonomyService,
   SessionService,
   UserService,
@@ -36,6 +37,7 @@ import {
   createGitStore,
   frontmatterHash,
   parseItem,
+  parseTaxonomy,
   renderItem,
   renderTaxonomy,
   slugifyTitle,
@@ -135,11 +137,24 @@ export function createServices(config: ServicesConfig) {
     contentHash,
     frontmatterHash,
   });
+  const taxonomyRecovery = new TaxonomyRecovery({
+    uow,
+    categories: repositories.categories,
+    aliases: repositories.aliases,
+    versions: repositories.taxonomyVersions,
+    ledger,
+    git,
+    taxonomyPath: TAXONOMY_PATH,
+    parseTaxonomy,
+  });
   const recovery = new RecoveryService({
     uow,
     operations: repositories.operations,
     commitExists: (workspaceId, operationId) => git.hasCommitForOperation(workspaceId, operationId),
-    completeFromCommit: (operation) => knowledgeRecovery.complete(operation),
+    // Each knows the operations it can finish, so the order only decides who
+    // is asked first, not who answers.
+    completeFromCommit: async (operation) =>
+      (await knowledgeRecovery.complete(operation)) || (await taxonomyRecovery.complete(operation)),
   });
   const knowledge = new KnowledgeService({
     uow,
