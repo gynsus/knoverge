@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { authApi } from '../api/auth.ts';
 import { useAuth } from '../auth/use-auth.ts';
@@ -43,7 +43,7 @@ export function LoginPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={(e) => void submit(e)} className="grid gap-4">
-          <fieldset disabled={busy} className="grid gap-4 border-0 p-0">
+          <FieldSet disabled={busy}>
             <Field label={t('fields.email')}>
               <Input
                 type="email"
@@ -63,7 +63,7 @@ export function LoginPage() {
                 autoComplete="current-password"
               />
             </Field>
-          </fieldset>
+          </FieldSet>
           <ErrorNotice error={error} />
           <Button type="submit" disabled={busy} className="justify-self-start">
             {busy ? t('common.working') : t('login.submit')}

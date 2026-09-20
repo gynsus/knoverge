@@ -795,3 +795,15 @@ describe('a checkbox is a checkbox', () => {
     expect(enabled).not.toBeChecked();
   });
 });
+
+describe('a subheading stands apart from the fields under it', () => {
+  it('is a real legend, set apart from the first label', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/account/sessions': () => json({ sessions: [] }) });
+    renderApp('/settings');
+    const legend = await screen.findByText('Change password', { selector: 'legend' });
+    // A legend takes no part in the grid gap, so its spacing has to be its own.
+    expect(legend.className).toContain('mb-3');
+    // And it reads as a heading rather than as another field label.
+    expect(legend.className).toContain('font-semibold');
+  });
+});

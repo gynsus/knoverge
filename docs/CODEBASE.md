@@ -130,6 +130,13 @@ Forms are `grid gap-4` and their submit button carries `justify-self-start`.
 Both matter: without the gap the button sits against the last field, and
 without the alignment a grid stretches it across the card.
 
+Fields are grouped with `FieldSet`, or with `FieldGroup` when the group needs a
+subheading of its own. The spacing and the heading live in those components
+rather than at each call site, because a class list repeated at every form is
+the thing that drifts. A `legend` takes no part in the grid's gap, which is why
+`FieldGroup` gives it a margin: without one it sits against the first field's
+label.
+
 Two rules follow from it. A cell in `ui/table.tsx` must pass a `label`, because
 that heading is what a narrow screen shows beside the value. And the native
 `select` is used for short lists of fixed values, because it is what a phone
