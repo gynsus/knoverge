@@ -156,6 +156,8 @@ the thing that drifts. A `legend` takes no part in the grid's gap, which is why
 `FieldGroup` gives it a margin: without one it sits against the first field's
 label.
 
+A card that carries the same field labels as another card on the page is given `role="region"` with its title as the accessible name. Two fields called "Text" on one page are indistinguishable to anyone reading them out; the region is what tells them apart.
+
 Three rules follow from it. A cell in `ui/table.tsx` must pass a `label`,
 because that heading is what a narrow screen shows beside the value, and lint
 requires it to come from the catalogue. Controls inside a cell go in

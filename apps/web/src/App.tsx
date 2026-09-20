@@ -4,6 +4,7 @@ import { AnonymousOnly, RequireAuth } from './auth/guards.tsx';
 import { AppShell } from './components/AppShell.tsx';
 import { AgentsPage } from './pages/AgentsPage.tsx';
 import { HomePage } from './pages/HomePage.tsx';
+import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
@@ -23,6 +24,7 @@ export function App() {
         </Route>
         <Route element={<RequireAuth />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />
