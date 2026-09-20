@@ -96,7 +96,10 @@ Schema changes are made in `packages/db/src/schema`, then `pnpm --filter @knover
 A person can belong to several workspaces, and the server refuses a request
 that names none of them. `apps/web/src/auth/use-workspace.ts` holds the choice,
 sends it as `X-Knoverge-Workspace` on every request, and remembers it per
-browser. The picker appears in the header only when there is more than one.
+browser. The picker sits in the sidebar header and appears only when there is
+more than one. Choosing another workspace clears every cached query but the
+authentication one: the page keys are not scoped by workspace, so without that
+the previous workspace's rows would stay on screen under the new one's name.
 
 The same hook reports what the caller may do, which `/v1/workspace.get` returns
 as `permissions`. Navigation entries and mutation controls are shown from that,
@@ -142,9 +145,9 @@ our licence. ADR 0013 records the decision, including why colour is expressed
 as semantic tokens with no `dark:` variant, and why a table becomes a labelled
 list on a phone.
 
-Forms are `grid gap-4` and their submit button carries `justify-self-start`.
-Both matter: without the gap the button sits against the last field, and
-without the alignment a grid stretches it across the card.
+Forms are `grid gap-4`, and a row of buttons goes in a `flex flex-wrap gap-2`
+of its own. Both matter: without the gap the button sits against the last
+field, and inside the grid a lone button is stretched across the card.
 
 Fields are grouped with `FieldSet`, or with `FieldGroup` when the group needs a
 subheading of its own. The spacing and the heading live in those components
@@ -153,7 +156,10 @@ the thing that drifts. A `legend` takes no part in the grid's gap, which is why
 `FieldGroup` gives it a margin: without one it sits against the first field's
 label.
 
-Two rules follow from it. A cell in `ui/table.tsx` must pass a `label`, because
-that heading is what a narrow screen shows beside the value. And the native
-`select` is used for short lists of fixed values, because it is what a phone
-opens as a wheel and what a screen reader already knows.
+Three rules follow from it. A cell in `ui/table.tsx` must pass a `label`,
+because that heading is what a narrow screen shows beside the value, and lint
+requires it to come from the catalogue. Controls inside a cell go in
+`TableActions`, because a table cell is not a flex container on a desktop and
+is a single unwrapped row on a phone. And the native `select` is used for short
+lists of fixed values, because it is what a phone opens as a wheel and what a
+screen reader already knows.

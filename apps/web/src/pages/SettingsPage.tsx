@@ -138,7 +138,9 @@ export function SettingsPage() {
                 <TableRow>
                   <TableHead>{t('settings.started')}</TableHead>
                   <TableHead>{t('settings.client')}</TableHead>
-                  <TableHead />
+                  <TableHead>
+                    <span className="sr-only">{t('common.actions')}</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -155,7 +157,7 @@ export function SettingsPage() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell label={t('settings.revoke')}>
+                    <TableCell label={t('settings.session_actions')}>
                       {!session.current && (
                         <Button
                           type="button"

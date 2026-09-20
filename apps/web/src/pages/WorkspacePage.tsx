@@ -5,14 +5,16 @@ import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
 import { useAuth } from '../auth/use-auth.ts';
-import { useWorkspaceContext } from '../auth/use-workspace.ts';
+import { WORKSPACE_KEY, useWorkspaceContext } from '../auth/use-workspace.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
+  TableActions,
   TableBody,
   TableCell,
   TableHead,
@@ -21,8 +23,9 @@ import {
 } from '@/components/ui/table';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 
-const WORKSPACE_KEY = ['workspace'] as const;
-const MEMBERS_KEY = ['workspace', 'members'] as const;
+// Its own key space. ['workspace', 'members'] shares one with the context's
+// ['workspace', <id>], so the two would invalidate each other by accident.
+const MEMBERS_KEY = ['workspace-members'] as const;
 const ROLES: MembershipRole[] = ['owner', 'admin', 'reviewer', 'viewer'];
 
 function MemberRow({
@@ -73,7 +76,7 @@ function MemberRow({
           ))}
         </Select>
         {pendingRole !== null && pendingRole !== member.role && (
-          <>
+          <TableActions>
             <Button
               type="button"
               onClick={() => update.mutate(pendingRole)}
@@ -81,10 +84,10 @@ function MemberRow({
             >
               {update.isPending ? t('common.working') : t('workspace.apply_role')}
             </Button>
-            <Button type="button" onClick={() => setPendingRole(null)}>
+            <Button variant="outline" type="button" onClick={() => setPendingRole(null)}>
               {t('common.cancel')}
             </Button>
-          </>
+          </TableActions>
         )}
       </TableCell>
       <TableCell label={t('workspace.last_seen')}>
@@ -98,15 +101,22 @@ function MemberRow({
             <small>{t('workspace.this_is_you')}</small>
           </span>
         ) : confirmingRemoval ? (
-          <>
-            <span>{t('workspace.confirm_remove', { name: member.display_name })}</span>{' '}
-            <Button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
+          <TableActions>
+            <span className="text-sm">
+              {t('workspace.confirm_remove', { name: member.display_name })}
+            </span>
+            <Button
+              variant="destructive"
+              type="button"
+              onClick={() => remove.mutate()}
+              disabled={remove.isPending}
+            >
               {remove.isPending ? t('common.working') : t('workspace.confirm')}
             </Button>
-            <Button type="button" onClick={() => setConfirmingRemoval(false)}>
+            <Button variant="outline" type="button" onClick={() => setConfirmingRemoval(false)}>
               {t('common.cancel')}
             </Button>
-          </>
+          </TableActions>
         ) : (
           <Button type="button" onClick={() => setConfirmingRemoval(true)}>
             {t('workspace.remove')}
@@ -160,7 +170,8 @@ function WorkspaceSettingsForm({
           <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
         </Field>
         <Field label={t('workspace.description')}>
-          <Input
+          <Textarea
+            rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={2000}
@@ -200,10 +211,6 @@ export function WorkspacePage() {
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<MembershipRole>('reviewer');
 
-  const workspace = useQuery({
-    queryKey: WORKSPACE_KEY,
-    queryFn: ({ signal }) => adminApi.workspace.get(signal),
-  });
   const members = useQuery({
     queryKey: MEMBERS_KEY,
     queryFn: ({ signal }) => adminApi.workspace.members(signal),
@@ -244,12 +251,14 @@ export function WorkspacePage() {
     <>
       <Card aria-labelledby="workspace-title" className="grid gap-3 p-4 sm:p-6">
         <CardTitle id="workspace-title">{t('workspace.title')}</CardTitle>
-        {workspace.isPending && <p role="status">{t('common.loading')}</p>}
-        {workspace.isError && <ErrorNotice error={workspace.error} />}
-        {workspace.data && (
+        {/* The same request the shell already made, read from the context
+            rather than fetched again under a second key. */}
+        {workspaces.isPending && <p role="status">{t('common.loading')}</p>}
+        <ErrorNotice error={workspaces.error} />
+        {workspaces.workspace && (
           <WorkspaceSettingsForm
-            key={workspace.data.workspace.id}
-            workspace={workspace.data.workspace}
+            key={workspaces.workspace.id}
+            workspace={workspaces.workspace}
             canAdminister={canAdminister}
           />
         )}
@@ -268,7 +277,9 @@ export function WorkspacePage() {
                     <TableHead>{t('workspace.person')}</TableHead>
                     <TableHead>{t('workspace.role')}</TableHead>
                     <TableHead>{t('workspace.last_seen')}</TableHead>
-                    <TableHead />
+                    <TableHead>
+                      <span className="sr-only">{t('common.actions')}</span>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

@@ -26,9 +26,10 @@ export async function registerSecurity(
       directives: {
         'default-src': ["'self'"],
         'script-src': ["'self'"],
-        // No 'unsafe-inline': the interface carries no inline style attribute
-        // and no style element, so allowing them would widen the policy for
-        // nothing. A change that needs one must add a nonce instead.
+        // No 'unsafe-inline': the interface carries no style element, and the
+        // few style props it does set are applied by React through the CSSOM,
+        // which the policy does not govern. Allowing inline styles would widen
+        // it for nothing; a change that needs one must add a nonce instead.
         'style-src': ["'self'"],
         'img-src': ["'self'", 'data:'],
         'font-src': ["'self'"],

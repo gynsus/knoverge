@@ -42,6 +42,11 @@ to handle the dark case, and there is no class to toggle and keep in sync. The
 values carry the contrast fixes: the text on the accent is dark in dark mode,
 because white on it measured 2.49:1.
 
+A generated component that arrives carrying `dark:` utilities has them removed,
+along with anything that switches the shared focus outline off for itself. The
+checkbox arrived with both, and its own focus ring measured 2.30:1 where the
+site-wide outline is 6.5:1.
+
 ### A table is a table on a desktop and a list on a phone
 
 `components/ui/table.tsx` renders one DOM either way. Below the medium
@@ -82,13 +87,16 @@ keeps working when JavaScript does not.
 - `apps/web/src/components/ui` is generated code in shadcn's shape, so
   `shadcn add` keeps working. Lint's fast-refresh rule is switched off there,
   because exporting a variant helper beside its component is that shape.
-- Generated components need three edits every time, and the lint rules catch
-  each one: the helper is imported from `@/lib/utils` rather than from the `cn`
-  package, because four lines we already have is not worth a dependency; every
-  visible or spoken string goes through the message catalogue, including the
-  screen-reader-only ones the generator writes in English; and React's rules
-  are enforced, which caught a hook that set state inside an effect and a
-  component that called `Math.random()` during render.
+- Generated components need editing every time. Lint catches the string rules —
+  every visible or spoken string goes through the message catalogue, including
+  the screen-reader-only ones and the column headings a phone prints beside each
+  value — and React's rules, which caught a hook that set state inside an effect
+  and a component that called `Math.random()` during render. The rest is review:
+  the helper is imported from `@/lib/utils` rather than from the `cn` package,
+  because four lines we already have is not worth a dependency; `dark:`
+  utilities and per-component focus rings are removed; and `'use client'` goes,
+  since this is a Vite single-page application and the directive means nothing
+  here.
 - Radix arrives through the single `radix-ui` package the generator targets,
   rather than one package per primitive.
 - Tailwind compiles to a static stylesheet, so the content security policy
@@ -96,8 +104,9 @@ keeps working when JavaScript does not.
   runtime would have needed one, or a nonce.
 - Fonts stay system fonts. Nothing is fetched from another origin, which rule
   12 requires and the policy enforces.
-- Tailwind installs a native binary with a build step, so it is listed
-  explicitly in the `.npmrc` allowlist.
+- Tailwind's platform binaries arrive as prebuilt optional packages with no
+  install script, so nothing was added to the build allowlist in
+  `pnpm-workspace.yaml`.
 - The message catalogue rules are unchanged, and the check that English and
   Russian hold the same keys still runs in lint.
 

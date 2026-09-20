@@ -4,13 +4,27 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { cn } from '@/lib/utils';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+
+/**
+ * One step of indentation per level of the tree.
+ *
+ * A fixed list rather than a computed class, because Tailwind only emits the
+ * classes it can see in the source. Depth is capped: past six levels the
+ * indentation costs more room than it explains, and the path is written beside
+ * every entry anyway.
+ */
+const INDENT = ['pl-0', 'pl-4', 'pl-8', 'pl-12', 'pl-16', 'pl-20', 'pl-24'] as const;
+
+const depthOf = (path: string): number => Math.min(path.split('/').length - 1, INDENT.length - 1);
 
 const TAXONOMY_KEY = ['taxonomy'] as const;
 
@@ -157,12 +171,19 @@ export function TaxonomyPage() {
         {taxonomy.isPending && <p role="status">{t('common.loading')}</p>}
         {taxonomy.isError && <ErrorNotice error={taxonomy.error} />}
         {categories.length === 0 && taxonomy.isSuccess && <p>{t('taxonomy.empty')}</p>}
-        <ul className="tree">
+        {/* The indentation is the hierarchy. It is a class rather than an
+            inline style because the interface carries no inline styles, which
+            is what lets the policy keep style-src to 'self'. */}
+        <ul className="grid gap-1">
           {categories.map((category) => (
-            <li key={category.id} data-depth={Math.min(category.path.split('/').length - 1, 6)}>
+            <li
+              key={category.id}
+              className={cn('flex flex-wrap items-baseline gap-2', INDENT[depthOf(category.path)])}
+            >
               <Button
                 type="button"
-                className="link"
+                variant="link"
+                className="h-auto p-0 text-left"
                 onClick={(event) => {
                   lastTrigger.current = event.currentTarget;
                   setSelected(category);
@@ -172,9 +193,15 @@ export function TaxonomyPage() {
               >
                 {category.name}
               </Button>
-              <code>{category.path}</code>
-              {category.status !== 'active' && <> [{t(`taxonomy.statuses.${category.status}`)}]</>}
-              {category.aliases.length > 0 && <> ({category.aliases.join(', ')})</>}
+              <code className="text-xs text-muted-foreground">{category.path}</code>
+              {category.status !== 'active' && (
+                <Badge>{t(`taxonomy.statuses.${category.status}`)}</Badge>
+              )}
+              {category.aliases.length > 0 && (
+                <small>
+                  {t('taxonomy.aliases_inline', { aliases: category.aliases.join(', ') })}
+                </small>
+              )}
             </li>
           ))}
         </ul>
@@ -200,7 +227,8 @@ export function TaxonomyPage() {
             />
           </Field>
           <Field label={t('taxonomy.description')}>
-            <Input
+            <Textarea
+              rows={3}
               value={draft.description}
               onChange={(e) => setDraft({ ...draft, description: e.target.value })}
               maxLength={2000}

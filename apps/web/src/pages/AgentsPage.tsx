@@ -50,7 +50,9 @@ function CredentialList({ agentId }: { agentId: string }) {
             <TableHead>{t('agents.credential')}</TableHead>
             <TableHead>{t('agents.credential_state')}</TableHead>
             <TableHead>{t('agents.last_used')}</TableHead>
-            <TableHead />
+            <TableHead>
+              <span className="sr-only">{t('common.actions')}</span>
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -170,7 +172,9 @@ export function AgentsPage() {
                 <TableHead>{t('agents.trust_tier')}</TableHead>
                 <TableHead>{t('agents.status')}</TableHead>
                 <TableHead>{t('agents.credentials')}</TableHead>
-                <TableHead />
+                <TableHead>
+                  <span className="sr-only">{t('common.actions')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -217,13 +221,15 @@ export function AgentsPage() {
             {current?.name ?? ''}
           </CardTitle>
           {issuedToken?.agentId === expanded && (
-            <div className="notice">
+            <div className="grid gap-2 rounded-md border-2 border-primary p-3">
               <p role="status">
                 <strong>{t('agents.token_once')}</strong>
               </p>
               {/* Outside the live region: an assertive announcement would read
-                  the secret out loud, and it is the instruction that matters. */}
-              <pre>
+                  the secret out loud, and it is the instruction that matters.
+                  The scroller matters too: a token is one unbreakable string,
+                  and without it the card grows past the width of a phone. */}
+              <pre className="overflow-x-auto rounded bg-muted p-2 text-xs">
                 <code>{issuedToken.token}</code>
               </pre>
               <Button type="button" onClick={() => setIssuedToken(null)}>

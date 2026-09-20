@@ -26,8 +26,10 @@
   --destructive: #b00020;
   --destructive-foreground: #ffffff;
   --border: #dddddd;
-  /* Boundaries a reader has to find: 3:1 against the surface behind them. */
-  --input: #949494;
+  /* Boundaries a reader has to find: 3:1 against both surfaces they sit
+     between. A control is filled with --background and sits on --card, so
+     #949494 passed against the card (3.03) and failed against the fill (2.91). */
+  --input: #919191;
   --ring: #2456c4;
   --radius: 0.5rem;
 }
@@ -102,5 +104,18 @@
      default happens to show through. */
   :focus-visible {
     @apply outline-ring outline-2 outline-offset-2;
+  }
+  /* Secondary text reads as secondary wherever it is written, not only inside
+     the components that remember to say so. */
+  small {
+    @apply text-muted-foreground;
+  }
+  /* A token, an address or an id is an unbreakable string. Left alone it
+     pushes the page sideways on a phone. */
+  code {
+    @apply break-all;
+  }
+  pre {
+    @apply overflow-x-auto;
   }
 }

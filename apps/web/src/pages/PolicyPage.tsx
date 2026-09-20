@@ -21,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
   Table,
+  TableActions,
   TableBody,
   TableCell,
   TableHead,
@@ -93,7 +94,9 @@ export function PolicyPage() {
                 <TableHead>{t('policy.subject')}</TableHead>
                 <TableHead>{t('policy.action')}</TableHead>
                 <TableHead>{t('policy.effect')}</TableHead>
-                <TableHead />
+                <TableHead>
+                  <span className="sr-only">{t('common.actions')}</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -109,16 +112,19 @@ export function PolicyPage() {
                     {!rule.enabled && <> ({t('policy.disabled')})</>}
                   </TableCell>
                   <TableCell label={t('common.actions')}>
-                    <Button type="button" onClick={() => setEditing(rule)}>
-                      {t('policy.edit')}
-                    </Button>
-                    <Button
-                      type="button"
-                      onClick={() => remove.mutate(rule.id)}
-                      disabled={remove.isPending}
-                    >
-                      {t('policy.delete')}
-                    </Button>
+                    <TableActions>
+                      <Button type="button" onClick={() => setEditing(rule)}>
+                        {t('policy.edit')}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        type="button"
+                        onClick={() => remove.mutate(rule.id)}
+                        disabled={remove.isPending}
+                      >
+                        {t('policy.delete')}
+                      </Button>
+                    </TableActions>
                   </TableCell>
                 </TableRow>
               ))}
@@ -267,14 +273,18 @@ function RuleForm({
           </div>
         </FieldSet>
         <ErrorNotice error={save.error} />
-        <Button type="submit" disabled={save.isPending} className="justify-self-start">
-          {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
-        </Button>
-        {rule && (
-          <Button type="button" onClick={onCancel}>
-            {t('common.cancel')}
+        {/* A grid stretches a button across the card unless it is told not to,
+            which is why both live in a row of their own. */}
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={save.isPending}>
+            {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
           </Button>
-        )}
+          {rule && (
+            <Button variant="outline" type="button" onClick={onCancel}>
+              {t('common.cancel')}
+            </Button>
+          )}
+        </div>
       </form>
     </Card>
   );
