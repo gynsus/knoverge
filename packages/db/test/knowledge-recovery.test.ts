@@ -117,7 +117,13 @@ beforeAll(async () => {
   const workspaces = {
     findById: async (id: WorkspaceId) => {
       const workspace = await repositories.workspaces.findById(id);
-      return workspace ? { id: workspace.id, name: workspace.name } : null;
+      return workspace
+        ? {
+            id: workspace.id,
+            name: workspace.name,
+            defaultLanguage: workspace.defaultLanguage,
+          }
+        : null;
     },
   };
   const crossStore = new CrossStoreWriter({
