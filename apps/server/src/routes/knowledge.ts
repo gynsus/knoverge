@@ -2,9 +2,13 @@ import { z } from 'zod';
 
 import {
   CreateKnowledgeRequest,
+  DeleteKnowledgeRequest,
   KnowledgeItemId,
   KnowledgeListResponse,
   KnowledgeResponse,
+  RestoreKnowledgeRequest,
+  RevisionsResponse,
+  UpdateKnowledgeRequest,
   type KnowledgeItemDetail,
   type KnowledgeItemSummary,
 } from '@knoverge/contracts';
@@ -70,6 +74,26 @@ function detail(result: ItemResult): KnowledgeItemDetail {
   } as KnowledgeItemDetail;
 }
 
+/**
+ * Rule 14: an agent write needs a policy rule that allows it directly, and the
+ * machinery that decides is the proposal workflow of Milestone 3. Until it
+ * exists, holding `knowledge.write` is not enough — a trusted agent holds it,
+ * and letting one through here would be the unreviewed write the rule exists
+ * to prevent.
+ *
+ * Not POLICY_REQUIRES_REVIEW: that answers 202, which would say the write was
+ * accepted for review when nothing was accepted at all. It becomes the right
+ * answer once a proposal is actually created.
+ */
+function assertHuman(actorType: string): void {
+  if (actorType !== 'human') {
+    throw new DomainError(
+      'FORBIDDEN',
+      'an agent proposes rather than writes directly; the review workflow that accepts a proposal arrives in a later milestone',
+    );
+  }
+}
+
 export function registerKnowledgeRoutes(app: FastifyInstance, services: Services): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
@@ -81,20 +105,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
     },
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.write');
-      // Rule 14: an agent write needs a policy rule that allows it directly,
-      // and the machinery that decides is the proposal workflow of Milestone 3.
-      // Until it exists, holding the permission is not enough — letting a
-      // trusted agent through here would be the unreviewed write the rule
-      // exists to prevent.
-      if (actor.context.actorType !== 'human') {
-        // Not POLICY_REQUIRES_REVIEW: that answers 202, which would say the
-        // write was accepted for review when nothing was accepted at all. It
-        // becomes the right answer once a proposal is actually created.
-        throw new DomainError(
-          'FORBIDDEN',
-          'an agent proposes rather than writes directly; the review workflow that accepts a proposal arrives in a later milestone',
-        );
-      }
+      assertHuman(actor.context.actorType);
       const result = await services.knowledge.create(actor.context, {
         title: request.body.title,
         body: request.body.body,
@@ -109,6 +120,93 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         external: request.body.external,
       });
       return { item: detail(result) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/knowledge.update',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: UpdateKnowledgeRequest, response: { 200: KnowledgeResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      assertHuman(actor.context.actorType);
+      const result = await services.knowledge.update(actor.context, {
+        itemId: request.body.item_id,
+        baseRevisionId: request.body.base_revision_id,
+        baseContentHash: request.body.base_content_hash,
+        title: request.body.title,
+        body: request.body.body,
+        type: request.body.type,
+        language: request.body.language,
+        categories: request.body.categories,
+        tags: request.body.tags,
+        validFrom: request.body.valid_from,
+        validUntil: request.body.valid_until,
+        observedAt: request.body.observed_at,
+      });
+      return { item: detail(result) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/knowledge.delete',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: DeleteKnowledgeRequest, response: { 200: KnowledgeResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      assertHuman(actor.context.actorType);
+      const result = await services.knowledge.delete(actor.context, {
+        itemId: request.body.item_id,
+        baseRevisionId: request.body.base_revision_id,
+        baseContentHash: request.body.base_content_hash,
+      });
+      return { item: detail(result) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/knowledge.restore',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: RestoreKnowledgeRequest, response: { 200: KnowledgeResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      assertHuman(actor.context.actorType);
+      const result = await services.knowledge.restore(actor.context, request.body.item_id);
+      return { item: detail(result) };
+    },
+  );
+
+  r.get(
+    '/v1/knowledge.revisions',
+    {
+      schema: {
+        querystring: z.object({ item_id: KnowledgeItemId }),
+        response: { 200: RevisionsResponse },
+      },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'knowledge.read_history');
+      const revisions = await services.knowledge.history(actor.context, request.query.item_id);
+      return {
+        revisions: revisions.map((revision) => ({
+          id: revision.id,
+          revision_number: revision.revisionNumber,
+          change_kind: revision.changeKind,
+          title: revision.title,
+          markdown_path: revision.markdownPath,
+          content_hash: revision.contentHash,
+          frontmatter_hash: revision.frontmatterHash,
+          git_commit: revision.gitCommitHash,
+          actor_id: revision.createdByActorId,
+          created_at: revision.createdAt.toISOString(),
+        })),
+      };
     },
   );
 

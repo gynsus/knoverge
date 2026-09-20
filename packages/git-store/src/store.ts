@@ -40,6 +40,9 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     async read(workspaceId: WorkspaceId, path: string) {
       return open(workspaceId).read(path);
     },
+    async readAt(workspaceId: WorkspaceId, commitHash: string, path: string) {
+      return open(workspaceId).readAt(commitHash, path);
+    },
     async remove(workspaceId: WorkspaceId, paths: readonly string[]) {
       await open(workspaceId).remove(paths);
     },

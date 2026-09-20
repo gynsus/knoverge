@@ -118,16 +118,18 @@ POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
 GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
+GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 POST /v1/admin/knowledge.create             a person writes an item directly
+POST /v1/admin/knowledge.update             requires base_revision_id and base_content_hash
+POST /v1/admin/knowledge.delete             logical: the file leaves the tree, the history keeps it
+POST /v1/admin/knowledge.restore            brings a deleted item back from its last revision
 POST /v1/admin/taxonomy.create
 POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
 POST /v1/admin/taxonomy.restore
 POST /v1/admin/taxonomy.merge              (arrives with knowledge items, Milestone 2)
-POST /v1/admin/knowledge.update             (Milestone 2)
-POST /v1/admin/knowledge.delete             (Milestone 2)
-POST /v1/admin/knowledge.restore            (Milestone 2)
+
 POST /v1/admin/knowledge.rename_slug        (Milestone 2)
 POST /v1/admin/embedding_profile.set        (Milestone 6)
 POST /v1/admin/webhooks.upsert              (Milestone 9)
