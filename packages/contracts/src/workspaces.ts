@@ -75,5 +75,18 @@ export const UpdateMemberRequest = z.object({
 });
 export type UpdateMemberRequest = z.infer<typeof UpdateMemberRequest>;
 
+/**
+ * An administrator setting a member's password, for an installation with no
+ * mail server to send a reset link through (ADR 0014).
+ *
+ * The password is handed over out of band, exactly as `initial_password` works
+ * when adding a member. It revokes every session that member holds.
+ */
+export const ResetMemberPasswordRequest = z.object({
+  user_id: UserId,
+  new_password: Password,
+});
+export type ResetMemberPasswordRequest = z.infer<typeof ResetMemberPasswordRequest>;
+
 export const RemoveMemberRequest = z.object({ user_id: UserId });
 export type RemoveMemberRequest = z.infer<typeof RemoveMemberRequest>;

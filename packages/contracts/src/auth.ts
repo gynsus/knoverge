@@ -58,6 +58,19 @@ export const ChangePasswordRequest = z.object({
 });
 export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
 
+/**
+ * Changing the address the account signs in with.
+ *
+ * The current password is required, so a stolen session is not enough to move
+ * an account somewhere its owner cannot follow. There is no confirmation link:
+ * an installation has no mail server to send one with (ADR 0014).
+ */
+export const ChangeEmailRequest = z.object({
+  current_password: z.string().min(1).max(200),
+  new_email: Email,
+});
+export type ChangeEmailRequest = z.infer<typeof ChangeEmailRequest>;
+
 export const SessionSummary = z.object({
   id: SessionId,
   created_at: z.iso.datetime(),

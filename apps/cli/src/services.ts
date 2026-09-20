@@ -71,6 +71,7 @@ export function createServices() {
   const users = lazy(
     () =>
       new UserService({
+        sessions: repositories.sessions,
         uow,
         users: repositories.users,
         passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },

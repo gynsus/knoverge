@@ -7,6 +7,7 @@ import { dbCommand } from './commands/db.ts';
 import { ledgerCommand } from './commands/ledger.ts';
 import { permissionsCommand } from './commands/permissions.ts';
 import { taxonomyCommand } from './commands/taxonomy.ts';
+import { userCommand } from './commands/user.ts';
 import { workspaceCommand } from './commands/workspace.ts';
 
 const program = new Command();
@@ -23,6 +24,7 @@ program.addCommand(workspaceCommand());
 program.addCommand(ledgerCommand());
 program.addCommand(permissionsCommand());
 program.addCommand(taxonomyCommand());
+program.addCommand(userCommand());
 
 program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(err instanceof Error ? err.message : String(err));

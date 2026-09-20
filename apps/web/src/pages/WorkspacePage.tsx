@@ -44,6 +44,8 @@ function MemberRow({
   // should not happen on a stray keystroke over a dropdown.
   const [pendingRole, setPendingRole] = useState<MembershipRole | null>(null);
   const [confirmingRemoval, setConfirmingRemoval] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
   const update = useMutation({
     mutationFn: (role: MembershipRole) =>
       adminApi.workspace.updateMember({ user_id: member.user_id, role }),
@@ -55,6 +57,14 @@ function MemberRow({
   const remove = useMutation({
     mutationFn: () => adminApi.workspace.removeMember(member.user_id),
     onSuccess: onChanged,
+  });
+  const resetPassword = useMutation({
+    mutationFn: () => adminApi.workspace.resetMemberPassword(member.user_id, newPassword),
+    onSuccess: async () => {
+      setResetting(false);
+      setNewPassword('');
+      await onChanged();
+    },
   });
   const role = pendingRole ?? member.role;
   return (
@@ -100,6 +110,39 @@ function MemberRow({
           <span>
             <small>{t('workspace.this_is_you')}</small>
           </span>
+        ) : resetting ? (
+          <TableActions>
+            <label className="sr-only" htmlFor={`reset-${member.user_id}`}>
+              {t('workspace.new_password')}
+            </label>
+            <Input
+              id={`reset-${member.user_id}`}
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              minLength={12}
+              autoComplete="new-password"
+              placeholder={t('workspace.new_password')}
+              className="w-48"
+            />
+            <Button
+              type="button"
+              onClick={() => resetPassword.mutate()}
+              disabled={resetPassword.isPending || newPassword.length < 12}
+            >
+              {resetPassword.isPending ? t('common.working') : t('workspace.confirm')}
+            </Button>
+            <Button
+              variant="outline"
+              type="button"
+              onClick={() => {
+                setResetting(false);
+                setNewPassword('');
+              }}
+            >
+              {t('common.cancel')}
+            </Button>
+          </TableActions>
         ) : confirmingRemoval ? (
           <TableActions>
             <span className="text-sm">
@@ -118,11 +161,18 @@ function MemberRow({
             </Button>
           </TableActions>
         ) : (
-          <Button type="button" onClick={() => setConfirmingRemoval(true)}>
-            {t('workspace.remove')}
-          </Button>
+          <TableActions>
+            {/* No mail server, so a reset is a password handed over out of
+                band — the same way a member is added in the first place. */}
+            <Button type="button" onClick={() => setResetting(true)}>
+              {t('workspace.reset_password')}
+            </Button>
+            <Button type="button" onClick={() => setConfirmingRemoval(true)}>
+              {t('workspace.remove')}
+            </Button>
+          </TableActions>
         )}
-        <ErrorNotice error={update.error ?? remove.error} />
+        <ErrorNotice error={update.error ?? remove.error ?? resetPassword.error} />
       </TableCell>
     </TableRow>
   );

@@ -298,6 +298,32 @@ The secret cookie is signed and cleared on sign-out, so the next person on that 
 
 Known limitation: the token is not bound to the session, so it is a double-submit pair. An attacker who can write a cookie for this host, from a sibling subdomain or over plain HTTP, could plant a matching pair. Binding the token to the user would require every client to fetch a new token after signing in, and the deployment guidance is TLS with no untrusted sibling subdomain, so the pair stands for now. It is recorded here rather than left unsaid.
 
+## 9b. Regaining access
+
+No installation has a mail server, so there is no reset link and no one-time
+code (ADR 0004, and ADR 0014 for what replaces them).
+
+An administrator may set a member's password, bounded by the rule every
+membership action follows: you may act on somebody only if you hold every
+permission their role includes. An admin therefore cannot reset an owner's
+password. The reset writes a `user.password_reset` event naming who did it and
+to whom, and revokes every session that member holds, so an account that was
+taken over does not stay taken over and a person who did not ask for it finds
+out at once.
+
+Changing your own sign-in address needs the current password. A stolen session
+is therefore not enough to move an account somewhere its owner cannot follow.
+The new address is not verified — there is nothing to verify it with — so a
+mistyped address is recovered through an administrator or the command line.
+
+The command line can reset a password or an address for anyone, including the
+last owner of a workspace, who by construction has nobody above them. This
+grants nothing new: whoever can run it can already read `KNOVERGE_LEDGER_KEY`
+and write to the database. It exists so that they do not have to, and so the
+change goes through the domain rules rather than past them.
+
+No route, event or log line records an email address.
+
 ## 10. Prompt injection boundary
 
 Content retrieved from Knoverge is data, not authority to change permissions.

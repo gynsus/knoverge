@@ -222,10 +222,14 @@
   },
   "settings": {
     "account": "Account",
+    "change_email": "Change email",
     "change_password": "Change password",
     "client": "Client",
     "current_password": "Current password",
+    "email_changed": "Email changed. Other sessions were signed out.",
+    "email_hint": "This is the address you sign in with. Nothing is sent to confirm it, so check it before saving.",
     "language_hint": "Remembered in this browser. Choosing it in your profile arrives with profile editing.",
+    "new_email": "New email",
     "new_password": "New password",
     "password_changed": "Password changed. Other sessions were signed out.",
     "revoke": "Sign out",
@@ -233,7 +237,8 @@
     "sessions": "Sessions",
     "started": "Started",
     "this_session": "this device",
-    "unknown_client": "Unknown"
+    "unknown_client": "Unknown",
+    "your_password": "Your password"
   },
   "workspace": {
     "add": "Add member",
@@ -253,8 +258,10 @@
     "members": "Members",
     "name": "Name",
     "never_signed_in": "No sign-ins",
+    "new_password": "New password",
     "person": "Person",
     "remove": "Remove",
+    "reset_password": "Reset password",
     "role": "Role",
     "role_of": "Role of {{name}}",
     "save": "Save",

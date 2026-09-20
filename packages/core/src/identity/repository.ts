@@ -48,6 +48,14 @@ export interface UserRepository {
   ): Promise<number>;
   recordLoginSuccess(tx: Tx, id: UserId, at: Date): Promise<void>;
   updatePassword(tx: Tx, id: UserId, passwordHash: string, at: Date): Promise<void>;
+  /**
+   * Changes the address the account signs in with.
+   *
+   * Raises VALIDATION_ERROR when another account already holds it: the address
+   * is unique in the database, and a pre-check outside the transaction is a
+   * better message, not a guarantee.
+   */
+  updateEmail(tx: Tx, id: UserId, email: string): Promise<void>;
 }
 
 export interface SessionRecord {

@@ -52,6 +52,7 @@ export function createServices(config: ServicesConfig) {
   const repositories = createRepositories(database.db);
   const ledger = new EventLedger({ key: config.ledgerKey, events: repositories.events });
   const users = new UserService({
+    sessions: repositories.sessions,
     uow,
     users: repositories.users,
     passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },
@@ -133,6 +134,7 @@ export function createServices(config: ServicesConfig) {
     actors: repositories.actors,
   });
   const members = new MemberService({
+    sessions: repositories.sessions,
     uow,
     memberships: repositories.memberships,
     actors: repositories.actors,

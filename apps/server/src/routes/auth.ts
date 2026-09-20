@@ -2,6 +2,7 @@ import {
   AuthStatusResponse,
   BootstrapRequest,
   BootstrapResponse,
+  ChangeEmailRequest,
   ChangePasswordRequest,
   CsrfResponse,
   LoginRequest,
@@ -174,6 +175,27 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
         request.body.new_password,
       );
       // Every other session must sign in again with the new password.
+      await services.sessions.revokeAll(auth.user.id, auth.session.id);
+      return { ok: true as const };
+    },
+  );
+
+  r.post(
+    '/v1/auth/email',
+    {
+      onRequest: app.csrfProtection,
+      preHandler: requireUser,
+      schema: { body: ChangeEmailRequest, response: { 200: OkResponse } },
+    },
+    async (request) => {
+      const auth = request.humanAuth as HumanAuth;
+      await services.users.changeEmail(
+        auth.user.id,
+        request.body.current_password,
+        request.body.new_email,
+      );
+      // The address is what the account signs in with, so every other session
+      // was opened against an identity that no longer exists.
       await services.sessions.revokeAll(auth.user.id, auth.session.id);
       return { ok: true as const };
     },

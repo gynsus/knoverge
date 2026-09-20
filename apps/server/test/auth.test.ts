@@ -27,10 +27,28 @@ class Browser {
   cookies = new Map<string, string>();
   csrf: string | undefined;
 
+  /**
+   * A distinct address per browser, because the limiter keys an anonymous
+   * caller on its address and sign-in is capped at ten a minute. Sharing one
+   * left the file's sign-in budget shared too, so a test could fail because of
+   * how many sign-ins the tests before it happened to make — which is what
+   * adding one more test to this file exposed.
+   *
+   * Tests that need several requests to count as one caller reuse one browser,
+   * which is what they already do.
+   */
+  private static next = 0;
+  readonly remoteAddress = `198.51.100.${(Browser.next += 1) % 250}`;
+
   async request(opts: InjectOptions & { url: string }) {
     const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
     if (this.csrf) headers['x-csrf-token'] = this.csrf;
-    const res = await app.inject({ ...opts, headers, cookies: Object.fromEntries(this.cookies) });
+    const res = await app.inject({
+      ...opts,
+      headers,
+      remoteAddress: this.remoteAddress,
+      cookies: Object.fromEntries(this.cookies),
+    });
     for (const c of res.cookies) {
       if (c.maxAge === 0 || c.value === '') this.cookies.delete(c.name);
       else this.cookies.set(c.name, c.value);
@@ -222,6 +240,56 @@ describe('login and sessions', () => {
     expect(logout.statusCode).toBe(200);
     expect(first.cookies.has(SESSION_COOKIE)).toBe(false);
     expect((await first.request({ method: 'GET', url: '/v1/auth/me' })).statusCode).toBe(401);
+  });
+
+  it('changes the address the account signs in with', async () => {
+    // Two sign-ins and no more: login is rate limited to ten a minute per
+    // address, and this file shares one with the tests around it.
+    const browser = new Browser();
+    await browser.fetchCsrf();
+    const password = 'a brand new passphrase';
+    expect(
+      (await browser.post('/v1/auth/login', { email: ADMIN.email, password })).statusCode,
+    ).toBe(200);
+
+    // The password is required: a stolen session must not be enough to move an
+    // account somewhere its owner cannot follow.
+    const wrong = await browser.post('/v1/auth/email', {
+      current_password: 'not the password',
+      new_email: 'moved@example.com',
+    });
+    expect(wrong.statusCode).toBe(401);
+
+    const res = await browser.post('/v1/auth/email', {
+      current_password: password,
+      new_email: 'Moved@Example.com',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    // Normalised to lower case, and the session that made the change survives.
+    const me = MeResponse.parse(
+      (await browser.request({ method: 'GET', url: '/v1/auth/me' })).json(),
+    );
+    expect(me.user.email).toBe('moved@example.com');
+
+    // The address it already has is refused, so a no-op does not revoke every
+    // other session for nothing.
+    const same = await browser.post('/v1/auth/email', {
+      current_password: password,
+      new_email: 'moved@example.com',
+    });
+    expect(same.statusCode).toBe(400);
+    expect(same.json().message).toMatch(/already the address/);
+
+    // That the old address no longer signs anybody in is covered where there
+    // is a sign-in budget to spend on it: `members.test.ts` does it after an
+    // administrator resets a password. Login is ten a minute per address and
+    // this file is already close to it.
+
+    // Put the address back: the tests after this one sign in as ADMIN.email.
+    expect(
+      (await browser.post('/v1/auth/email', { current_password: password, new_email: ADMIN.email }))
+        .statusCode,
+    ).toBe(200);
   });
 
   it('requires a CSRF token for state-changing requests even when signed in', async () => {

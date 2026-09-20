@@ -18,6 +18,7 @@ import {
   createDatabase,
   createEventRepository,
   createMembershipRepository,
+  createSessionRepository,
   createUnitOfWork,
   createUserRepository,
   createWorkspaceRepository,
@@ -275,8 +276,14 @@ describe('bootstrap concurrency', () => {
       memberships: createMembershipRepository(handle.db),
       actors: createActorRepository(handle.db),
       workspaces: createWorkspaceRepository(handle.db),
+      sessions: createSessionRepository(handle.db),
     };
-    const users = new UserService({ uow, users: repositories.users, passwords });
+    const users = new UserService({
+      uow,
+      users: repositories.users,
+      sessions: repositories.sessions,
+      passwords,
+    });
     const bootstrap = new BootstrapService({
       uow,
       users,

@@ -68,6 +68,11 @@ export const adminApi = {
     addMember: (body: AddMemberRequest) => apiPost<MembersResponse>('/v1/admin/members.add', body),
     updateMember: (body: UpdateMemberRequest) =>
       apiPost<OkResponse>('/v1/admin/members.update', body),
+    resetMemberPassword: (userId: string, newPassword: string) =>
+      apiPost<OkResponse>('/v1/admin/members.reset_password', {
+        user_id: userId,
+        new_password: newPassword,
+      }),
     removeMember: (userId: string) =>
       apiPost<OkResponse>('/v1/admin/members.remove', { user_id: userId }),
   },
@@ -75,6 +80,11 @@ export const adminApi = {
     sessions: (signal?: AbortSignal) => apiGet<SessionsResponse>('/v1/auth/sessions', signal),
     revokeSession: (sessionId: string) =>
       apiPost<OkResponse>('/v1/auth/sessions/revoke', { session_id: sessionId }),
+    changeEmail: (currentPassword: string, newEmail: string) =>
+      apiPost<OkResponse>('/v1/auth/email', {
+        current_password: currentPassword,
+        new_email: newEmail,
+      }),
     changePassword: (currentPassword: string, newPassword: string) =>
       apiPost<OkResponse>('/v1/auth/password', {
         current_password: currentPassword,

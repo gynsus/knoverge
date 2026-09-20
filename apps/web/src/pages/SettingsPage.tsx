@@ -29,6 +29,9 @@ export function SettingsPage() {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [changed, setChanged] = useState(false);
+  const [email, setEmail] = useState('');
+  const [emailPassword, setEmailPassword] = useState('');
+  const [emailChanged, setEmailChanged] = useState(false);
 
   const sessions = useQuery({
     queryKey: SESSIONS_KEY,
@@ -50,10 +53,29 @@ export function SettingsPage() {
     },
   });
 
+  const changeEmail = useMutation({
+    mutationFn: () => adminApi.account.changeEmail(emailPassword, email),
+    onSuccess: async () => {
+      setEmail('');
+      setEmailPassword('');
+      setEmailChanged(true);
+      // The address is on the account, and every other session was opened
+      // against the old one.
+      await auth.refresh();
+      await client.invalidateQueries({ queryKey: SESSIONS_KEY });
+    },
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     setChanged(false);
     changePassword.mutate();
+  };
+
+  const submitEmail = (event: FormEvent) => {
+    event.preventDefault();
+    setEmailChanged(false);
+    changeEmail.mutate();
   };
 
   const me = auth.state.kind === 'authenticated' ? auth.state.me : null;
@@ -78,6 +100,45 @@ export function SettingsPage() {
           >
             <LanguageSwitcher />
           </Field>
+          <form onSubmit={submitEmail} className="mb-6 grid gap-4">
+            <FieldGroup
+              legend={t('settings.change_email')}
+              disabled={changeEmail.isPending}
+              className="max-w-md"
+            >
+              <Field label={t('settings.new_email')} hint={t('settings.email_hint')}>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                />
+              </Field>
+              {/* Named differently from the one in the password form: two
+                  fields labelled "Current password" on one page are
+                  indistinguishable to anyone reading them out. */}
+              <Field label={t('settings.your_password')}>
+                <Input
+                  type="password"
+                  value={emailPassword}
+                  onChange={(e) => setEmailPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </Field>
+            </FieldGroup>
+            <ErrorNotice error={changeEmail.error} />
+            {emailChanged && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {t('settings.email_changed')}
+              </p>
+            )}
+            <Button type="submit" disabled={changeEmail.isPending} className="justify-self-start">
+              {changeEmail.isPending ? t('common.working') : t('settings.change_email')}
+            </Button>
+          </form>
+
           <form onSubmit={submit} className="grid gap-4">
             <FieldGroup
               legend={t('settings.change_password')}
