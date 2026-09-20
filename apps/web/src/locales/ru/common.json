@@ -42,8 +42,11 @@
     "logout": "Выйти",
     "policy": "Политики",
     "settings": "Настройки",
+    "sidebar_description": "Навигация по рабочему пространству.",
+    "sidebar_edge": "Край меню: показать или скрыть",
     "skip_to_content": "Перейти к содержимому",
     "taxonomy": "Таксономия",
+    "toggle_sidebar": "Показать или скрыть меню",
     "workspace": "Пространство",
     "workspace_label": "Рабочее пространство"
   },
