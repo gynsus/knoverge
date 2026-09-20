@@ -3,7 +3,9 @@
   "compilerOptions": {
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": ["vite/client", "@testing-library/jest-dom/vitest"]
+    "types": ["vite/client", "@testing-library/jest-dom/vitest"],
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
   },
   "include": ["src", "test", "vite.config.ts"]
 }

@@ -4,8 +4,20 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
+import { Button } from '@/components/ui/button';
+import { Card, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
-import { Field } from '../components/Field.tsx';
 
 const AGENTS_KEY = ['admin', 'agents'] as const;
 
@@ -32,47 +44,49 @@ function CredentialList({ agentId }: { agentId: string }) {
   return (
     <>
       <ErrorNotice error={revoke.error} />
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">{t('agents.credential')}</th>
-            <th scope="col">{t('agents.credential_state')}</th>
-            <th scope="col">{t('agents.last_used')}</th>
-            <th scope="col" />
-          </tr>
-        </thead>
-        <tbody>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{t('agents.credential')}</TableHead>
+            <TableHead>{t('agents.credential_state')}</TableHead>
+            <TableHead>{t('agents.last_used')}</TableHead>
+            <TableHead />
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {query.data.credentials.map((credential) => {
             const expired =
               credential.expires_at !== null && new Date(credential.expires_at) <= new Date();
             const state = credential.revoked_at ? 'revoked' : expired ? 'expired' : 'active';
             return (
-              <tr key={credential.id}>
-                <td>
+              <TableRow key={credential.id}>
+                <TableCell label={t('agents.credential')}>
                   <code>{credential.token_prefix}</code> {credential.label ?? ''}
-                </td>
-                <td>{t(`agents.states.${state}`)}</td>
-                <td>
+                </TableCell>
+                <TableCell label={t('agents.credential_state')}>
+                  {t(`agents.states.${state}`)}
+                </TableCell>
+                <TableCell label={t('agents.last_used')}>
                   {credential.last_used_at
                     ? new Date(credential.last_used_at).toLocaleString(i18n.language)
                     : t('agents.never_used')}
-                </td>
-                <td>
+                </TableCell>
+                <TableCell label={t('common.actions')}>
                   {state === 'active' && (
-                    <button
+                    <Button
                       type="button"
                       onClick={() => revoke.mutate(credential.id)}
                       disabled={revoke.isPending}
                     >
                       {t('agents.revoke')}
-                    </button>
+                    </Button>
                   )}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             );
           })}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </>
   );
 }
@@ -142,27 +156,27 @@ export function AgentsPage() {
 
   return (
     <>
-      <section className="card" aria-labelledby="agents-title">
-        <h2 id="agents-title">{t('agents.title')}</h2>
+      <Card aria-labelledby="agents-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="agents-title">{t('agents.title')}</CardTitle>
         <p>{t('agents.intro')}</p>
         {agents.isPending && <p role="status">{t('common.loading')}</p>}
         {agents.isError && <ErrorNotice error={agents.error} />}
         {agents.data?.agents.length === 0 && <p>{t('agents.empty')}</p>}
         {agents.data && agents.data.agents.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">{t('agents.name')}</th>
-                <th scope="col">{t('agents.trust_tier')}</th>
-                <th scope="col">{t('agents.status')}</th>
-                <th scope="col">{t('agents.credentials')}</th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('agents.name')}</TableHead>
+                <TableHead>{t('agents.trust_tier')}</TableHead>
+                <TableHead>{t('agents.status')}</TableHead>
+                <TableHead>{t('agents.credentials')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {agents.data.agents.map((agent) => (
-                <tr key={agent.id}>
-                  <td>
+                <TableRow key={agent.id}>
+                  <TableCell label={t('agents.name')}>
                     {agent.name}
                     {agent.client_type && (
                       <>
@@ -170,12 +184,16 @@ export function AgentsPage() {
                         <code>{agent.client_type}</code>
                       </>
                     )}
-                  </td>
-                  <td>{t(`agents.tiers.${agent.trust_tier}`)}</td>
-                  <td>{t(`agents.statuses.${agent.status}`)}</td>
-                  <td>{agent.active_credentials}</td>
-                  <td>
-                    <button
+                  </TableCell>
+                  <TableCell label={t('agents.trust_tier')}>
+                    {t(`agents.tiers.${agent.trust_tier}`)}
+                  </TableCell>
+                  <TableCell label={t('agents.status')}>
+                    {t(`agents.statuses.${agent.status}`)}
+                  </TableCell>
+                  <TableCell label={t('agents.credentials')}>{agent.active_credentials}</TableCell>
+                  <TableCell label={t('common.actions')}>
+                    <Button
                       type="button"
                       aria-expanded={expanded === agent.id}
                       onClick={(event) => {
@@ -184,20 +202,20 @@ export function AgentsPage() {
                       }}
                     >
                       {t('agents.manage')}
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
-      </section>
+      </Card>
 
       {expanded && (
-        <section className="card" aria-labelledby="agent-detail-title">
-          <h3 id="agent-detail-title" tabIndex={-1} ref={detailHeading}>
+        <Card aria-labelledby="agent-detail-title" className="grid gap-3 p-4 sm:p-6">
+          <CardTitle id="agent-detail-title" tabIndex={-1} ref={detailHeading}>
             {current?.name ?? ''}
-          </h3>
+          </CardTitle>
           {issuedToken?.agentId === expanded && (
             <div className="notice">
               <p role="status">
@@ -208,13 +226,13 @@ export function AgentsPage() {
               <pre>
                 <code>{issuedToken.token}</code>
               </pre>
-              <button type="button" onClick={() => setIssuedToken(null)}>
+              <Button type="button" onClick={() => setIssuedToken(null)}>
                 {t('agents.hide_token')}
-              </button>
+              </Button>
             </div>
           )}
           <Field label={t('agents.trust_tier')} hint={t('agents.tier_change_hint')}>
-            <select
+            <Select
               value={current?.trust_tier ?? 'propose'}
               onChange={(e) =>
                 setTier.mutate({
@@ -227,34 +245,34 @@ export function AgentsPage() {
               <option value="read_only">{t('agents.tiers.read_only')}</option>
               <option value="propose">{t('agents.tiers.propose')}</option>
               <option value="trusted">{t('agents.tiers.trusted')}</option>
-            </select>
+            </Select>
           </Field>
           <p>
-            <button
+            <Button
               type="button"
               onClick={() => issue.mutate(expanded)}
               disabled={issue.isPending || current?.status !== 'active'}
             >
               {t('agents.issue_token')}
-            </button>{' '}
+            </Button>{' '}
             {current?.status === 'disabled' ? (
               // A disabled agent could never be brought back from the browser,
               // although the contract has always allowed it.
-              <button
+              <Button
                 type="button"
                 onClick={() => setStatus.mutate({ agentId: expanded, status: 'active' })}
                 disabled={setStatus.isPending}
               >
                 {t('agents.enable')}
-              </button>
+              </Button>
             ) : (
-              <button
+              <Button
                 type="button"
                 onClick={() => setStatus.mutate({ agentId: expanded, status: 'disabled' })}
                 disabled={setStatus.isPending}
               >
                 {t('agents.disable')}
-              </button>
+              </Button>
             )}
           </p>
           <p>
@@ -262,15 +280,15 @@ export function AgentsPage() {
           </p>
           <ErrorNotice error={issue.error ?? setStatus.error ?? setTier.error} />
           <CredentialList agentId={expanded} />
-        </section>
+        </Card>
       )}
 
-      <section className="card" aria-labelledby="new-agent-title">
-        <h3 id="new-agent-title">{t('agents.new')}</h3>
+      <Card aria-labelledby="new-agent-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="new-agent-title">{t('agents.new')}</CardTitle>
         <form onSubmit={submit}>
-          <fieldset disabled={create.isPending}>
+          <fieldset disabled={create.isPending} className="grid gap-4 border-0 p-0">
             <Field label={t('agents.name')}>
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -278,25 +296,25 @@ export function AgentsPage() {
               />
             </Field>
             <Field label={t('agents.client_type')} hint={t('agents.client_type_hint')}>
-              <input value={clientType} onChange={(e) => setClientType(e.target.value)} />
+              <Input value={clientType} onChange={(e) => setClientType(e.target.value)} />
             </Field>
             <Field label={t('agents.trust_tier')} hint={t(`agents.tier_hints.${trustTier}`)}>
-              <select
+              <Select
                 value={trustTier}
                 onChange={(e) => setTrustTier(e.target.value as typeof trustTier)}
               >
                 <option value="read_only">{t('agents.tiers.read_only')}</option>
                 <option value="propose">{t('agents.tiers.propose')}</option>
                 <option value="trusted">{t('agents.tiers.trusted')}</option>
-              </select>
+              </Select>
             </Field>
           </fieldset>
           <ErrorNotice error={create.error} />
-          <button type="submit" disabled={create.isPending}>
+          <Button type="submit" disabled={create.isPending}>
             {create.isPending ? t('common.working') : t('agents.create')}
-          </button>
+          </Button>
         </form>
-      </section>
+      </Card>
     </>
   );
 }

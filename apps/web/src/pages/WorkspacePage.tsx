@@ -6,8 +6,20 @@ import { useTranslation } from 'react-i18next';
 import { adminApi } from '../api/admin.ts';
 import { useAuth } from '../auth/use-auth.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
+import { Button } from '@/components/ui/button';
+import { Card, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
-import { Field } from '../components/Field.tsx';
 
 const WORKSPACE_KEY = ['workspace'] as const;
 const MEMBERS_KEY = ['workspace', 'members'] as const;
@@ -43,12 +55,12 @@ function MemberRow({
   });
   const role = pendingRole ?? member.role;
   return (
-    <tr>
-      <td>
+    <TableRow>
+      <TableCell label={t('workspace.person')}>
         <span>{member.display_name}</span> <code>{member.email}</code>
-      </td>
-      <td>
-        <select
+      </TableCell>
+      <TableCell label={t('workspace.role')}>
+        <Select
           value={role}
           aria-label={t('workspace.role_of', { name: member.display_name })}
           onChange={(e) => setPendingRole(e.target.value as MembershipRole)}
@@ -59,28 +71,28 @@ function MemberRow({
               {t(`roles.${r}`)}
             </option>
           ))}
-        </select>
+        </Select>
         {pendingRole !== null && pendingRole !== member.role && (
           <>
-            <button
+            <Button
               type="button"
               onClick={() => update.mutate(pendingRole)}
               disabled={update.isPending}
             >
               {update.isPending ? t('common.working') : t('workspace.apply_role')}
-            </button>{' '}
-            <button type="button" onClick={() => setPendingRole(null)}>
+            </Button>{' '}
+            <Button type="button" onClick={() => setPendingRole(null)}>
               {t('common.cancel')}
-            </button>
+            </Button>
           </>
         )}
-      </td>
-      <td>
+      </TableCell>
+      <TableCell label={t('workspace.last_seen')}>
         {member.last_login_at
           ? new Date(member.last_login_at).toLocaleDateString(i18n.language)
           : t('workspace.never_signed_in')}
-      </td>
-      <td>
+      </TableCell>
+      <TableCell label={t('common.actions')}>
         {isSelf ? (
           <span>
             <small>{t('workspace.this_is_you')}</small>
@@ -88,21 +100,21 @@ function MemberRow({
         ) : confirmingRemoval ? (
           <>
             <span>{t('workspace.confirm_remove', { name: member.display_name })}</span>{' '}
-            <button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
+            <Button type="button" onClick={() => remove.mutate()} disabled={remove.isPending}>
               {remove.isPending ? t('common.working') : t('workspace.confirm')}
-            </button>{' '}
-            <button type="button" onClick={() => setConfirmingRemoval(false)}>
+            </Button>{' '}
+            <Button type="button" onClick={() => setConfirmingRemoval(false)}>
               {t('common.cancel')}
-            </button>
+            </Button>
           </>
         ) : (
-          <button type="button" onClick={() => setConfirmingRemoval(true)}>
+          <Button type="button" onClick={() => setConfirmingRemoval(true)}>
             {t('workspace.remove')}
-          </button>
+          </Button>
         )}
         <ErrorNotice error={update.error ?? remove.error} />
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -143,22 +155,22 @@ function WorkspaceSettingsForm({
 
   return (
     <form onSubmit={submit}>
-      <fieldset disabled={!canAdminister || save.isPending}>
+      <fieldset disabled={!canAdminister || save.isPending} className="grid gap-4 border-0 p-0">
         <Field label={t('workspace.name')}>
-          <input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
+          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
         </Field>
         <Field label={t('workspace.description')}>
-          <input
+          <Input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             maxLength={2000}
           />
         </Field>
         <Field label={t('workspace.default_language')} hint={t('workspace.default_language_hint')}>
-          <select value={language} onChange={(e) => setLanguage(e.target.value)}>
+          <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
             <option value="en">{t('language.en')}</option>
             <option value="ru">{t('language.ru')}</option>
-          </select>
+          </Select>
         </Field>
         <p>
           <small>
@@ -169,9 +181,9 @@ function WorkspaceSettingsForm({
       <ErrorNotice error={save.error} />
       {saved && <p role="status">{t('workspace.saved')}</p>}
       {canAdminister && (
-        <button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={save.isPending}>
           {save.isPending ? t('common.working') : t('workspace.save')}
-        </button>
+        </Button>
       )}
     </form>
   );
@@ -230,8 +242,8 @@ export function WorkspacePage() {
 
   return (
     <>
-      <section className="card" aria-labelledby="workspace-title">
-        <h2 id="workspace-title">{t('workspace.title')}</h2>
+      <Card aria-labelledby="workspace-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="workspace-title">{t('workspace.title')}</CardTitle>
         {workspace.isPending && <p role="status">{t('common.loading')}</p>}
         {workspace.isError && <ErrorNotice error={workspace.error} />}
         {workspace.data && (
@@ -241,25 +253,25 @@ export function WorkspacePage() {
             canAdminister={canAdminister}
           />
         )}
-      </section>
+      </Card>
 
       {canAdminister && (
         <>
-          <section className="card" aria-labelledby="members-title">
-            <h2 id="members-title">{t('workspace.members')}</h2>
+          <Card aria-labelledby="members-title" className="grid gap-3 p-4 sm:p-6">
+            <CardTitle id="members-title">{t('workspace.members')}</CardTitle>
             {members.isPending && <p role="status">{t('common.loading')}</p>}
             {members.isError && <ErrorNotice error={members.error} />}
             {members.data && (
-              <table>
-                <thead>
-                  <tr>
-                    <th scope="col">{t('workspace.person')}</th>
-                    <th scope="col">{t('workspace.role')}</th>
-                    <th scope="col">{t('workspace.last_seen')}</th>
-                    <th scope="col" />
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('workspace.person')}</TableHead>
+                    <TableHead>{t('workspace.role')}</TableHead>
+                    <TableHead>{t('workspace.last_seen')}</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {members.data.members.map((member) => (
                     <MemberRow
                       key={member.user_id}
@@ -270,18 +282,18 @@ export function WorkspacePage() {
                       isSelf={member.user_id === myUserId}
                     />
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
-          </section>
+          </Card>
 
-          <section className="card" aria-labelledby="add-member-title">
-            <h3 id="add-member-title">{t('workspace.add_member')}</h3>
+          <Card aria-labelledby="add-member-title" className="grid gap-3 p-4 sm:p-6">
+            <CardTitle id="add-member-title">{t('workspace.add_member')}</CardTitle>
             <p>{t('workspace.add_member_intro')}</p>
             <form onSubmit={submitMember}>
-              <fieldset disabled={addMember.isPending}>
+              <fieldset disabled={addMember.isPending} className="grid gap-4 border-0 p-0">
                 <Field label={t('fields.email')}>
-                  <input
+                  <Input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -289,13 +301,13 @@ export function WorkspacePage() {
                   />
                 </Field>
                 <Field label={t('fields.display_name')} hint={t('workspace.display_name_hint')}>
-                  <input value={memberName} onChange={(e) => setMemberName(e.target.value)} />
+                  <Input value={memberName} onChange={(e) => setMemberName(e.target.value)} />
                 </Field>
                 <Field
                   label={t('workspace.initial_password')}
                   hint={t('workspace.initial_password_hint')}
                 >
-                  <input
+                  <Input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -304,21 +316,21 @@ export function WorkspacePage() {
                   />
                 </Field>
                 <Field label={t('workspace.role')}>
-                  <select value={role} onChange={(e) => setRole(e.target.value as MembershipRole)}>
+                  <Select value={role} onChange={(e) => setRole(e.target.value as MembershipRole)}>
                     {ROLES.map((r) => (
                       <option key={r} value={r}>
                         {t(`roles.${r}`)}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </Field>
               </fieldset>
               <ErrorNotice error={addMember.error} />
-              <button type="submit" disabled={addMember.isPending}>
+              <Button type="submit" disabled={addMember.isPending}>
                 {addMember.isPending ? t('common.working') : t('workspace.add')}
-              </button>
+              </Button>
             </form>
-          </section>
+          </Card>
         </>
       )}
     </>

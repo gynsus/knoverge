@@ -12,8 +12,20 @@ import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
+import { Button } from '@/components/ui/button';
+import { Card, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
-import { Field } from '../components/Field.tsx';
 
 const RULES_KEY = ['admin', 'policy', 'rules'] as const;
 
@@ -65,54 +77,54 @@ export function PolicyPage() {
 
   return (
     <>
-      <section className="card" aria-labelledby="policy-title">
-        <h2 id="policy-title">{t('policy.title')}</h2>
+      <Card aria-labelledby="policy-title" className="grid gap-3 p-4 sm:p-6">
+        <CardTitle id="policy-title">{t('policy.title')}</CardTitle>
         <p>{t('policy.intro')}</p>
         {rules.isPending && <p role="status">{t('common.loading')}</p>}
         {rules.isError && <ErrorNotice error={rules.error} />}
         {rules.data?.rules.length === 0 && <p>{t('policy.empty')}</p>}
         {rules.data && rules.data.rules.length > 0 && (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">{t('policy.priority')}</th>
-                <th scope="col">{t('policy.subject')}</th>
-                <th scope="col">{t('policy.action')}</th>
-                <th scope="col">{t('policy.effect')}</th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('policy.priority')}</TableHead>
+                <TableHead>{t('policy.subject')}</TableHead>
+                <TableHead>{t('policy.action')}</TableHead>
+                <TableHead>{t('policy.effect')}</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rules.data.rules.map((rule) => (
-                <tr key={rule.id}>
-                  <td>{rule.priority}</td>
-                  <td>{describeSubject(rule.subject)}</td>
-                  <td>
+                <TableRow key={rule.id}>
+                  <TableCell label={t('policy.priority')}>{rule.priority}</TableCell>
+                  <TableCell label={t('policy.subject')}>{describeSubject(rule.subject)}</TableCell>
+                  <TableCell label={t('policy.action')}>
                     <code>{rule.action}</code>
-                  </td>
-                  <td>
+                  </TableCell>
+                  <TableCell label={t('policy.effect')}>
                     {t(`policy.effects.${rule.effect}`)}
                     {!rule.enabled && <> ({t('policy.disabled')})</>}
-                  </td>
-                  <td>
-                    <button type="button" onClick={() => setEditing(rule)}>
+                  </TableCell>
+                  <TableCell label={t('common.actions')}>
+                    <Button type="button" onClick={() => setEditing(rule)}>
                       {t('policy.edit')}
-                    </button>{' '}
-                    <button
+                    </Button>{' '}
+                    <Button
                       type="button"
                       onClick={() => remove.mutate(rule.id)}
                       disabled={remove.isPending}
                     >
                       {t('policy.delete')}
-                    </button>
-                  </td>
-                </tr>
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         )}
         <ErrorNotice error={remove.error} />
-      </section>
+      </Card>
 
       <RuleForm
         key={editing?.id ?? 'new'}
@@ -172,13 +184,15 @@ function RuleForm({
         : null;
 
   return (
-    <section className="card" aria-labelledby="rule-form-title">
-      <h3 id="rule-form-title">{rule ? t('policy.edit_rule') : t('policy.new_rule')}</h3>
+    <Card aria-labelledby="rule-form-title" className="grid gap-3 p-4 sm:p-6">
+      <CardTitle id="rule-form-title">
+        {rule ? t('policy.edit_rule') : t('policy.new_rule')}
+      </CardTitle>
       <p>{t('policy.form_intro')}</p>
       <form onSubmit={submit}>
-        <fieldset disabled={save.isPending}>
+        <fieldset disabled={save.isPending} className="grid gap-4 border-0 p-0">
           <Field label={t('policy.priority')} hint={t('policy.priority_hint')}>
-            <input
+            <Input
               type="number"
               min={0}
               max={10000}
@@ -188,7 +202,7 @@ function RuleForm({
             />
           </Field>
           <Field label={t('policy.subject_kind')}>
-            <select
+            <Select
               value={kind}
               onChange={(e) => {
                 const next = e.target.value as SubjectKind;
@@ -201,7 +215,7 @@ function RuleForm({
                   {t(`policy.subject_kinds.${k}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           {/* The value's label is the kind, so the two fields do not both
               read "Applies to". */}
@@ -210,38 +224,38 @@ function RuleForm({
             {...(kind === 'actor_id' ? { hint: t('policy.actor_id_hint') } : {})}
           >
             {values ? (
-              <select value={value} onChange={(e) => setValue(e.target.value)}>
+              <Select value={value} onChange={(e) => setValue(e.target.value)}>
                 {values.map((v) => (
                   <option key={v.value} value={v.value}>
                     {v.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : (
-              <input value={value} onChange={(e) => setValue(e.target.value)} required />
+              <Input value={value} onChange={(e) => setValue(e.target.value)} required />
             )}
           </Field>
           <Field label={t('policy.action')}>
-            <select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
+            <Select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
               {PolicyActionName.options.map((a) => (
                 <option key={a} value={a}>
                   {a}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label={t('policy.effect')} hint={t(`policy.effect_hints.${effect}`)}>
-            <select value={effect} onChange={(e) => setEffect(e.target.value as typeof effect)}>
+            <Select value={effect} onChange={(e) => setEffect(e.target.value as typeof effect)}>
               {PolicyEffect.options.map((e) => (
                 <option key={e} value={e}>
                   {t(`policy.effects.${e}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <p className="field">
             <label>
-              <input
+              <Input
                 type="checkbox"
                 checked={enabled}
                 onChange={(e) => setEnabled(e.target.checked)}
@@ -251,15 +265,15 @@ function RuleForm({
           </p>
         </fieldset>
         <ErrorNotice error={save.error} />
-        <button type="submit" disabled={save.isPending}>
+        <Button type="submit" disabled={save.isPending}>
           {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
-        </button>{' '}
+        </Button>{' '}
         {rule && (
-          <button type="button" onClick={onCancel}>
+          <Button type="button" onClick={onCancel}>
             {t('common.cancel')}
-          </button>
+          </Button>
         )}
       </form>
-    </section>
+    </Card>
   );
 }

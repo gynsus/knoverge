@@ -214,7 +214,7 @@ Use:
 - PostgreSQL 16+ with `pgvector`, `pg_trgm`, `unaccent`
 - pg-boss
 - Git CLI through `packages/git-store`
-- React with Vite (SPA), i18next
+- React with Vite (SPA), Tailwind CSS and shadcn/ui, i18next
 - official MCP TypeScript SDK, Streamable HTTP transport
 - Vitest, Testcontainers
 - Docker Compose

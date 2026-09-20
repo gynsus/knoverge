@@ -2,9 +2,21 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Field } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { adminApi } from '../api/admin.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
-import { Field } from '../components/Field.tsx';
 import { useAuth } from '../auth/use-auth.ts';
 
 const SESSIONS_KEY = ['account', 'sessions'] as const;
@@ -47,83 +59,115 @@ export function SettingsPage() {
 
   return (
     <>
-      <section className="card" aria-labelledby="account-title">
-        <h2 id="account-title">{t('settings.account')}</h2>
-        {me && (
-          <p>
-            {me.user.display_name} <code>{me.user.email}</code>
-          </p>
-        )}
-        <form onSubmit={submit}>
-          <fieldset disabled={changePassword.isPending}>
-            <legend>{t('settings.change_password')}</legend>
-            <Field label={t('settings.current_password')}>
-              <input
-                type="password"
-                value={current}
-                onChange={(e) => setCurrent(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </Field>
-            <Field label={t('settings.new_password')} hint={t('fields.password_hint')}>
-              <input
-                type="password"
-                value={next}
-                onChange={(e) => setNext(e.target.value)}
-                required
-                minLength={12}
-                autoComplete="new-password"
-              />
-            </Field>
-          </fieldset>
-          <ErrorNotice error={changePassword.error} />
-          {changed && <p role="status">{t('settings.password_changed')}</p>}
-          <button type="submit" disabled={changePassword.isPending}>
-            {changePassword.isPending ? t('common.working') : t('settings.change_password')}
-          </button>
-        </form>
-      </section>
+      <Card aria-labelledby="account-title">
+        <CardHeader>
+          <CardTitle id="account-title">{t('settings.account')}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {me && (
+            <p className="mb-4 flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{me.user.display_name}</span>
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">{me.user.email}</code>
+            </p>
+          )}
+          <form onSubmit={submit} className="grid gap-4">
+            <fieldset
+              disabled={changePassword.isPending}
+              className="grid max-w-md gap-4 border-0 p-0"
+            >
+              <legend className="text-sm font-medium">{t('settings.change_password')}</legend>
+              <Field label={t('settings.current_password')}>
+                <Input
+                  type="password"
+                  value={current}
+                  onChange={(e) => setCurrent(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                />
+              </Field>
+              <Field label={t('settings.new_password')} hint={t('fields.password_hint')}>
+                <Input
+                  type="password"
+                  value={next}
+                  onChange={(e) => setNext(e.target.value)}
+                  required
+                  minLength={12}
+                  autoComplete="new-password"
+                />
+              </Field>
+            </fieldset>
+            <ErrorNotice error={changePassword.error} />
+            {changed && (
+              <p role="status" className="text-sm text-muted-foreground">
+                {t('settings.password_changed')}
+              </p>
+            )}
+            <Button
+              type="submit"
+              disabled={changePassword.isPending}
+              className="justify-self-start"
+            >
+              {changePassword.isPending ? t('common.working') : t('settings.change_password')}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
 
-      <section className="card" aria-labelledby="sessions-title">
-        <h2 id="sessions-title">{t('settings.sessions')}</h2>
-        {sessions.isPending && <p role="status">{t('common.loading')}</p>}
-        {sessions.isError && <ErrorNotice error={sessions.error} />}
-        {sessions.data && (
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">{t('settings.started')}</th>
-                <th scope="col">{t('settings.client')}</th>
-                <th scope="col" />
-              </tr>
-            </thead>
-            <tbody>
-              {sessions.data.sessions.map((session) => (
-                <tr key={session.id}>
-                  <td>{new Date(session.created_at).toLocaleString(i18n.language)}</td>
-                  <td>
-                    <span>{session.user_agent ?? t('settings.unknown_client')}</span>
-                    {session.current && <> {t('settings.this_session')}</>}
-                  </td>
-                  <td>
-                    {!session.current && (
-                      <button
-                        type="button"
-                        onClick={() => revoke.mutate(session.id)}
-                        disabled={revoke.isPending}
-                      >
-                        {t('settings.revoke')}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <ErrorNotice error={revoke.error} />
-      </section>
+      <Card aria-labelledby="sessions-title">
+        <CardHeader>
+          <CardTitle id="sessions-title">{t('settings.sessions')}</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-3">
+          {sessions.isPending && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('common.loading')}
+            </p>
+          )}
+          {sessions.isError && <ErrorNotice error={sessions.error} />}
+          {sessions.data && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t('settings.started')}</TableHead>
+                  <TableHead>{t('settings.client')}</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sessions.data.sessions.map((session) => (
+                  <TableRow key={session.id}>
+                    <TableCell label={t('settings.started')}>
+                      {new Date(session.created_at).toLocaleString(i18n.language)}
+                    </TableCell>
+                    <TableCell label={t('settings.client')}>
+                      <span>{session.user_agent ?? t('settings.unknown_client')}</span>
+                      {session.current && (
+                        <Badge variant="outline" className="ml-2">
+                          {t('settings.this_session')}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell label={t('settings.revoke')}>
+                      {!session.current && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => revoke.mutate(session.id)}
+                          disabled={revoke.isPending}
+                        >
+                          {t('settings.revoke')}
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          <ErrorNotice error={revoke.error} />
+        </CardContent>
+      </Card>
     </>
   );
 }
