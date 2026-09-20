@@ -131,7 +131,15 @@ export function createServices() {
     });
   });
   const git = lazy(() => createGitStore({ dataDir: required('KNOVERGE_DATA_DIR') }));
-  const crossStore = lazy(() => new CrossStoreWriter({ uow, operations: repositories.operations }));
+  const crossStore = lazy(
+    () =>
+      new CrossStoreWriter({
+        uow,
+        operations: repositories.operations,
+        commitExists: (workspaceId, operationId) =>
+          git().hasCommitForOperation(workspaceId, operationId),
+      }),
+  );
   const taxonomy = lazy(
     () =>
       new TaxonomyService({

@@ -28,7 +28,7 @@ has to see what the same transaction just wrote.
 
 ## Decision
 
-### The lock is session-scoped, on a connection of its own
+### The lock is session-scoped, on a connection of its own, behind an in-process queue
 
 `pg_advisory_lock(LOCK_WORKSPACE_WRITE, hashtext(workspace_id))` on a dedicated
 pooled connection, released in a finally. The migration runner already does this and
@@ -39,15 +39,36 @@ left behind is the operation row, which is what recovery is for. A lock that
 survived a dead process would need an expiry, and an expiry is a second way to get
 two writers.
 
-Consequence: one connection per concurrent cross-store write. The pool minimum is
-documented alongside it.
+A write needs **two** connections at its peak: the one holding the lock for the whole
+write, and one for each transaction it opens in between. If waiting writers each held
+a connection, enough concurrent writes would take the whole pool and the one writer
+that holds the lock could not open the transaction that would let it finish — a
+deadlock with no timeout, because a pool wait has no deadline by default.
+
+So writers to one workspace queue in memory first, and only the one at the head takes
+a connection and asks PostgreSQL. Waiting then costs a promise rather than a
+connection, and the advisory lock behind the queue is still what makes the exclusion
+real, because a second process shares no memory with this one. `lock_timeout` bounds
+the wait server-side, so a lock held by a backend whose client is gone answers rather
+than hanging, and the connection is destroyed rather than returned to the pool if the
+unlock does not report success — a session-scoped lock outlives the query that took
+it, and a pooled connection is not a session that ends.
+
+Consequence: the pool must have room for the number of workspaces written to at once,
+plus headroom for reads. Four is the floor for a single-workspace installation.
 
 ### Retry moves inside the steps
 
 The primitive does not retry the operation. Each PostgreSQL transaction inside it
 may retry on 40001 and 40P01, because each is pure database work. The Git commit is
-never retried automatically: a failure leaves the operation `pending`, and recovery
-marks it `failed`.
+never retried automatically.
+
+When the commit step throws, the primitive asks Git whether a commit naming the
+operation exists before deciding what the row says. The store commits and then reads
+the hash back, so a failure between the two throws although the commit happened.
+`failed` is terminal — recovery never examines it again — so closing such an
+operation would abandon a commit that is already in history. A commit that may exist
+leaves the row `pending`, with the error recorded, for recovery to decide.
 
 ### Reads take an explicit transaction
 
@@ -68,14 +89,36 @@ So the operation row stores them. Without that, a recovered event would be missi
 fields the rule requires, and the ledger would record less for a recovered write
 than for an ordinary one.
 
-### The taxonomy version is allocated early and stamped late
+### The taxonomy version is chosen under the lock and written with its commit
 
 `taxonomy.yaml` is rewritten in the same commit as any taxonomy mutation, so every
 taxonomy mutation is a cross-store operation with a version number.
 
-The number is allocated in the pending transaction, so two concurrent operations
-cannot claim the same one, and `git_commit_hash` on the version row is filled in the
-final transaction, because before the commit there is no hash to store.
+The number is `latest + 1`, read inside the commit step. The workspace write lock
+excludes every other writer for the whole operation, so the number cannot be taken
+twice and does not need reserving first; the unique index on `(workspace, version)` is
+the backstop. The row itself is inserted in the final transaction, with its commit
+hash, because before the commit there is no hash to store and a version row without
+one would describe a state no commit produced.
+
+An earlier draft of this ADR said the number was allocated in the pending
+transaction. That would not have helped: what it was meant to prevent is a crashed
+write's number being taken by the next one, and the rule below is what actually
+prevents it.
+
+### A workspace with an unfinished operation refuses to be written to
+
+An interrupted write leaves the repository holding a change PostgreSQL does not have.
+The next write re-renders the whole file from the database, so it would silently
+delete the committed change and take its version number — two commits claiming one
+version, and a category deleted from the canonical file by an unrelated operation,
+with nothing anywhere saying so.
+
+So a write refuses to start while the workspace holds a `pending` or `git_committed`
+operation. The two stores disagree and the process cannot tell which is right;
+stopping is the only answer that does not destroy something. Recovery runs at
+startup, before anything is served, so the ordinary case is that a workspace is never
+seen in this state.
 
 ## Consequences
 
@@ -84,5 +127,11 @@ final transaction, because before the commit there is no hash to store.
 - `runExclusive` keeps its transaction-scoped meaning for single-transaction work
   such as bootstrap. The new primitive is separate rather than a widening of it, so
   no existing caller silently changes behaviour.
-- A cross-store write needs a spare connection. On a pool of one it cannot proceed,
-  which is a startup-time check rather than a runtime surprise.
+- A cross-store write needs a spare connection, so the pool is sized for concurrent
+  writes plus reads, and every pool wait, statement and idle transaction is bounded:
+  an exhausted pool has to produce a failed request, never a process that stops
+  answering.
+- A crash between the Git commit and the PostgreSQL transaction blocks its workspace
+  until recovery resolves it. Until `completeFromCommit` exists for the taxonomy, a
+  `git_committed` operation is reported as unresolved and the workspace stays closed
+  to writes — loud and safe, rather than quiet and wrong.

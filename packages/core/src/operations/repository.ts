@@ -22,7 +22,7 @@ export interface OperationRecord {
   objectIds: Record<string, unknown>;
   intendedPayloadHash: string | null;
   gitCommitHash: string | null;
-  taxonomyVersion: string | null;
+  taxonomyVersion: number | null;
   /**
    * The request context, kept because recovery rebuilds a ledger event from
    * this row and the commit trailers, and the trailers do not carry it.
@@ -51,4 +51,9 @@ export interface OperationRepository {
   findById(workspaceId: WorkspaceId, id: string, tx?: Tx): Promise<OperationRecord | null>;
   /** Operations that never reached db_committed, oldest first. */
   listUnfinished(workspaceId: WorkspaceId, limit?: number): Promise<OperationRecord[]>;
+  /**
+   * Workspaces holding an unfinished operation, so startup does not have to
+   * take the write lock of every workspace to find the few that need it.
+   */
+  workspacesUnfinished(limit?: number): Promise<WorkspaceId[]>;
 }

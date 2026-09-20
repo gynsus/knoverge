@@ -53,6 +53,22 @@ export class RecoveryService {
     this.clock = options.clock ?? systemClock;
   }
 
+  /**
+   * Recovers every workspace that has an unfinished operation.
+   *
+   * Called at startup, before the workspace would refuse a write for holding
+   * one. A workspace with nothing unfinished is not locked at all, so this
+   * costs one query on an installation that shut down cleanly.
+   */
+  async recoverAll(): Promise<Record<string, RecoveryReport>> {
+    const workspaces = await this.o.operations.workspacesUnfinished();
+    const reports: Record<string, RecoveryReport> = {};
+    for (const workspaceId of workspaces) {
+      reports[workspaceId] = await this.recover(workspaceId);
+    }
+    return reports;
+  }
+
   async recover(workspaceId: WorkspaceId): Promise<RecoveryReport> {
     const report: RecoveryReport = { examined: 0, failed: [], recovered: [], unresolved: [] };
     await this.o.uow.withWorkspaceLock(workspaceId, async () => {

@@ -41,6 +41,14 @@ export function createOperationRepository(db: Database): OperationRepository {
         .limit(1);
       return rows[0] ? toOperation(rows[0]) : null;
     },
+    async workspacesUnfinished(limit = 1000) {
+      const rows = await db
+        .selectDistinct({ workspaceId: operations.workspaceId })
+        .from(operations)
+        .where(inArray(operations.state, UNFINISHED))
+        .limit(limit);
+      return rows.map((row) => row.workspaceId as WorkspaceId);
+    },
     async listUnfinished(workspaceId: WorkspaceId, limit = 100) {
       const rows = await db
         .select()

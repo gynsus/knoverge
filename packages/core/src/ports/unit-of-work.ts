@@ -23,9 +23,14 @@ export interface UnitOfWork {
    * that dies loses the connection and the lock with it, which is what leaves
    * the operation row for recovery rather than a lock nobody can release.
    *
-   * It holds a connection of its own for the whole call, and the work inside
-   * opens transactions on others, so the pool needs room for both. Two is the
-   * bare minimum and leaves nothing for a read; four or more is sensible.
+   * It holds a connection for the whole call and the work inside opens
+   * transactions on others, so a write needs two connections at its peak. The
+   * implementation must not let waiting writers take connections the writer
+   * holding the lock still needs to finish: with one connection per waiter,
+   * enough concurrent writes to different workspaces take the whole pool and
+   * nothing can proceed. Callers must still size the pool for the number of
+   * workspaces written to at once, plus headroom for reads; four is the floor
+   * for a single-workspace installation.
    */
   withWorkspaceLock<T>(workspaceId: string, fn: () => Promise<T>): Promise<T>;
 }

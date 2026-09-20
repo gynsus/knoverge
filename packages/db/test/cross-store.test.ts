@@ -86,7 +86,13 @@ beforeAll(async () => {
     client: 'test-suite',
     sessionId: 'ext:conversation-7',
   };
-  writer = new CrossStoreWriter({ uow, operations: repositories.operations });
+  writer = new CrossStoreWriter({
+    uow,
+    operations: repositories.operations,
+    // These tests drive the writer with stub steps rather than a repository:
+    // the commit hashes they return are literals, so no commit names them.
+    commitExists: async () => false,
+  });
 });
 
 afterAll(async () => {
@@ -171,6 +177,58 @@ describe('a write that spans both stores', () => {
     expect(unfinished).toHaveLength(0);
   });
 
+  it('leaves the operation pending when the commit may have happened', async () => {
+    // The store commits and then reads the hash back. A failure between the
+    // two throws from the commit step although the commit exists, and failed
+    // is terminal: recovery never looks at it again, so the commit would be
+    // abandoned in history with nothing pointing at it.
+    const cautious = new CrossStoreWriter({
+      uow,
+      operations: repositories.operations,
+      commitExists: async () => true,
+    });
+    await expect(
+      cautious.run(actor, {
+        type: 'taxonomy',
+        objectIds: {},
+        commit: async () => {
+          throw new Error('stopped after committing');
+        },
+        record: async () => undefined,
+      }),
+    ).rejects.toThrow('stopped after committing');
+    const unfinished = await repositories.operations.listUnfinished(workspaceId);
+    expect(unfinished).toHaveLength(1);
+    expect(unfinished[0]).toMatchObject({
+      state: 'pending',
+      error: { message: 'stopped after committing' },
+    });
+
+    // And while it is unfinished the workspace refuses to be written to, so
+    // the next write cannot re-render the file from a database that is missing
+    // what the repository already has.
+    await expect(
+      writer.run(actor, {
+        type: 'taxonomy',
+        objectIds: {},
+        commit: async () => ({ commitHash: 'd'.repeat(40) }),
+        record: async () => undefined,
+      }),
+    ).rejects.toThrow(/did not finish/);
+
+    // Recovery decides, and the workspace opens again.
+    const report = await recovery({ commitExists: false }).recover(workspaceId);
+    expect(report.failed).toEqual([unfinished[0]!.id]);
+    await expect(
+      writer.run(actor, {
+        type: 'taxonomy',
+        objectIds: {},
+        commit: async () => ({ commitHash: 'e'.repeat(40) }),
+        record: async () => undefined,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('leaves the operation at git_committed when the database side dies', async () => {
     await expect(
       writer.run(actor, {
@@ -233,6 +291,37 @@ describe('recovery', () => {
     const report = await recovery({ commitExists: false }).recover(workspaceId);
     expect(report.failed).toEqual([id]);
     expect((await repositories.operations.findById(workspaceId, id))?.state).toBe('failed');
+  });
+
+  it('finds the workspaces that need it without locking the rest', async () => {
+    const now = new Date();
+    const id = 'op_01M2XCRASHCRASHCRASHCRASH3';
+    await uow.run((tx) =>
+      repositories.operations.insert(tx, {
+        id,
+        workspaceId,
+        actorId: actor.actorId,
+        operationType: 'taxonomy',
+        state: 'pending',
+        objectIds: {},
+        intendedPayloadHash: null,
+        gitCommitHash: null,
+        taxonomyVersion: null,
+        requestId: 'req-crash-3',
+        sessionId: null,
+        agentId: null,
+        client: null,
+        provider: null,
+        model: null,
+        error: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
+    );
+    expect(await repositories.operations.workspacesUnfinished()).toEqual([workspaceId]);
+    const reports = await recovery({ commitExists: false }).recoverAll();
+    expect(reports[workspaceId]?.failed).toContain(id);
+    expect(await repositories.operations.workspacesUnfinished()).toEqual([]);
   });
 
   it('leaves a pending write alone when a commit for it does exist', async () => {

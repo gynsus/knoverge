@@ -11,7 +11,14 @@ import {
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
-import { subtreeIds, withSubtreeStatus, withCategory, withMove, withUpdate } from './projection.ts';
+import {
+  sortedAliases,
+  subtreeIds,
+  withCategory,
+  withMove,
+  withSubtreeStatus,
+  withUpdate,
+} from './projection.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
@@ -459,7 +466,7 @@ export class TaxonomyService {
 
       const moved = subtreeIds(tree.categories, category.path);
       return {
-        subject: `move: ${category.path} to ${newPath}`,
+        subject: `taxonomy: move ${category.path} to ${newPath}`,
         objectIds: { category: category.id, path: newPath, previous_path: category.path },
         categories: withMove(tree.categories, category.id, parent?.id ?? null, {
           from: category.path,
@@ -683,7 +690,7 @@ export class TaxonomyService {
             name: category.name,
             status: category.status,
             description: category.description,
-            aliases: planned?.aliases.get(category.id) ?? [],
+            aliases: sortedAliases(planned?.aliases.get(category.id) ?? []),
             inclusionGuidance: category.inclusionGuidance,
             exclusionGuidance: category.exclusionGuidance,
           }))
@@ -731,7 +738,9 @@ export class TaxonomyService {
     const aliases = await this.o.aliases.listForWorkspace(category.workspaceId, tx);
     return {
       ...category,
-      aliases: aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
+      aliases: sortedAliases(
+        aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
+      ),
     };
   }
 

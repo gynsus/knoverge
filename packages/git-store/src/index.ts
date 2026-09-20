@@ -13,6 +13,7 @@ export {
 export {
   TAXONOMY_PATH,
   renderReadme,
+  parseTaxonomy,
   renderTaxonomy,
   type FlatCategory,
   type TaxonomyFile,
