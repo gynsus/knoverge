@@ -54,6 +54,8 @@ export interface ServicesConfig {
   /** Workspace repositories live under this directory. */
   dataDir: string;
   poolMax?: number;
+  /** Told when a pooled connection dies while nobody is using it. */
+  onPoolError?: (error: Error) => void;
 }
 
 /**
@@ -63,6 +65,7 @@ export function createServices(config: ServicesConfig) {
   const database: DatabaseHandle = createDatabase({
     connectionString: config.databaseUrl,
     max: config.poolMax ?? 10,
+    ...(config.onPoolError ? { onPoolError: config.onPoolError } : {}),
   });
   const uow = createUnitOfWork(database.db);
   const repositories = createRepositories(database.db);

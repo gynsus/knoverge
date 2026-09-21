@@ -38,13 +38,15 @@ async function main(): Promise<void> {
 
   const logger = createLogger(config.logLevel, config.nodeEnv);
   const services = createServices({
+    // An idle connection dying is the operator's business, not a caller's, and
+    // must not end the process.
+    onPoolError: (error) => logger.warn({ err: error }, 'a pooled connection failed while idle'),
     databaseUrl: config.databaseUrl,
     ledgerKey: config.ledgerKey,
     tokenPepper: config.tokenPepper,
     dataDir: config.dataDir,
   });
   const database = services.database;
-  database.pool.on('error', (err) => logger.error({ err }, 'idle database client error'));
 
   const migrationsFolder = defaultMigrationsFolder();
   const runsWorker = config.role === 'all' || config.role === 'worker';
