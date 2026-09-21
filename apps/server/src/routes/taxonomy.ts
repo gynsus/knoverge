@@ -11,8 +11,9 @@ import {
   type CategorySummary,
   type WorkspaceId,
 } from '@knoverge/contracts';
+import type { TaxonomyListInput } from '@knoverge/contracts';
 import type { CategoryWithAliases } from '@knoverge/core';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import {
@@ -70,31 +71,7 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
   r.get(
     '/v1/taxonomy.list',
     { schema: { querystring: TaxonomyListQuery, response: { 200: TaxonomyListResponse } } },
-    async (request) => {
-      const actor = await requireListPermission(services, request, 'taxonomy.read');
-      const query = request.query;
-      // The version is read first: reporting an older version with newer
-      // categories is safe, the other way round makes a caching client stop
-      // asking for changes it has not seen.
-      const version = await services.taxonomy.currentVersion(actor.context.workspaceId);
-      const categories = await services.taxonomy.list(actor.context.workspaceId, {
-        rootPath: query.root_path,
-        depth: query.depth,
-        includeArchived: query.include_archived,
-      });
-      // A scoped grant shows its branch rather than the whole tree.
-      const visible = await services.authorization.filter(
-        actor.context,
-        actor.standing,
-        'taxonomy.read',
-        categories,
-        (category) => ({ categoryIds: [category.id] }),
-      );
-      return {
-        taxonomy_version: version,
-        categories: visible.map((c) => summary(c, query.include_guidance)),
-      };
-    },
+    (request) => taxonomyList(services, request, request.query),
   );
 
   r.post(
@@ -231,4 +208,38 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },
   );
+}
+
+/**
+ * The tool handler, which the `GET` above and `POST /v1/taxonomy_list` both
+ * call. The query string coerces its filters from strings and a tool call
+ * sends real JSON, so the two schemas differ and the handler does not.
+ */
+export async function taxonomyList(
+  services: Services,
+  request: FastifyRequest,
+  input: TaxonomyListInput,
+): Promise<TaxonomyListResponse> {
+  const actor = await requireListPermission(services, request, 'taxonomy.read');
+  // The version is read first: reporting an older version with newer
+  // categories is safe, the other way round makes a caching client stop
+  // asking for changes it has not seen.
+  const version = await services.taxonomy.currentVersion(actor.context.workspaceId);
+  const categories = await services.taxonomy.list(actor.context.workspaceId, {
+    rootPath: input.root_path,
+    depth: input.depth,
+    includeArchived: input.include_archived,
+  });
+  // A scoped grant shows its branch rather than the whole tree.
+  const visible = await services.authorization.filter(
+    actor.context,
+    actor.standing,
+    'taxonomy.read',
+    categories,
+    (category) => ({ categoryIds: [category.id] }),
+  );
+  return {
+    taxonomy_version: version,
+    categories: visible.map((c) => summary(c, input.include_guidance)),
+  };
 }

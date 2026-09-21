@@ -1,6 +1,18 @@
 import '@testing-library/jest-dom/vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 import { afterEach } from 'vitest';
+
+/**
+ * How long a `findBy*` waits for the page to catch up.
+ *
+ * The default is one second. Every page here renders after at least two
+ * rounds of mocked fetch and React Query, and on a loaded CI runner one
+ * second is not reliably enough: the setup page failed once that way, with an
+ * assertion that was correct and a budget that was not. Five seconds is still
+ * far below the test timeout, so a genuinely broken page fails as fast as it
+ * ever did.
+ */
+configure({ asyncUtilTimeout: 5000 });
 
 /**
  * jsdom implements no media queries, and the sidebar asks whether the viewport

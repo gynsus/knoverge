@@ -108,6 +108,21 @@ copy of the rule in the browser drifts from it. A reviewer granted an action
 explicitly would otherwise be shown a control they are entitled to use, and a
 viewer would be shown forms whose every submission is refused.
 
+## One contract, two transports
+
+`packages/contracts/src/tools.ts` lists every operation offered as a tool: its
+name, its description, its input and output schemas, and whether it writes.
+That list is the contract rule 11 means. `apps/server/src/routes/tools.ts`
+generates `POST /v1/<tool_name>` from it, one route per entry, and holds the
+map from tool name to handler — a map the compiler requires to be exactly the
+set of tools, so a tool added to the contract with no handler fails the build
+rather than being advertised and then answering 404.
+
+A read that a browser also uses keeps its `GET` beside the tool route, over the
+same handler function (ADR 0011). The handler takes the parsed input and the
+request; the request is there for what the input does not carry — who is
+calling, which workspace, and the idempotency key.
+
 ## The review inbox
 
 `apps/web/src/pages/ReviewPage.tsx` is where an agent's proposals become the

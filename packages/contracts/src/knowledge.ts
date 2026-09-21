@@ -327,6 +327,19 @@ export const SupersedeResponse = z.object({
 });
 export type SupersedeResponse = z.infer<typeof SupersedeResponse>;
 
+export const KnowledgeGetInput = z.object({ item_id: KnowledgeItemId });
+export type KnowledgeGetInput = z.infer<typeof KnowledgeGetInput>;
+
+export const KnowledgeHistoryInput = z.object({ item_id: KnowledgeItemId });
+export type KnowledgeHistoryInput = z.infer<typeof KnowledgeHistoryInput>;
+
+export const KnowledgeDiffInput = z.object({
+  item_id: KnowledgeItemId,
+  from_revision_id: RevisionId,
+  to_revision_id: RevisionId,
+});
+export type KnowledgeDiffInput = z.infer<typeof KnowledgeDiffInput>;
+
 export const KnowledgeResponse = z.object({ item: KnowledgeItemDetail });
 export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;
 

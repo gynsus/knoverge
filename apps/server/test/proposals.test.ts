@@ -5,7 +5,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ProposalResult, ProposalsResponse } from '@knoverge/contracts';
+import {
+  KnowledgeResponse,
+  ProposalResult,
+  ProposalsResponse,
+  RevisionsResponse,
+  TOOLS,
+  TaxonomyListResponse,
+} from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -1077,5 +1084,94 @@ describe('the duplicate check on a proposal', () => {
     expect(res.statusCode, res.body).toBe(409);
     expect(res.json().code).toBe('DUPLICATE_EXTERNAL_KEY');
     expect(res.json().object_ids.knowledge_item).toBe(existing.id);
+  });
+});
+
+describe('the tool routes', () => {
+  it('answers every tool at POST /v1/<tool_name>', async () => {
+    const token = await agentToken('propose', 'Tool caller');
+    const call = (name: string, payload: unknown) =>
+      app.inject({
+        method: 'POST',
+        url: `/v1/${name}`,
+        headers: { authorization: `Bearer ${token}` },
+        payload: payload as Record<string, unknown>,
+      });
+
+    // Read tools, over the same handlers the browser's GET routes use.
+    const tree = await call('taxonomy_list', {});
+    expect(tree.statusCode, tree.body).toBe(200);
+    expect(TaxonomyListResponse.parse(tree.json()).taxonomy_version).toBeGreaterThanOrEqual(0);
+
+    const item = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'Reachable through a tool',
+        body: 'Read me with knowledge_get.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string; current_revision_id: string } };
+
+    const got = await call('knowledge_get', { item_id: item.item.id });
+    expect(got.statusCode, got.body).toBe(200);
+    expect(KnowledgeResponse.parse(got.json()).item.title).toBe('Reachable through a tool');
+
+    const history = await call('knowledge_history', { item_id: item.item.id });
+    expect(history.statusCode, history.body).toBe(200);
+    expect(RevisionsResponse.parse(history.json()).revisions).toHaveLength(1);
+
+    const diff = await call('knowledge_diff', {
+      item_id: item.item.id,
+      from_revision_id: item.item.current_revision_id,
+      to_revision_id: item.item.current_revision_id,
+    });
+    expect(diff.statusCode, diff.body).toBe(200);
+
+    // A write tool, which answers 202 while somebody still has to look.
+    const proposed = await call('knowledge_propose_create', {
+      title: 'Proposed through a tool',
+      body: 'Written by an agent calling the tool route.',
+      type: 'fact',
+    });
+    expect(proposed.statusCode, proposed.body).toBe(202);
+    const proposal = ProposalResult.parse(proposed.json()).proposal;
+
+    const listed = await call('proposal_list', { status: 'pending' });
+    expect(listed.statusCode, listed.body).toBe(200);
+    expect(ProposalsResponse.parse(listed.json()).proposals.map((p) => p.id)).toContain(
+      proposal.id,
+    );
+
+    const one = await call('proposal_get', { proposal_id: proposal.id });
+    expect(one.statusCode, one.body).toBe(200);
+
+    // And the decision, which answers 200 because nobody is waiting any more.
+    const withdrawn = await call('proposal_withdraw', { proposal_id: proposal.id });
+    expect(withdrawn.statusCode, withdrawn.body).toBe(200);
+    expect(ProposalResult.parse(withdrawn.json()).proposal.status).toBe('withdrawn');
+  });
+
+  it('describes every tool in the OpenAPI document', async () => {
+    const document = (await admin.get('/v1/openapi.json')).json() as {
+      paths: Record<string, Record<string, { operationId?: string; description?: string }>>;
+    };
+    for (const tool of TOOLS) {
+      const operation = document.paths[`/v1/${tool.name}`]?.['post'];
+      // A client that knows a tool name can build the request from this.
+      expect(operation, tool.name).toBeDefined();
+      expect(operation?.operationId, tool.name).toBe(tool.name);
+      expect(operation?.description, tool.name).toBe(tool.description);
+    }
+  });
+
+  it('refuses a tool call from an agent that may not make it', async () => {
+    const token = await agentToken('read_only', 'Tool reader');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/knowledge_propose_create',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { title: 'Not allowed', body: 'Body.', type: 'fact' },
+    });
+    // The tool route is the same handler, so it is the same refusal.
+    expect(res.statusCode, res.body).toBe(403);
   });
 });
