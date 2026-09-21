@@ -22,12 +22,32 @@ import { idempotencyKey, resolveWorkspaceActor } from '../plugins/actor-context.
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
-function summary(proposal: ProposalRecord): ProposalSummary {
+/**
+ * The title a proposal proposes, when its payload carries one.
+ *
+ * A create carries it at the top level and a supersession under `new_item`.
+ * An update carries it only when it is changing it, and a delete never; those
+ * are named by the item they are about instead.
+ */
+function proposedTitle(proposal: ProposalRecord): string | null {
+  const payload = proposal.proposedPayload as Record<string, unknown>;
+  const source =
+    proposal.proposalType === 'knowledge_supersede'
+      ? ((payload['newItem'] as Record<string, unknown> | undefined) ?? {})
+      : payload;
+  const title = source['title'];
+  return typeof title === 'string' && title !== '' ? title : null;
+}
+
+function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): ProposalSummary {
   return {
     id: proposal.id,
     workspace_id: proposal.workspaceId,
     proposal_type: proposal.proposalType,
     status: proposal.status,
+    title:
+      proposedTitle(proposal) ??
+      (proposal.targetItemId ? (itemTitles?.get(proposal.targetItemId) ?? null) : null),
     target_item_id: proposal.targetItemId,
     proposed_by_actor_id: proposal.proposedByActorId,
     base_revision_id: proposal.baseRevisionId,
@@ -56,6 +76,22 @@ async function readScope(
   if (all.allowed) return 'all';
   await services.authorization.require(actor.context, actor.standing, 'proposal.read_own');
   return 'own';
+}
+
+/**
+ * One proposal, named. A mutation answers about a single proposal, so it
+ * looks the one title up rather than batching, which the list does.
+ */
+async function named(
+  services: Services,
+  workspaceId: ProposalRecord['workspaceId'],
+  proposal: ProposalRecord,
+): Promise<ProposalSummary> {
+  const titles = await services.repositories.knowledge.titlesOf(
+    workspaceId,
+    proposal.targetItemId ? [proposal.targetItemId] : [],
+  );
+  return summary(proposal, titles);
 }
 
 export function registerProposalRoutes(app: FastifyInstance, services: Services): void {
@@ -101,7 +137,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             confidence: body.confidence,
             acknowledgedDuplicateIds: body.acknowledged_duplicate_ids,
           });
-          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+          return {
+            proposal: await named(services, actor.context.workspaceId, outcome.proposal),
+            item_id: outcome.itemId,
+          };
         },
       );
       // 202 when somebody still has to look at it, so a caller can tell the
@@ -148,7 +187,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             reason: body.reason,
             confidence: body.confidence,
           });
-          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+          return {
+            proposal: await named(services, actor.context.workspaceId, outcome.proposal),
+            item_id: outcome.itemId,
+          };
         },
       );
       if (replayable.value.item_id === null) reply.code(202);
@@ -181,7 +223,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             reason: body.reason,
             confidence: body.confidence,
           });
-          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+          return {
+            proposal: await named(services, actor.context.workspaceId, outcome.proposal),
+            item_id: outcome.itemId,
+          };
         },
       );
       if (replayable.value.item_id === null) reply.code(202);
@@ -241,7 +286,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             reason: body.reason,
             confidence: body.confidence,
           });
-          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+          return {
+            proposal: await named(services, actor.context.workspaceId, outcome.proposal),
+            item_id: outcome.itemId,
+          };
         },
       );
       if (replayable.value.item_id === null) reply.code(202);
@@ -276,7 +324,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             edits: body.edits,
             note: body.note,
           });
-          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+          return {
+            proposal: await named(services, actor.context.workspaceId, outcome.proposal),
+            item_id: outcome.itemId,
+          };
         },
       );
       return replayable.value;
@@ -296,7 +347,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
         reason: request.body.reason,
       });
       // Nothing was written, so no item: a rejection is a decision, not a change.
-      return { proposal: summary(proposal), item_id: null };
+      return {
+        proposal: await named(services, actor.context.workspaceId, proposal),
+        item_id: null,
+      };
     },
   );
 
@@ -312,7 +366,10 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
         proposalId: request.body.proposal_id,
         reason: request.body.reason,
       });
-      return { proposal: summary(proposal), item_id: null };
+      return {
+        proposal: await named(services, actor.context.workspaceId, proposal),
+        item_id: null,
+      };
     },
   );
 
@@ -336,7 +393,12 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
         ...(request.query.status ? { status: request.query.status } : {}),
         ...(scope === 'own' ? { proposedByActorId: actor.context.actorId } : {}),
       });
-      return { proposals: proposals.map(summary) };
+      // One lookup for the whole page: a row naming an item has to say which.
+      const titles = await services.repositories.knowledge.titlesOf(
+        actor.context.workspaceId,
+        proposals.flatMap((p) => (p.targetItemId ? [p.targetItemId] : [])),
+      );
+      return { proposals: proposals.map((p) => summary(p, titles)) };
     },
   );
 
@@ -362,8 +424,15 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
           objectIds: { proposal: request.query.proposal_id },
         });
       }
+      const titles = await services.repositories.knowledge.titlesOf(
+        actor.context.workspaceId,
+        proposal.targetItemId ? [proposal.targetItemId] : [],
+      );
       return {
-        proposal: { ...summary(proposal), proposed_payload: proposal.proposedPayload },
+        proposal: {
+          ...summary(proposal, titles),
+          proposed_payload: proposal.proposedPayload,
+        },
       };
     },
   );

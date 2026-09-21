@@ -997,6 +997,7 @@ const PROPOSAL = {
   workspace_id: ME.memberships[0]!.workspace_id,
   proposal_type: 'knowledge_update' as const,
   status: 'pending' as const,
+  title: 'Release cadence',
   target_item_id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   base_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
@@ -1055,9 +1056,9 @@ describe('review inbox', () => {
     renderApp('/review');
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'The source changed.' }));
+    await user.click(await screen.findByRole('button', { name: 'Release cadence' }));
 
-    const detail = await screen.findByRole('region', { name: /Change|Release/ });
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
     // The reviewer sees the old line going and the new one arriving, rather
     // than being asked to approve a diff nobody read.
     await waitFor(() => expect(detail.textContent).toContain('- We release on Thursdays.'));
@@ -1072,6 +1073,8 @@ describe('review inbox', () => {
     expect(approval.body).toMatchObject({ proposal_id: PROPOSAL.id });
     // Nothing was edited, so nothing is sent as an edit.
     expect((approval.body as Record<string, unknown>)['edits']).toBeUndefined();
+    // The proposal changes only the body, so only the body is offered.
+    expect(within(detail).queryByLabelText('Title')).toBeNull();
   });
 
   it('sends the reviewer’s text when they changed it, and their reason on a rejection', async () => {
@@ -1089,8 +1092,8 @@ describe('review inbox', () => {
     renderApp('/review');
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'The source changed.' }));
-    const detail = await screen.findByRole('region', { name: /Change|Release/ });
+    await user.click(await screen.findByRole('button', { name: 'Release cadence' }));
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
 
     await user.type(within(detail).getByLabelText('Note'), 'Already in the handbook.');
     await user.click(within(detail).getByRole('button', { name: 'Reject' }));

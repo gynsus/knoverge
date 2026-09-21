@@ -14,12 +14,16 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 
 const INBOX_KEY = ['proposals', 'pending'] as const;
 
-/** The fields of a create or supersede payload a reviewer can read and change. */
+/**
+ * The text a proposal carries, field by field.
+ *
+ * Only the fields it actually proposes. An update that changes the body and
+ * nothing else carries no title, and showing an empty title box next to it
+ * reads as though the proposal were taking the title away.
+ */
 interface Content {
-  title: string;
-  body: string;
-  categories: string[];
-  tags: string[];
+  title?: string;
+  body?: string;
 }
 
 /**
@@ -31,6 +35,7 @@ interface Content {
  * delete carries nothing at all.
  */
 function contentOf(proposal: ProposalDetail): Content | null {
+  if (proposal.proposal_type === 'knowledge_delete') return null;
   const payload = proposal.proposed_payload as Record<string, unknown> | null;
   if (!payload) return null;
   const source = (
@@ -39,16 +44,11 @@ function contentOf(proposal: ProposalDetail): Content | null {
       : payload
   ) as Record<string, unknown> | undefined;
   if (!source) return null;
-  const text = (key: string): string => (typeof source[key] === 'string' ? source[key] : '');
-  const list = (key: string): string[] =>
-    Array.isArray(source[key]) ? (source[key] as string[]) : [];
-  if (proposal.proposal_type === 'knowledge_delete') return null;
-  return {
-    title: text('title'),
-    body: text('body'),
-    categories: list('categories'),
-    tags: list('tags'),
+  const content: Content = {
+    ...(typeof source['title'] === 'string' ? { title: source['title'] } : {}),
+    ...(typeof source['body'] === 'string' ? { body: source['body'] } : {}),
   };
+  return content.title === undefined && content.body === undefined ? null : content;
 }
 
 /** Line-by-line, which is what a person reads a change as. */
@@ -139,16 +139,20 @@ function ProposalReview({
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
 
-  const edited =
-    content !== null &&
-    draft !== null &&
-    (draft.title !== content.title || draft.body !== content.body);
+  // Only what the reviewer actually changed, and only among the fields the
+  // proposal carried: sending back an untouched field as an edit would record
+  // approved_with_edits for a reviewer who edited nothing.
+  const edits = {
+    ...(draft?.title !== undefined && draft.title !== content?.title ? { title: draft.title } : {}),
+    ...(draft?.body !== undefined && draft.body !== content?.body ? { body: draft.body } : {}),
+  };
+  const edited = Object.keys(edits).length > 0;
 
   const approve = useMutation({
     mutationFn: () =>
       adminApi.proposals.approve({
         proposal_id: proposal.id,
-        ...(edited && draft ? { edits: { title: draft.title, body: draft.body } } : {}),
+        ...(edited ? { edits } : {}),
         ...(note.trim() ? { note: note.trim() } : {}),
       }),
     onSuccess: onResolved,
@@ -165,7 +169,7 @@ function ProposalReview({
   return (
     <Card role="region" aria-labelledby="review-detail-title" className="grid gap-3 p-4 sm:p-6">
       <CardTitle id="review-detail-title" tabIndex={-1} ref={heading}>
-        {content?.title || t(`review.types.${proposal.proposal_type}`)}
+        {proposal.title ?? t(`review.types.${proposal.proposal_type}`)}
       </CardTitle>
       <p className="flex flex-wrap items-center gap-2 text-sm">
         <Badge>{t(`review.types.${proposal.proposal_type}`)}</Badge>
@@ -183,7 +187,7 @@ function ProposalReview({
         </p>
       )}
 
-      {proposal.target_item_id && content && (
+      {proposal.target_item_id && content?.body !== undefined && (
         <>
           <h3 className="mt-2 text-base font-semibold">{t('review.changes')}</h3>
           <Diff itemId={proposal.target_item_id} after={content.body} />
@@ -192,20 +196,24 @@ function ProposalReview({
 
       {draft ? (
         <FieldSet disabled={approve.isPending || reject.isPending}>
-          <Field label={t('knowledge.item_title')}>
-            <Input
-              value={draft.title}
-              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              maxLength={300}
-            />
-          </Field>
-          <Field label={t('knowledge.body')} hint={t('review.edit_hint')}>
-            <Textarea
-              rows={12}
-              value={draft.body}
-              onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-            />
-          </Field>
+          {draft.title !== undefined && (
+            <Field label={t('knowledge.item_title')}>
+              <Input
+                value={draft.title}
+                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                maxLength={300}
+              />
+            </Field>
+          )}
+          {draft.body !== undefined && (
+            <Field label={t('knowledge.body')} hint={t('review.edit_hint')}>
+              <Textarea
+                rows={12}
+                value={draft.body}
+                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+              />
+            </Field>
+          )}
         </FieldSet>
       ) : (
         <p className="text-sm">{t('review.no_content')}</p>
@@ -290,9 +298,10 @@ export function ReviewPage() {
                   setSelectedId(entry.id);
                 }}
               >
-                {entry.reason || t(`review.types.${entry.proposal_type}`)}
+                {entry.title ?? t(`review.types.${entry.proposal_type}`)}
               </Button>
               <Badge>{t(`review.types.${entry.proposal_type}`)}</Badge>
+              {entry.reason && <small className="text-muted-foreground">{entry.reason}</small>}
               <small className="text-muted-foreground">
                 {new Date(entry.created_at).toLocaleString()}
               </small>

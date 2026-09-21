@@ -141,6 +141,17 @@ export interface KnowledgeRepository {
     itemIds: readonly KnowledgeItemId[],
   ): Promise<Map<KnowledgeItemId, string[]>>;
 
+  /**
+   * The current title of each item, for a list that has to name them.
+   *
+   * The title lives on the revision, so a caller holding item ids alone
+   * cannot say what they are without this.
+   */
+  titlesOf(
+    workspaceId: WorkspaceId,
+    itemIds: readonly KnowledgeItemId[],
+  ): Promise<Map<KnowledgeItemId, string>>;
+
   /** The item already recorded under this external identity, if any. */
   findByExternal(
     workspaceId: WorkspaceId,

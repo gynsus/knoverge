@@ -583,6 +583,46 @@ describe('proposing a change to an item that exists', () => {
     expect(after.item.review_state).toBe('human_reviewed');
   });
 
+  it('names every proposal, so a queue of them can be told apart', async () => {
+    const token = await agentToken('propose', 'Naming agent');
+    const item = await anItem('Fire drill procedure');
+    const update = ProposalResult.parse(
+      (
+        await proposeUpdate(token, {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          body: 'Assemble at the car park, not the lobby.',
+        })
+      ).json(),
+    );
+    // The update changes only the body, so it is named by the item it changes.
+    expect(update.proposal.title).toBe('Fire drill procedure');
+
+    const created = ProposalResult.parse(
+      (
+        await asAgent(token, {
+          title: 'Where the fire extinguishers are',
+          body: 'One by each stairwell.',
+          type: 'fact',
+        })
+      ).json(),
+    );
+    // A create is named by the title it proposes, which no item carries yet.
+    expect(created.proposal.title).toBe('Where the fire extinguishers are');
+
+    const listed = ProposalsResponse.parse(
+      (await admin.get('/v1/proposal.list?status=pending')).json(),
+    );
+    const names = listed.proposals.filter((p) =>
+      [update.proposal.id, created.proposal.id].includes(p.id),
+    );
+    expect(names.map((p) => p.title).sort()).toEqual([
+      'Fire drill procedure',
+      'Where the fire extinguishers are',
+    ]);
+  });
+
   it('refuses a proposal written against an older revision', async () => {
     const token = await agentToken('propose', 'Stale proposer');
     const item = await anItem('Item that moves on');

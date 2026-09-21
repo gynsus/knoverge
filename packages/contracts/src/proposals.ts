@@ -46,6 +46,12 @@ export const ProposalSummary = z.object({
   workspace_id: WorkspaceId,
   proposal_type: ProposalType,
   status: ProposalStatus,
+  /**
+   * What the proposal is about, for a list that has to name it: the title it
+   * proposes, or the current title of the item it would change. Null only
+   * when neither exists, which a redacted payload can produce.
+   */
+  title: z.string().nullable(),
   target_item_id: KnowledgeItemId.nullable(),
   proposed_by_actor_id: ActorId,
   base_revision_id: RevisionId.nullable(),
