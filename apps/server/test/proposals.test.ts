@@ -519,3 +519,226 @@ describe('reviewing a proposal', () => {
     expect(item.item.review_state).toBe('agent_reviewed');
   });
 });
+
+describe('proposing a change to an item that exists', () => {
+  /** An item a person wrote, and what a proposer would have read of it. */
+  async function anItem(title: string) {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: 'The text as it stands.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = (res.json() as { item: { id: string } }).item;
+    return item as { id: string; current_revision_id: string; content_hash: string };
+  }
+
+  const proposeUpdate = (token: string, payload: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/knowledge_propose_update',
+      headers: { authorization: `Bearer ${token}` },
+      payload: payload as Record<string, unknown>,
+    });
+
+  const proposeDelete = (token: string, payload: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/knowledge_propose_delete',
+      headers: { authorization: `Bearer ${token}` },
+      payload: payload as Record<string, unknown>,
+    });
+
+  it('records an update for review and applies it on approval', async () => {
+    const token = await agentToken('propose', 'Updating agent');
+    const item = await anItem('Item to update');
+    const res = await proposeUpdate(token, {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'The text the agent would rather have.',
+      reason: 'The source changed.',
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposed = ProposalResult.parse(res.json());
+    expect(proposed.proposal.proposal_type).toBe('knowledge_update');
+    expect(proposed.proposal.target_item_id).toBe(item.id);
+    expect(proposed.proposal.base_revision_id).toBe(item.current_revision_id);
+
+    // Nothing changed yet: a pending proposal is not a write.
+    const before = (await admin.get(`/v1/knowledge.get?item_id=${item.id}`)).json() as {
+      item: { body: string };
+    };
+    expect(before.item.body).toContain('The text as it stands.');
+
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const after = (await admin.get(`/v1/knowledge.get?item_id=${item.id}`)).json() as {
+      item: { body: string; revision_number: number; review_state: string };
+    };
+    expect(after.item.body).toContain('The text the agent would rather have.');
+    expect(after.item.revision_number).toBe(2);
+    expect(after.item.review_state).toBe('human_reviewed');
+  });
+
+  it('refuses a proposal written against an older revision', async () => {
+    const token = await agentToken('propose', 'Stale proposer');
+    const item = await anItem('Item that moves on');
+    // The person edits it after the agent read it.
+    const moved = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'Changed by a person first.',
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+
+    const res = await proposeUpdate(token, {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'Written against what the agent read.',
+    });
+    // Told now, rather than after a reviewer has spent attention on it.
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().code).toBe('REVISION_CONFLICT');
+  });
+
+  it('puts the second proposal for one item into conflict when the first is approved', async () => {
+    const first = await agentToken('propose', 'First proposer');
+    const second = await agentToken('propose', 'Second proposer');
+    const item = await anItem('Item two agents want');
+    const base = {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+    };
+    const one = ProposalResult.parse(
+      (await proposeUpdate(first, { ...base, body: 'What the first agent wants.' })).json(),
+    );
+    const two = ProposalResult.parse(
+      (await proposeUpdate(second, { ...base, body: 'What the second agent wants.' })).json(),
+    );
+
+    expect(
+      (await admin.post('/v1/proposal_approve', { proposal_id: one.proposal.id })).statusCode,
+    ).toBe(200);
+
+    const other = (await admin.get(`/v1/proposal.get?proposal_id=${two.proposal.id}`)).json() as {
+      proposal: { status: string; resolution_note: string };
+    };
+    // Not rejected: nobody decided against it, and the difference matters to
+    // whoever proposed it.
+    expect(other.proposal.status).toBe('conflict');
+    expect(other.proposal.resolution_note).toMatch(/changed while this proposal was waiting/);
+  });
+
+  it('puts a proposal into conflict when a direct write overtakes it', async () => {
+    const token = await agentToken('propose', 'Overtaken proposer');
+    const item = await anItem('Item overtaken by a person');
+    const proposed = ProposalResult.parse(
+      (
+        await proposeUpdate(token, {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          body: 'What the agent proposed.',
+        })
+      ).json(),
+    );
+    const moved = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'What the person wrote instead.',
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+    });
+    expect(approved.statusCode, approved.body).toBe(409);
+    const after = (
+      await admin.get(`/v1/proposal.get?proposal_id=${proposed.proposal.id}`)
+    ).json() as { proposal: { status: string } };
+    // It must not go back into the inbox to fail the same way for the next
+    // reviewer.
+    expect(after.proposal.status).toBe('conflict');
+  });
+
+  it('records a delete for review and applies it on approval', async () => {
+    const token = await agentToken('propose', 'Deleting agent');
+    const item = await anItem('Item to delete');
+    const res = await proposeDelete(token, {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      reason: 'Superseded by the handbook.',
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposed = ProposalResult.parse(res.json());
+    expect(proposed.proposal.proposal_type).toBe('knowledge_delete');
+
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const listed = (await admin.get('/v1/knowledge.list')).json() as {
+      items: { id: string; status: string }[];
+    };
+    // Logical: the file leaves the tree and the history keeps it.
+    expect(listed.items.find((i) => i.id === item.id)?.status).toBe('deleted');
+  });
+
+  it('refuses to edit a delete proposal, which carries nothing to edit', async () => {
+    const token = await agentToken('propose', 'Delete editor');
+    const item = await anItem('Item somebody wants edited away');
+    const proposed = ProposalResult.parse(
+      (
+        await proposeDelete(token, {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+        })
+      ).json(),
+    );
+    const res = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+      edits: { title: 'Something else entirely' },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('writes straight away when a rule allows the update directly', async () => {
+    const token = await agentToken('trusted', 'Direct updater');
+    const agents = (await admin.get('/v1/admin/agents.list')).json() as {
+      agents: { actor_id: string; name: string }[];
+    };
+    const actorId = agents.agents.find((a) => a.name === 'Direct updater')!.actor_id;
+    expect(
+      (
+        await admin.post('/v1/admin/policy.rules.upsert', {
+          priority: 10,
+          subject: { actor_id: actorId },
+          action: 'knowledge.update',
+          effect: 'allow_direct',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const item = await anItem('Item an agent may change');
+    const res = await proposeUpdate(token, {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      title: 'Changed by a trusted agent',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    expect(result.proposal.status).toBe('approved');
+    expect(result.proposal.policy_decision).toBe('allow_direct');
+    expect(result.item_id).toBe(item.id);
+  });
+});

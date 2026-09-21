@@ -5,6 +5,8 @@ import {
   ProposalResult,
   ProposalsResponse,
   ProposeCreateRequest,
+  ProposeDeleteRequest,
+  ProposeUpdateRequest,
   ProposalStatus,
   RejectProposalRequest,
   WithdrawProposalRequest,
@@ -103,6 +105,83 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
       // 202 when somebody still has to look at it, so a caller can tell the
       // difference between "recorded" and "done" without reading the status.
       // A replay answers the same way the first call did.
+      if (replayable.value.item_id === null) reply.code(202);
+      return replayable.value;
+    },
+  );
+
+  r.post(
+    '/v1/knowledge_propose_update',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: {
+        body: ProposeUpdateRequest,
+        response: { 200: ProposalResult, 202: ProposalResult },
+      },
+    },
+    async (request, reply) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const body = request.body;
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'knowledge_propose_update',
+        body,
+        async () => {
+          const outcome = await services.proposals.proposeUpdate(actor.context, actor.standing, {
+            itemId: body.item_id,
+            baseRevisionId: body.base_revision_id,
+            baseContentHash: body.base_content_hash,
+            title: body.title,
+            body: body.body,
+            type: body.type,
+            language: body.language,
+            categories: body.categories,
+            tags: body.tags,
+            validFrom: body.valid_from,
+            validUntil: body.valid_until,
+            observedAt: body.observed_at,
+            sources: body.sources,
+            relations: body.relations,
+            reason: body.reason,
+            confidence: body.confidence,
+          });
+          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+        },
+      );
+      if (replayable.value.item_id === null) reply.code(202);
+      return replayable.value;
+    },
+  );
+
+  r.post(
+    '/v1/knowledge_propose_delete',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: {
+        body: ProposeDeleteRequest,
+        response: { 200: ProposalResult, 202: ProposalResult },
+      },
+    },
+    async (request, reply) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const body = request.body;
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'knowledge_propose_delete',
+        body,
+        async () => {
+          const outcome = await services.proposals.proposeDelete(actor.context, actor.standing, {
+            itemId: body.item_id,
+            baseRevisionId: body.base_revision_id,
+            baseContentHash: body.base_content_hash,
+            reason: body.reason,
+            confidence: body.confidence,
+          });
+          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+        },
+      );
       if (replayable.value.item_id === null) reply.code(202);
       return replayable.value;
     },

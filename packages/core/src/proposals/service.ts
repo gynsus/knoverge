@@ -1,9 +1,15 @@
 import type {
+  EventType,
+  PolicyActionName,
+  PolicyEffect,
   FrontmatterRelation,
   FrontmatterSource,
   ItemType,
   KnowledgeItemId,
   ProposalId,
+  ProposalType,
+  ReviewState,
+  RevisionId,
   WorkspaceId,
 } from '@knoverge/contracts';
 
@@ -11,11 +17,17 @@ import type { ActorContext } from '../actor-context.ts';
 import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
-import type { CreateItemInput, KnowledgeService } from '../knowledge/service.ts';
+import type {
+  CreateItemInput,
+  DeleteItemInput,
+  ItemResult,
+  KnowledgeService,
+  UpdateItemInput,
+} from '../knowledge/service.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
-import type { UnitOfWork } from '../ports/unit-of-work.ts';
+import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type { CategoryRepository } from '../taxonomy/repository.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
 import type { ProposalPatch, ProposalRecord, ProposalRepository } from './repository.ts';
@@ -35,6 +47,73 @@ export interface ProposalServiceOptions {
 export interface ProposeCreateInput extends CreateItemInput {
   reason?: string | undefined;
   confidence?: number | undefined;
+}
+
+export interface ProposeUpdateInput extends UpdateItemInput {
+  reason?: string | undefined;
+  confidence?: number | undefined;
+}
+
+export interface ProposeDeleteInput extends DeleteItemInput {
+  reason?: string | undefined;
+  confidence?: number | undefined;
+}
+
+/** The stored payload of an update proposal: only the fields that were given. */
+interface ProposedUpdatePayload {
+  title: string;
+  body: string;
+  type: ItemType;
+  language: string;
+  categories: string[];
+  tags: string[];
+  sources: FrontmatterSource[];
+  relations: FrontmatterRelation[];
+  validFrom: string | null;
+  validUntil: string | null;
+  observedAt: string | null;
+}
+
+/** A policy answer that is not a refusal, and the rule that gave it. */
+type PolicyDecision = { effect: Exclude<PolicyEffect, 'deny'>; ruleId?: string | undefined };
+
+/** One proposal to record, whichever kind it is. */
+interface RecordSpec {
+  proposalType: ProposalType;
+  decision: PolicyDecision;
+  payload: Record<string, unknown>;
+  targetItemId: KnowledgeItemId | null;
+  baseRevisionId: RevisionId | null;
+  baseContentHash: string | null;
+  reason?: string | undefined;
+  confidence?: number | undefined;
+  eventType: EventType;
+  /** Checked before a pending proposal is recorded, when the kind has any. */
+  relations?: readonly FrontmatterRelation[] | undefined;
+  /** What `allow_direct` runs, and what approval runs later. */
+  apply: (proposalId: ProposalId) => Promise<ItemResult>;
+}
+
+/**
+ * Rule 6, for a proposal.
+ *
+ * A proposer that read an older revision is told now. The same check runs
+ * again when the proposal is approved, because the item can move on while the
+ * proposal waits.
+ */
+function assertBase(current: ItemResult, revisionId: RevisionId, contentHash: string): void {
+  if (current.revision.id === revisionId && current.revision.contentHash === contentHash) return;
+  throw new DomainError(
+    'REVISION_CONFLICT',
+    'the item changed since you read it; re-read it and propose your change against the current revision',
+    {
+      objectIds: {
+        knowledge_item: current.item.id,
+        current_revision_id: current.revision.id,
+        current_content_hash: current.revision.contentHash,
+      },
+    },
+  );
 }
 
 /** What a reviewer may change before approving: the content and nothing else. */
@@ -128,112 +207,136 @@ export class ProposalService {
     // The categories the item is aimed at, as ids: a rule may allow direct
     // writes into one part of the tree and not another, and a path is a
     // portable identifier rather than a security one (rule 13).
-    const target = {
+    const decision = await this.decide(actor, standing, 'knowledge.create', {
       categoryIds: await this.categoryIds(actor.workspaceId, input.categories ?? []),
       type: input.type,
-    };
-    const decision = await this.o.authorization.policyDecisionFor(
-      actor,
-      standing,
-      'knowledge.create',
-      target,
-    );
-    if (decision.effect === 'deny') {
-      // No proposal: there is nothing for anybody to review. The denial is
-      // recorded as a command.denied event, which is the record of it.
-      await this.o.authorization.recordDenied(actor, 'knowledge.create', 'policy_deny', target);
-      throw new DomainError('FORBIDDEN', 'policy refuses this write');
-    }
+    });
 
-    const now = this.clock.now();
-    const proposalId = newId('prop') as ProposalId;
-    const payload = {
+    return this.record(actor, {
+      proposalType: 'knowledge_create',
+      decision,
+      payload: {
+        title: input.title,
+        body: input.body,
+        type: input.type,
+        language: input.language ?? null,
+        categories: [...(input.categories ?? [])],
+        tags: [...(input.tags ?? [])],
+        sources: [...(input.sources ?? [])],
+        relations: [...(input.relations ?? [])],
+      },
+      targetItemId: null,
+      baseRevisionId: null,
+      baseContentHash: null,
+      reason: input.reason,
+      confidence: input.confidence,
+      eventType: 'knowledge.proposed_create',
+      relations: input.relations ?? [],
+      apply: (proposalId) => this.o.knowledge.create(actor, { ...input, proposalId }),
+    });
+  }
+
+  /**
+   * Proposing a change to an item that already exists.
+   *
+   * Rule 6 applies to a proposal exactly as it applies to a write. The base is
+   * checked here, so a proposer built on a stale read is told now rather than
+   * after a reviewer has spent attention on it, and again when the proposal is
+   * approved, because the item can move on while the proposal waits.
+   */
+  async proposeUpdate(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ProposeUpdateInput,
+  ): Promise<ProposalOutcome> {
+    await this.o.authorization.require(actor, standing, 'knowledge.propose_update');
+    const current = await this.o.knowledge.get(actor, input.itemId);
+    assertBase(current, input.baseRevisionId, input.baseContentHash);
+
+    const decision = await this.decide(actor, standing, 'knowledge.update', {
+      // The categories it would end up in, which is what a scoped rule is
+      // about; an update that moves an item is decided where it is going.
+      categoryIds: await this.categoryIds(
+        actor.workspaceId,
+        input.categories ?? current.categories,
+      ),
+      type: input.type ?? current.item.type,
+    });
+
+    const payload: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries({
       title: input.title,
       body: input.body,
       type: input.type,
-      language: input.language ?? null,
-      categories: [...(input.categories ?? [])],
-      tags: [...(input.tags ?? [])],
-      sources: [...(input.sources ?? [])],
-      relations: [...(input.relations ?? [])],
-    };
-
-    if (decision.effect === 'require_review') {
-      // The direct path validates these inside knowledge.create. Review has no
-      // such moment, so a proposal naming an item that does not exist would sit
-      // in the inbox until somebody approved it and it failed there.
-      await this.o.knowledge.assertRelationTargetsExist(actor.workspaceId, input.relations ?? []);
-      const proposal: ProposalRecord = {
-        id: proposalId,
-        workspaceId: actor.workspaceId,
-        proposalType: 'knowledge_create',
-        targetItemId: null,
-        targetCategoryId: null,
-        status: 'pending',
-        proposedByActorId: actor.actorId,
-        baseRevisionId: null,
-        baseContentHash: null,
-        proposedPayload: payload,
-        reason: input.reason ?? null,
-        confidence: input.confidence ?? null,
-        acknowledgedDuplicateIds: [],
-        syncSessionId: null,
-        policyDecision: 'require_review',
-        policyRuleId: decision.ruleId ?? null,
-        createdAt: now,
-        resolvedAt: null,
-        resolvedByActorId: null,
-        resolutionNote: null,
-        resultRevisionIds: [],
-      };
-      await this.o.uow.run(async (tx) => {
-        await this.o.proposals.insert(tx, proposal);
-        await this.o.ledger.append(tx, actor.workspaceId, actor, {
-          eventType: 'knowledge.proposed_create',
-          objectType: 'proposal',
-          objectId: proposalId,
-          // No title and no body: the payload is in the proposal row, which
-          // purge can redact. The ledger cannot be redacted, so it holds ids.
-          metadata: {
-            proposal_type: 'knowledge_create',
-            policy_decision: 'require_review',
-            ...(decision.ruleId ? { policy_rule: decision.ruleId } : {}),
-          },
-        });
-      });
-      return { proposal, itemId: null };
+      language: input.language,
+      categories: input.categories ? [...input.categories] : undefined,
+      tags: input.tags ? [...input.tags] : undefined,
+      sources: input.sources ? [...input.sources] : undefined,
+      relations: input.relations ? [...input.relations] : undefined,
+      validFrom: input.validFrom,
+      validUntil: input.validUntil,
+      observedAt: input.observedAt,
+    })) {
+      // A field left out is left alone, so only what was given is stored.
+      if (value !== undefined) payload[key] = value;
     }
 
-    // allow_direct: the write happens now, and the proposal records that it
-    // did and on whose authority.
-    const result = await this.o.knowledge.create(actor, input);
-    const system = await this.o.actors.findSystemActor(actor.workspaceId);
-    const proposal: ProposalRecord = {
-      id: proposalId,
-      workspaceId: actor.workspaceId,
-      proposalType: 'knowledge_create',
-      targetItemId: result.item.id,
-      targetCategoryId: null,
-      status: 'approved',
-      proposedByActorId: actor.actorId,
-      baseRevisionId: null,
-      baseContentHash: null,
-      proposedPayload: payload,
-      reason: input.reason ?? null,
-      confidence: input.confidence ?? null,
-      acknowledgedDuplicateIds: [],
-      syncSessionId: null,
-      policyDecision: 'allow_direct',
-      policyRuleId: decision.ruleId ?? null,
-      createdAt: now,
-      resolvedAt: now,
-      // The rule approved it, not a person. The system actor is who a rule is.
-      resolvedByActorId: system?.id ?? actor.actorId,
-      resolutionNote: null,
-      resultRevisionIds: [result.revision.id],
-    };
-    await this.o.uow.run((tx) => this.o.proposals.insert(tx, proposal));
-    return { proposal, itemId: result.item.id };
+    return this.record(actor, {
+      proposalType: 'knowledge_update',
+      decision,
+      payload,
+      targetItemId: input.itemId,
+      baseRevisionId: input.baseRevisionId,
+      baseContentHash: input.baseContentHash,
+      reason: input.reason,
+      confidence: input.confidence,
+      eventType: 'knowledge.proposed_update',
+      apply: (proposalId) =>
+        this.o.knowledge.update(actor, {
+          ...this.updateInput(payload),
+          itemId: input.itemId,
+          baseRevisionId: input.baseRevisionId,
+          baseContentHash: input.baseContentHash,
+          proposalId,
+        }),
+    });
+  }
+
+  /** Proposing that an item leave the current index. The history keeps it. */
+  async proposeDelete(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ProposeDeleteInput,
+  ): Promise<ProposalOutcome> {
+    await this.o.authorization.require(actor, standing, 'knowledge.propose_delete');
+    const current = await this.o.knowledge.get(actor, input.itemId);
+    assertBase(current, input.baseRevisionId, input.baseContentHash);
+
+    const decision = await this.decide(actor, standing, 'knowledge.delete', {
+      categoryIds: await this.categoryIds(actor.workspaceId, current.categories),
+      type: current.item.type,
+    });
+
+    return this.record(actor, {
+      proposalType: 'knowledge_delete',
+      decision,
+      // Nothing to carry: a delete proposes no content, only that this
+      // revision of this item should go.
+      payload: {},
+      targetItemId: input.itemId,
+      baseRevisionId: input.baseRevisionId,
+      baseContentHash: input.baseContentHash,
+      reason: input.reason,
+      confidence: input.confidence,
+      eventType: 'knowledge.proposed_delete',
+      apply: (proposalId) =>
+        this.o.knowledge.delete(actor, {
+          itemId: input.itemId,
+          baseRevisionId: input.baseRevisionId,
+          baseContentHash: input.baseContentHash,
+          proposalId,
+        }),
+    });
   }
 
   /**
@@ -263,41 +366,22 @@ export class ProposalService {
         objectIds: { proposal: proposal.id },
       });
     }
-    if (proposal.proposalType !== 'knowledge_create') {
-      // The other kinds arrive with the proposals that produce them; refusing
-      // is better than applying a payload this code does not understand.
-      throw new DomainError(
-        'VALIDATION_ERROR',
-        `approving a ${proposal.proposalType} proposal arrives in a later milestone`,
-        { objectIds: { proposal: proposal.id } },
-      );
-    }
-
     const edits = nonEmpty(input.edits);
-    const stored = proposal.proposedPayload as unknown as ProposedCreatePayload;
-    const payload: ProposedCreatePayload = {
-      title: edits?.title ?? stored.title,
-      body: edits?.body ?? stored.body,
-      type: edits?.type ?? stored.type,
-      language: edits?.language ?? stored.language,
-      categories: [...(edits?.categories ?? stored.categories)],
-      tags: [...(edits?.tags ?? stored.tags)],
-      sources: [...(edits?.sources ?? stored.sources)],
-      relations: [...(edits?.relations ?? stored.relations)],
-    };
+    const payload = this.payloadFor(proposal, edits);
     const now = this.clock.now();
-    const result = await this.o.knowledge.create(actor, {
-      title: payload.title,
-      body: payload.body,
-      type: payload.type,
-      ...(payload.language ? { language: payload.language } : {}),
-      categories: payload.categories,
-      tags: payload.tags,
-      sources: payload.sources,
-      relations: payload.relations,
-      proposalId: proposal.id,
-      review: actor.actorType === 'human' ? 'human_reviewed' : 'agent_reviewed',
-    });
+    const review = actor.actorType === 'human' ? 'human_reviewed' : 'agent_reviewed';
+    let result: ItemResult;
+    try {
+      result = await this.applyOnApproval(actor, proposal, payload, review);
+    } catch (error) {
+      // The item moved on since the proposal was written — by a direct write,
+      // or by an approval this one did not see. Leaving it pending would put
+      // it back in the inbox to fail the same way for the next reviewer.
+      if (error instanceof DomainError && error.code === 'REVISION_CONFLICT') {
+        await this.o.uow.run((tx) => this.markConflict(tx, actor, proposal));
+      }
+      throw error;
+    }
 
     const patch: ProposalPatch = {
       status: edits ? 'approved_with_edits' : 'approved',
@@ -308,8 +392,15 @@ export class ProposalService {
       // What was approved, which is not what was proposed when a reviewer
       // changed it. Keeping only the original would leave the trail claiming
       // the proposer wrote text they never saw.
-      ...(edits ? { proposedPayload: payload as unknown as Record<string, unknown> } : {}),
+      ...(edits ? { proposedPayload: payload } : {}),
     };
+    // Every other pending proposal against this item was written against the
+    // revision that is no longer current, so the first approval wins and the
+    // rest need rebasing (KNOWLEDGE_LIFECYCLE.md section 3).
+    const stale = await this.o.proposals.list(actor.workspaceId, {
+      targetItemId: result.item.id,
+      status: 'pending',
+    });
     await this.o.uow.run(async (tx) => {
       await this.o.proposals.update(tx, actor.workspaceId, proposal.id, patch);
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
@@ -325,11 +416,122 @@ export class ProposalService {
           revision: result.revision.id,
         },
       });
+      for (const other of stale) {
+        if (other.id === proposal.id) continue;
+        await this.markConflict(tx, actor, other);
+      }
     });
     return {
       proposal: { ...proposal, ...patch, targetItemId: result.item.id } as ProposalRecord,
       itemId: result.item.id,
     };
+  }
+
+  /**
+   * What approval writes, which is what the proposal asked for.
+   *
+   * A create makes an item, an update changes one, a delete retires one. Each
+   * carries the base the proposer read: `knowledge.update` and
+   * `knowledge.delete` check it again and answer `REVISION_CONFLICT` if the
+   * item moved on while the proposal waited, which is the second half of rule
+   * 6 and the reason a stale proposal cannot be approved by accident.
+   */
+  private async applyOnApproval(
+    actor: ActorContext,
+    proposal: ProposalRecord,
+    payload: Record<string, unknown>,
+    review: ReviewState,
+  ): Promise<ItemResult> {
+    if (proposal.proposalType === 'knowledge_create') {
+      const p = payload as unknown as ProposedCreatePayload;
+      return this.o.knowledge.create(actor, {
+        title: p.title,
+        body: p.body,
+        type: p.type,
+        ...(p.language ? { language: p.language } : {}),
+        categories: p.categories,
+        tags: p.tags,
+        sources: p.sources,
+        relations: p.relations,
+        proposalId: proposal.id,
+        review,
+      });
+    }
+    const itemId = proposal.targetItemId;
+    const baseRevisionId = proposal.baseRevisionId;
+    const baseContentHash = proposal.baseContentHash;
+    if (!itemId || !baseRevisionId || !baseContentHash) {
+      throw new DomainError('INTERNAL_ERROR', 'the proposal names no item to change', {
+        objectIds: { proposal: proposal.id },
+      });
+    }
+    if (proposal.proposalType === 'knowledge_update') {
+      return this.o.knowledge.update(actor, {
+        ...this.updateInput(payload),
+        itemId,
+        baseRevisionId,
+        baseContentHash,
+        proposalId: proposal.id,
+        review,
+      });
+    }
+    if (proposal.proposalType === 'knowledge_delete') {
+      return this.o.knowledge.delete(actor, {
+        itemId,
+        baseRevisionId,
+        baseContentHash,
+        proposalId: proposal.id,
+      });
+    }
+    // Supersession and category proposals arrive with the proposals that
+    // produce them; refusing beats applying a payload this cannot read.
+    throw new DomainError(
+      'VALIDATION_ERROR',
+      `approving a ${proposal.proposalType} proposal arrives in a later milestone`,
+      { objectIds: { proposal: proposal.id } },
+    );
+  }
+
+  /** The proposal's payload with the reviewer's changes folded in. */
+  private payloadFor(
+    proposal: ProposalRecord,
+    edits: ProposalEditsInput | undefined,
+  ): Record<string, unknown> {
+    if (!edits) return proposal.proposedPayload;
+    if (proposal.proposalType === 'knowledge_delete') {
+      // There is nothing to edit: a delete proposes no content. A reviewer who
+      // wants different content rejects it and writes what they want.
+      throw new DomainError('VALIDATION_ERROR', 'a delete proposal carries nothing to edit', {
+        objectIds: { proposal: proposal.id },
+      });
+    }
+    const given = Object.entries(edits).filter(([, value]) => value !== undefined);
+    return { ...proposal.proposedPayload, ...Object.fromEntries(given) };
+  }
+
+  /**
+   * A proposal the workspace moved past.
+   *
+   * Not rejected: nobody decided against it, and the difference matters to
+   * whoever proposed it. A reviewer can rebase it onto the current revision.
+   */
+  private async markConflict(tx: Tx, actor: ActorContext, proposal: ProposalRecord): Promise<void> {
+    await this.o.proposals.update(tx, actor.workspaceId, proposal.id, {
+      status: 'conflict',
+      resolvedAt: this.clock.now(),
+      resolvedByActorId: actor.actorId,
+      resolutionNote: 'the item changed while this proposal was waiting',
+    });
+    await this.o.ledger.append(tx, actor.workspaceId, actor, {
+      eventType: 'proposal.conflict',
+      objectType: 'proposal',
+      objectId: proposal.id,
+      metadata: {
+        proposal_type: proposal.proposalType,
+        proposed_by: proposal.proposedByActorId,
+        ...(proposal.targetItemId ? { knowledge_item: proposal.targetItemId } : {}),
+      },
+    });
   }
 
   /**
@@ -414,6 +616,128 @@ export class ProposalService {
       });
     }
     return proposal;
+  }
+
+  /**
+   * Permission and policy, in that order.
+   *
+   * The permission says whether this actor may ask at all; the policy says
+   * what happens to the asking. A denial is not recorded as a proposal —
+   * there was nothing for anybody to decide, and `command.denied` is the
+   * record of it (rule 14).
+   */
+  private async decide(
+    actor: ActorContext,
+    standing: ActorStanding,
+    action: PolicyActionName,
+    target: { categoryIds: string[]; type: ItemType },
+  ): Promise<PolicyDecision> {
+    const decision = await this.o.authorization.policyDecisionFor(actor, standing, action, target);
+    if (decision.effect === 'deny') {
+      await this.o.authorization.recordDenied(actor, action, 'policy_deny', target);
+      throw new DomainError('FORBIDDEN', 'policy refuses this write');
+    }
+    return { effect: decision.effect, ruleId: decision.ruleId };
+  }
+
+  /**
+   * Turning a decision into either a change or something to review.
+   *
+   * Both outcomes leave a proposal row. One that policy allowed directly is
+   * stored already approved and resolved by the system actor, so the trail
+   * reads the same whether a person looked at it or a rule did, and a reviewer
+   * coming back later can see why nobody was asked.
+   */
+  private async record(actor: ActorContext, spec: RecordSpec): Promise<ProposalOutcome> {
+    const now = this.clock.now();
+    const proposalId = newId('prop') as ProposalId;
+    const base: Omit<ProposalRecord, 'status' | 'policyDecision'> = {
+      id: proposalId,
+      workspaceId: actor.workspaceId,
+      proposalType: spec.proposalType,
+      targetItemId: spec.targetItemId,
+      targetCategoryId: null,
+      proposedByActorId: actor.actorId,
+      baseRevisionId: spec.baseRevisionId,
+      baseContentHash: spec.baseContentHash,
+      proposedPayload: spec.payload,
+      reason: spec.reason ?? null,
+      confidence: spec.confidence ?? null,
+      acknowledgedDuplicateIds: [],
+      syncSessionId: null,
+      policyRuleId: spec.decision.ruleId ?? null,
+      createdAt: now,
+      resolvedAt: null,
+      resolvedByActorId: null,
+      resolutionNote: null,
+      resultRevisionIds: [],
+    };
+
+    if (spec.decision.effect === 'require_review') {
+      // The direct path validates these inside the write. Review has no such
+      // moment, so a proposal naming an item that does not exist would sit in
+      // the inbox until somebody approved it and it failed there.
+      if (spec.relations) {
+        await this.o.knowledge.assertRelationTargetsExist(actor.workspaceId, spec.relations);
+      }
+      const proposal: ProposalRecord = {
+        ...base,
+        status: 'pending',
+        policyDecision: 'require_review',
+      };
+      await this.o.uow.run(async (tx) => {
+        await this.o.proposals.insert(tx, proposal);
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: spec.eventType,
+          objectType: 'proposal',
+          objectId: proposalId,
+          // No title and no body: the payload is in the proposal row, which
+          // purge can redact. The ledger cannot be redacted, so it holds ids.
+          metadata: {
+            proposal_type: spec.proposalType,
+            policy_decision: 'require_review',
+            ...(spec.targetItemId ? { knowledge_item: spec.targetItemId } : {}),
+            ...(spec.decision.ruleId ? { policy_rule: spec.decision.ruleId } : {}),
+          },
+        });
+      });
+      return { proposal, itemId: null };
+    }
+
+    // allow_direct: the write happens now, and the proposal records that it
+    // did and on whose authority.
+    const result = await spec.apply(proposalId);
+    const system = await this.o.actors.findSystemActor(actor.workspaceId);
+    const proposal: ProposalRecord = {
+      ...base,
+      targetItemId: result.item.id,
+      status: 'approved',
+      policyDecision: 'allow_direct',
+      resolvedAt: now,
+      // The rule approved it, not a person. The system actor is who a rule is.
+      resolvedByActorId: system?.id ?? actor.actorId,
+      resultRevisionIds: [result.revision.id],
+    };
+    await this.o.uow.run((tx) => this.o.proposals.insert(tx, proposal));
+    return { proposal, itemId: result.item.id };
+  }
+
+  /** The stored payload of an update proposal, as `knowledge.update` takes it. */
+  private updateInput(payload: Record<string, unknown>): Partial<UpdateItemInput> {
+    const p = payload as Partial<ProposedUpdatePayload>;
+    return {
+      ...(p.title !== undefined ? { title: p.title } : {}),
+      ...(p.body !== undefined ? { body: p.body } : {}),
+      ...(p.type !== undefined ? { type: p.type } : {}),
+      ...(p.language !== undefined ? { language: p.language } : {}),
+      ...(p.categories !== undefined ? { categories: p.categories } : {}),
+      ...(p.tags !== undefined ? { tags: p.tags } : {}),
+      ...(p.sources !== undefined ? { sources: p.sources } : {}),
+      ...(p.relations !== undefined ? { relations: p.relations } : {}),
+      ...(p.validFrom !== undefined ? { validFrom: p.validFrom } : {}),
+      ...(p.validUntil !== undefined ? { validUntil: p.validUntil } : {}),
+      ...(p.observedAt !== undefined ? { observedAt: p.observedAt } : {}),
+    };
   }
 
   /** Paths to ids, refusing one the workspace does not have. */
