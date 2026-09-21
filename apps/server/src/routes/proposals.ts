@@ -1,4 +1,5 @@
 import {
+  ProposalId,
   ProposalResponse,
   ProposalResult,
   ProposalsResponse,
@@ -6,12 +7,12 @@ import {
   ProposalStatus,
   type ProposalSummary,
 } from '@knoverge/contracts';
-import type { ProposalRecord } from '@knoverge/core';
+import { DomainError, type ProposalRecord } from '@knoverge/core';
 import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 
-import { requirePermission, resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import { idempotencyKey, resolveWorkspaceActor } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -36,6 +37,21 @@ function summary(proposal: ProposalRecord): ProposalSummary {
   };
 }
 
+/** Everything, or only what this actor proposed. */
+async function readScope(
+  services: Services,
+  actor: Awaited<ReturnType<typeof resolveWorkspaceActor>>,
+): Promise<'all' | 'own'> {
+  const all = await services.authorization.check(
+    actor.context,
+    actor.standing,
+    'proposal.read_all',
+  );
+  if (all.allowed) return 'all';
+  await services.authorization.require(actor.context, actor.standing, 'proposal.read_own');
+  return 'own';
+}
+
 export function registerProposalRoutes(app: FastifyInstance, services: Services): void {
   const r = app.withTypeProvider<ZodTypeProvider>();
 
@@ -54,29 +70,48 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
       // The tool name, because this is a tool: an agent's way to contribute.
       // The permission and the policy are both decided inside the service.
       const actor = await resolveWorkspaceActor(services, request);
-      const outcome = await services.proposals.proposeCreate(actor.context, actor.standing, {
-        title: request.body.title,
-        body: request.body.body,
-        type: request.body.type,
-        language: request.body.language,
-        categories: request.body.categories,
-        tags: request.body.tags,
-        slug: request.body.slug,
-        sources: request.body.sources,
-        relations: request.body.relations,
-        external: request.body.external,
-        reason: request.body.reason,
-        confidence: request.body.confidence,
-      });
+      const body = request.body;
+      // An agent retrying over a dropped connection is the case the key exists
+      // for: without it the retry leaves a second proposal in the inbox, or a
+      // second item when policy allows the write directly.
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'knowledge_propose_create',
+        body,
+        async () => {
+          const outcome = await services.proposals.proposeCreate(actor.context, actor.standing, {
+            title: body.title,
+            body: body.body,
+            type: body.type,
+            language: body.language,
+            categories: body.categories,
+            tags: body.tags,
+            slug: body.slug,
+            sources: body.sources,
+            relations: body.relations,
+            external: body.external,
+            reason: body.reason,
+            confidence: body.confidence,
+          });
+          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+        },
+      );
       // 202 when somebody still has to look at it, so a caller can tell the
       // difference between "recorded" and "done" without reading the status.
-      if (outcome.itemId === null) reply.code(202);
-      return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+      // A replay answers the same way the first call did.
+      if (replayable.value.item_id === null) reply.code(202);
+      return replayable.value;
     },
   );
 
+  /**
+   * One pair of routes for the reviewer and the proposer, narrowed by what the
+   * caller holds. Two sets would mean two places to keep the scoping right,
+   * and the one an agent uses is the one that would drift.
+   */
   r.get(
-    '/v1/admin/proposals.list',
+    '/v1/proposal.list',
     {
       schema: {
         querystring: z.object({ status: ProposalStatus.optional() }),
@@ -84,28 +119,38 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
       },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'knowledge.approve');
+      const actor = await resolveWorkspaceActor(services, request);
+      const scope = await readScope(services, actor);
       const proposals = await services.proposals.list(actor.context.workspaceId, {
         ...(request.query.status ? { status: request.query.status } : {}),
+        ...(scope === 'own' ? { proposedByActorId: actor.context.actorId } : {}),
       });
       return { proposals: proposals.map(summary) };
     },
   );
 
   r.get(
-    '/v1/admin/proposals.get',
+    '/v1/proposal.get',
     {
       schema: {
-        querystring: z.object({ proposal_id: z.string().min(1).max(64) }),
+        querystring: z.object({ proposal_id: ProposalId }),
         response: { 200: ProposalResponse },
       },
     },
     async (request) => {
-      const actor = await requirePermission(services, request, 'knowledge.approve');
+      const actor = await resolveWorkspaceActor(services, request);
+      const scope = await readScope(services, actor);
       const proposal = await services.proposals.get(
         actor.context.workspaceId,
-        request.query.proposal_id as never,
+        request.query.proposal_id,
       );
+      // Somebody who may only read their own is told the same thing about a
+      // proposal that is not theirs as about one that does not exist.
+      if (scope === 'own' && proposal.proposedByActorId !== actor.context.actorId) {
+        throw new DomainError('NOT_FOUND', 'proposal not found', {
+          objectIds: { proposal: request.query.proposal_id },
+        });
+      }
       return {
         proposal: { ...summary(proposal), proposed_payload: proposal.proposedPayload },
       };

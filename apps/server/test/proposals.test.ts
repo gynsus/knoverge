@@ -93,13 +93,19 @@ async function agentToken(tier: string, name: string): Promise<string> {
   return (issued.json() as { token: string }).token;
 }
 
-const asAgent = (token: string, payload: unknown) =>
+const asAgent = (token: string, payload: unknown, idempotencyKey?: string) =>
   app.inject({
     method: 'POST',
     url: '/v1/knowledge_propose_create',
-    headers: { authorization: `Bearer ${token}` },
+    headers: {
+      authorization: `Bearer ${token}`,
+      ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+    },
     payload: payload as Record<string, unknown>,
   });
+
+const agentGet = (token: string, url: string) =>
+  app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
 
 describe('an agent proposing', () => {
   it('records a proposal for review rather than writing (rule 14)', async () => {
@@ -121,7 +127,7 @@ describe('an agent proposing', () => {
     expect(result.item_id).toBeNull();
 
     const inbox = ProposalsResponse.parse(
-      (await admin.get('/v1/admin/proposals.list?status=pending')).json(),
+      (await admin.get('/v1/proposal.list?status=pending')).json(),
     );
     expect(inbox.proposals.map((p) => p.id)).toContain(result.proposal.id);
     expect(inbox.proposals.find((p) => p.id === result.proposal.id)).toMatchObject({
@@ -160,7 +166,7 @@ describe('an agent proposing', () => {
     expect(result.proposal.resolved_by_actor_id).not.toBe(actorId);
 
     const detail = (
-      await admin.get(`/v1/admin/proposals.get?proposal_id=${result.proposal.id}`)
+      await admin.get(`/v1/proposal.get?proposal_id=${result.proposal.id}`)
     ).json() as { proposal: { proposed_payload: { title: string } } };
     expect(detail.proposal.proposed_payload.title).toBe('Written by an agent');
   });
@@ -182,11 +188,11 @@ describe('an agent proposing', () => {
       ).statusCode,
     ).toBe(200);
 
-    const before = ProposalsResponse.parse((await admin.get('/v1/admin/proposals.list')).json());
+    const before = ProposalsResponse.parse((await admin.get('/v1/proposal.list')).json());
     const res = await asAgent(token, { title: 'Refused', body: 'Body.', type: 'fact' });
     expect(res.statusCode, res.body).toBe(403);
     // A denial is not a proposal: there was nothing for anybody to review.
-    const after = ProposalsResponse.parse((await admin.get('/v1/admin/proposals.list')).json());
+    const after = ProposalsResponse.parse((await admin.get('/v1/proposal.list')).json());
     expect(after.proposals).toHaveLength(before.proposals.length);
   });
 
@@ -195,5 +201,104 @@ describe('an agent proposing', () => {
     const res = await asAgent(token, { title: 'Not allowed', body: 'Body.', type: 'fact' });
     expect(res.statusCode, res.body).toBe(403);
     expect(res.json().message).toMatch(/knowledge.propose_create/);
+  });
+
+  it('replays a retried proposal instead of recording a second one', async () => {
+    const token = await agentToken('propose', 'Retrying proposer');
+    const payload = { title: 'Retried', body: 'Sent twice.', type: 'fact' };
+    const first = await asAgent(token, payload, 'retry-key-0001');
+    expect(first.statusCode, first.body).toBe(202);
+    const second = await asAgent(token, payload, 'retry-key-0001');
+    expect(second.statusCode, second.body).toBe(202);
+    const one = ProposalResult.parse(first.json());
+    const two = ProposalResult.parse(second.json());
+    expect(two.proposal.id).toBe(one.proposal.id);
+
+    const inbox = ProposalsResponse.parse((await agentGet(token, '/v1/proposal.list')).json());
+    expect(inbox.proposals.filter((p) => p.id === one.proposal.id)).toHaveLength(1);
+  });
+
+  it('refuses a proposal whose relation points at nothing', async () => {
+    const token = await agentToken('propose', 'Dangling proposer');
+    const res = await asAgent(token, {
+      title: 'Dangling',
+      body: 'Points at an item that does not exist.',
+      type: 'fact',
+      relations: [{ type: 'supersedes', target: 'kn_01J8Z2A0C1D2E3F4G5H6J7K8M9' }],
+    });
+    // Checked before the proposal is recorded: a reviewer must not be handed
+    // something that can only fail on approval.
+    expect(res.statusCode, res.body).toBe(404);
+  });
+
+  it('empties the text of a resolved proposal and keeps the row', async () => {
+    const token = await agentToken('trusted', 'Aged writer');
+    const agents = (await admin.get('/v1/admin/agents.list')).json() as {
+      agents: { actor_id: string; name: string }[];
+    };
+    const actorId = agents.agents.find((a) => a.name === 'Aged writer')!.actor_id;
+    expect(
+      (
+        await admin.post('/v1/admin/policy.rules.upsert', {
+          priority: 10,
+          subject: { actor_id: actorId },
+          action: 'knowledge.create',
+          effect: 'allow_direct',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const resolved = ProposalResult.parse(
+      (await asAgent(token, { title: 'Aged', body: 'Resolved long ago.', type: 'fact' })).json(),
+    );
+    const pending = ProposalResult.parse(
+      (
+        await asAgent(await agentToken('propose', 'Still waiting'), {
+          title: 'Waiting',
+          body: 'Nobody has decided.',
+          type: 'fact',
+        })
+      ).json(),
+    );
+
+    // A cutoff in the future, so every already-resolved proposal is old enough.
+    const emptied = await services.uow.run((tx) =>
+      services.repositories.proposals.redactResolvedBefore(tx, new Date(Date.now() + 60_000)),
+    );
+    expect(emptied).toBeGreaterThanOrEqual(1);
+
+    const after = (
+      await admin.get(`/v1/proposal.get?proposal_id=${resolved.proposal.id}`)
+    ).json() as { proposal: { proposed_payload: Record<string, unknown>; status: string } };
+    expect(after.proposal.proposed_payload).toEqual({});
+    // The row and the decision survive; only the text is gone.
+    expect(after.proposal.status).toBe('approved');
+
+    // A pending proposal is still waiting for somebody, so its text stays.
+    const untouched = (
+      await admin.get(`/v1/proposal.get?proposal_id=${pending.proposal.id}`)
+    ).json() as { proposal: { proposed_payload: { title?: string } } };
+    expect(untouched.proposal.proposed_payload.title).toBe('Waiting');
+  });
+
+  it("shows an agent its own proposals and not another agent's", async () => {
+    const mine = await agentToken('propose', 'Own reader');
+    const other = await agentToken('propose', 'Other proposer');
+    const created = ProposalResult.parse(
+      (await asAgent(mine, { title: 'Mine', body: 'Body.', type: 'fact' })).json(),
+    );
+    const theirs = ProposalResult.parse(
+      (await asAgent(other, { title: 'Theirs', body: 'Body.', type: 'fact' })).json(),
+    );
+
+    const listed = ProposalsResponse.parse((await agentGet(mine, '/v1/proposal.list')).json());
+    expect(listed.proposals.map((p) => p.id)).toEqual([created.proposal.id]);
+    expect(
+      (await agentGet(mine, `/v1/proposal.get?proposal_id=${created.proposal.id}`)).statusCode,
+    ).toBe(200);
+    // Not 403: whether somebody else's proposal exists is not this agent's to
+    // learn from the answer.
+    expect(
+      (await agentGet(mine, `/v1/proposal.get?proposal_id=${theirs.proposal.id}`)).statusCode,
+    ).toBe(404);
   });
 });

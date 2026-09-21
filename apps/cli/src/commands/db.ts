@@ -57,12 +57,14 @@ export function dbCommand(): Command {
     });
 
   db.command('prune')
-    .description('Remove expired idempotency records and long-dead sessions')
+    .description('Remove rows nothing reads any more, and redact old proposal text')
     .action(async () => {
       await withServices(async (services) => {
         const removed = await services.maintenance.prune();
         console.log(
-          `removed ${removed.idempotencyRecords} idempotency record(s) and ${removed.sessions} session(s)`,
+          `removed ${removed.idempotencyRecords} idempotency record(s), ` +
+            `${removed.sessions} session(s) and ${removed.operations} decided operation(s); ` +
+            `emptied the text of ${removed.redactedProposals} resolved proposal(s)`,
         );
       });
     });

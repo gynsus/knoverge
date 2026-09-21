@@ -1,10 +1,11 @@
 import type { ActorId, WorkspaceId } from '@knoverge/contracts';
 
-import type { OperationRepository } from '../src/index.ts';
+import type { OperationRepository, ProposalRepository } from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   OPERATION_RETENTION_MS,
+  PROPOSAL_PAYLOAD_RETENTION_MS,
   IdempotencyService,
   MaintenanceService,
   SESSION_RETENTION_MS,
@@ -168,6 +169,7 @@ describe('MaintenanceService', () => {
   it('removes expired idempotency records and long-dead sessions', async () => {
     const removedBefore: Date[] = [];
     const decidedBefore: Date[] = [];
+    const redactedBefore: Date[] = [];
     const service = new MaintenanceService({
       uow,
       sessions: {
@@ -187,16 +189,30 @@ describe('MaintenanceService', () => {
           return 5;
         },
       } as unknown as OperationRepository,
+      proposals: {
+        redactResolvedBefore: async (_tx: unknown, before: Date) => {
+          redactedBefore.push(before);
+          return 2;
+        },
+      } as unknown as ProposalRepository,
       idempotency: { purgeExpired: async () => 7 } as unknown as IdempotencyService,
       clock: { now: () => NOW },
     });
     const result = await service.prune();
-    expect(result).toEqual({ idempotencyRecords: 7, sessions: 3, operations: 5 });
+    expect(result).toEqual({
+      idempotencyRecords: 7,
+      sessions: 3,
+      operations: 5,
+      redactedProposals: 2,
+    });
     // A session row outlives the session itself, so the settings page can still
     // show where somebody was recently signed in.
     expect(NOW.getTime() - removedBefore[0]!.getTime()).toBe(SESSION_RETENTION_MS);
     // A decided operation is history; an unfinished one is what recovery reads,
     // and the repository refuses to remove those at any age.
     expect(NOW.getTime() - decidedBefore[0]!.getTime()).toBe(OPERATION_RETENTION_MS);
+    // The row survives; only the proposed text inside it is emptied, and the
+    // decision has to be old before that happens.
+    expect(NOW.getTime() - redactedBefore[0]!.getTime()).toBe(PROPOSAL_PAYLOAD_RETENTION_MS);
   });
 });
