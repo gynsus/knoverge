@@ -104,6 +104,7 @@ export function createServices() {
         uow,
         sessions: repositories.sessions,
         operations: repositories.operations,
+        proposals: repositories.proposals,
         idempotency: idempotency(),
       }),
   );

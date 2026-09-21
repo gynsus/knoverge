@@ -1,5 +1,6 @@
 import type { SessionRepository } from '../identity/repository.ts';
 import type { OperationRepository } from '../operations/repository.ts';
+import type { ProposalRepository } from '../proposals/repository.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { UnitOfWork } from '../ports/unit-of-work.ts';
@@ -18,20 +19,37 @@ export const SESSION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
  */
 export const OPERATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
+/**
+ * How long the proposed text of a resolved proposal is kept.
+ *
+ * A proposal row is the only place outside Git that holds proposed knowledge,
+ * including text a reviewer rejected and nobody ever agreed to store. Once the
+ * decision is old enough to be beyond dispute the text goes and the row stays,
+ * so the workspace keeps who proposed what kind of change, when, and what was
+ * decided, without keeping the content indefinitely. Longer than an operation
+ * row, because a disagreement about a review surfaces later than one about a
+ * half-finished write.
+ */
+export const PROPOSAL_PAYLOAD_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
 export interface MaintenanceOptions {
   uow: UnitOfWork;
   sessions: SessionRepository;
   operations: OperationRepository;
+  proposals: ProposalRepository;
   idempotency: IdempotencyService;
   clock?: Clock;
   sessionRetentionMs?: number;
   operationRetentionMs?: number;
+  proposalPayloadRetentionMs?: number;
 }
 
 export interface MaintenanceResult {
   idempotencyRecords: number;
   sessions: number;
   operations: number;
+  /** Resolved proposals whose text was emptied, not rows removed. */
+  redactedProposals: number;
 }
 
 /**
@@ -49,12 +67,15 @@ export class MaintenanceService {
   private readonly clock: Clock;
   private readonly retentionMs: number;
   private readonly operationRetentionMs: number;
+  private readonly proposalPayloadRetentionMs: number;
 
   constructor(options: MaintenanceOptions) {
     this.o = options;
     this.clock = options.clock ?? systemClock;
     this.retentionMs = options.sessionRetentionMs ?? SESSION_RETENTION_MS;
     this.operationRetentionMs = options.operationRetentionMs ?? OPERATION_RETENTION_MS;
+    this.proposalPayloadRetentionMs =
+      options.proposalPayloadRetentionMs ?? PROPOSAL_PAYLOAD_RETENTION_MS;
   }
 
   async prune(): Promise<MaintenanceResult> {
@@ -71,6 +92,14 @@ export class MaintenanceService {
         new Date(now.getTime() - this.operationRetentionMs),
       ),
     );
-    return { idempotencyRecords, sessions, operations };
+    // Emptied, not deleted: a proposal row is part of the review trail, and
+    // removing it would lose that somebody asked and somebody answered.
+    const redactedProposals = await this.o.uow.run((tx) =>
+      this.o.proposals.redactResolvedBefore(
+        tx,
+        new Date(now.getTime() - this.proposalPayloadRetentionMs),
+      ),
+    );
+    return { idempotencyRecords, sessions, operations, redactedProposals };
   }
 }

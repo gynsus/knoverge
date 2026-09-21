@@ -121,8 +121,10 @@ GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
 GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 GET  /v1/knowledge.diff?item_id=&from_revision_id=&to_revision_id=
-GET  /v1/admin/proposals.list?status=pending  the review inbox
-GET  /v1/admin/proposals.get?proposal_id=prop_...
+GET  /v1/proposal.list?status=pending       the review inbox with proposal.read_all,
+                                            the caller's own proposals with proposal.read_own
+GET  /v1/proposal.get?proposal_id=prop_...  one proposal with its payload; a caller who may
+                                            read only its own gets 404 for anybody else's
 POST /v1/admin/knowledge.create             a person writes an item directly
                                             carries sources and relations; a source with a
                                             locator makes the item source-backed

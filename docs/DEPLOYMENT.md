@@ -221,7 +221,7 @@ Workspaces themselves can be listed and created with `knoverge workspace list` a
 
 ### Maintenance
 
-Two tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response, and session rows, which stop working at their expiry or when revoked. A container running the worker role removes both once an hour.
+Three tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response; session rows, which stop working at their expiry or when revoked; and operation rows, which stop being interesting once decided. A container running the worker role removes all three once an hour, and in the same pass empties the proposed text of proposals resolved more than 90 days ago, keeping the rows themselves so the review trail survives.
 
 An installation that runs no worker, or an operator who wants it now, can run it directly:
 

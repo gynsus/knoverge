@@ -13,7 +13,7 @@ import type {
   ProposalRepository,
   Tx,
 } from '@knoverge/core';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, lt, ne, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { proposals } from '../schema/proposals.ts';
@@ -72,6 +72,22 @@ export function createProposalRepository(db: Database): ProposalRepository {
         .orderBy(asc(proposals.createdAt))
         .limit(Math.min(options.limit ?? 50, 200));
       return rows.map(toProposal);
+    },
+    async redactResolvedBefore(tx: Tx, before: Date) {
+      const rows = await asTx(tx)
+        .update(proposals)
+        .set({ proposedPayload: {} })
+        .where(
+          and(
+            ne(proposals.status, 'pending'),
+            isNotNull(proposals.resolvedAt),
+            lt(proposals.resolvedAt, before),
+            // Already empty rows would otherwise be rewritten at every run.
+            sql`${proposals.proposedPayload} <> '{}'::jsonb`,
+          ),
+        )
+        .returning({ id: proposals.id });
+      return rows.length;
     },
   };
 }

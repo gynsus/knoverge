@@ -67,4 +67,10 @@ export interface ProposalRepository {
   findById(workspaceId: WorkspaceId, id: ProposalId, tx?: Tx): Promise<ProposalRecord | null>;
   /** Oldest first: a review inbox is a queue, not a feed. */
   list(workspaceId: WorkspaceId, options?: ListProposalsOptions): Promise<ProposalRecord[]>;
+  /**
+   * Empties the payload of proposals resolved before a date, across every
+   * workspace, and answers how many it emptied. The rows stay: who proposed
+   * what kind of change, when, and what was decided is the review trail.
+   */
+  redactResolvedBefore(tx: Tx, before: Date): Promise<number>;
 }

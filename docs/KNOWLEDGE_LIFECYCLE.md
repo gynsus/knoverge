@@ -26,6 +26,14 @@ A direct-write agent still passes through the same domain validation, duplicate 
 
 Proposals must respect the granularity rule (`KNOWLEDGE_MODEL.md` section 2a). Reviewers may split an oversized proposal through edit-and-approve.
 
+A pending proposal is checked for what would stop it being applied — the categories it names and the items its relations point at — before it is recorded, so that a reviewer is never handed something that can only fail on approval.
+
+`knowledge_propose_create` accepts an idempotency key. A retry after a dropped connection replays the first answer rather than leaving a second proposal in the inbox, or a second item when policy allowed the write directly.
+
+### Retention of the proposed text
+
+A proposal row is the only place outside Git that holds proposed knowledge, including text a reviewer rejected. Maintenance empties the payload of a proposal resolved more than 90 days ago and keeps the row: who proposed what kind of change, when, how policy decided, who resolved it and what came of it stay for as long as the workspace does.
+
 ### Duplicate check
 
 `knowledge_propose_create` runs the same matcher used by reconciliation (external key, content hash, lexical, optional semantic) before creating a proposal.
@@ -156,6 +164,14 @@ The UI must still create:
 - new revision;
 - Git commit;
 - event ledger entry.
+
+It creates no proposal. A proposal exists so that somebody can decide, and a
+person writing through the UI has already decided; recording one per edit would
+fill the review inbox with items nobody has to look at, and would put the same
+knowledge text in a second place outside Git. Who wrote what, when and on what
+authority is on the revision, the commit and the ledger entry, which is what
+rule 3 asks for. An agent is the other case: it proposes, and section 2 is how
+that is decided.
 
 Direct filesystem editing of the workspace repository is unsupported in MVP. See `GIT_REPOSITORY.md` section 9.
 

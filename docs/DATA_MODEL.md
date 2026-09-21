@@ -476,7 +476,7 @@ conflict
 
 Proposals that policy allowed directly are still recorded, with `status = approved` and `resolved_by_actor_id = system`, so the audit trail is uniform. Denied commands never become proposals.
 
-`proposed_payload_json` is the only place outside Git where proposed knowledge text lives; purge redacts it.
+`proposed_payload_json` is the only place outside Git where proposed knowledge text lives. Maintenance empties it 90 days after the proposal was resolved and keeps the row, so the workspace remembers who proposed what kind of change, when, how policy decided and what came of it, without holding the text — including text a reviewer rejected — indefinitely.
 
 ## 22. Event ledger
 

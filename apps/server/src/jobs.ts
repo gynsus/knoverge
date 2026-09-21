@@ -1,5 +1,6 @@
 import { PgBoss } from 'pg-boss';
 import type pino from 'pino';
+import type { MaintenanceResult } from '@knoverge/core';
 
 export const JOBS_SCHEMA = 'pgboss';
 
@@ -22,7 +23,7 @@ export interface Jobs {
 
 export interface JobsOptions {
   /** Runs on a schedule and when an operator asks for it. */
-  prune: () => Promise<{ idempotencyRecords: number; sessions: number }>;
+  prune: () => Promise<MaintenanceResult>;
 }
 
 export function createJobs(
@@ -45,7 +46,7 @@ export function createJobs(
       await boss.createQueue(MAINTENANCE_QUEUE);
       await boss.work(MAINTENANCE_QUEUE, async () => {
         const removed = await options.prune();
-        logger.info(removed, 'maintenance removed expired rows');
+        logger.info(removed, 'maintenance pruned expired rows');
       });
       // Idempotent: scheduling the same queue again replaces the schedule, so
       // several workers do not multiply it.

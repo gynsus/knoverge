@@ -972,6 +972,23 @@ export class KnowledgeService {
       if (relation.target === itemId) {
         throw new DomainError('VALIDATION_ERROR', 'an item cannot relate to itself');
       }
+    }
+    await this.assertRelationTargetsExist(workspaceId, relations);
+  }
+
+  /**
+   * That every item a relation names is one the workspace has.
+   *
+   * Public because a proposal is checked before it is recorded: a pending
+   * proposal pointing at nothing could never be applied, and a reviewer would
+   * find that out only on approving it. A write additionally rules out the
+   * item relating to itself, which a proposal has no id to compare against.
+   */
+  async assertRelationTargetsExist(
+    workspaceId: WorkspaceId,
+    relations: readonly FrontmatterRelation[],
+  ): Promise<void> {
+    for (const relation of relations) {
       if (!(await this.o.items.findById(workspaceId, relation.target))) {
         throw new DomainError('NOT_FOUND', `no knowledge item ${relation.target}`, {
           objectIds: { knowledge_item: relation.target },

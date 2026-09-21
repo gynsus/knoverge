@@ -176,6 +176,7 @@ export {
 export {
   MaintenanceService,
   OPERATION_RETENTION_MS,
+  PROPOSAL_PAYLOAD_RETENTION_MS,
   SESSION_RETENTION_MS,
   type MaintenanceOptions,
   type MaintenanceResult,

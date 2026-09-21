@@ -105,6 +105,10 @@ export class ProposalService {
     };
 
     if (decision.effect === 'require_review') {
+      // The direct path validates these inside knowledge.create. Review has no
+      // such moment, so a proposal naming an item that does not exist would sit
+      // in the inbox until somebody approved it and it failed there.
+      await this.o.knowledge.assertRelationTargetsExist(actor.workspaceId, input.relations ?? []);
       const proposal: ProposalRecord = {
         id: proposalId,
         workspaceId: actor.workspaceId,
