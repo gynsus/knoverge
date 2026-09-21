@@ -182,12 +182,20 @@ export interface CreateItemInput {
   review?: ReviewState | undefined;
 }
 
+/** An item that already exists, taking over from the one being superseded. */
+export interface ExistingReplacement {
+  itemId: KnowledgeItemId;
+  /** Rule 6: it gets a new revision, so it carries what the caller read. */
+  baseRevisionId: RevisionId;
+  baseContentHash: string;
+}
+
 /**
  * Replacing one item with another.
  *
- * The new item is written from scratch; reusing an item that already exists
- * arrives with `knowledge_propose_supersede`, which is where the contract asks
- * for it.
+ * Exactly one of `newItem` and `existingItem`: the replacement is written now,
+ * or it is something the workspace already holds and the supersession only
+ * connects the two.
  */
 export interface SupersedeInput {
   oldItemId: KnowledgeItemId;
@@ -195,7 +203,8 @@ export interface SupersedeInput {
   oldBaseContentHash: string;
   /** When the old item stopped being true. Now, when nobody says otherwise. */
   validUntil?: string | null | undefined;
-  newItem: CreateItemInput;
+  newItem?: CreateItemInput | undefined;
+  existingItem?: ExistingReplacement | undefined;
   proposalId?: ProposalId | undefined;
   review?: ReviewState | undefined;
 }
@@ -653,15 +662,55 @@ export class KnowledgeService {
       );
     }
 
-    const body = input.newItem.body.trim();
+    if ((input.newItem === undefined) === (input.existingItem === undefined)) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'a supersession names either a new item to write or an item that already exists, not both and not neither',
+      );
+    }
+
+    // The replacement, when it is something the workspace already holds. It
+    // gets a revision of its own, so rule 6 applies to it too.
+    let replacement: ItemResult | null = null;
+    if (input.existingItem) {
+      if (input.existingItem.itemId === input.oldItemId) {
+        throw new DomainError('VALIDATION_ERROR', 'an item cannot supersede itself');
+      }
+      replacement = await this.get(actor, input.existingItem.itemId);
+      if (
+        replacement.revision.id !== input.existingItem.baseRevisionId ||
+        replacement.revision.contentHash !== input.existingItem.baseContentHash
+      ) {
+        throw new DomainError(
+          'REVISION_CONFLICT',
+          'the replacing item changed since you read it; re-read it before superseding with it',
+          {
+            objectIds: {
+              knowledge_item: replacement.item.id,
+              current_revision_id: replacement.revision.id,
+              current_content_hash: replacement.revision.contentHash,
+            },
+          },
+        );
+      }
+      if (replacement.item.status !== 'active') {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `an item that is ${replacement.item.status} cannot supersede another`,
+          { objectIds: { knowledge_item: replacement.item.id } },
+        );
+      }
+    }
+
+    const body = (input.newItem?.body ?? replacement!.body).trim();
     if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
     if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
       throw new DomainError('VALIDATION_ERROR', `the body may not exceed ${MAX_BODY_BYTES} bytes`);
     }
-    const title = input.newItem.title.trim();
+    const title = (input.newItem?.title ?? replacement!.revision.title).trim();
     if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
 
-    const newItemId = newId('kn') as KnowledgeItemId;
+    const newItemId = replacement?.item.id ?? (newId('kn') as KnowledgeItemId);
     const newRevisionId = newId('rev') as RevisionId;
     const oldRevisionId = newId('rev') as RevisionId;
     let plannedNew: PlannedItem | undefined;
@@ -682,37 +731,70 @@ export class KnowledgeService {
         const changeover = input.validUntil ?? now.toISOString();
 
         const tree = await this.o.categories.list(actor.workspaceId, { includeArchived: true });
-        const chosen = this.resolveCategories(tree, input.newItem.categories ?? []);
-        const directory = chosen[0] ? `knowledge/${chosen[0].path}` : UNCATEGORISED_DIRECTORY;
-        const taken = await this.o.items.slugsInDirectory(actor.workspaceId, directory);
-        const wanted = input.newItem.slug ?? this.o.slugifyTitle(title);
-        const slug = this.parseSlug(this.o.uniqueSlug(wanted, new Set(taken)));
-        const newPath = `${directory}/${slug}.md`;
+        const chosen = this.resolveCategories(
+          tree,
+          input.newItem?.categories ?? replacement?.categories ?? [],
+        );
+        // An item that already exists stays where it is; a new one is placed
+        // by its primary category, exactly as a create places it.
+        const slug = replacement
+          ? replacement.item.slug
+          : this.parseSlug(
+              this.o.uniqueSlug(
+                input.newItem?.slug ?? this.o.slugifyTitle(title),
+                new Set(
+                  await this.o.items.slugsInDirectory(
+                    actor.workspaceId,
+                    chosen[0] ? `knowledge/${chosen[0].path}` : UNCATEGORISED_DIRECTORY,
+                  ),
+                ),
+              ),
+            );
+        const newPath = replacement
+          ? replacement.item.markdownPath
+          : `${chosen[0] ? `knowledge/${chosen[0].path}` : UNCATEGORISED_DIRECTORY}/${slug}.md`;
 
         const relations: FrontmatterRelation[] = [
-          ...(input.newItem.relations ?? []).filter((r) => r.target !== input.oldItemId),
+          ...(input.newItem?.relations ?? replacement?.revision.frontmatter.relations ?? []).filter(
+            (r) => r.target !== input.oldItemId,
+          ),
           { type: 'supersedes', target: input.oldItemId },
         ];
-        const newFrontmatter: Frontmatter = {
-          id: newItemId,
-          title,
-          type: input.newItem.type,
-          status: 'active',
-          language: input.newItem.language ?? workspace.defaultLanguage,
-          categories: chosen.map((c) => c.path),
-          tags: [...new Set(input.newItem.tags ?? [])].sort(),
-          review: input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
-          evidence: evidenceFrom(input.newItem.sources ?? []),
-          disputed: false,
-          valid_from: changeover,
-          valid_until: null,
-          observed_at: input.newItem.observedAt ?? null,
-          created_at: now.toISOString(),
-          updated_at: now.toISOString(),
-          sources: [...(input.newItem.sources ?? [])],
-          relations,
-          ...(input.newItem.external ? { external: input.newItem.external } : {}),
-        } as Frontmatter;
+        const newFrontmatter: Frontmatter = replacement
+          ? ({
+              ...replacement.revision.frontmatter,
+              // What changes on an item that already exists: when it took
+              // over, and what it took over from. Its own text is its own.
+              valid_from: changeover,
+              relations,
+              review:
+                input.review ??
+                (actor.actorType === 'human'
+                  ? 'human_reviewed'
+                  : replacement.revision.frontmatter.review),
+              updated_at: now.toISOString(),
+            } as Frontmatter)
+          : ({
+              id: newItemId,
+              title,
+              type: input.newItem!.type,
+              status: 'active',
+              language: input.newItem!.language ?? workspace.defaultLanguage,
+              categories: chosen.map((c) => c.path),
+              tags: [...new Set(input.newItem!.tags ?? [])].sort(),
+              review:
+                input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
+              evidence: evidenceFrom(input.newItem!.sources ?? []),
+              disputed: false,
+              valid_from: changeover,
+              valid_until: null,
+              observed_at: input.newItem!.observedAt ?? null,
+              created_at: now.toISOString(),
+              updated_at: now.toISOString(),
+              sources: [...(input.newItem!.sources ?? [])],
+              relations,
+              ...(input.newItem!.external ? { external: input.newItem!.external } : {}),
+            } as Frontmatter);
         await this.assertRelationTargets(actor.workspaceId, newItemId, relations);
 
         // The old item keeps its text. What changes is that it is no longer
@@ -736,7 +818,7 @@ export class KnowledgeService {
         ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
           paths: [newPath, old.item.markdownPath],
-          subject: `supersede(${input.newItem.type}): ${title}`,
+          subject: `supersede(${newFrontmatter.type}): ${title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
             ['Knoverge-Workspace', actor.workspaceId],
@@ -747,7 +829,10 @@ export class KnowledgeService {
               : []),
             // One per revision the commit produced, which is what recovery
             // reads: the new item was created, the old one was superseded.
-            ['Knoverge-Change', `${newItemId}@${newRevisionId} create`],
+            [
+              'Knoverge-Change',
+              `${newItemId}@${newRevisionId} ${replacement ? 'supersede' : 'create'}`,
+            ],
             ['Knoverge-Change', `${input.oldItemId}@${oldRevisionId} superseded_by`],
           ],
           author,
@@ -765,6 +850,7 @@ export class KnowledgeService {
           rendered: newRendered,
           now,
           commitHash,
+          kind: replacement ? 'supersede' : 'create',
         };
         plannedOld = {
           frontmatter: oldFrontmatter,
@@ -794,39 +880,57 @@ export class KnowledgeService {
         const pNew = plannedNew;
         const pOld = plannedOld;
 
-        const newRevision = this.revisionOf(actor, newItemId, newRevisionId, 1, pNew, operation.id);
-        const newRecord: KnowledgeItemRecord = {
-          id: newItemId,
-          workspaceId: actor.workspaceId,
-          slug: pNew.slug,
-          markdownPath: pNew.markdownPath,
-          type: input.newItem.type,
-          status: 'active',
-          language: pNew.frontmatter.language,
-          currentRevisionId: newRevisionId,
-          reviewState: pNew.frontmatter.review,
-          evidenceState: pNew.frontmatter.evidence,
-          disputed: false,
-          validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
-          validUntil: null,
-          observedAt: pNew.frontmatter.observed_at ? new Date(pNew.frontmatter.observed_at) : null,
-          createdByActorId: actor.actorId,
-          createdAt: pNew.now,
-          updatedAt: pNew.now,
-        } as KnowledgeItemRecord;
-        await this.o.items.insert(tx, newRecord);
-        await this.o.revisions.insert(tx, newRevision);
-        await this.o.items.setCategories(
-          tx,
+        const newRevision = this.revisionOf(
+          actor,
           newItemId,
-          pNew.chosen.map<ItemCategoryRecord>((category, index) => ({
-            knowledgeItemId: newItemId,
-            categoryId: category.id,
-            isPrimary: index === 0,
-            position: index,
-          })),
+          newRevisionId,
+          replacement ? replacement.revision.revisionNumber + 1 : 1,
+          pNew,
+          operation.id,
         );
-        await this.o.items.setTags(tx, actor.workspaceId, newItemId, pNew.frontmatter.tags);
+        if (replacement) {
+          await this.o.items.update(tx, newItemId, {
+            currentRevisionId: newRevisionId,
+            reviewState: pNew.frontmatter.review,
+            validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
+            updatedAt: pNew.now,
+          });
+          await this.o.revisions.insert(tx, newRevision);
+        } else {
+          await this.o.items.insert(tx, {
+            id: newItemId,
+            workspaceId: actor.workspaceId,
+            slug: pNew.slug,
+            markdownPath: pNew.markdownPath,
+            type: pNew.frontmatter.type,
+            status: 'active',
+            language: pNew.frontmatter.language,
+            currentRevisionId: newRevisionId,
+            reviewState: pNew.frontmatter.review,
+            evidenceState: pNew.frontmatter.evidence,
+            disputed: false,
+            validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
+            validUntil: null,
+            observedAt: pNew.frontmatter.observed_at
+              ? new Date(pNew.frontmatter.observed_at)
+              : null,
+            createdByActorId: actor.actorId,
+            createdAt: pNew.now,
+            updatedAt: pNew.now,
+          } as KnowledgeItemRecord);
+          await this.o.revisions.insert(tx, newRevision);
+          await this.o.items.setCategories(
+            tx,
+            newItemId,
+            pNew.chosen.map<ItemCategoryRecord>((category, index) => ({
+              knowledgeItemId: newItemId,
+              categoryId: category.id,
+              isPrimary: index === 0,
+              position: index,
+            })),
+          );
+          await this.o.items.setTags(tx, actor.workspaceId, newItemId, pNew.frontmatter.tags);
+        }
         await this.writeSources(
           tx,
           actor.workspaceId,
@@ -854,7 +958,9 @@ export class KnowledgeService {
         });
 
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
-          eventType: 'knowledge.created',
+          // Created when it was written now, superseded when an item the
+          // workspace already had took over.
+          eventType: replacement ? 'knowledge.superseded' : 'knowledge.created',
           objectType: 'knowledge_item',
           objectId: newItemId,
           categoryIds: pNew.chosen.map((c) => c.id),
@@ -862,7 +968,7 @@ export class KnowledgeService {
             revision: newRevisionId,
             content_hash: newRevision.contentHash,
             git_commit: pNew.commitHash,
-            item_type: input.newItem.type,
+            item_type: pNew.frontmatter.type,
             supersedes: input.oldItemId,
           },
         });
@@ -882,9 +988,9 @@ export class KnowledgeService {
 
         return {
           new: {
-            item: newRecord,
+            item: (await this.o.items.findById(actor.workspaceId, newItemId, tx)) as never,
             revision: newRevision,
-            categories: pNew.chosen.map((c) => c.path),
+            categories: pNew.frontmatter.categories,
             tags: pNew.frontmatter.tags,
             body: pNew.body,
           },
@@ -1495,4 +1601,6 @@ interface PlannedItem {
   rendered: string;
   now: Date;
   commitHash: string;
+  /** `create`, unless a supersession gave an existing item a new revision. */
+  kind?: ChangeKind;
 }

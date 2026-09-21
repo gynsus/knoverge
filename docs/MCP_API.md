@@ -471,14 +471,14 @@ Input:
     "source_refs": [],
     "valid_from": "2026-09-18T00:00:00Z"
   },
-  "existing_new_item_id": null,
+  "existing_item": null,
   "reason": "Migration from MySQL completed.",
   "confidence": 0.99,
   "idempotency_key": "..."
 }
 ```
 
-Exactly one of `new_item` or `existing_new_item_id` is provided. On commit the server:
+Exactly one of `new_item` or `existing_item` is provided. `existing_item` names an item the workspace already holds, as `{ "item_id": "kn_01J...", "base_revision_id": "rev_...", "base_content_hash": "sha256:..." }`: it gets a revision of its own saying what it took over from, and rule 6 knows nothing about why an item is being changed, so it carries the base the caller read like any other update. On commit the server:
 
 1. creates (or uses) the new item;
 2. sets the old item `status = superseded` and `valid_until`;
