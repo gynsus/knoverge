@@ -1,14 +1,13 @@
-import { z } from 'zod';
-
 import {
   CreateKnowledgeRequest,
   DeleteKnowledgeRequest,
+  KnowledgeDiffInput,
   KnowledgeDiffResponse,
-  KnowledgeItemId,
+  KnowledgeGetInput,
+  KnowledgeHistoryInput,
   KnowledgeListResponse,
   KnowledgeResponse,
   RestoreKnowledgeRequest,
-  RevisionId,
   SupersedeKnowledgeRequest,
   SupersedeResponse,
   RevisionsResponse,
@@ -23,7 +22,7 @@ import {
   type ItemSummary,
   type RevisionRecord,
 } from '@knoverge/core';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { requirePermission } from '../plugins/actor-context.ts';
@@ -261,47 +260,14 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
 
   r.get(
     '/v1/knowledge.revisions',
-    {
-      schema: {
-        querystring: z.object({ item_id: KnowledgeItemId }),
-        response: { 200: RevisionsResponse },
-      },
-    },
-    async (request) => {
-      const actor = await requirePermission(services, request, 'knowledge.read_history');
-      const revisions = await services.knowledge.history(actor.context, request.query.item_id);
-      return { revisions: revisions.map(revisionSummary) };
-    },
+    { schema: { querystring: KnowledgeHistoryInput, response: { 200: RevisionsResponse } } },
+    (request) => knowledgeHistory(services, request, request.query),
   );
 
   r.get(
     '/v1/knowledge.diff',
-    {
-      schema: {
-        querystring: z.object({
-          item_id: KnowledgeItemId,
-          from_revision_id: RevisionId,
-          to_revision_id: RevisionId,
-        }),
-        response: { 200: KnowledgeDiffResponse },
-      },
-    },
-    async (request) => {
-      // Past content, so the history permission rather than the read one.
-      const actor = await requirePermission(services, request, 'knowledge.read_history');
-      const result = await services.knowledge.diff(
-        actor.context,
-        request.query.item_id,
-        request.query.from_revision_id,
-        request.query.to_revision_id,
-      );
-      return {
-        from: revisionSummary(result.from),
-        to: revisionSummary(result.to),
-        body_diff: result.bodyDiff,
-        metadata_changes: result.metadata,
-      };
-    },
+    { schema: { querystring: KnowledgeDiffInput, response: { 200: KnowledgeDiffResponse } } },
+    (request) => knowledgeDiff(services, request, request.query),
   );
 
   r.get(
@@ -316,16 +282,53 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
 
   r.get(
     '/v1/knowledge.get',
-    {
-      schema: {
-        querystring: z.object({ item_id: KnowledgeItemId }),
-        response: { 200: KnowledgeResponse },
-      },
-    },
-    async (request) => {
-      const actor = await requirePermission(services, request, 'knowledge.read');
-      const result = await services.knowledge.get(actor.context, request.query.item_id);
-      return { item: detail(result) };
-    },
+    { schema: { querystring: KnowledgeGetInput, response: { 200: KnowledgeResponse } } },
+    (request) => knowledgeGet(services, request, request.query),
   );
+}
+
+/**
+ * The tool handlers, which the `GET` routes above and the generated
+ * `POST /v1/<tool_name>` routes both call. One handler, two transports: that
+ * is what ADR 0011 settles for a read that is also a tool.
+ */
+export async function knowledgeGet(
+  services: Services,
+  request: FastifyRequest,
+  input: KnowledgeGetInput,
+): Promise<KnowledgeResponse> {
+  const actor = await requirePermission(services, request, 'knowledge.read');
+  const result = await services.knowledge.get(actor.context, input.item_id);
+  return { item: detail(result) };
+}
+
+export async function knowledgeHistory(
+  services: Services,
+  request: FastifyRequest,
+  input: KnowledgeHistoryInput,
+): Promise<RevisionsResponse> {
+  const actor = await requirePermission(services, request, 'knowledge.read_history');
+  const revisions = await services.knowledge.history(actor.context, input.item_id);
+  return { revisions: revisions.map(revisionSummary) };
+}
+
+export async function knowledgeDiff(
+  services: Services,
+  request: FastifyRequest,
+  input: KnowledgeDiffInput,
+): Promise<KnowledgeDiffResponse> {
+  // Past content, so the history permission rather than the read one.
+  const actor = await requirePermission(services, request, 'knowledge.read_history');
+  const result = await services.knowledge.diff(
+    actor.context,
+    input.item_id,
+    input.from_revision_id,
+    input.to_revision_id,
+  );
+  return {
+    from: revisionSummary(result.from),
+    to: revisionSummary(result.to),
+    body_diff: result.bodyDiff,
+    metadata_changes: result.metadata,
+  };
 }

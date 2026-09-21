@@ -116,6 +116,14 @@ POST /v1/admin/permissions.revoke
 GET  /v1/admin/policy.rules
 POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
+POST /v1/<tool_name>                        every MCP tool, generated from the contract:
+                                            taxonomy_list, knowledge_get, knowledge_history,
+                                            knowledge_diff, knowledge_propose_create,
+                                            knowledge_propose_update, knowledge_propose_delete,
+                                            knowledge_propose_supersede, proposal_list,
+                                            proposal_get, proposal_approve, proposal_reject,
+                                            proposal_withdraw. 202 while a proposal is pending,
+                                            200 once it is decided.
 POST /v1/knowledge_propose_create           an agent proposes; 202 when review is needed
 GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body

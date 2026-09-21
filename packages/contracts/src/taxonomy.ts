@@ -57,6 +57,21 @@ export const TaxonomyListQuery = z.object({
 });
 export type TaxonomyListQuery = z.infer<typeof TaxonomyListQuery>;
 
+/**
+ * The same filters as a JSON body rather than a query string.
+ *
+ * `TaxonomyListQuery` coerces from strings because that is all a query string
+ * carries. A tool call sends real JSON, where a boolean is a boolean, and
+ * feeding one to the coercing schema would refuse it.
+ */
+export const TaxonomyListInput = z.object({
+  root_path: CategoryPath.optional(),
+  depth: z.number().int().min(1).max(20).optional(),
+  include_archived: z.boolean().default(false),
+  include_guidance: z.boolean().default(true),
+});
+export type TaxonomyListInput = z.infer<typeof TaxonomyListInput>;
+
 export const TaxonomyListResponse = z.object({
   taxonomy_version: z.number().int().nonnegative(),
   categories: z.array(CategorySummary),
