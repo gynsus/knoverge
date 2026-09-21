@@ -4,6 +4,7 @@ import {
   Bot,
   Building2,
   FolderTree,
+  Inbox,
   LayoutDashboard,
   LogOut,
   Settings,
@@ -45,6 +46,7 @@ import { LanguageSwitcher } from './LanguageSwitcher.tsx';
 const NAV = [
   { to: '/', key: 'home', icon: LayoutDashboard },
   { to: '/knowledge', key: 'knowledge', icon: BookOpenText, needs: 'knowledge.read' },
+  { to: '/review', key: 'review', icon: Inbox, needs: 'knowledge.approve' },
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },
   { to: '/agents', key: 'agents', icon: Bot, needs: 'agent.manage' },
   { to: '/policy', key: 'policy', icon: ShieldCheck, needs: 'policy.manage' },

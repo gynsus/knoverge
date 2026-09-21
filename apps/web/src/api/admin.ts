@@ -1,5 +1,6 @@
 import type {
   AddMemberRequest,
+  ApproveProposalRequest,
   AgentResponse,
   AgentsResponse,
   CategoryResponse,
@@ -17,6 +18,10 @@ import type {
   OkResponse,
   PolicyRuleResponse,
   PolicyRulesResponse,
+  ProposalResponse,
+  ProposalResult,
+  ProposalsResponse,
+  RejectProposalRequest,
   RevisionsResponse,
   SessionsResponse,
   TaxonomyListResponse,
@@ -105,6 +110,21 @@ export const adminApi = {
       apiPost<KnowledgeResponse>('/v1/admin/knowledge.delete', body),
     restore: (itemId: string) =>
       apiPost<KnowledgeResponse>('/v1/admin/knowledge.restore', { item_id: itemId }),
+  },
+  proposals: {
+    list: (status: string | undefined, signal?: AbortSignal) =>
+      apiGet<ProposalsResponse>(
+        status ? `/v1/proposal.list?status=${encodeURIComponent(status)}` : '/v1/proposal.list',
+        signal,
+      ),
+    get: (proposalId: string, signal?: AbortSignal) =>
+      apiGet<ProposalResponse>(
+        `/v1/proposal.get?proposal_id=${encodeURIComponent(proposalId)}`,
+        signal,
+      ),
+    approve: (body: ApproveProposalRequest) =>
+      apiPost<ProposalResult>('/v1/proposal_approve', body),
+    reject: (body: RejectProposalRequest) => apiPost<ProposalResult>('/v1/proposal_reject', body),
   },
   account: {
     sessions: (signal?: AbortSignal) => apiGet<SessionsResponse>('/v1/auth/sessions', signal),
