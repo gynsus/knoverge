@@ -963,6 +963,47 @@ describe('the duplicate check on a proposal', () => {
     expect(again.statusCode, again.body).toBe(202);
   });
 
+  it('refuses the second of two identical proposals at approval, not before', async () => {
+    const token = await agentToken('propose', 'Queued duplicates');
+    const payload = {
+      title: 'Kettle descaling schedule',
+      body: 'Exactly the same text, proposed twice.',
+      type: 'fact',
+    };
+    // Both are accepted: neither item exists yet, so neither is a duplicate
+    // of anything the workspace holds.
+    const firstRes = await asAgent(token, payload);
+    expect(firstRes.statusCode, firstRes.body).toBe(202);
+    const secondRes = await asAgent(token, payload);
+    expect(secondRes.statusCode, secondRes.body).toBe(202);
+    const first = ProposalResult.parse(firstRes.json());
+    const second = ProposalResult.parse(secondRes.json());
+    expect(first.proposal.id).not.toBe(second.proposal.id);
+
+    expect(
+      (await admin.post('/v1/proposal_approve', { proposal_id: first.proposal.id })).statusCode,
+    ).toBe(200);
+
+    // By now the workspace does hold it, and approving the other one would
+    // produce the duplicate the check exists to prevent.
+    const again = await admin.post('/v1/proposal_approve', { proposal_id: second.proposal.id });
+    expect(again.statusCode, again.body).toBe(409);
+    expect(again.json().code).toBe('DUPLICATE_SUSPECTED');
+
+    const after = (
+      await admin.get(`/v1/proposal.get?proposal_id=${second.proposal.id}`)
+    ).json() as {
+      proposal: { status: string };
+    };
+    // Not left pending to fail the same way for the next reviewer.
+    expect(after.proposal.status).toBe('conflict');
+
+    const items = (await admin.get('/v1/knowledge.list')).json() as {
+      items: { title: string }[];
+    };
+    expect(items.items.filter((i) => i.title === 'Kettle descaling schedule')).toHaveLength(1);
+  });
+
   it('lets unrelated knowledge through untouched', async () => {
     const token = await agentToken('propose', 'Unrelated agent');
     await anItem('Coffee machine', 'It lives on the second floor.');

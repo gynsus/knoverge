@@ -46,6 +46,8 @@ export interface DuplicateQuery {
   external?: { source_system: string; external_key: string } | undefined;
   /** Candidates the caller has already looked at and decided are distinct. */
   acknowledged?: readonly string[] | undefined;
+  /** Whether a close title counts. False on the second look; see below. */
+  lexical?: boolean | undefined;
 }
 
 export interface DuplicateMatcherOptions {
@@ -86,6 +88,25 @@ export class DuplicateMatcher {
    * is a question, and acknowledging it is the answer.
    */
   async assertNotDuplicate(query: DuplicateQuery): Promise<void> {
+    await this.check(query, { lexical: true });
+  }
+
+  /**
+   * The same check, narrowed to what still applies when a reviewer is looking.
+   *
+   * Run again on approval, because a proposal waits: the workspace can gain
+   * the item in the meantime, through a direct write or through an identical
+   * proposal approved first, and a check that ran once when the proposal was
+   * made is a check that no longer holds. A similar title is not re-raised —
+   * that is a question for the proposer, and the reviewer is reading the text
+   * right now — but the same text in the same place is not something an
+   * approval may produce.
+   */
+  async assertStillDistinct(query: DuplicateQuery): Promise<void> {
+    await this.check(query, { lexical: false });
+  }
+
+  private async check(query: DuplicateQuery, options: { lexical: boolean }): Promise<void> {
     if (query.external) {
       const existing = await this.o.items.findByExternal(
         query.workspaceId,
@@ -101,7 +122,7 @@ export class DuplicateMatcher {
       }
     }
 
-    const candidates = await this.candidates(query);
+    const candidates = await this.candidates({ ...query, lexical: options.lexical });
     const acknowledged = new Set(query.acknowledged ?? []);
     // An exact match cannot be acknowledged away. Saying "this is not a
     // duplicate" about the same text in the same place is not a judgement
@@ -144,6 +165,7 @@ export class DuplicateMatcher {
       });
     }
 
+    if (query.lexical === false) return [...found.values()];
     for (const row of await this.o.items.findSimilarTitles(
       query.workspaceId,
       query.title.trim(),

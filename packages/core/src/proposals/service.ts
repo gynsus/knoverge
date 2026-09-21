@@ -126,6 +126,13 @@ interface RecordSpec {
   apply: (proposalId: ProposalId) => Promise<AppliedWrite>;
 }
 
+/** What a failed approval means the workspace did without this proposal. */
+const MOVED_ON = new Set<string>([
+  'REVISION_CONFLICT',
+  'DUPLICATE_SUSPECTED',
+  'DUPLICATE_EXTERNAL_KEY',
+]);
+
 /** One write of one revision, in the shape the proposal machinery expects. */
 async function applied(write: Promise<ItemResult>): Promise<AppliedWrite> {
   const result = await write;
@@ -510,12 +517,14 @@ export class ProposalService {
     const review = actor.actorType === 'human' ? 'human_reviewed' : 'agent_reviewed';
     let result: AppliedWrite;
     try {
+      await this.assertStillDistinct(actor, proposal, payload);
       result = await this.applyOnApproval(actor, proposal, payload, review);
     } catch (error) {
-      // The item moved on since the proposal was written — by a direct write,
-      // or by an approval this one did not see. Leaving it pending would put
-      // it back in the inbox to fail the same way for the next reviewer.
-      if (error instanceof DomainError && error.code === 'REVISION_CONFLICT') {
+      // The workspace moved past this proposal while it waited — a direct
+      // write, another proposal approved first, or the same text arriving by
+      // some other route. Leaving it pending would put it back in the inbox
+      // to fail the same way for the next reviewer.
+      if (error instanceof DomainError && MOVED_ON.has(error.code)) {
         await this.o.uow.run((tx) => this.markConflict(tx, actor, proposal));
       }
       throw error;
@@ -564,6 +573,36 @@ export class ProposalService {
       proposal: { ...proposal, ...patch, targetItemId: about } as ProposalRecord,
       itemId: result.itemId,
     };
+  }
+
+  /**
+   * That the workspace still does not hold this, at the moment of approving.
+   *
+   * Only the kinds that write something new: an update or a delete is about an
+   * item that exists, and its base check is what guards it. Approving two
+   * identical create proposals in a row produced two identical items, because
+   * the duplicate check ran when each was proposed and never again.
+   */
+  private async assertStillDistinct(
+    actor: ActorContext,
+    proposal: ProposalRecord,
+    payload: Record<string, unknown>,
+  ): Promise<void> {
+    const content =
+      proposal.proposalType === 'knowledge_create'
+        ? (payload as unknown as ProposedCreatePayload)
+        : proposal.proposalType === 'knowledge_supersede'
+          ? (payload as ProposedSupersedePayload).newItem
+          : undefined;
+    if (!content) return;
+    await this.o.duplicates.assertStillDistinct({
+      workspaceId: actor.workspaceId,
+      title: content.title,
+      body: content.body,
+      type: content.type,
+      categoryIds: (await this.categoryIds(actor.workspaceId, content.categories)) as CategoryId[],
+      acknowledged: proposal.acknowledgedDuplicateIds,
+    });
   }
 
   /**
