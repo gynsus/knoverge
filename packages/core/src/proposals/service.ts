@@ -1,4 +1,11 @@
-import type { KnowledgeItemId, ProposalId, WorkspaceId } from '@knoverge/contracts';
+import type {
+  FrontmatterRelation,
+  FrontmatterSource,
+  ItemType,
+  KnowledgeItemId,
+  ProposalId,
+  WorkspaceId,
+} from '@knoverge/contracts';
 
 import type { ActorContext } from '../actor-context.ts';
 import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
@@ -11,7 +18,7 @@ import { systemClock } from '../ports/clock.ts';
 import type { UnitOfWork } from '../ports/unit-of-work.ts';
 import type { CategoryRepository } from '../taxonomy/repository.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
-import type { ProposalRecord, ProposalRepository } from './repository.ts';
+import type { ProposalPatch, ProposalRecord, ProposalRepository } from './repository.ts';
 
 export interface ProposalServiceOptions {
   uow: UnitOfWork;
@@ -28,6 +35,53 @@ export interface ProposalServiceOptions {
 export interface ProposeCreateInput extends CreateItemInput {
   reason?: string | undefined;
   confidence?: number | undefined;
+}
+
+/** What a reviewer may change before approving: the content and nothing else. */
+export interface ProposalEditsInput {
+  title?: string | undefined;
+  body?: string | undefined;
+  type?: ItemType | undefined;
+  language?: string | undefined;
+  categories?: readonly string[] | undefined;
+  tags?: readonly string[] | undefined;
+  sources?: readonly FrontmatterSource[] | undefined;
+  relations?: readonly FrontmatterRelation[] | undefined;
+}
+
+export interface ApproveProposalInput {
+  proposalId: ProposalId;
+  edits?: ProposalEditsInput | undefined;
+  note?: string | undefined;
+}
+
+export interface ResolveProposalInput {
+  proposalId: ProposalId;
+  reason?: string | undefined;
+}
+
+/** A create proposal's payload, as `proposeCreate` stored it. */
+interface ProposedCreatePayload {
+  title: string;
+  body: string;
+  type: ItemType;
+  language: string | null;
+  categories: string[];
+  tags: string[];
+  sources: FrontmatterSource[];
+  relations: FrontmatterRelation[];
+}
+
+/**
+ * Edits a reviewer actually made.
+ *
+ * An empty object is not an edit, and treating one as such would record
+ * `approved_with_edits` for a reviewer who changed nothing.
+ */
+function nonEmpty(edits: ProposalEditsInput | undefined): ProposalEditsInput | undefined {
+  if (!edits) return undefined;
+  const given = Object.entries(edits).filter(([, value]) => value !== undefined);
+  return given.length > 0 ? (Object.fromEntries(given) as ProposalEditsInput) : undefined;
 }
 
 export interface ProposalOutcome {
@@ -180,6 +234,186 @@ export class ProposalService {
     };
     await this.o.uow.run((tx) => this.o.proposals.insert(tx, proposal));
     return { proposal, itemId: result.item.id };
+  }
+
+  /**
+   * Making a pending proposal canonical.
+   *
+   * Two authorities meet and both are needed: `knowledge.approve` says the
+   * caller may decide, and the policy that sent the proposal to review has
+   * already had its say. An actor never approves its own proposal, whoever
+   * they are — the point of review is a second pair of eyes, and an owner
+   * approving their own agent's work through a shared actor would defeat it.
+   *
+   * The reviewer is the actor of the resulting write: they are who made it
+   * canonical, and the commit carries `Knoverge-Proposal` so the repository
+   * alone leads back to the proposer. Who approved sets the review state, as
+   * `KNOWLEDGE_LIFECYCLE.md` section 4 requires: a person makes it
+   * `human_reviewed`, an agent `agent_reviewed`.
+   */
+  async approve(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ApproveProposalInput,
+  ): Promise<ProposalOutcome> {
+    await this.o.authorization.require(actor, standing, 'knowledge.approve');
+    const proposal = await this.pendingFor(actor.workspaceId, input.proposalId);
+    if (proposal.proposedByActorId === actor.actorId) {
+      throw new DomainError('FORBIDDEN', 'an actor cannot approve its own proposal', {
+        objectIds: { proposal: proposal.id },
+      });
+    }
+    if (proposal.proposalType !== 'knowledge_create') {
+      // The other kinds arrive with the proposals that produce them; refusing
+      // is better than applying a payload this code does not understand.
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `approving a ${proposal.proposalType} proposal arrives in a later milestone`,
+        { objectIds: { proposal: proposal.id } },
+      );
+    }
+
+    const edits = nonEmpty(input.edits);
+    const stored = proposal.proposedPayload as unknown as ProposedCreatePayload;
+    const payload: ProposedCreatePayload = {
+      title: edits?.title ?? stored.title,
+      body: edits?.body ?? stored.body,
+      type: edits?.type ?? stored.type,
+      language: edits?.language ?? stored.language,
+      categories: [...(edits?.categories ?? stored.categories)],
+      tags: [...(edits?.tags ?? stored.tags)],
+      sources: [...(edits?.sources ?? stored.sources)],
+      relations: [...(edits?.relations ?? stored.relations)],
+    };
+    const now = this.clock.now();
+    const result = await this.o.knowledge.create(actor, {
+      title: payload.title,
+      body: payload.body,
+      type: payload.type,
+      ...(payload.language ? { language: payload.language } : {}),
+      categories: payload.categories,
+      tags: payload.tags,
+      sources: payload.sources,
+      relations: payload.relations,
+      proposalId: proposal.id,
+      review: actor.actorType === 'human' ? 'human_reviewed' : 'agent_reviewed',
+    });
+
+    const patch: ProposalPatch = {
+      status: edits ? 'approved_with_edits' : 'approved',
+      resolvedAt: now,
+      resolvedByActorId: actor.actorId,
+      resolutionNote: input.note ?? null,
+      resultRevisionIds: [result.revision.id],
+      // What was approved, which is not what was proposed when a reviewer
+      // changed it. Keeping only the original would leave the trail claiming
+      // the proposer wrote text they never saw.
+      ...(edits ? { proposedPayload: payload as unknown as Record<string, unknown> } : {}),
+    };
+    await this.o.uow.run(async (tx) => {
+      await this.o.proposals.update(tx, actor.workspaceId, proposal.id, patch);
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType: edits ? 'proposal.edited_and_approved' : 'proposal.approved',
+        objectType: 'proposal',
+        objectId: proposal.id,
+        metadata: {
+          proposal_type: proposal.proposalType,
+          // Both actors, which is what section 4 asks the ledger to record:
+          // the reviewer is the actor of the event, the proposer is here.
+          proposed_by: proposal.proposedByActorId,
+          knowledge_item: result.item.id,
+          revision: result.revision.id,
+        },
+      });
+    });
+    return {
+      proposal: { ...proposal, ...patch, targetItemId: result.item.id } as ProposalRecord,
+      itemId: result.item.id,
+    };
+  }
+
+  /**
+   * Saying no, and saying why.
+   *
+   * The proposal stays: `KNOWLEDGE_LIFECYCLE.md` section 4 keeps a rejection in
+   * the audit history, and a proposer that cannot see it was refused would
+   * propose the same thing again. Nothing is written to Git — there was
+   * nothing to write.
+   */
+  async reject(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ResolveProposalInput,
+  ): Promise<ProposalRecord> {
+    await this.o.authorization.require(actor, standing, 'knowledge.approve');
+    const proposal = await this.pendingFor(actor.workspaceId, input.proposalId);
+    if (proposal.proposedByActorId === actor.actorId) {
+      throw new DomainError('FORBIDDEN', 'an actor cannot review its own proposal', {
+        objectIds: { proposal: proposal.id },
+      });
+    }
+    return this.resolve(actor, proposal, 'rejected', 'proposal.rejected', input.reason);
+  }
+
+  /**
+   * Taking a proposal back.
+   *
+   * The proposer may, because it is their proposal and they have learned it is
+   * not worth deciding. A reviewer may, because an inbox nobody can clear is
+   * an inbox nobody reads. Anybody else may not, which is why this checks the
+   * actor rather than a permission alone.
+   */
+  async withdraw(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ResolveProposalInput,
+  ): Promise<ProposalRecord> {
+    const proposal = await this.pendingFor(actor.workspaceId, input.proposalId);
+    if (proposal.proposedByActorId !== actor.actorId) {
+      await this.o.authorization.require(actor, standing, 'knowledge.approve');
+    }
+    return this.resolve(actor, proposal, 'withdrawn', 'proposal.withdrawn', input.reason);
+  }
+
+  /** The shared tail of rejecting and withdrawing: no write, one row, one event. */
+  private async resolve(
+    actor: ActorContext,
+    proposal: ProposalRecord,
+    status: 'rejected' | 'withdrawn',
+    eventType: 'proposal.rejected' | 'proposal.withdrawn',
+    reason: string | undefined,
+  ): Promise<ProposalRecord> {
+    const patch: ProposalPatch = {
+      status,
+      resolvedAt: this.clock.now(),
+      resolvedByActorId: actor.actorId,
+      resolutionNote: reason ?? null,
+      resultRevisionIds: [],
+    };
+    await this.o.uow.run(async (tx) => {
+      await this.o.proposals.update(tx, actor.workspaceId, proposal.id, patch);
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType,
+        objectType: 'proposal',
+        objectId: proposal.id,
+        metadata: {
+          proposal_type: proposal.proposalType,
+          proposed_by: proposal.proposedByActorId,
+        },
+      });
+    });
+    return { ...proposal, ...patch } as ProposalRecord;
+  }
+
+  /** A proposal that still has a decision left in it. */
+  private async pendingFor(workspaceId: WorkspaceId, id: ProposalId): Promise<ProposalRecord> {
+    const proposal = await this.get(workspaceId, id);
+    if (proposal.status !== 'pending') {
+      throw new DomainError('PROPOSAL_ALREADY_RESOLVED', `this proposal is ${proposal.status}`, {
+        objectIds: { proposal: id, status: proposal.status },
+      });
+    }
+    return proposal;
   }
 
   /** Paths to ids, refusing one the workspace does not have. */

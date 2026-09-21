@@ -121,6 +121,10 @@ GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
 GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 GET  /v1/knowledge.diff?item_id=&from_revision_id=&to_revision_id=
+POST /v1/proposal_approve                   makes a proposal canonical; edits make it
+                                            approved_with_edits
+POST /v1/proposal_reject                    a decision, not a change: nothing is written
+POST /v1/proposal_withdraw                  the proposer takes it back; a reviewer may too
 GET  /v1/proposal.list?status=pending       the review inbox with proposal.read_all,
                                             the caller's own proposals with proposal.read_own
 GET  /v1/proposal.get?proposal_id=prop_...  one proposal with its payload; a caller who may

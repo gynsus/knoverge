@@ -9,6 +9,8 @@ import {
   type FrontmatterSource,
   type ItemType,
   type KnowledgeItemId,
+  type ProposalId,
+  type ReviewState,
   type RevisionId,
   type WorkspaceId,
 } from '@knoverge/contracts';
@@ -161,6 +163,17 @@ export interface CreateItemInput {
   external?: { source_system: string; external_key: string } | undefined;
   sources?: readonly FrontmatterSource[] | undefined;
   relations?: readonly FrontmatterRelation[] | undefined;
+  /**
+   * The proposal this write applies, recorded on the commit so the repository
+   * alone says which decision produced the file.
+   */
+  proposalId?: ProposalId | undefined;
+  /**
+   * Set only by the review workflow, which knows who approved. A direct write
+   * leaves it out and the actor decides: a person reviews as they write, an
+   * agent does not.
+   */
+  review?: ReviewState | undefined;
 }
 
 /** An item as a list shows it: everything but the knowledge itself. */
@@ -244,7 +257,7 @@ export class KnowledgeService {
           language,
           categories: chosen.map((c) => c.path),
           tags: [...new Set(input.tags ?? [])].sort(),
-          review: actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed',
+          review: input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
           evidence: evidenceFrom(input.sources ?? []),
           disputed: false,
           valid_from: input.validFrom ?? null,
@@ -268,6 +281,9 @@ export class KnowledgeService {
             ['Knoverge-Workspace', actor.workspaceId],
             ['Knoverge-Actor', actor.actorId],
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ...(input.proposalId
+              ? ([['Knoverge-Proposal', input.proposalId]] as [string, string][])
+              : []),
             // What recovery needs to rebuild the PostgreSQL side from the
             // commit alone: which item, which revision, and what happened.
             ['Knoverge-Change', `${itemId}@${revisionId} create`],
