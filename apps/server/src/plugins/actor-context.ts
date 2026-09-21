@@ -44,9 +44,15 @@ function sanitise(value: string | string[] | undefined, max: number): string | u
 function contextMeta(
   request: FastifyRequest,
 ): Omit<ActorContext, 'workspaceId' | 'actorId' | 'actorType'> {
-  const client = sanitise(request.headers['x-knoverge-client'], PROVENANCE_LIMITS.client);
-  const provider = sanitise(request.headers['x-knoverge-provider'], PROVENANCE_LIMITS.provider);
-  const model = sanitise(request.headers['x-knoverge-model'], PROVENANCE_LIMITS.model);
+  // A tool call over MCP carries its provenance in `_meta`; the same call over
+  // HTTP carries it in headers. Rule 3 wants it either way, so both are read
+  // here and the transport is not something the domain has to know about.
+  const meta = request.callMeta;
+  const pick = (from: string | undefined, header: string, limit: number) =>
+    sanitise(from, limit) ?? sanitise(request.headers[header], limit);
+  const client = pick(meta?.client, 'x-knoverge-client', PROVENANCE_LIMITS.client);
+  const provider = pick(meta?.provider, 'x-knoverge-provider', PROVENANCE_LIMITS.provider);
+  const model = pick(meta?.model, 'x-knoverge-model', PROVENANCE_LIMITS.model);
   return {
     requestId: request.id,
     ...(client ? { client } : {}),
@@ -86,9 +92,14 @@ export async function resolveWorkspaceActor(
         // sends one. It is namespaced because the caller chooses it: without
         // the prefix an agent could stamp its events with a person's session id
         // and have the audit trail read as if that person had acted.
-        ...(sanitise(request.headers['x-knoverge-session-id'], 124)
+        ...(sanitise(request.callMeta?.session_id ?? request.headers['x-knoverge-session-id'], 124)
           ? {
-              sessionId: `ext:${sanitise(request.headers['x-knoverge-session-id'], 124) as string}`,
+              sessionId: `ext:${
+                sanitise(
+                  request.callMeta?.session_id ?? request.headers['x-knoverge-session-id'],
+                  124,
+                ) as string
+              }`,
             }
           : {}),
         ...meta,

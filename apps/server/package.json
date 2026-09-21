@@ -21,6 +21,7 @@
     "@fastify/static": "catalog:",
     "@fastify/swagger": "catalog:",
     "@knoverge/auth": "workspace:*",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",

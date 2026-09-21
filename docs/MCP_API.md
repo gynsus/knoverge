@@ -18,6 +18,8 @@ Tool names use `^[a-z][a-z0-9_]*$` so they are accepted by every MCP host and by
 
 Remote MCP uses the Streamable HTTP transport at `/mcp`.
 
+The endpoint is stateless: every call is a `POST` carrying its own credential, there is no session id, and `GET` and `DELETE` answer 405. A credential is required to connect at all, not merely to call a tool — a client with a bad token is told so once rather than being handed the tool list and refused one call at a time. Because no session is kept, a deployment can run several containers without sticky routing.
+
 MVP authentication is a per-agent bearer token:
 
 ```text
@@ -52,7 +54,7 @@ Where the client supports it, requests should carry:
 }
 ```
 
-Over MCP these travel in the request `_meta` field; over HTTP in headers (`HTTP_API.md`). The server must function if provider/model are unavailable and generates `request_id` when absent.
+Over MCP these travel in the request `_meta` field; over HTTP in headers (`HTTP_API.md`). Both reach the same actor context, so what the ledger records does not depend on which transport the call came in on. The server must function if provider/model are unavailable and generates `request_id` when absent. A `session_id` a client supplies is namespaced as `ext:<id>`, because the caller chooses it and an unprefixed one could be made to read as a person's session.
 
 ## 5. Cursors
 
