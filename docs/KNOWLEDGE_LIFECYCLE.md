@@ -51,6 +51,8 @@ An item under an external identity the workspace already holds is `DUPLICATE_EXT
 
 Semantic similarity is the one step that needs an embedding profile and arrives with it. Rule 9 holds: the check works without any AI provider.
 
+The check runs twice, like the base check on an update. A proposal waits, and the workspace can gain the item while it does — through a direct write, or through an identical proposal approved first. Approval re-runs the `exact` and external-identity halves; a close title is not raised again, because that is a question for the proposer and the reviewer is reading the text in front of them. A proposal that fails the second check becomes `conflict`, for the same reason a stale one does.
+
 ## 3. Update path
 
 An update proposal must identify the revision it was based on.
