@@ -19,6 +19,7 @@ import {
   MemberService,
   KnowledgeRecovery,
   KnowledgeService,
+  ProposalService,
   TaxonomyRecovery,
   TaxonomyService,
   SessionService,
@@ -53,6 +54,8 @@ export interface ServicesConfig {
   /** Workspace repositories live under this directory. */
   dataDir: string;
   poolMax?: number;
+  /** Told when a pooled connection dies while nobody is using it. */
+  onPoolError?: (error: Error) => void;
 }
 
 /**
@@ -62,6 +65,7 @@ export function createServices(config: ServicesConfig) {
   const database: DatabaseHandle = createDatabase({
     connectionString: config.databaseUrl,
     max: config.poolMax ?? 10,
+    ...(config.onPoolError ? { onPoolError: config.onPoolError } : {}),
   });
   const uow = createUnitOfWork(database.db);
   const repositories = createRepositories(database.db);
@@ -189,6 +193,15 @@ export function createServices(config: ServicesConfig) {
     contentHash,
     frontmatterHash,
   });
+  const proposals = new ProposalService({
+    uow,
+    proposals: repositories.proposals,
+    knowledge,
+    categories: repositories.categories,
+    authorization,
+    actors: repositories.actors,
+    ledger,
+  });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
@@ -238,6 +251,7 @@ export function createServices(config: ServicesConfig) {
     recovery,
     members,
     knowledge,
+    proposals,
     taxonomy,
     users,
     sessions,

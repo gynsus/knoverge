@@ -20,6 +20,14 @@ export interface DatabaseOptions {
   connectionString: string;
   /** Maximum pooled connections. Defaults to 10. */
   max?: number;
+  /**
+   * Called when a pooled connection fails while nobody is using it.
+   *
+   * There is always somebody to tell — the operator — and never a caller: an
+   * idle client dying belongs to no request. Without a handler at all, `pg`
+   * raises it as an unhandled error event, which ends the process.
+   */
+  onPoolError?: (error: Error) => void;
 }
 
 /**
@@ -62,6 +70,11 @@ export function createDatabase(options: DatabaseOptions): DatabaseHandle {
     keepAlive: true,
     keepAliveInitialDelayMillis: 30_000,
   });
+  // A connection can die while idle whenever the database restarts, fails
+  // over, or is stopped — and an unhandled 'error' event on a pg Pool takes
+  // the process down with it. The query path reports its own failures to the
+  // caller, so this is only about the ones no caller owns.
+  pool.on('error', (error) => options.onPoolError?.(error));
   const db = drizzle(pool, { schema, casing: 'snake_case' });
   return {
     pool,

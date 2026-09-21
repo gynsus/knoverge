@@ -65,6 +65,9 @@ export type SourceReferenceId = z.infer<typeof SourceReferenceId>;
 export const RelationId = idSchema('rel');
 export type RelationId = z.infer<typeof RelationId>;
 
+export const ProposalId = idSchema('prop');
+export type ProposalId = z.infer<typeof ProposalId>;
+
 export const PolicyRuleId = idSchema('rule');
 export type PolicyRuleId = z.infer<typeof PolicyRuleId>;
 export const PermissionGrantId = idSchema('grant');

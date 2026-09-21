@@ -221,6 +221,21 @@ export class AuthorizationService {
     action: PolicyActionName,
     target: Target = {},
   ): Promise<PolicyEffect> {
+    return (await this.policyDecisionFor(actor, standing, action, target)).effect;
+  }
+
+  /**
+   * The same decision, with the rule that made it.
+   *
+   * A proposal records which rule let it through, so a reviewer looking at the
+   * trail later can see why nobody was asked.
+   */
+  async policyDecisionFor(
+    actor: ActorContext,
+    standing: ActorStanding,
+    action: PolicyActionName,
+    target: Target = {},
+  ): Promise<{ effect: PolicyEffect; ruleId?: string }> {
     const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
     const rules = await this.o.rules.list(actor.workspaceId);
     const fallback = this.defaultEffect(actor, standing);
@@ -244,7 +259,7 @@ export class AuthorizationService {
       fallback,
       ancestorsOf,
     );
-    return decision.effect;
+    return { effect: decision.effect, ...(decision.ruleId ? { ruleId: decision.ruleId } : {}) };
   }
 
   /**

@@ -1,6 +1,18 @@
 export type { ActorContext } from './actor-context.ts';
 export { KnowledgeRecovery, type KnowledgeRecoveryOptions } from './knowledge/recovery.ts';
 export {
+  ProposalService,
+  type ProposalOutcome,
+  type ProposalServiceOptions,
+  type ProposeCreateInput,
+} from './proposals/service.ts';
+export type {
+  ListProposalsOptions,
+  ProposalPatch,
+  ProposalRecord,
+  ProposalRepository,
+} from './proposals/repository.ts';
+export {
   TaxonomyRecovery,
   type TaxonomyFileCategory,
   type TaxonomyRecoveryOptions,
