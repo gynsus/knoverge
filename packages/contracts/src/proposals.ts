@@ -5,10 +5,12 @@ import { ActorId, KnowledgeItemId, ProposalId, RevisionId, WorkspaceId } from '.
 import { LanguageTag } from './identity.ts';
 import {
   CreateKnowledgeRequest,
+  DeleteKnowledgeRequest,
   FrontmatterRelation,
   FrontmatterSource,
   ItemType,
   Tag,
+  UpdateKnowledgeRequest,
 } from './knowledge.ts';
 import { CategoryPath } from './taxonomy.ts';
 
@@ -91,6 +93,28 @@ export const ProposalResult = z.object({
   item_id: KnowledgeItemId.nullable(),
 });
 export type ProposalResult = z.infer<typeof ProposalResult>;
+
+/**
+ * Proposing a change to an item.
+ *
+ * `base_revision_id` and `base_content_hash` are what the proposer read.
+ * Rule 6 applies to a proposal exactly as it applies to a write: the base is
+ * checked when the proposal is made and again when it is approved, because
+ * the item may have moved on while the proposal waited.
+ */
+export const ProposeUpdateRequest = UpdateKnowledgeRequest.extend({
+  reason: z.string().trim().max(2000).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+});
+export type ProposeUpdateRequest = z.infer<typeof ProposeUpdateRequest>;
+
+/** Proposing that an item leave the current index. */
+export const ProposeDeleteRequest = DeleteKnowledgeRequest.extend({
+  reason: z.string().trim().max(2000).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type ProposeDeleteRequest = z.infer<typeof ProposeDeleteRequest>;
 
 /**
  * What a reviewer may change before approving.

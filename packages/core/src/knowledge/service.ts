@@ -127,6 +127,8 @@ export interface DeleteItemInput {
   itemId: KnowledgeItemId;
   baseRevisionId: RevisionId;
   baseContentHash: string;
+  /** See `CreateItemInput`: the proposal this write applies. */
+  proposalId?: ProposalId | undefined;
 }
 
 export interface UpdateItemInput {
@@ -146,6 +148,10 @@ export interface UpdateItemInput {
   observedAt?: string | null | undefined;
   sources?: readonly FrontmatterSource[] | undefined;
   relations?: readonly FrontmatterRelation[] | undefined;
+  /** See `CreateItemInput`: the proposal this write applies. */
+  proposalId?: ProposalId | undefined;
+  /** See `CreateItemInput`: set only by the review workflow. */
+  review?: ReviewState | undefined;
 }
 
 export interface CreateItemInput {
@@ -456,8 +462,9 @@ export class KnowledgeService {
           tags: input.tags ? [...new Set(input.tags)].sort() : previous.tags,
           // A new revision resets review unless a human made it
           // (KNOWLEDGE_MODEL.md section 8): what was reviewed was the text
-          // that changed.
-          review: actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed',
+          // that changed. The review workflow says so explicitly instead,
+          // because who approved is not always who is writing.
+          review: input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
           sources: input.sources ? [...input.sources] : previous.sources,
           relations: input.relations ? [...input.relations] : previous.relations,
           evidence: evidenceFrom(input.sources ?? previous.sources),
@@ -480,6 +487,9 @@ export class KnowledgeService {
             ['Knoverge-Workspace', actor.workspaceId],
             ['Knoverge-Actor', actor.actorId],
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ...(input.proposalId
+              ? ([['Knoverge-Proposal', input.proposalId]] as [string, string][])
+              : []),
             ['Knoverge-Change', `${input.itemId}@${revisionId} ${kind}`],
           ],
           author,
@@ -577,7 +587,7 @@ export class KnowledgeService {
         },
       );
     }
-    return this.retire(actor, current, 'delete');
+    return this.retire(actor, current, 'delete', input.proposalId);
   }
 
   /** Brings back an item a delete removed, at the content it had. */
@@ -736,6 +746,7 @@ export class KnowledgeService {
     actor: ActorContext,
     current: ItemResult,
     kind: 'delete',
+    proposalId?: ProposalId | undefined,
   ): Promise<ItemResult> {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
@@ -761,6 +772,7 @@ export class KnowledgeService {
             ['Knoverge-Workspace', actor.workspaceId],
             ['Knoverge-Actor', actor.actorId],
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ...(proposalId ? ([['Knoverge-Proposal', proposalId]] as [string, string][]) : []),
             ['Knoverge-Change', `${itemId}@${revisionId} ${kind}`],
           ],
           author,

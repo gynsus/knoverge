@@ -67,6 +67,10 @@ The agent/human must rebase.
 
 Several pending proposals may target the same item. The first approved one wins; the others become `conflict` and the reviewer can rebase them in the UI.
 
+The base is checked twice. A proposal written against a revision that is no longer current is refused when it is made, so the proposer is told now rather than after a reviewer has spent attention on it. It is checked again on approval, because the item can move on while the proposal waits — a direct write, or another proposal approved first. A proposal that fails the second check becomes `conflict` rather than staying pending: it must not go back into the inbox to fail the same way for the next reviewer.
+
+`conflict` is not `rejected`. Nobody decided against the proposal, and the difference matters to whoever wrote it.
+
 ## 4. Review outcomes
 
 ### Approve
