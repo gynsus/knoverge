@@ -98,7 +98,13 @@ Use when the proposal exposes an unresolved contradiction.
 
 The proposer/system may withdraw a proposal that is no longer relevant.
 
-Reviewers may be humans (web UI, HTTP) or agents with `knowledge.approve` (MCP `proposal_approve`). An actor never approves its own proposal.
+Reviewers may be humans (web UI, HTTP) or agents with `knowledge.approve` (MCP `proposal_approve`). An actor never approves its own proposal, and the same actor may not reject one either: review is a second pair of eyes or it is nothing.
+
+The reviewer is the actor of the resulting write. They are who made it canonical, and the commit carries `Knoverge-Proposal`, so the repository alone leads from the file back to the decision and from there to the proposer. A reviewer who changed the text before approving has the changed text stored on the proposal as well, because a trail claiming the proposer wrote words they never saw is worse than no trail.
+
+Withdrawing is the proposer's own act and needs no permission. Anybody else withdrawing somebody else's proposal is a reviewer's act and requires `knowledge.approve`: an inbox nobody can clear is an inbox nobody reads.
+
+A proposal that is no longer `pending` answers `PROPOSAL_ALREADY_RESOLVED` to every further decision. `proposal_approve` accepts an idempotency key, so a retry that arrives before the first call has finished writing replays it rather than producing a second item.
 
 Approval by a human sets `review = human_reviewed` on the resulting revision; approval by an agent sets `agent_reviewed`; a direct commit leaves `unreviewed` unless the committer is a human.
 

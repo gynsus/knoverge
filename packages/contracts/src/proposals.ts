@@ -2,7 +2,15 @@ import { z } from 'zod';
 
 import { PolicyEffect } from './policy.ts';
 import { ActorId, KnowledgeItemId, ProposalId, RevisionId, WorkspaceId } from './ids.ts';
-import { CreateKnowledgeRequest } from './knowledge.ts';
+import { LanguageTag } from './identity.ts';
+import {
+  CreateKnowledgeRequest,
+  FrontmatterRelation,
+  FrontmatterSource,
+  ItemType,
+  Tag,
+} from './knowledge.ts';
+import { CategoryPath } from './taxonomy.ts';
 
 export const ProposalType = z.enum([
   'knowledge_create',
@@ -83,6 +91,60 @@ export const ProposalResult = z.object({
   item_id: KnowledgeItemId.nullable(),
 });
 export type ProposalResult = z.infer<typeof ProposalResult>;
+
+/**
+ * What a reviewer may change before approving.
+ *
+ * The content fields of the proposal and nothing else: `reason` and
+ * `confidence` are the proposer's account of their own work, and a reviewer
+ * rewriting them would leave a record of a proposal nobody made. A reviewer
+ * who disagrees rejects with a note, or approves with the text they want.
+ */
+export const ProposalEdits = z.object({
+  title: z.string().trim().min(1).max(300).optional(),
+  body: z.string().min(1).max(200_000).optional(),
+  type: ItemType.optional(),
+  language: LanguageTag.optional(),
+  categories: z.array(CategoryPath).max(20).optional(),
+  tags: z.array(Tag).max(50).optional(),
+  sources: z.array(FrontmatterSource).max(50).optional(),
+  relations: z.array(FrontmatterRelation).max(50).optional(),
+});
+export type ProposalEdits = z.infer<typeof ProposalEdits>;
+
+/**
+ * Making a proposal canonical.
+ *
+ * `edits` present and not empty makes it `approved_with_edits`: the same
+ * decision, recorded so that the resulting revision is not mistaken for what
+ * the proposer wrote.
+ */
+export const ApproveProposalRequest = z.object({
+  proposal_id: ProposalId,
+  edits: ProposalEdits.optional(),
+  /** Why, for whoever reads the trail later. */
+  note: z.string().trim().max(2000).optional(),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type ApproveProposalRequest = z.infer<typeof ApproveProposalRequest>;
+
+export const RejectProposalRequest = z.object({
+  proposal_id: ProposalId,
+  /** Recommended: a rejection without one tells the proposer nothing. */
+  reason: z.string().trim().max(2000).optional(),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type RejectProposalRequest = z.infer<typeof RejectProposalRequest>;
+
+/** Taking back a proposal that is no longer worth deciding. */
+export const WithdrawProposalRequest = z.object({
+  proposal_id: ProposalId,
+  reason: z.string().trim().max(2000).optional(),
+  request_id: z.string().max(128).optional(),
+});
+export type WithdrawProposalRequest = z.infer<typeof WithdrawProposalRequest>;
 
 export const ProposalsResponse = z.object({ proposals: z.array(ProposalSummary) });
 export type ProposalsResponse = z.infer<typeof ProposalsResponse>;

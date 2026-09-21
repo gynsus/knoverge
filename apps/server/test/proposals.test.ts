@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -300,5 +301,221 @@ describe('an agent proposing', () => {
     expect(
       (await agentGet(mine, `/v1/proposal.get?proposal_id=${theirs.proposal.id}`)).statusCode,
     ).toBe(404);
+  });
+});
+
+describe('reviewing a proposal', () => {
+  /** A pending proposal from an agent nobody has looked at yet. */
+  async function pending(name: string, payload?: Record<string, unknown>) {
+    const token = await agentToken('propose', name);
+    const res = await asAgent(token, {
+      title: `Proposed by ${name}`,
+      body: 'Something the agent learned.',
+      type: 'fact',
+      ...payload,
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    return { token, proposal: ProposalResult.parse(res.json()).proposal };
+  }
+
+  it('approves, writes the item, and records who decided', async () => {
+    const { proposal } = await pending('Approved proposer');
+    const res = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposal.id,
+      note: 'Checked against the source.',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    expect(result.proposal.status).toBe('approved');
+    expect(result.proposal.resolution_note).toBe('Checked against the source.');
+    expect(result.proposal.result_revision_ids).toHaveLength(1);
+    expect(result.item_id).not.toBeNull();
+    // The reviewer decided, not the proposer.
+    expect(result.proposal.resolved_by_actor_id).not.toBe(proposal.proposed_by_actor_id);
+
+    const item = (await admin.get(`/v1/knowledge.get?item_id=${result.item_id}`)).json() as {
+      item: { title: string; review_state: string };
+    };
+    expect(item.item.title).toBe('Proposed by Approved proposer');
+    // A person approved it, so the revision says a person reviewed it.
+    expect(item.item.review_state).toBe('human_reviewed');
+  });
+
+  it('records the proposal on the commit that applied it', async () => {
+    const { proposal } = await pending('Trailer proposer');
+    const approved = ProposalResult.parse(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).json(),
+    );
+    const revisions = (
+      await admin.get(`/v1/knowledge.revisions?item_id=${approved.item_id}`)
+    ).json() as { revisions: { git_commit: string }[] };
+    const commit = revisions.revisions[0]!.git_commit;
+    const workspace = await services.repositories.workspaces.findBySlug('personal');
+    const message = execFileSync(
+      'git',
+      ['-C', join(dataDir, 'repositories', workspace!.id), 'show', '-s', '--format=%B', commit],
+      { encoding: 'utf8' },
+    );
+    // The repository alone leads back to the decision that produced the file.
+    expect(message).toContain(`Knoverge-Proposal: ${proposal.id}`);
+  });
+
+  it('keeps the reviewer’s text when approving with edits', async () => {
+    const { proposal } = await pending('Edited proposer');
+    const res = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposal.id,
+      edits: { title: 'What the reviewer wrote', tags: ['reviewed'] },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    // A different status, because the item is not what the proposer wrote.
+    expect(result.proposal.status).toBe('approved_with_edits');
+
+    const item = (await admin.get(`/v1/knowledge.get?item_id=${result.item_id}`)).json() as {
+      item: { title: string; tags: string[]; body: string };
+    };
+    expect(item.item.title).toBe('What the reviewer wrote');
+    expect(item.item.tags).toEqual(['reviewed']);
+    // Untouched fields keep what was proposed. The trailing newline is the
+    // file's, which is what a body read back from Git carries.
+    expect(item.item.body).toContain('Something the agent learned.');
+
+    const detail = (await admin.get(`/v1/proposal.get?proposal_id=${proposal.id}`)).json() as {
+      proposal: { proposed_payload: { title: string } };
+    };
+    // The payload is what was approved: the trail must not claim the proposer
+    // wrote text they never saw.
+    expect(detail.proposal.proposed_payload.title).toBe('What the reviewer wrote');
+  });
+
+  it('refuses to approve twice', async () => {
+    const { proposal } = await pending('Twice proposer');
+    expect(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).statusCode,
+    ).toBe(200);
+    const again = await admin.post('/v1/proposal_approve', { proposal_id: proposal.id });
+    expect(again.statusCode, again.body).toBe(409);
+    expect(again.json().code).toBe('PROPOSAL_ALREADY_RESOLVED');
+  });
+
+  it('replays a retried approval instead of writing a second item', async () => {
+    const { proposal } = await pending('Retried approval');
+    const key = { 'idempotency-key': 'approve-key-0001' };
+    const first = await admin.request({
+      method: 'POST',
+      url: '/v1/proposal_approve',
+      headers: key,
+      payload: { proposal_id: proposal.id },
+    });
+    const second = await admin.request({
+      method: 'POST',
+      url: '/v1/proposal_approve',
+      headers: key,
+      payload: { proposal_id: proposal.id },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    expect(second.statusCode, second.body).toBe(200);
+    expect(ProposalResult.parse(second.json()).item_id).toBe(
+      ProposalResult.parse(first.json()).item_id,
+    );
+  });
+
+  it('rejects with a reason, and writes nothing', async () => {
+    const { proposal } = await pending('Rejected proposer');
+    const before = (await admin.get('/v1/knowledge.list')).json() as { items: unknown[] };
+    const res = await admin.post('/v1/proposal_reject', {
+      proposal_id: proposal.id,
+      reason: 'Already recorded elsewhere.',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    expect(result.proposal.status).toBe('rejected');
+    expect(result.proposal.resolution_note).toBe('Already recorded elsewhere.');
+    expect(result.item_id).toBeNull();
+    const after = (await admin.get('/v1/knowledge.list')).json() as { items: unknown[] };
+    // A rejection writes nothing at all, not even a deleted item.
+    expect(after.items).toHaveLength(before.items.length);
+  });
+
+  it('lets the proposer withdraw, and refuses somebody else', async () => {
+    const { token, proposal } = await pending('Withdrawing proposer');
+    const other = await agentToken('propose', 'Meddling agent');
+    const meddle = await app.inject({
+      method: 'POST',
+      url: '/v1/proposal_withdraw',
+      headers: { authorization: `Bearer ${other}` },
+      payload: { proposal_id: proposal.id },
+    });
+    // Withdrawing somebody else's proposal is a reviewer's act.
+    expect(meddle.statusCode, meddle.body).toBe(403);
+
+    const mine = await app.inject({
+      method: 'POST',
+      url: '/v1/proposal_withdraw',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { proposal_id: proposal.id, reason: 'No longer relevant.' },
+    });
+    expect(mine.statusCode, mine.body).toBe(200);
+    expect(ProposalResult.parse(mine.json()).proposal.status).toBe('withdrawn');
+  });
+
+  it('refuses an actor approving its own proposal', async () => {
+    // The owner writes a proposal the only way a person can: by being granted
+    // the agent's actor is impossible, so this uses an agent that also holds
+    // knowledge.approve — the same actor on both sides of the decision.
+    const token = await agentToken('propose', 'Self approver');
+    const agents = (await admin.get('/v1/admin/agents.list')).json() as {
+      agents: { actor_id: string; name: string }[];
+    };
+    const actorId = agents.agents.find((a) => a.name === 'Self approver')!.actor_id;
+    expect(
+      (
+        await admin.post('/v1/admin/permissions.grant', {
+          actor_id: actorId,
+          action: 'knowledge.approve',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const created = ProposalResult.parse(
+      (await asAgent(token, { title: 'Mine to approve', body: 'Body.', type: 'fact' })).json(),
+    );
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/proposal_approve',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { proposal_id: created.proposal.id },
+    });
+    // Review is a second pair of eyes or it is nothing.
+    expect(res.statusCode, res.body).toBe(403);
+  });
+
+  it('marks a revision agent_reviewed when an agent approves', async () => {
+    const { proposal } = await pending('Agent reviewed');
+    const reviewer = await agentToken('propose', 'Curator agent');
+    const agents = (await admin.get('/v1/admin/agents.list')).json() as {
+      agents: { actor_id: string; name: string }[];
+    };
+    const actorId = agents.agents.find((a) => a.name === 'Curator agent')!.actor_id;
+    expect(
+      (
+        await admin.post('/v1/admin/permissions.grant', {
+          actor_id: actorId,
+          action: 'knowledge.approve',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/proposal_approve',
+      headers: { authorization: `Bearer ${reviewer}` },
+      payload: { proposal_id: proposal.id },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    const item = (await admin.get(`/v1/knowledge.get?item_id=${result.item_id}`)).json() as {
+      item: { review_state: string };
+    };
+    // An agent reviewed it, which is not the same as a person having done so.
+    expect(item.item.review_state).toBe('agent_reviewed');
   });
 });

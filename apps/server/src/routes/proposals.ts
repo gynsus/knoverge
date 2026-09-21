@@ -1,10 +1,13 @@
 import {
+  ApproveProposalRequest,
   ProposalId,
   ProposalResponse,
   ProposalResult,
   ProposalsResponse,
   ProposeCreateRequest,
   ProposalStatus,
+  RejectProposalRequest,
+  WithdrawProposalRequest,
   type ProposalSummary,
 } from '@knoverge/contracts';
 import { DomainError, type ProposalRecord } from '@knoverge/core';
@@ -102,6 +105,73 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
       // A replay answers the same way the first call did.
       if (replayable.value.item_id === null) reply.code(202);
       return replayable.value;
+    },
+  );
+
+  /**
+   * The review decisions. These are tools an agent with `knowledge.approve`
+   * may call as readily as a person, so they carry the tool names.
+   */
+  r.post(
+    '/v1/proposal_approve',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: ApproveProposalRequest, response: { 200: ProposalResult } },
+    },
+    async (request) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const body = request.body;
+      // A retried approval must not produce a second item from one proposal.
+      // The proposal's own status catches the ordinary case; this catches the
+      // retry that arrives before the first call has finished writing.
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'proposal_approve',
+        body,
+        async () => {
+          const outcome = await services.proposals.approve(actor.context, actor.standing, {
+            proposalId: body.proposal_id,
+            edits: body.edits,
+            note: body.note,
+          });
+          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+        },
+      );
+      return replayable.value;
+    },
+  );
+
+  r.post(
+    '/v1/proposal_reject',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: RejectProposalRequest, response: { 200: ProposalResult } },
+    },
+    async (request) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const proposal = await services.proposals.reject(actor.context, actor.standing, {
+        proposalId: request.body.proposal_id,
+        reason: request.body.reason,
+      });
+      // Nothing was written, so no item: a rejection is a decision, not a change.
+      return { proposal: summary(proposal), item_id: null };
+    },
+  );
+
+  r.post(
+    '/v1/proposal_withdraw',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: WithdrawProposalRequest, response: { 200: ProposalResult } },
+    },
+    async (request) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const proposal = await services.proposals.withdraw(actor.context, actor.standing, {
+        proposalId: request.body.proposal_id,
+        reason: request.body.reason,
+      });
+      return { proposal: summary(proposal), item_id: null };
     },
   );
 
