@@ -19,6 +19,7 @@ import {
   MemberService,
   KnowledgeRecovery,
   KnowledgeService,
+  ProposalService,
   TaxonomyRecovery,
   TaxonomyService,
   SessionService,
@@ -189,6 +190,15 @@ export function createServices(config: ServicesConfig) {
     contentHash,
     frontmatterHash,
   });
+  const proposals = new ProposalService({
+    uow,
+    proposals: repositories.proposals,
+    knowledge,
+    categories: repositories.categories,
+    authorization,
+    actors: repositories.actors,
+    ledger,
+  });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
@@ -238,6 +248,7 @@ export function createServices(config: ServicesConfig) {
     recovery,
     members,
     knowledge,
+    proposals,
     taxonomy,
     users,
     sessions,

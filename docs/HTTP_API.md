@@ -116,10 +116,13 @@ POST /v1/admin/permissions.revoke
 GET  /v1/admin/policy.rules
 POST /v1/admin/policy.rules.upsert
 POST /v1/admin/policy.rules.delete
+POST /v1/knowledge_propose_create           an agent proposes; 202 when review is needed
 GET  /v1/knowledge.list                     items without their bodies
 GET  /v1/knowledge.get?item_id=kn_...       one item, with its body
 GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 GET  /v1/knowledge.diff?item_id=&from_revision_id=&to_revision_id=
+GET  /v1/admin/proposals.list?status=pending  the review inbox
+GET  /v1/admin/proposals.get?proposal_id=prop_...
 POST /v1/admin/knowledge.create             a person writes an item directly
                                             carries sources and relations; a source with a
                                             locator makes the item source-backed
