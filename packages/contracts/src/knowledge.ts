@@ -142,6 +142,15 @@ export const Frontmatter = z
     updated_at: Instant,
     sources: z.array(FrontmatterSource).max(50).default([]),
     relations: z.array(FrontmatterRelation).max(50).default([]),
+    /**
+     * What replaced this item, on the item that was replaced.
+     *
+     * A projection of the one `supersedes` relation, which lives on the new
+     * item and in PostgreSQL. Absent means not superseded. See ADR 0015: the
+     * relation is recorded once and written twice, so that an old file read on
+     * its own says both that it was replaced and by what.
+     */
+    superseded_by: KnowledgeItemId.nullable().optional(),
     external: FrontmatterExternal.optional(),
     /** Only for `type: summary`: the revisions the summary was made from. */
     summary_of: z
@@ -185,6 +194,7 @@ export const FRONTMATTER_KEY_ORDER = [
   'updated_at',
   'sources',
   'relations',
+  'superseded_by',
   'external',
   'summary_of',
 ] as const satisfies readonly (keyof Frontmatter)[];
@@ -274,6 +284,32 @@ export const CreateKnowledgeRequest = z.object({
   idempotency_key: z.string().max(128).optional(),
 });
 export type CreateKnowledgeRequest = z.infer<typeof CreateKnowledgeRequest>;
+
+/**
+ * Replacing one item with another, as one operation.
+ *
+ * The old item keeps its text and stops being current; the new item says what
+ * it replaced. One commit, two revisions, so a half-applied supersession
+ * cannot exist (`KNOWLEDGE_LIFECYCLE.md` section 5).
+ */
+export const SupersedeKnowledgeRequest = z.object({
+  old_item_id: KnowledgeItemId,
+  old_base_revision_id: RevisionId,
+  old_base_content_hash: z.string().min(1).max(80),
+  /** When the old item stopped being true, and the new one started. */
+  valid_until: z.iso.datetime({ offset: true }).optional(),
+  new_item: CreateKnowledgeRequest.omit({ request_id: true, idempotency_key: true }),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type SupersedeKnowledgeRequest = z.infer<typeof SupersedeKnowledgeRequest>;
+
+/** Both sides of a supersession, which is one operation with two results. */
+export const SupersedeResponse = z.object({
+  item: KnowledgeItemDetail,
+  superseded: KnowledgeItemDetail,
+});
+export type SupersedeResponse = z.infer<typeof SupersedeResponse>;
 
 export const KnowledgeResponse = z.object({ item: KnowledgeItemDetail });
 export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;

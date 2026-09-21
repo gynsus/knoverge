@@ -137,6 +137,7 @@ export function createServices(config: ServicesConfig) {
     items: repositories.knowledge,
     revisions: repositories.revisions,
     categories: repositories.categories,
+    relations: repositories.relations,
     ledger,
     git,
     parseItem,
