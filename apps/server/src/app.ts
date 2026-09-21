@@ -20,6 +20,7 @@ import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerKnowledgeRoutes } from './routes/knowledge.ts';
 import { registerProposalRoutes } from './routes/proposals.ts';
+import { registerMcpRoutes } from './routes/mcp.ts';
 import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerToolRoutes } from './routes/tools.ts';
 import { registerOpenApi } from './routes/openapi.ts';
@@ -98,6 +99,8 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     // Last, so every handler it dispatches to is defined: one POST route per
     // tool, generated from the contract (rule 11).
     registerToolRoutes(app, options.services);
+    // The same tools again, over MCP. One contract, two transports (rule 11).
+    registerMcpRoutes(app, options.services, options.version);
   }
 
   app.get('/health/live', { schema: { response: { 200: LiveResponse } } }, async () => ({

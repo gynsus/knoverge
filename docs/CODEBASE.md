@@ -123,6 +123,24 @@ same handler function (ADR 0011). The handler takes the parsed input and the
 request; the request is there for what the input does not carry — who is
 calling, which workspace, and the idempotency key.
 
+## The MCP endpoint
+
+`apps/server/src/routes/mcp.ts` serves `/mcp` over Streamable HTTP, driven by
+the same `TOOLS` list the HTTP routes are generated from and calling the same
+handlers. One MCP server is built per request, with its tools closed over the
+Fastify request: that is what carries the credential, the workspace and the
+idempotency key, and it is also why no session is needed — nothing persists
+between calls that the credential does not already establish.
+
+A refusal comes back as a tool error carrying the same `ApiError` payload the
+HTTP transport answers with, as text, because MCP has no status codes. The
+SDK does not apply a tool's output schema to an error result, so the error
+shape travels intact.
+
+A tool call's provenance arrives in MCP's `_meta` rather than in headers. The
+endpoint puts it on the request as `callMeta`, and `contextMeta` reads either,
+so rule 3 records the same thing whichever transport the call came in on.
+
 ## The review inbox
 
 `apps/web/src/pages/ReviewPage.tsx` is where an agent's proposals become the
