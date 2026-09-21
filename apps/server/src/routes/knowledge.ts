@@ -228,19 +228,32 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         oldBaseRevisionId: body.old_base_revision_id,
         oldBaseContentHash: body.old_base_content_hash,
         validUntil: body.valid_until,
-        newItem: {
-          title: body.new_item.title,
-          body: body.new_item.body,
-          type: body.new_item.type,
-          language: body.new_item.language,
-          categories: body.new_item.categories,
-          tags: body.new_item.tags,
-          slug: body.new_item.slug,
-          observedAt: body.new_item.observed_at,
-          relations: body.new_item.relations,
-          sources: body.new_item.sources,
-          external: body.new_item.external,
-        },
+        ...(body.new_item
+          ? {
+              newItem: {
+                title: body.new_item.title,
+                body: body.new_item.body,
+                type: body.new_item.type,
+                language: body.new_item.language,
+                categories: body.new_item.categories,
+                tags: body.new_item.tags,
+                slug: body.new_item.slug,
+                observedAt: body.new_item.observed_at,
+                relations: body.new_item.relations,
+                sources: body.new_item.sources,
+                external: body.new_item.external,
+              },
+            }
+          : {}),
+        ...(body.existing_item
+          ? {
+              existingItem: {
+                itemId: body.existing_item.item_id,
+                baseRevisionId: body.existing_item.base_revision_id,
+                baseContentHash: body.existing_item.base_content_hash,
+              },
+            }
+          : {}),
       });
       return { item: detail(result.new), superseded: detail(result.old) };
     },

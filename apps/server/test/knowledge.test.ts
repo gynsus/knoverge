@@ -666,6 +666,72 @@ describe('superseding an item', () => {
     expect(oldFile).not.toContain('type: supersedes');
   });
 
+  it('lets an item the workspace already holds take over', async () => {
+    const old = await anItem('Deployment target', 'We deploy to Heroku.');
+    const replacement = await anItem('Deployment target, current', 'We deploy to Fly.io.');
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      existing_item: {
+        item_id: replacement.id,
+        base_revision_id: replacement.current_revision_id,
+        base_content_hash: replacement.content_hash,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = SupersedeResponse.parse(res.json());
+
+    // No new item: the one that already existed took over, and got a revision
+    // of its own saying so.
+    expect(result.item.id).toBe(replacement.id);
+    expect(result.item.revision_number).toBe(2);
+    expect(result.item.body).toContain('We deploy to Fly.io.');
+    expect(result.item.relations).toContainEqual({ type: 'supersedes', target: old.id });
+    expect(result.superseded.status).toBe('superseded');
+
+    const repository = join(dataDir, 'repositories', old.workspace_id);
+    const log = await gitIn(repository, ['log', '-1', '--format=%s%n%b']);
+    expect(log).toContain(
+      `Knoverge-Change: ${replacement.id}@${result.item.current_revision_id} supersede`,
+    );
+    expect(log).toContain(
+      `Knoverge-Change: ${old.id}@${result.superseded.current_revision_id} superseded_by`,
+    );
+  });
+
+  it('refuses a supersession that names both a new item and an existing one', async () => {
+    const old = await anItem('Named twice', 'The original.');
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      new_item: { title: 'One', body: 'One.', type: 'fact' },
+      existing_item: {
+        item_id: old.id,
+        base_revision_id: old.current_revision_id,
+        base_content_hash: old.content_hash,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+  });
+
+  it('refuses an item superseding itself', async () => {
+    const old = await anItem('Its own replacement', 'The only text.');
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      existing_item: {
+        item_id: old.id,
+        base_revision_id: old.current_revision_id,
+        base_content_hash: old.content_hash,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/supersede itself/);
+  });
+
   it('refuses a supersession written against an older revision', async () => {
     const old = await anItem('Moves on first', 'The first text.');
     expect(

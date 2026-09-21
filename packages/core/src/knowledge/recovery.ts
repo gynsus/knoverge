@@ -358,6 +358,7 @@ function eventFor(
   | 'knowledge.created'
   | 'knowledge.updated'
   | 'knowledge.moved'
+  | 'knowledge.superseded'
   | 'knowledge.deleted'
   | 'knowledge.restored' {
   switch (kind) {
@@ -365,6 +366,11 @@ function eventFor(
       return 'knowledge.created';
     case 'move':
       return 'knowledge.moved';
+    // Both sides of a supersession: the item that replaced another, and the
+    // one that was replaced. A recovered event says what an ordinary one says.
+    case 'supersede':
+    case 'superseded_by':
+      return 'knowledge.superseded';
     case 'delete':
       return 'knowledge.deleted';
     case 'restore':

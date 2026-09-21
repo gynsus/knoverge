@@ -292,16 +292,32 @@ export type CreateKnowledgeRequest = z.infer<typeof CreateKnowledgeRequest>;
  * it replaced. One commit, two revisions, so a half-applied supersession
  * cannot exist (`KNOWLEDGE_LIFECYCLE.md` section 5).
  */
-export const SupersedeKnowledgeRequest = z.object({
-  old_item_id: KnowledgeItemId,
-  old_base_revision_id: RevisionId,
-  old_base_content_hash: z.string().min(1).max(80),
-  /** When the old item stopped being true, and the new one started. */
-  valid_until: z.iso.datetime({ offset: true }).optional(),
-  new_item: CreateKnowledgeRequest.omit({ request_id: true, idempotency_key: true }),
-  request_id: z.string().max(128).optional(),
-  idempotency_key: z.string().max(128).optional(),
-});
+export const SupersedeKnowledgeRequest = z
+  .object({
+    old_item_id: KnowledgeItemId,
+    old_base_revision_id: RevisionId,
+    old_base_content_hash: z.string().min(1).max(80),
+    /** When the old item stopped being true, and the new one started. */
+    valid_until: z.iso.datetime({ offset: true }).optional(),
+    new_item: CreateKnowledgeRequest.omit({ request_id: true, idempotency_key: true }).optional(),
+    /**
+     * An item the workspace already holds, taking over instead. It gets a
+     * revision of its own, so it carries the base the caller read: rule 6
+     * knows nothing about why an item is being changed.
+     */
+    existing_item: z
+      .object({
+        item_id: KnowledgeItemId,
+        base_revision_id: RevisionId,
+        base_content_hash: z.string().min(1).max(80),
+      })
+      .optional(),
+    request_id: z.string().max(128).optional(),
+    idempotency_key: z.string().max(128).optional(),
+  })
+  .refine((value) => (value.new_item === undefined) !== (value.existing_item === undefined), {
+    message: 'give either new_item or existing_item, not both and not neither',
+  });
 export type SupersedeKnowledgeRequest = z.infer<typeof SupersedeKnowledgeRequest>;
 
 /** Both sides of a supersession, which is one operation with two results. */
