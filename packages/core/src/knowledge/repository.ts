@@ -140,6 +140,39 @@ export interface KnowledgeRepository {
     workspaceId: WorkspaceId,
     itemIds: readonly KnowledgeItemId[],
   ): Promise<Map<KnowledgeItemId, string[]>>;
+
+  /** The item already recorded under this external identity, if any. */
+  findByExternal(
+    workspaceId: WorkspaceId,
+    sourceSystem: string,
+    externalKey: string,
+  ): Promise<KnowledgeItemRecord | null>;
+  /** Active items whose current revision holds exactly this content hash. */
+  findByContentHash(workspaceId: WorkspaceId, contentHash: string): Promise<DuplicateRow[]>;
+  /**
+   * Active items whose current title is close to this one.
+   *
+   * Trigram similarity, which is what `pg_trgm` is installed for. Ordered by
+   * score, best first.
+   */
+  findSimilarTitles(
+    workspaceId: WorkspaceId,
+    title: string,
+    threshold: number,
+    limit: number,
+  ): Promise<DuplicateRow[]>;
+}
+
+/** An item a duplicate check found, with what it takes to judge the match. */
+export interface DuplicateRow {
+  itemId: KnowledgeItemId;
+  title: string;
+  markdownPath: string;
+  type: ItemType;
+  /** The category the file lives under, or null for an uncategorised item. */
+  primaryCategoryId: CategoryId | null;
+  /** 0 to 1 for a lexical match; null when the match was exact. */
+  score: number | null;
 }
 
 export interface RevisionRepository {

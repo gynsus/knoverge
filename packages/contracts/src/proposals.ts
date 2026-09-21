@@ -79,6 +79,12 @@ export const ProposeCreateRequest = CreateKnowledgeRequest.extend({
   reason: z.string().trim().max(2000).optional(),
   /** The proposer's own estimate, 0 to 1. Never a decision on its own. */
   confidence: z.number().min(0).max(1).optional(),
+  /**
+   * Candidates a `DUPLICATE_SUSPECTED` refusal offered and the proposer has
+   * read and ruled out. Recorded on the proposal, so a reviewer sees what was
+   * considered and dismissed rather than having to wonder.
+   */
+  acknowledged_duplicate_ids: z.array(KnowledgeItemId).max(20).optional(),
 });
 export type ProposeCreateRequest = z.infer<typeof ProposeCreateRequest>;
 

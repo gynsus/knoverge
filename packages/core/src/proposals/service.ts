@@ -1,4 +1,5 @@
 import type {
+  CategoryId,
   EventType,
   PolicyActionName,
   PolicyEffect,
@@ -17,6 +18,7 @@ import type { ActorContext } from '../actor-context.ts';
 import type { ActorStanding, AuthorizationService } from '../authorization/service.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
+import type { DuplicateMatcher } from '../knowledge/duplicates.ts';
 import type {
   CreateItemInput,
   DeleteItemInput,
@@ -40,6 +42,8 @@ export interface ProposalServiceOptions {
   /** Category paths become ids before policy sees them (rule 13). */
   categories: CategoryRepository;
   authorization: AuthorizationService;
+  /** What the workspace may already hold, checked before anything is recorded. */
+  duplicates: DuplicateMatcher;
   actors: ActorRepository;
   ledger: EventLedger;
   clock?: Clock;
@@ -48,6 +52,8 @@ export interface ProposalServiceOptions {
 export interface ProposeCreateInput extends CreateItemInput {
   reason?: string | undefined;
   confidence?: number | undefined;
+  /** Candidates the proposer has read and ruled out. */
+  acknowledgedDuplicateIds?: readonly string[] | undefined;
 }
 
 export interface ProposeUpdateInput extends UpdateItemInput {
@@ -114,6 +120,8 @@ interface RecordSpec {
   eventType: EventType;
   /** Checked before a pending proposal is recorded, when the kind has any. */
   relations?: readonly FrontmatterRelation[] | undefined;
+  /** What the proposer read and ruled out, kept for whoever reviews it. */
+  acknowledgedDuplicateIds?: readonly string[] | undefined;
   /** What `allow_direct` runs, and what approval runs later. */
   apply: (proposalId: ProposalId) => Promise<AppliedWrite>;
 }
@@ -237,9 +245,23 @@ export class ProposalService {
     // The categories the item is aimed at, as ids: a rule may allow direct
     // writes into one part of the tree and not another, and a path is a
     // portable identifier rather than a security one (rule 13).
+    const categoryIds = await this.categoryIds(actor.workspaceId, input.categories ?? []);
     const decision = await this.decide(actor, standing, 'knowledge.create', {
-      categoryIds: await this.categoryIds(actor.workspaceId, input.categories ?? []),
+      categoryIds,
       type: input.type,
+    });
+
+    // Before anything is recorded, and before policy's answer matters: a
+    // newly connected agent must not fill the workspace with what it already
+    // holds, whether the write would have waited for review or not.
+    await this.o.duplicates.assertNotDuplicate({
+      workspaceId: actor.workspaceId,
+      title: input.title,
+      body: input.body,
+      type: input.type,
+      categoryIds: categoryIds as CategoryId[],
+      external: input.external,
+      acknowledged: input.acknowledgedDuplicateIds,
     });
 
     return this.record(actor, {
@@ -262,6 +284,7 @@ export class ProposalService {
       confidence: input.confidence,
       eventType: 'knowledge.proposed_create',
       relations: input.relations ?? [],
+      acknowledgedDuplicateIds: input.acknowledgedDuplicateIds ?? [],
       apply: (proposalId) => applied(this.o.knowledge.create(actor, { ...input, proposalId })),
     });
   }
@@ -814,7 +837,7 @@ export class ProposalService {
       proposedPayload: spec.payload,
       reason: spec.reason ?? null,
       confidence: spec.confidence ?? null,
-      acknowledgedDuplicateIds: [],
+      acknowledgedDuplicateIds: [...(spec.acknowledgedDuplicateIds ?? [])],
       syncSessionId: null,
       policyRuleId: spec.decision.ruleId ?? null,
       createdAt: now,

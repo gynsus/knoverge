@@ -29,7 +29,17 @@ export {
   type ItemSummary,
   type KnowledgeServiceOptions,
 } from './knowledge/service.ts';
+export {
+  DuplicateMatcher,
+  MAX_LEXICAL_CANDIDATES,
+  TITLE_SIMILARITY_THRESHOLD,
+  type DuplicateCandidate,
+  type DuplicateMatcherOptions,
+  type DuplicateQuery,
+  type MatchReason,
+} from './knowledge/duplicates.ts';
 export type {
+  DuplicateRow,
   ItemCategoryRecord,
   KnowledgeItemRecord,
   KnowledgeRepository,

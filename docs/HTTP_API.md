@@ -64,7 +64,7 @@ RATE_LIMITED               429
 INTERNAL_ERROR             500
 ```
 
-Body is the same error object as MCP.
+Body is the same error object as MCP: `code`, `message`, `retryable`, and the fields the code needs — `object_ids`, `current` for a concurrency conflict, and `duplicates` for `DUPLICATE_SUSPECTED`, which lists each candidate's `item_id`, `title`, `markdown_path`, `match_reason` (`exact`, `content_hash` or `lexical`) and `score`.
 
 ## 5. Auth and account endpoints
 

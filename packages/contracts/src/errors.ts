@@ -34,5 +34,22 @@ export const ApiError = z.object({
       content_hash: z.string(),
     })
     .optional(),
+  /**
+   * What a `DUPLICATE_SUSPECTED` refusal found, so the caller can read the
+   * candidates rather than guess at them.
+   */
+  duplicates: z
+    .array(
+      z.object({
+        item_id: z.string(),
+        title: z.string(),
+        markdown_path: z.string(),
+        match_reason: z.enum(['exact', 'content_hash', 'lexical']),
+        /** 0 to 1 for a lexical match; null when the text matched exactly. */
+        score: z.number().nullable(),
+      }),
+    )
+    .max(20)
+    .optional(),
 });
 export type ApiError = z.infer<typeof ApiError>;
