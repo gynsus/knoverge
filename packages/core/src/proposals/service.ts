@@ -22,6 +22,7 @@ import type {
   DeleteItemInput,
   ItemResult,
   KnowledgeService,
+  SupersedeInput,
   UpdateItemInput,
 } from '../knowledge/service.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
@@ -59,6 +60,18 @@ export interface ProposeDeleteInput extends DeleteItemInput {
   confidence?: number | undefined;
 }
 
+export interface ProposeSupersedeInput extends SupersedeInput {
+  reason?: string | undefined;
+  confidence?: number | undefined;
+}
+
+/** A supersede proposal's payload: what replaces the item, and from when. */
+interface ProposedSupersedePayload {
+  validUntil?: string | null;
+  newItem?: ProposedCreatePayload;
+  existingItem?: { itemId: KnowledgeItemId; baseRevisionId: RevisionId; baseContentHash: string };
+}
+
 /** The stored payload of an update proposal: only the fields that were given. */
 interface ProposedUpdatePayload {
   title: string;
@@ -77,6 +90,17 @@ interface ProposedUpdatePayload {
 /** A policy answer that is not a refusal, and the rule that gave it. */
 type PolicyDecision = { effect: Exclude<PolicyEffect, 'deny'>; ruleId?: string | undefined };
 
+/**
+ * What applying a proposal produced.
+ *
+ * A supersession produces two revisions from one operation, so this is a list
+ * rather than one revision, and the item is the one the proposal was about.
+ */
+interface AppliedWrite {
+  itemId: KnowledgeItemId;
+  revisionIds: RevisionId[];
+}
+
 /** One proposal to record, whichever kind it is. */
 interface RecordSpec {
   proposalType: ProposalType;
@@ -91,7 +115,13 @@ interface RecordSpec {
   /** Checked before a pending proposal is recorded, when the kind has any. */
   relations?: readonly FrontmatterRelation[] | undefined;
   /** What `allow_direct` runs, and what approval runs later. */
-  apply: (proposalId: ProposalId) => Promise<ItemResult>;
+  apply: (proposalId: ProposalId) => Promise<AppliedWrite>;
+}
+
+/** One write of one revision, in the shape the proposal machinery expects. */
+async function applied(write: Promise<ItemResult>): Promise<AppliedWrite> {
+  const result = await write;
+  return { itemId: result.item.id, revisionIds: [result.revision.id] };
 }
 
 /**
@@ -232,7 +262,7 @@ export class ProposalService {
       confidence: input.confidence,
       eventType: 'knowledge.proposed_create',
       relations: input.relations ?? [],
-      apply: (proposalId) => this.o.knowledge.create(actor, { ...input, proposalId }),
+      apply: (proposalId) => applied(this.o.knowledge.create(actor, { ...input, proposalId })),
     });
   }
 
@@ -292,13 +322,96 @@ export class ProposalService {
       confidence: input.confidence,
       eventType: 'knowledge.proposed_update',
       apply: (proposalId) =>
-        this.o.knowledge.update(actor, {
-          ...this.updateInput(payload),
-          itemId: input.itemId,
-          baseRevisionId: input.baseRevisionId,
-          baseContentHash: input.baseContentHash,
+        applied(
+          this.o.knowledge.update(actor, {
+            ...this.updateInput(payload),
+            itemId: input.itemId,
+            baseRevisionId: input.baseRevisionId,
+            baseContentHash: input.baseContentHash,
+            proposalId,
+          }),
+        ),
+    });
+  }
+
+  /**
+   * Proposing that one item replace another.
+   *
+   * The proposal is about the item being superseded — that is what it acts on,
+   * what it carries a base for, and what other pending proposals conflict
+   * with. Approving it runs the same atomic operation a person runs: one
+   * commit, two revisions, no half-applied supersession.
+   */
+  async proposeSupersede(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ProposeSupersedeInput,
+  ): Promise<ProposalOutcome> {
+    await this.o.authorization.require(actor, standing, 'knowledge.propose_supersede');
+    const current = await this.o.knowledge.get(actor, input.oldItemId);
+    assertBase(current, input.oldBaseRevisionId, input.oldBaseContentHash);
+
+    const decision = await this.decide(actor, standing, 'knowledge.supersede', {
+      categoryIds: await this.categoryIds(
+        actor.workspaceId,
+        input.newItem?.categories ?? current.categories,
+      ),
+      type: input.newItem?.type ?? current.item.type,
+    });
+
+    const payload: Record<string, unknown> = {
+      ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+      ...(input.newItem
+        ? {
+            newItem: {
+              title: input.newItem.title,
+              body: input.newItem.body,
+              type: input.newItem.type,
+              language: input.newItem.language ?? null,
+              categories: [...(input.newItem.categories ?? [])],
+              tags: [...(input.newItem.tags ?? [])],
+              sources: [...(input.newItem.sources ?? [])],
+              relations: [...(input.newItem.relations ?? [])],
+            },
+          }
+        : {}),
+      ...(input.existingItem
+        ? {
+            existingItem: {
+              itemId: input.existingItem.itemId,
+              baseRevisionId: input.existingItem.baseRevisionId,
+              baseContentHash: input.existingItem.baseContentHash,
+            },
+          }
+        : {}),
+    };
+
+    return this.record(actor, {
+      proposalType: 'knowledge_supersede',
+      decision,
+      payload,
+      targetItemId: input.oldItemId,
+      baseRevisionId: input.oldBaseRevisionId,
+      baseContentHash: input.oldBaseContentHash,
+      reason: input.reason,
+      confidence: input.confidence,
+      eventType: 'knowledge.proposed_supersede',
+      relations: input.newItem?.relations ?? [],
+      apply: async (proposalId) => {
+        const result = await this.o.knowledge.supersede(actor, {
+          oldItemId: input.oldItemId,
+          oldBaseRevisionId: input.oldBaseRevisionId,
+          oldBaseContentHash: input.oldBaseContentHash,
+          ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
+          ...(input.newItem ? { newItem: input.newItem } : {}),
+          ...(input.existingItem ? { existingItem: input.existingItem } : {}),
           proposalId,
-        }),
+        });
+        return {
+          itemId: input.oldItemId,
+          revisionIds: [result.new.revision.id, result.old.revision.id],
+        };
+      },
     });
   }
 
@@ -330,12 +443,14 @@ export class ProposalService {
       confidence: input.confidence,
       eventType: 'knowledge.proposed_delete',
       apply: (proposalId) =>
-        this.o.knowledge.delete(actor, {
-          itemId: input.itemId,
-          baseRevisionId: input.baseRevisionId,
-          baseContentHash: input.baseContentHash,
-          proposalId,
-        }),
+        applied(
+          this.o.knowledge.delete(actor, {
+            itemId: input.itemId,
+            baseRevisionId: input.baseRevisionId,
+            baseContentHash: input.baseContentHash,
+            proposalId,
+          }),
+        ),
     });
   }
 
@@ -370,7 +485,7 @@ export class ProposalService {
     const payload = this.payloadFor(proposal, edits);
     const now = this.clock.now();
     const review = actor.actorType === 'human' ? 'human_reviewed' : 'agent_reviewed';
-    let result: ItemResult;
+    let result: AppliedWrite;
     try {
       result = await this.applyOnApproval(actor, proposal, payload, review);
     } catch (error) {
@@ -388,7 +503,7 @@ export class ProposalService {
       resolvedAt: now,
       resolvedByActorId: actor.actorId,
       resolutionNote: input.note ?? null,
-      resultRevisionIds: [result.revision.id],
+      resultRevisionIds: result.revisionIds,
       // What was approved, which is not what was proposed when a reviewer
       // changed it. Keeping only the original would leave the trail claiming
       // the proposer wrote text they never saw.
@@ -397,8 +512,9 @@ export class ProposalService {
     // Every other pending proposal against this item was written against the
     // revision that is no longer current, so the first approval wins and the
     // rest need rebasing (KNOWLEDGE_LIFECYCLE.md section 3).
+    const about = proposal.targetItemId ?? result.itemId;
     const stale = await this.o.proposals.list(actor.workspaceId, {
-      targetItemId: result.item.id,
+      targetItemId: about,
       status: 'pending',
     });
     await this.o.uow.run(async (tx) => {
@@ -412,8 +528,8 @@ export class ProposalService {
           // Both actors, which is what section 4 asks the ledger to record:
           // the reviewer is the actor of the event, the proposer is here.
           proposed_by: proposal.proposedByActorId,
-          knowledge_item: result.item.id,
-          revision: result.revision.id,
+          knowledge_item: about,
+          revisions: result.revisionIds.join(' '),
         },
       });
       for (const other of stale) {
@@ -422,8 +538,8 @@ export class ProposalService {
       }
     });
     return {
-      proposal: { ...proposal, ...patch, targetItemId: result.item.id } as ProposalRecord,
-      itemId: result.item.id,
+      proposal: { ...proposal, ...patch, targetItemId: about } as ProposalRecord,
+      itemId: result.itemId,
     };
   }
 
@@ -441,21 +557,23 @@ export class ProposalService {
     proposal: ProposalRecord,
     payload: Record<string, unknown>,
     review: ReviewState,
-  ): Promise<ItemResult> {
+  ): Promise<AppliedWrite> {
     if (proposal.proposalType === 'knowledge_create') {
       const p = payload as unknown as ProposedCreatePayload;
-      return this.o.knowledge.create(actor, {
-        title: p.title,
-        body: p.body,
-        type: p.type,
-        ...(p.language ? { language: p.language } : {}),
-        categories: p.categories,
-        tags: p.tags,
-        sources: p.sources,
-        relations: p.relations,
-        proposalId: proposal.id,
-        review,
-      });
+      return applied(
+        this.o.knowledge.create(actor, {
+          title: p.title,
+          body: p.body,
+          type: p.type,
+          ...(p.language ? { language: p.language } : {}),
+          categories: p.categories,
+          tags: p.tags,
+          sources: p.sources,
+          relations: p.relations,
+          proposalId: proposal.id,
+          review,
+        }),
+      );
     }
     const itemId = proposal.targetItemId;
     const baseRevisionId = proposal.baseRevisionId;
@@ -466,22 +584,39 @@ export class ProposalService {
       });
     }
     if (proposal.proposalType === 'knowledge_update') {
-      return this.o.knowledge.update(actor, {
-        ...this.updateInput(payload),
-        itemId,
-        baseRevisionId,
-        baseContentHash,
+      return applied(
+        this.o.knowledge.update(actor, {
+          ...this.updateInput(payload),
+          itemId,
+          baseRevisionId,
+          baseContentHash,
+          proposalId: proposal.id,
+          review,
+        }),
+      );
+    }
+    if (proposal.proposalType === 'knowledge_delete') {
+      return applied(
+        this.o.knowledge.delete(actor, {
+          itemId,
+          baseRevisionId,
+          baseContentHash,
+          proposalId: proposal.id,
+        }),
+      );
+    }
+    if (proposal.proposalType === 'knowledge_supersede') {
+      const result = await this.o.knowledge.supersede(actor, {
+        ...this.supersedeInput(payload),
+        oldItemId: itemId,
+        oldBaseRevisionId: baseRevisionId,
+        oldBaseContentHash: baseContentHash,
         proposalId: proposal.id,
         review,
       });
-    }
-    if (proposal.proposalType === 'knowledge_delete') {
-      return this.o.knowledge.delete(actor, {
-        itemId,
-        baseRevisionId,
-        baseContentHash,
-        proposalId: proposal.id,
-      });
+      // Two revisions from one operation, and the item the proposal was about
+      // is the one that was superseded.
+      return { itemId, revisionIds: [result.new.revision.id, result.old.revision.id] };
     }
     // Supersession and category proposals arrive with the proposals that
     // produce them; refusing beats applying a payload this cannot read.
@@ -505,8 +640,24 @@ export class ProposalService {
         objectIds: { proposal: proposal.id },
       });
     }
-    const given = Object.entries(edits).filter(([, value]) => value !== undefined);
-    return { ...proposal.proposedPayload, ...Object.fromEntries(given) };
+    const given = Object.fromEntries(
+      Object.entries(edits).filter(([, value]) => value !== undefined),
+    );
+    if (proposal.proposalType === 'knowledge_supersede') {
+      const p = proposal.proposedPayload as ProposedSupersedePayload;
+      if (!p.newItem) {
+        // The replacement already exists and has its own text, its own
+        // history and its own reviewers. Editing it here would change an item
+        // the proposal only pointed at.
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          'this supersession replaces with an item that already exists; edit that item instead',
+          { objectIds: { proposal: proposal.id } },
+        );
+      }
+      return { ...proposal.proposedPayload, newItem: { ...p.newItem, ...given } };
+    }
+    return { ...proposal.proposedPayload, ...given };
   }
 
   /**
@@ -710,16 +861,43 @@ export class ProposalService {
     const system = await this.o.actors.findSystemActor(actor.workspaceId);
     const proposal: ProposalRecord = {
       ...base,
-      targetItemId: result.item.id,
+      // A create learns its item only by making it; every other kind named
+      // the item it was about before anything was written.
+      targetItemId: spec.targetItemId ?? result.itemId,
       status: 'approved',
       policyDecision: 'allow_direct',
       resolvedAt: now,
       // The rule approved it, not a person. The system actor is who a rule is.
       resolvedByActorId: system?.id ?? actor.actorId,
-      resultRevisionIds: [result.revision.id],
+      resultRevisionIds: result.revisionIds,
     };
     await this.o.uow.run((tx) => this.o.proposals.insert(tx, proposal));
-    return { proposal, itemId: result.item.id };
+    return { proposal, itemId: result.itemId };
+  }
+
+  /** The stored payload of a supersede proposal, as `knowledge.supersede` takes it. */
+  private supersedeInput(
+    payload: Record<string, unknown>,
+  ): Pick<SupersedeInput, 'validUntil' | 'newItem' | 'existingItem'> {
+    const p = payload as ProposedSupersedePayload;
+    return {
+      ...(p.validUntil !== undefined ? { validUntil: p.validUntil } : {}),
+      ...(p.newItem
+        ? {
+            newItem: {
+              title: p.newItem.title,
+              body: p.newItem.body,
+              type: p.newItem.type,
+              ...(p.newItem.language ? { language: p.newItem.language } : {}),
+              categories: p.newItem.categories,
+              tags: p.newItem.tags,
+              sources: p.newItem.sources,
+              relations: p.newItem.relations,
+            },
+          }
+        : {}),
+      ...(p.existingItem ? { existingItem: p.existingItem } : {}),
+    };
   }
 
   /** The stored payload of an update proposal, as `knowledge.update` takes it. */

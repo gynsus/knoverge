@@ -6,6 +6,7 @@ import {
   ProposalsResponse,
   ProposeCreateRequest,
   ProposeDeleteRequest,
+  ProposeSupersedeRequest,
   ProposeUpdateRequest,
   ProposalStatus,
   RejectProposalRequest,
@@ -176,6 +177,66 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             itemId: body.item_id,
             baseRevisionId: body.base_revision_id,
             baseContentHash: body.base_content_hash,
+            reason: body.reason,
+            confidence: body.confidence,
+          });
+          return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
+        },
+      );
+      if (replayable.value.item_id === null) reply.code(202);
+      return replayable.value;
+    },
+  );
+
+  r.post(
+    '/v1/knowledge_propose_supersede',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: {
+        body: ProposeSupersedeRequest,
+        response: { 200: ProposalResult, 202: ProposalResult },
+      },
+    },
+    async (request, reply) => {
+      const actor = await resolveWorkspaceActor(services, request);
+      const body = request.body;
+      const replayable = await services.idempotency.run(
+        actor.context,
+        idempotencyKey(request),
+        'knowledge_propose_supersede',
+        body,
+        async () => {
+          const outcome = await services.proposals.proposeSupersede(actor.context, actor.standing, {
+            oldItemId: body.old_item_id,
+            oldBaseRevisionId: body.old_base_revision_id,
+            oldBaseContentHash: body.old_base_content_hash,
+            validUntil: body.valid_until,
+            ...(body.new_item
+              ? {
+                  newItem: {
+                    title: body.new_item.title,
+                    body: body.new_item.body,
+                    type: body.new_item.type,
+                    language: body.new_item.language,
+                    categories: body.new_item.categories,
+                    tags: body.new_item.tags,
+                    slug: body.new_item.slug,
+                    observedAt: body.new_item.observed_at,
+                    relations: body.new_item.relations,
+                    sources: body.new_item.sources,
+                    external: body.new_item.external,
+                  },
+                }
+              : {}),
+            ...(body.existing_item
+              ? {
+                  existingItem: {
+                    itemId: body.existing_item.item_id,
+                    baseRevisionId: body.existing_item.base_revision_id,
+                    baseContentHash: body.existing_item.base_content_hash,
+                  },
+                }
+              : {}),
             reason: body.reason,
             confidence: body.confidence,
           });

@@ -742,3 +742,152 @@ describe('proposing a change to an item that exists', () => {
     expect(result.item_id).toBe(item.id);
   });
 });
+
+describe('proposing a supersession', () => {
+  async function anItem(title: string, body: string) {
+    const res = await admin.post('/v1/admin/knowledge.create', { title, body, type: 'fact' });
+    expect(res.statusCode, res.body).toBe(200);
+    return (res.json() as { item: Record<string, string> }).item as {
+      id: string;
+      current_revision_id: string;
+      content_hash: string;
+    };
+  }
+
+  const propose = (token: string, payload: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: '/v1/knowledge_propose_supersede',
+      headers: { authorization: `Bearer ${token}` },
+      payload: payload as Record<string, unknown>,
+    });
+
+  it('records it for review, then applies it whole on approval', async () => {
+    const token = await agentToken('propose', 'Superseding agent');
+    const old = await anItem('Cache layer', 'We cache in memory.');
+    const res = await propose(token, {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      new_item: { title: 'Cache layer', body: 'We cache in Redis.', type: 'fact' },
+      reason: 'The migration is done.',
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposed = ProposalResult.parse(res.json());
+    expect(proposed.proposal.proposal_type).toBe('knowledge_supersede');
+    // The proposal is about the item being superseded: that is what it acts
+    // on and what other proposals conflict with.
+    expect(proposed.proposal.target_item_id).toBe(old.id);
+
+    // Nothing happened yet.
+    const before = (await admin.get('/v1/knowledge.list')).json() as {
+      items: { id: string; status: string }[];
+    };
+    expect(before.items.find((i) => i.id === old.id)?.status).toBe('active');
+
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const result = ProposalResult.parse(approved.json());
+    // One operation, two revisions.
+    expect(result.proposal.result_revision_ids).toHaveLength(2);
+
+    const after = (await admin.get('/v1/knowledge.list')).json() as {
+      items: { id: string; title: string; status: string }[];
+    };
+    expect(after.items.find((i) => i.id === old.id)?.status).toBe('superseded');
+    const replacement = after.items.find((i) => i.title === 'Cache layer' && i.status === 'active');
+    expect(replacement).toBeDefined();
+  });
+
+  it('proposes replacing with an item the workspace already holds', async () => {
+    const token = await agentToken('propose', 'Connecting agent');
+    const old = await anItem('Queue', 'We use Celery.');
+    const replacement = await anItem('Queue, current', 'We use pg-boss.');
+    const res = await propose(token, {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      existing_item: {
+        item_id: replacement.id,
+        base_revision_id: replacement.current_revision_id,
+        base_content_hash: replacement.content_hash,
+      },
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposed = ProposalResult.parse(res.json());
+
+    // A reviewer cannot rewrite an item the proposal only pointed at.
+    const edited = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+      edits: { title: 'Something else' },
+    });
+    expect(edited.statusCode, edited.body).toBe(400);
+    expect(edited.json().message).toMatch(/edit that item instead/);
+
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    const item = (await admin.get(`/v1/knowledge.get?item_id=${replacement.id}`)).json() as {
+      item: { relations: { type: string; target: string }[]; revision_number: number };
+    };
+    expect(item.item.relations).toContainEqual({ type: 'supersedes', target: old.id });
+    expect(item.item.revision_number).toBe(2);
+  });
+
+  it('lets a reviewer change the replacement text before approving', async () => {
+    const token = await agentToken('propose', 'Edited supersession');
+    const old = await anItem('Language', 'We write it in Ruby.');
+    const proposed = ProposalResult.parse(
+      (
+        await propose(token, {
+          old_item_id: old.id,
+          old_base_revision_id: old.current_revision_id,
+          old_base_content_hash: old.content_hash,
+          new_item: { title: 'Language', body: 'We write it in Go.', type: 'fact' },
+        })
+      ).json(),
+    );
+    const approved = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposed.proposal.id,
+      edits: { body: 'We write it in TypeScript.' },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+    expect(ProposalResult.parse(approved.json()).proposal.status).toBe('approved_with_edits');
+
+    const listed = (await admin.get('/v1/knowledge.list')).json() as {
+      items: { id: string; title: string; status: string }[];
+    };
+    const replacement = listed.items.find((i) => i.title === 'Language' && i.status === 'active')!;
+    const item = (await admin.get(`/v1/knowledge.get?item_id=${replacement.id}`)).json() as {
+      item: { body: string };
+    };
+    // The reviewer's text, not the proposer's.
+    expect(item.item.body).toContain('We write it in TypeScript.');
+  });
+
+  it('refuses a supersession proposed against an older revision', async () => {
+    const token = await agentToken('propose', 'Stale superseder');
+    const old = await anItem('Moves first', 'The first text.');
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: old.id,
+          base_revision_id: old.current_revision_id,
+          base_content_hash: old.content_hash,
+          body: 'Changed by a person.',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await propose(token, {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      new_item: { title: 'Replacement', body: 'The replacement.', type: 'fact' },
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().code).toBe('REVISION_CONFLICT');
+  });
+});

@@ -123,6 +123,7 @@ GET  /v1/knowledge.revisions?item_id=kn_... its revisions, newest first
 GET  /v1/knowledge.diff?item_id=&from_revision_id=&to_revision_id=
 POST /v1/knowledge_propose_update           requires base_revision_id and base_content_hash
 POST /v1/knowledge_propose_delete           proposes that an item leave the index
+POST /v1/knowledge_propose_supersede        one commit, two revisions, applied whole
 POST /v1/proposal_approve                   makes a proposal canonical; edits make it
                                             approved_with_edits
 POST /v1/proposal_reject                    a decision, not a change: nothing is written
