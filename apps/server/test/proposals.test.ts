@@ -891,3 +891,110 @@ describe('proposing a supersession', () => {
     expect(res.json().code).toBe('REVISION_CONFLICT');
   });
 });
+
+describe('the duplicate check on a proposal', () => {
+  async function anItem(title: string, body: string, categories: string[] = []) {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body,
+      type: 'fact',
+      categories,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return (res.json() as { item: { id: string; markdown_path: string } }).item;
+  }
+
+  it('refuses the same text in the same place, and will not take an acknowledgement', async () => {
+    const token = await agentToken('propose', 'Duplicating agent');
+    const existing = await anItem('Release cadence', 'We release on Thursdays.');
+
+    const res = await asAgent(token, {
+      title: 'Release cadence',
+      body: 'We release on Thursdays.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    const error = res.json() as {
+      code: string;
+      duplicates: { item_id: string; match_reason: string; score: number | null }[];
+    };
+    expect(error.code).toBe('DUPLICATE_SUSPECTED');
+    expect(error.duplicates[0]).toMatchObject({
+      item_id: existing.id,
+      match_reason: 'exact',
+      score: null,
+    });
+
+    // Saying "not a duplicate" about the same text in the same place is not a
+    // judgement anybody should be able to make.
+    const acknowledged = await asAgent(token, {
+      title: 'Release cadence',
+      body: 'We release on Thursdays.',
+      type: 'fact',
+      acknowledged_duplicate_ids: [existing.id],
+    });
+    expect(acknowledged.statusCode, acknowledged.body).toBe(409);
+  });
+
+  it('asks about a similar title, and records what the proposer ruled out', async () => {
+    const token = await agentToken('propose', 'Similar titles agent');
+    const existing = await anItem('Incident response process', 'Page the on-call engineer first.');
+
+    const res = await asAgent(token, {
+      title: 'Incident response processes',
+      body: 'Something else entirely about incidents.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    const error = res.json() as {
+      duplicates: { item_id: string; match_reason: string; score: number }[];
+    };
+    expect(error.duplicates[0]!.item_id).toBe(existing.id);
+    expect(error.duplicates[0]!.match_reason).toBe('lexical');
+    expect(error.duplicates[0]!.score).toBeGreaterThan(0.6);
+
+    // Having read it, the proposer says so and the proposal goes through.
+    const again = await asAgent(token, {
+      title: 'Incident response processes',
+      body: 'Something else entirely about incidents.',
+      type: 'fact',
+      acknowledged_duplicate_ids: [existing.id],
+    });
+    expect(again.statusCode, again.body).toBe(202);
+  });
+
+  it('lets unrelated knowledge through untouched', async () => {
+    const token = await agentToken('propose', 'Unrelated agent');
+    await anItem('Coffee machine', 'It lives on the second floor.');
+    const res = await asAgent(token, {
+      title: 'Quarterly planning',
+      body: 'Planning happens in the last week of the quarter.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(202);
+  });
+
+  it('refuses a second record under one external identity', async () => {
+    const token = await agentToken('propose', 'External key agent');
+    const external = { source_system: 'notion', external_key: 'page-7781' };
+    const first = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Imported from Notion',
+      body: 'The text as Notion had it.',
+      type: 'fact',
+      external,
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const existing = (first.json() as { item: { id: string } }).item;
+
+    const res = await asAgent(token, {
+      title: 'Imported from Notion, again',
+      body: 'Different text, same record.',
+      type: 'fact',
+      external,
+    });
+    // Two records under one external identity are the same record.
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().code).toBe('DUPLICATE_EXTERNAL_KEY');
+    expect(res.json().object_ids.knowledge_item).toBe(existing.id);
+  });
+});

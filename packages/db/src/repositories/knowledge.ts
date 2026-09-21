@@ -7,6 +7,7 @@ import type {
   WorkspaceId,
 } from '@knoverge/contracts';
 import type {
+  DuplicateRow,
   ItemCategoryRecord,
   KnowledgeItemRecord,
   KnowledgeRepository,
@@ -201,6 +202,101 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       }
       return result;
     },
+
+    async findByExternal(workspaceId, sourceSystem, externalKey) {
+      const rows = await db
+        .select()
+        .from(knowledgeItems)
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            eq(knowledgeItems.sourceSystem, sourceSystem),
+            eq(knowledgeItems.externalKey, externalKey),
+          ),
+        )
+        .limit(1);
+      return rows[0] ? toItem(rows[0]) : null;
+    },
+
+    async findByContentHash(workspaceId, contentHash) {
+      const rows = await db
+        .select(duplicateColumns)
+        .from(knowledgeItems)
+        .innerJoin(knowledgeRevisions, eq(knowledgeRevisions.id, knowledgeItems.currentRevisionId))
+        .leftJoin(
+          knowledgeItemCategories,
+          and(
+            eq(knowledgeItemCategories.knowledgeItemId, knowledgeItems.id),
+            eq(knowledgeItemCategories.isPrimary, true),
+          ),
+        )
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            // Only what the workspace currently asserts. A deleted or
+            // superseded item saying the same thing is history, and flagging
+            // it would tell a proposer to look at what was already replaced.
+            eq(knowledgeItems.status, 'active'),
+            eq(knowledgeRevisions.contentHash, contentHash),
+          ),
+        )
+        .limit(20);
+      return rows.map((row) => ({ ...toDuplicate(row), score: null }));
+    },
+
+    async findSimilarTitles(workspaceId, title, threshold, limit) {
+      // unaccent so that a title differing only in accents still matches, and
+      // lower so that capitalisation does not decide whether two titles are
+      // the same thing.
+      const normalised = sql`unaccent(lower(${title}))`;
+      const score = sql<number>`similarity(unaccent(lower(${knowledgeRevisions.title})), ${normalised})`;
+      const rows = await db
+        .select({ ...duplicateColumns, score })
+        .from(knowledgeItems)
+        .innerJoin(knowledgeRevisions, eq(knowledgeRevisions.id, knowledgeItems.currentRevisionId))
+        .leftJoin(
+          knowledgeItemCategories,
+          and(
+            eq(knowledgeItemCategories.knowledgeItemId, knowledgeItems.id),
+            eq(knowledgeItemCategories.isPrimary, true),
+          ),
+        )
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            eq(knowledgeItems.status, 'active'),
+            sql`${score} >= ${threshold}`,
+          ),
+        )
+        .orderBy(desc(score))
+        .limit(limit);
+      return rows.map((row) => ({ ...toDuplicate(row), score: Number(row.score) }));
+    },
+  };
+}
+
+/** What a duplicate candidate needs, from the item and its current revision. */
+const duplicateColumns = {
+  itemId: knowledgeItems.id,
+  title: knowledgeRevisions.title,
+  markdownPath: knowledgeItems.markdownPath,
+  type: knowledgeItems.type,
+  primaryCategoryId: knowledgeItemCategories.categoryId,
+};
+
+function toDuplicate(row: {
+  itemId: string;
+  title: string;
+  markdownPath: string;
+  type: string;
+  primaryCategoryId: string | null;
+}): Omit<DuplicateRow, 'score'> {
+  return {
+    itemId: row.itemId as KnowledgeItemId,
+    title: row.title,
+    markdownPath: row.markdownPath,
+    type: row.type as DuplicateRow['type'],
+    primaryCategoryId: row.primaryCategoryId as DuplicateRow['primaryCategoryId'],
   };
 }
 

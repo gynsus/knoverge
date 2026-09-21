@@ -99,6 +99,7 @@ export function registerProposalRoutes(app: FastifyInstance, services: Services)
             external: body.external,
             reason: body.reason,
             confidence: body.confidence,
+            acknowledgedDuplicateIds: body.acknowledged_duplicate_ids,
           });
           return { proposal: summary(outcome.proposal), item_id: outcome.itemId };
         },

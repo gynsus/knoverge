@@ -43,6 +43,14 @@ If a probable duplicate is found and the caller did not acknowledge it, the serv
 - updates the existing item instead;
 - or repeats the call with `acknowledged_duplicate_ids`, which is recorded on the proposal for reviewers.
 
+Each candidate carries a `match_reason`. `exact` is the same text under the same type and the same primary category, and cannot be acknowledged away: saying "this is not a duplicate" about the same text in the same place is not a judgement anybody should be able to make, and the caller wants to change that item. `content_hash` is the same text somewhere else, which may well be a different piece of knowledge — the same instruction in two projects is two instructions. `lexical` is a title close enough to be worth reading, by trigram similarity at 0.6 or above; PostgreSQL's own default of 0.3 pairs unrelated short titles, and a check that cries wolf gets acknowledged without being read.
+
+The check runs before policy's answer matters, so a write that would have gone through directly is stopped by it too. It looks only at active items: a deleted or superseded item saying the same thing is history, and pointing a proposer at what was already replaced would send them the wrong way.
+
+An item under an external identity the workspace already holds is `DUPLICATE_EXTERNAL_KEY`, which is final. Two records under one external key are the same record.
+
+Semantic similarity is the one step that needs an embedding profile and arrives with it. Rule 9 holds: the check works without any AI provider.
+
 ## 3. Update path
 
 An update proposal must identify the revision it was based on.

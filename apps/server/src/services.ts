@@ -13,6 +13,7 @@ import {
   BootstrapService,
   EventLedger,
   CrossStoreWriter,
+  DuplicateMatcher,
   IdempotencyService,
   MaintenanceService,
   RecoveryService,
@@ -201,6 +202,7 @@ export function createServices(config: ServicesConfig) {
     knowledge,
     categories: repositories.categories,
     authorization,
+    duplicates: new DuplicateMatcher({ items: repositories.knowledge, contentHash }),
     actors: repositories.actors,
     ledger,
   });

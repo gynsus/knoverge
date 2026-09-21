@@ -4,6 +4,7 @@ export interface DomainErrorOptions {
   retryable?: boolean;
   objectIds?: Record<string, string | null>;
   current?: { revision_id: string; content_hash: string };
+  duplicates?: ApiError['duplicates'];
   cause?: unknown;
 }
 
@@ -16,6 +17,7 @@ export class DomainError extends Error {
   readonly retryable: boolean;
   readonly objectIds: Record<string, string | null> | undefined;
   readonly current: { revision_id: string; content_hash: string } | undefined;
+  readonly duplicates: ApiError['duplicates'];
 
   constructor(code: ErrorCode, message: string, options: DomainErrorOptions = {}) {
     super(message, options.cause === undefined ? undefined : { cause: options.cause });
@@ -24,6 +26,7 @@ export class DomainError extends Error {
     this.retryable = options.retryable ?? false;
     this.objectIds = options.objectIds;
     this.current = options.current;
+    this.duplicates = options.duplicates;
   }
 
   toApiError(): ApiError {
@@ -33,6 +36,7 @@ export class DomainError extends Error {
       retryable: this.retryable,
       ...(this.objectIds ? { object_ids: this.objectIds } : {}),
       ...(this.current ? { current: this.current } : {}),
+      ...(this.duplicates ? { duplicates: this.duplicates } : {}),
     };
   }
 }
