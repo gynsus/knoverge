@@ -161,6 +161,7 @@
     "label": "Sections",
     "logout": "Sign out",
     "policy": "Policy",
+    "review": "Review",
     "settings": "Settings",
     "sidebar_description": "The navigation for this workspace.",
     "sidebar_edge": "Navigation edge: show or hide",
@@ -211,6 +212,38 @@
       "actor_id": "One actor"
     },
     "title": "Policy rules"
+  },
+  "review": {
+    "approve": "Approve",
+    "approve_with_edits": "Approve with your edits",
+    "changes": "What this would change",
+    "confidence": "The proposer's confidence: {{value}}%",
+    "edit_hint": "Change the text before approving, and the proposal records that you did.",
+    "empty": "Nothing is waiting.",
+    "intro": "What agents have proposed. Every agent write waits here unless a policy rule lets it through.",
+    "no_content": "This proposal carries no text of its own.",
+    "note": "Note",
+    "note_hint": "Why you decided as you did. Kept with the proposal.",
+    "reason": "Why it was proposed",
+    "reject": "Reject",
+    "statuses": {
+      "pending": "Waiting",
+      "approved": "Approved",
+      "approved_with_edits": "Approved with edits",
+      "rejected": "Rejected",
+      "superseded": "Superseded",
+      "withdrawn": "Withdrawn",
+      "conflict": "Needs rebasing"
+    },
+    "title": "Review",
+    "types": {
+      "knowledge_create": "New item",
+      "knowledge_update": "Change",
+      "knowledge_delete": "Removal",
+      "knowledge_supersede": "Replacement",
+      "category_create": "New category",
+      "category_update": "Category change"
+    }
   },
   "roles": {
     "owner": "Owner",

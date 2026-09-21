@@ -108,6 +108,21 @@ copy of the rule in the browser drifts from it. A reviewer granted an action
 explicitly would otherwise be shown a control they are entitled to use, and a
 viewer would be shown forms whose every submission is refused.
 
+## The review inbox
+
+`apps/web/src/pages/ReviewPage.tsx` is where an agent's proposals become the
+workspace's knowledge. It lists what is pending, oldest first, because a review
+inbox is a queue and the thing that has been waiting longest is the thing to
+look at. It appears in the navigation only for somebody holding
+`knowledge.approve`.
+
+A proposal against an existing item is shown as a diff against what that item
+says now, line by line. Approving without seeing that is approving a change
+nobody read, which is the one thing a review is for. A reviewer who edits the
+text before approving sends it as `edits`, and the proposal records
+`approved_with_edits`, so the trail never claims the proposer wrote words they
+never saw.
+
 ## The taxonomy is the first thing in the repository
 
 Every taxonomy change rewrites `taxonomy.yaml` in the same commit, which is

@@ -991,3 +991,130 @@ describe('knowledge page', () => {
     );
   });
 });
+
+const PROPOSAL = {
+  id: 'prop_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  workspace_id: ME.memberships[0]!.workspace_id,
+  proposal_type: 'knowledge_update' as const,
+  status: 'pending' as const,
+  target_item_id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  base_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  base_content_hash: 'sha256:abc',
+  reason: 'The source changed.',
+  confidence: 0.8,
+  policy_decision: 'require_review' as const,
+  created_at: '2026-09-21T00:00:00.000Z',
+  resolved_at: null,
+  resolved_by_actor_id: null,
+  resolution_note: null,
+  result_revision_ids: [],
+};
+
+const ITEM = {
+  id: PROPOSAL.target_item_id,
+  workspace_id: ME.memberships[0]!.workspace_id,
+  slug: 'release-cadence',
+  markdown_path: 'knowledge/release-cadence.md',
+  title: 'Release cadence',
+  type: 'fact' as const,
+  status: 'active' as const,
+  language: 'en',
+  current_revision_id: PROPOSAL.base_revision_id,
+  review_state: 'human_reviewed' as const,
+  evidence_state: 'none' as const,
+  disputed: false,
+  categories: [],
+  tags: [],
+  valid_from: null,
+  valid_until: null,
+  observed_at: null,
+  created_at: '2026-09-19T00:00:00.000Z',
+  updated_at: '2026-09-19T00:00:00.000Z',
+  body: 'We release on Thursdays.\n',
+  sources: [],
+  relations: [],
+  content_hash: 'sha256:abc',
+  frontmatter_hash: 'sha256:def',
+  revision_number: 1,
+};
+
+describe('review inbox', () => {
+  it('shows what a proposal would change, and approves it', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({
+          proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } },
+        }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+      'POST /v1/proposal_approve': () =>
+        json({ proposal: { ...PROPOSAL, status: 'approved' }, item_id: ITEM.id }),
+    });
+    renderApp('/review');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'The source changed.' }));
+
+    const detail = await screen.findByRole('region', { name: /Change|Release/ });
+    // The reviewer sees the old line going and the new one arriving, rather
+    // than being asked to approve a diff nobody read.
+    await waitFor(() => expect(detail.textContent).toContain('- We release on Thursdays.'));
+    expect(detail.textContent).toContain('+ We release on Tuesdays.');
+    expect(detail.textContent).toContain('The source changed.');
+
+    await user.click(within(detail).getByRole('button', { name: 'Approve' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/proposal_approve'))).toBe(true),
+    );
+    const approval = calls.find((c) => c.url.endsWith('/v1/proposal_approve'))!;
+    expect(approval.body).toMatchObject({ proposal_id: PROPOSAL.id });
+    // Nothing was edited, so nothing is sent as an edit.
+    expect((approval.body as Record<string, unknown>)['edits']).toBeUndefined();
+  });
+
+  it('sends the reviewer’s text when they changed it, and their reason on a rejection', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({
+          proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } },
+        }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+      'POST /v1/proposal_reject': () =>
+        json({ proposal: { ...PROPOSAL, status: 'rejected' }, item_id: null }),
+    });
+    renderApp('/review');
+
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'The source changed.' }));
+    const detail = await screen.findByRole('region', { name: /Change|Release/ });
+
+    await user.type(within(detail).getByLabelText('Note'), 'Already in the handbook.');
+    await user.click(within(detail).getByRole('button', { name: 'Reject' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/proposal_reject'))).toBe(true),
+    );
+    expect(calls.find((c) => c.url.endsWith('/v1/proposal_reject'))!.body).toMatchObject({
+      proposal_id: PROPOSAL.id,
+      reason: 'Already in the handbook.',
+    });
+  });
+
+  it('is not offered to somebody who cannot approve', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () =>
+        json({
+          workspace: SIGNED_IN_WORKSPACE,
+          permissions: OWNER_PERMISSIONS.filter((a) => a !== 'knowledge.approve'),
+        }),
+      'GET /v1/knowledge.list': () => json({ items: [], next_cursor: null }),
+    });
+    renderApp('/knowledge');
+    await screen.findByRole('heading', { name: 'Knowledge' });
+    expect(screen.queryByRole('link', { name: 'Review' })).toBeNull();
+  });
+});
