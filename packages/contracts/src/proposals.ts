@@ -9,6 +9,7 @@ import {
   FrontmatterRelation,
   FrontmatterSource,
   ItemType,
+  SupersedeKnowledgeRequest,
   Tag,
   UpdateKnowledgeRequest,
 } from './knowledge.ts';
@@ -115,6 +116,19 @@ export const ProposeDeleteRequest = DeleteKnowledgeRequest.extend({
   idempotency_key: z.string().max(128).optional(),
 });
 export type ProposeDeleteRequest = z.infer<typeof ProposeDeleteRequest>;
+
+/**
+ * Proposing that one item replace another.
+ *
+ * The same shape a person supersedes with, plus the proposer's account of
+ * why. Approving it runs the same atomic operation: one commit, two
+ * revisions, and no half-applied supersession.
+ */
+export const ProposeSupersedeRequest = SupersedeKnowledgeRequest.safeExtend({
+  reason: z.string().trim().max(2000).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+});
+export type ProposeSupersedeRequest = z.infer<typeof ProposeSupersedeRequest>;
 
 /**
  * What a reviewer may change before approving.
