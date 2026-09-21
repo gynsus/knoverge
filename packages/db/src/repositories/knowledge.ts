@@ -203,6 +203,23 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       return result;
     },
 
+    async titlesOf(workspaceId, itemIds) {
+      const result = new Map<KnowledgeItemId, string>();
+      if (itemIds.length === 0) return result;
+      const rows = await db
+        .select({ id: knowledgeItems.id, title: knowledgeRevisions.title })
+        .from(knowledgeItems)
+        .innerJoin(knowledgeRevisions, eq(knowledgeRevisions.id, knowledgeItems.currentRevisionId))
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            inArray(knowledgeItems.id, [...itemIds]),
+          ),
+        );
+      for (const row of rows) result.set(row.id as KnowledgeItemId, row.title);
+      return result;
+    },
+
     async findByExternal(workspaceId, sourceSystem, externalKey) {
       const rows = await db
         .select()
