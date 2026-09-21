@@ -20,17 +20,34 @@ import type {
   KnowledgeItemRecord,
   KnowledgeRepository,
   RevisionRecord,
+  RelationRepository,
   RevisionRepository,
 } from './repository.ts';
 
 /** `Knoverge-Change: kn_...@rev_... <kind>` */
 const CHANGE = /^(kn_[0-9A-HJKMNP-TV-Z]{26})@(rev_[0-9A-HJKMNP-TV-Z]{26})\s+([a-z_]+)$/;
 
+/** One revision a commit produced, ready to be written down. */
+interface WritePlan {
+  itemId: KnowledgeItemId;
+  revisionId: RevisionId;
+  kind: ChangeKind;
+  frontmatter: Frontmatter;
+  body: string;
+  path: string;
+  revisionNumber: number;
+  commitHash: string;
+  now: Date;
+  existing: KnowledgeItemRecord | null;
+  categories: ItemCategoryRecord[];
+}
+
 export interface KnowledgeRecoveryOptions {
   uow: UnitOfWork;
   items: KnowledgeRepository;
   revisions: RevisionRepository;
   categories: CategoryRepository;
+  relations: RelationRepository;
   ledger: EventLedger;
   git: GitStore;
   parseItem: (text: string) => { frontmatter: Frontmatter; body: string };
@@ -67,6 +84,15 @@ export class KnowledgeRecovery {
     return typeof operation.objectIds['knowledge_item'] === 'string';
   }
 
+  /** Every item this operation said it would touch. */
+  private itemsOf(operation: OperationRecord): Set<string> {
+    const ids = new Set<string>();
+    for (const [key, value] of Object.entries(operation.objectIds)) {
+      if (key !== 'path' && typeof value === 'string' && value.startsWith('kn_')) ids.add(value);
+    }
+    return ids;
+  }
+
   /**
    * Returns false when it cannot finish the operation, which leaves it for an
    * operator rather than guessing. A half-written recovery is worse than an
@@ -78,42 +104,68 @@ export class KnowledgeRecovery {
     if (!commitHash || !this.handles(operation)) return false;
 
     const trailers = await this.o.git.trailersOf(operation.workspaceId, commitHash);
-    const change = trailers.find(([name]) => name === 'Knoverge-Change')?.[1];
-    const match = change ? CHANGE.exec(change) : null;
-    if (!match) return false;
-    const [, itemId, revisionId, kind] = match as unknown as [
-      string,
-      KnowledgeItemId,
-      RevisionId,
-      ChangeKind,
-    ];
-    // The trailer and the row must agree. If they do not, this is not the
-    // commit this operation made, and writing its contents down would attach
-    // one operation's work to another's record.
-    if (operation.objectIds['knowledge_item'] !== itemId) return false;
+    // A commit may produce several revisions: a supersession writes two, and
+    // the whole of it has to arrive or none of it, or the workspace ends up
+    // with a half-applied supersession that section 5 says cannot exist.
+    const changes = trailers
+      .filter(([name]) => name === 'Knoverge-Change')
+      .map(([, value]) => CHANGE.exec(value))
+      .filter((match): match is RegExpExecArray => match !== null);
+    if (changes.length === 0) return false;
 
-    // Already done: a recovery that ran twice must not write a second revision.
-    if (await this.o.revisions.findById(operation.workspaceId, revisionId)) return true;
-
-    const existing = await this.o.items.findById(operation.workspaceId, itemId);
-    const path =
-      typeof operation.objectIds['path'] === 'string'
-        ? operation.objectIds['path']
-        : (existing?.markdownPath ?? null);
-    if (!path) return false;
-
+    const known = this.itemsOf(operation);
     const actor = this.actorOf(operation);
     const now = this.clock.now();
+    const plans: WritePlan[] = [];
+    for (const match of changes) {
+      const [, itemId, revisionId, kind] = match as unknown as [
+        string,
+        KnowledgeItemId,
+        RevisionId,
+        ChangeKind,
+      ];
+      // The trailer and the row must agree. If they do not, this is not the
+      // commit this operation made, and writing its contents down would attach
+      // one operation's work to another's record.
+      if (!known.has(itemId)) return false;
+      // Already done: a recovery that ran twice must not write a second
+      // revision. A commit is all or nothing, so one recorded means all are.
+      if (await this.o.revisions.findById(operation.workspaceId, revisionId)) return true;
+      const plan = await this.plan(operation, commitHash, itemId, revisionId, kind, now);
+      if (!plan) return false;
+      plans.push(plan);
+    }
+
+    await this.write(operation, actor, plans);
+    return true;
+  }
+
+  /** What one `Knoverge-Change` trailer asks to be written, or null. */
+  private async plan(
+    operation: OperationRecord,
+    commitHash: string,
+    itemId: KnowledgeItemId,
+    revisionId: RevisionId,
+    kind: ChangeKind,
+    now: Date,
+  ): Promise<WritePlan | null> {
+    const existing = await this.o.items.findById(operation.workspaceId, itemId);
+    const path =
+      typeof operation.objectIds['path'] === 'string' &&
+      operation.objectIds['knowledge_item'] === itemId
+        ? operation.objectIds['path']
+        : (existing?.markdownPath ?? null);
+    if (!path) return null;
 
     if (kind === 'delete') {
-      if (!existing) return false;
+      if (!existing) return null;
       const previous = await this.o.revisions.findById(
         operation.workspaceId,
         existing.currentRevisionId as RevisionId,
       );
-      if (!previous) return false;
+      if (!previous) return null;
       const frontmatter = { ...previous.frontmatter, status: 'deleted' } as Frontmatter;
-      await this.write(operation, actor, {
+      return {
         itemId,
         revisionId,
         kind,
@@ -125,14 +177,13 @@ export class KnowledgeRecovery {
         now,
         existing,
         categories: [],
-      });
-      return true;
+      };
     }
 
     const file = await this.o.git.readAt(operation.workspaceId, commitHash, path);
-    if (file === null) return false;
+    if (file === null) return null;
     const parsed = this.o.parseItem(file);
-    if (parsed.frontmatter.id !== itemId) return false;
+    if (parsed.frontmatter.id !== itemId) return null;
 
     const tree = await this.o.categories.list(operation.workspaceId, { includeArchived: true });
     const categories = parsed.frontmatter.categories.map((wanted) =>
@@ -140,14 +191,14 @@ export class KnowledgeRecovery {
     );
     // A category the file names and the database does not have means the two
     // stores disagree about more than this one operation.
-    if (categories.some((c) => c === undefined)) return false;
+    if (categories.some((c) => c === undefined)) return null;
 
     const previousNumber = existing?.currentRevisionId
       ? ((await this.o.revisions.findById(operation.workspaceId, existing.currentRevisionId))
           ?.revisionNumber ?? 0)
       : 0;
 
-    await this.write(operation, actor, {
+    return {
       itemId,
       revisionId,
       kind,
@@ -164,26 +215,25 @@ export class KnowledgeRecovery {
         isPrimary: index === 0,
         position: index,
       })),
-    });
-    return true;
+    };
   }
 
+  /** Every revision of the commit, in one transaction or not at all. */
   private async write(
     operation: OperationRecord,
     actor: ActorContext,
-    plan: {
-      itemId: KnowledgeItemId;
-      revisionId: RevisionId;
-      kind: ChangeKind;
-      frontmatter: Frontmatter;
-      body: string;
-      path: string;
-      revisionNumber: number;
-      commitHash: string;
-      now: Date;
-      existing: KnowledgeItemRecord | null;
-      categories: ItemCategoryRecord[];
-    },
+    plans: readonly WritePlan[],
+  ): Promise<void> {
+    await this.o.uow.run(async (tx: Tx) => {
+      for (const plan of plans) await this.writeOne(tx, operation, actor, plan);
+    });
+  }
+
+  private async writeOne(
+    tx: Tx,
+    operation: OperationRecord,
+    actor: ActorContext,
+    plan: WritePlan,
   ): Promise<void> {
     const f = plan.frontmatter;
     const revision: RevisionRecord = {
@@ -202,7 +252,7 @@ export class KnowledgeRecovery {
       createdAt: plan.now,
       operationId: operation.id,
     };
-    await this.o.uow.run(async (tx: Tx) => {
+    {
       if (!plan.existing) {
         await this.o.items.insert(tx, {
           id: plan.itemId,
@@ -244,6 +294,23 @@ export class KnowledgeRecovery {
       if (plan.kind !== 'delete') {
         await this.o.items.setCategories(tx, plan.itemId, plan.categories);
         await this.o.items.setTags(tx, operation.workspaceId, plan.itemId, f.tags);
+        // The relations index, which nothing rebuilt before: the frontmatter
+        // carries the portable copy and PostgreSQL carries the queryable one,
+        // and a recovered supersession whose relation is missing leaves the
+        // index disagreeing with the file it was recovered from.
+        await this.o.relations.replaceForItem(
+          tx,
+          operation.workspaceId,
+          plan.itemId,
+          f.relations.map((relation) => ({
+            relationType: relation.type,
+            toItemId: relation.target,
+            validFrom: null,
+            validUntil: null,
+            createdByActorId: operation.actorId,
+          })),
+          plan.now,
+        );
       }
       await this.o.ledger.append(tx, operation.workspaceId, actor, {
         eventType: eventFor(plan.kind),
@@ -260,7 +327,7 @@ export class KnowledgeRecovery {
           recovered: true,
         },
       });
-    });
+    }
   }
 
   /**

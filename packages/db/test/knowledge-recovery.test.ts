@@ -192,6 +192,7 @@ beforeAll(async () => {
         items: repositories.knowledge,
         revisions: repositories.revisions,
         categories: repositories.categories,
+        relations: repositories.relations,
         ledger,
         git,
         parseItem,
@@ -359,5 +360,58 @@ describe('a taxonomy change that reached Git and no further', () => {
         .map((a) => a.alias)
         .sort(),
     ).toEqual(['Alpha', 'Zeta']);
+  });
+});
+
+describe('a supersession that reached Git and no further', () => {
+  it('recovers both revisions, because half of one cannot exist', async () => {
+    const old = await knowledge.create(actor, {
+      title: 'Backend database',
+      body: 'The backend uses MySQL.',
+      type: 'fact',
+      categories: ['architecture'],
+    });
+
+    await expect(
+      crashing.supersede(actor, {
+        oldItemId: old.item.id,
+        oldBaseRevisionId: old.revision.id,
+        oldBaseContentHash: old.revision.contentHash,
+        newItem: {
+          title: 'Backend database',
+          body: 'The backend uses PostgreSQL.',
+          type: 'fact',
+          categories: ['architecture'],
+        },
+      }),
+    ).rejects.toThrow('the process stops here');
+
+    const unfinished = await repositories.operations.listUnfinished(workspaceId);
+    expect(unfinished).toHaveLength(1);
+    const newItemId = unfinished[0]!.objectIds['knowledge_item'] as string;
+    // Neither half landed.
+    expect(await repositories.knowledge.findById(workspaceId, newItemId as never)).toBeNull();
+    expect((await repositories.knowledge.findById(workspaceId, old.item.id))?.status).toBe(
+      'active',
+    );
+
+    expect((await recovery.recover(workspaceId)).recovered).toHaveLength(1);
+
+    // Both halves did. One commit, two revisions, and the index agrees with
+    // the files it was rebuilt from.
+    const created = await repositories.knowledge.findById(workspaceId, newItemId as never);
+    expect(created?.status).toBe('active');
+    const superseded = await repositories.knowledge.findById(workspaceId, old.item.id);
+    expect(superseded?.status).toBe('superseded');
+    expect(superseded?.validUntil).not.toBeNull();
+    const relations = await repositories.relations.listForItem(workspaceId, newItemId as never);
+    expect(relations.map((r) => [r.relationType, r.toItemId])).toEqual([
+      ['supersedes', old.item.id],
+    ]);
+
+    // And the workspace takes writes again.
+    await expect(
+      knowledge.create(actor, { title: 'After recovery', body: 'Written.', type: 'fact' }),
+    ).resolves.toBeTruthy();
   });
 });

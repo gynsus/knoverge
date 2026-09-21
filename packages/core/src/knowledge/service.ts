@@ -182,6 +182,30 @@ export interface CreateItemInput {
   review?: ReviewState | undefined;
 }
 
+/**
+ * Replacing one item with another.
+ *
+ * The new item is written from scratch; reusing an item that already exists
+ * arrives with `knowledge_propose_supersede`, which is where the contract asks
+ * for it.
+ */
+export interface SupersedeInput {
+  oldItemId: KnowledgeItemId;
+  oldBaseRevisionId: RevisionId;
+  oldBaseContentHash: string;
+  /** When the old item stopped being true. Now, when nobody says otherwise. */
+  validUntil?: string | null | undefined;
+  newItem: CreateItemInput;
+  proposalId?: ProposalId | undefined;
+  review?: ReviewState | undefined;
+}
+
+/** Both sides of a supersession, which is one operation with two results. */
+export interface SupersedeResult {
+  old: ItemResult;
+  new: ItemResult;
+}
+
 /** An item as a list shows it: everything but the knowledge itself. */
 export interface ItemSummary {
   item: KnowledgeItemRecord;
@@ -588,6 +612,292 @@ export class KnowledgeService {
       );
     }
     return this.retire(actor, current, 'delete', input.proposalId);
+  }
+
+  /**
+   * Replacing one item with another, as one operation.
+   *
+   * A fact that changed, a decision that replaced an older decision, an
+   * instruction intentionally withdrawn. The old content is not erased — that
+   * is the point of superseding rather than editing: the repository keeps what
+   * was true, and says when it stopped being true and what replaced it.
+   *
+   * One commit and two revisions, so a half-applied supersession cannot exist
+   * (`KNOWLEDGE_LIFECYCLE.md` section 5). The relation is recorded once, on the
+   * new item, and written twice: the new file carries it in `relations`, the
+   * old file carries `superseded_by`. ADR 0015 records why.
+   */
+  async supersede(actor: ActorContext, input: SupersedeInput): Promise<SupersedeResult> {
+    const old = await this.get(actor, input.oldItemId);
+    if (
+      old.revision.id !== input.oldBaseRevisionId ||
+      old.revision.contentHash !== input.oldBaseContentHash
+    ) {
+      throw new DomainError(
+        'REVISION_CONFLICT',
+        'the item changed since you read it; re-read it before superseding it',
+        {
+          objectIds: {
+            knowledge_item: input.oldItemId,
+            current_revision_id: old.revision.id,
+            current_content_hash: old.revision.contentHash,
+          },
+        },
+      );
+    }
+    if (old.item.status !== 'active') {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        `an item that is ${old.item.status} cannot be superseded`,
+        { objectIds: { knowledge_item: input.oldItemId } },
+      );
+    }
+
+    const body = input.newItem.body.trim();
+    if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
+    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+      throw new DomainError('VALIDATION_ERROR', `the body may not exceed ${MAX_BODY_BYTES} bytes`);
+    }
+    const title = input.newItem.title.trim();
+    if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
+
+    const newItemId = newId('kn') as KnowledgeItemId;
+    const newRevisionId = newId('rev') as RevisionId;
+    const oldRevisionId = newId('rev') as RevisionId;
+    let plannedNew: PlannedItem | undefined;
+    let plannedOld: PlannedUpdate | undefined;
+
+    return this.o.crossStore.run<SupersedeResult>(actor, {
+      type: 'supersede',
+      objectIds: { knowledge_item: newItemId, superseded_item: input.oldItemId },
+      commit: async (operation) => {
+        const workspace = await this.o.workspaces.findById(actor.workspaceId);
+        if (!workspace) throw new DomainError('NOT_FOUND', 'workspace not found');
+        const author = await this.authorOf(actor);
+        const now = this.clock.now();
+        await this.assertRepositoryIsOurs(actor.workspaceId);
+
+        // The instant the changeover happened: the old item stops being true
+        // where the new one starts, so both dates are the same date.
+        const changeover = input.validUntil ?? now.toISOString();
+
+        const tree = await this.o.categories.list(actor.workspaceId, { includeArchived: true });
+        const chosen = this.resolveCategories(tree, input.newItem.categories ?? []);
+        const directory = chosen[0] ? `knowledge/${chosen[0].path}` : UNCATEGORISED_DIRECTORY;
+        const taken = await this.o.items.slugsInDirectory(actor.workspaceId, directory);
+        const wanted = input.newItem.slug ?? this.o.slugifyTitle(title);
+        const slug = this.parseSlug(this.o.uniqueSlug(wanted, new Set(taken)));
+        const newPath = `${directory}/${slug}.md`;
+
+        const relations: FrontmatterRelation[] = [
+          ...(input.newItem.relations ?? []).filter((r) => r.target !== input.oldItemId),
+          { type: 'supersedes', target: input.oldItemId },
+        ];
+        const newFrontmatter: Frontmatter = {
+          id: newItemId,
+          title,
+          type: input.newItem.type,
+          status: 'active',
+          language: input.newItem.language ?? workspace.defaultLanguage,
+          categories: chosen.map((c) => c.path),
+          tags: [...new Set(input.newItem.tags ?? [])].sort(),
+          review: input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
+          evidence: evidenceFrom(input.newItem.sources ?? []),
+          disputed: false,
+          valid_from: changeover,
+          valid_until: null,
+          observed_at: input.newItem.observedAt ?? null,
+          created_at: now.toISOString(),
+          updated_at: now.toISOString(),
+          sources: [...(input.newItem.sources ?? [])],
+          relations,
+          ...(input.newItem.external ? { external: input.newItem.external } : {}),
+        } as Frontmatter;
+        await this.assertRelationTargets(actor.workspaceId, newItemId, relations);
+
+        // The old item keeps its text. What changes is that it is no longer
+        // current, when it stopped being current, and what replaced it.
+        const oldFrontmatter: Frontmatter = {
+          ...old.revision.frontmatter,
+          status: 'superseded',
+          valid_until: changeover,
+          superseded_by: newItemId,
+          updated_at: now.toISOString(),
+        } as Frontmatter;
+
+        const newRendered = this.o.renderItem({ frontmatter: newFrontmatter, body });
+        const oldRendered = this.o.renderItem({
+          frontmatter: oldFrontmatter,
+          body: old.body,
+        });
+        await this.o.git.write(actor.workspaceId, [
+          { path: newPath, content: newRendered },
+          { path: old.item.markdownPath, content: oldRendered },
+        ]);
+        const commitHash = await this.o.git.commit(actor.workspaceId, {
+          paths: [newPath, old.item.markdownPath],
+          subject: `supersede(${input.newItem.type}): ${title}`,
+          trailers: [
+            ['Knoverge-Operation', operation.id],
+            ['Knoverge-Workspace', actor.workspaceId],
+            ['Knoverge-Actor', actor.actorId],
+            ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
+            ...(input.proposalId
+              ? ([['Knoverge-Proposal', input.proposalId]] as [string, string][])
+              : []),
+            // One per revision the commit produced, which is what recovery
+            // reads: the new item was created, the old one was superseded.
+            ['Knoverge-Change', `${newItemId}@${newRevisionId} create`],
+            ['Knoverge-Change', `${input.oldItemId}@${oldRevisionId} superseded_by`],
+          ],
+          author,
+          at: now,
+        });
+        if (commitHash === null) {
+          throw new DomainError('INTERNAL_ERROR', 'the supersession produced no commit');
+        }
+        plannedNew = {
+          frontmatter: newFrontmatter,
+          body,
+          slug,
+          markdownPath: newPath,
+          chosen,
+          rendered: newRendered,
+          now,
+          commitHash,
+        };
+        plannedOld = {
+          frontmatter: oldFrontmatter,
+          body: old.body,
+          markdownPath: old.item.markdownPath,
+          chosen: [],
+          rendered: oldRendered,
+          now,
+          commitHash,
+          kind: 'superseded_by',
+        };
+        return {
+          commitHash,
+          // Both items, because recovery reads this to know which items the
+          // commit was allowed to touch, and it touched two.
+          objectIds: {
+            knowledge_item: newItemId,
+            superseded_item: input.oldItemId,
+            path: newPath,
+          },
+        };
+      },
+      record: async (tx, operation) => {
+        if (!plannedNew || !plannedOld) {
+          throw new DomainError('INTERNAL_ERROR', 'the supersession was never planned');
+        }
+        const pNew = plannedNew;
+        const pOld = plannedOld;
+
+        const newRevision = this.revisionOf(actor, newItemId, newRevisionId, 1, pNew, operation.id);
+        const newRecord: KnowledgeItemRecord = {
+          id: newItemId,
+          workspaceId: actor.workspaceId,
+          slug: pNew.slug,
+          markdownPath: pNew.markdownPath,
+          type: input.newItem.type,
+          status: 'active',
+          language: pNew.frontmatter.language,
+          currentRevisionId: newRevisionId,
+          reviewState: pNew.frontmatter.review,
+          evidenceState: pNew.frontmatter.evidence,
+          disputed: false,
+          validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
+          validUntil: null,
+          observedAt: pNew.frontmatter.observed_at ? new Date(pNew.frontmatter.observed_at) : null,
+          createdByActorId: actor.actorId,
+          createdAt: pNew.now,
+          updatedAt: pNew.now,
+        } as KnowledgeItemRecord;
+        await this.o.items.insert(tx, newRecord);
+        await this.o.revisions.insert(tx, newRevision);
+        await this.o.items.setCategories(
+          tx,
+          newItemId,
+          pNew.chosen.map<ItemCategoryRecord>((category, index) => ({
+            knowledgeItemId: newItemId,
+            categoryId: category.id,
+            isPrimary: index === 0,
+            position: index,
+          })),
+        );
+        await this.o.items.setTags(tx, actor.workspaceId, newItemId, pNew.frontmatter.tags);
+        await this.writeSources(
+          tx,
+          actor.workspaceId,
+          newRevisionId,
+          pNew.frontmatter.sources,
+          pNew.now,
+        );
+        // One relation row, on the new item, pointing at what it replaced.
+        await this.writeRelations(tx, actor, newItemId, pNew.frontmatter.relations, pNew.now);
+
+        const oldRevision = this.revisionOf(
+          actor,
+          input.oldItemId,
+          oldRevisionId,
+          old.revision.revisionNumber + 1,
+          pOld,
+          operation.id,
+        );
+        await this.o.revisions.insert(tx, oldRevision);
+        await this.o.items.update(tx, input.oldItemId, {
+          status: 'superseded',
+          currentRevisionId: oldRevisionId,
+          validUntil: pOld.frontmatter.valid_until ? new Date(pOld.frontmatter.valid_until) : null,
+          updatedAt: pOld.now,
+        });
+
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: 'knowledge.created',
+          objectType: 'knowledge_item',
+          objectId: newItemId,
+          categoryIds: pNew.chosen.map((c) => c.id),
+          metadata: {
+            revision: newRevisionId,
+            content_hash: newRevision.contentHash,
+            git_commit: pNew.commitHash,
+            item_type: input.newItem.type,
+            supersedes: input.oldItemId,
+          },
+        });
+        await this.o.ledger.append(tx, actor.workspaceId, actor, {
+          eventType: 'knowledge.superseded',
+          objectType: 'knowledge_item',
+          objectId: input.oldItemId,
+          metadata: {
+            revision: oldRevisionId,
+            before_revision: old.revision.id,
+            before_hash: old.revision.contentHash,
+            content_hash: oldRevision.contentHash,
+            git_commit: pOld.commitHash,
+            superseded_by: newItemId,
+          },
+        });
+
+        return {
+          new: {
+            item: newRecord,
+            revision: newRevision,
+            categories: pNew.chosen.map((c) => c.path),
+            tags: pNew.frontmatter.tags,
+            body: pNew.body,
+          },
+          old: {
+            item: (await this.o.items.findById(actor.workspaceId, input.oldItemId, tx)) as never,
+            revision: oldRevision,
+            categories: old.categories,
+            tags: old.tags,
+            body: pOld.body,
+          },
+        };
+      },
+    });
   }
 
   /** Brings back an item a delete removed, at the content it had. */

@@ -125,11 +125,14 @@ Do not erase historical content.
 Supersession is one atomic operation, `knowledge_propose_supersede`, producing one commit and two revisions:
 
 ```text
-new_item supersedes old_item      (relation, mirrored in both frontmatters)
+new_item supersedes old_item      (one relation, on the new item)
+old_item.superseded_by = new_item (projection of it, on the old item)
 old_item.status = superseded
 old_item.valid_until = <date>
 new_item.valid_from = <date>
 ```
+
+The relation is recorded once and written twice, in different forms. PostgreSQL and the new item's `relations` list hold `new supersedes old`; the old item's frontmatter carries `superseded_by` instead, so a file read on its own says both that it was replaced and by what without a second relation row to disagree with the first. ADR 0015 records why.
 
 A half-applied supersession (relation without status change, or the reverse) cannot exist.
 

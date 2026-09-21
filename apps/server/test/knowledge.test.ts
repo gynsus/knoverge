@@ -9,6 +9,7 @@ import {
   KnowledgeListResponse,
   KnowledgeResponse,
   RevisionsResponse,
+  SupersedeResponse,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
@@ -609,5 +610,104 @@ describe('comparing two revisions', () => {
     );
     expect(res.statusCode).toBe(400);
     expect(res.json().message).toMatch(/different items/);
+  });
+});
+
+describe('superseding an item', () => {
+  async function anItem(title: string, body: string) {
+    const res = await admin.post('/v1/admin/knowledge.create', { title, body, type: 'fact' });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  it('writes one commit, two revisions and one relation', async () => {
+    const old = await anItem('Backend database', 'The backend uses MySQL.');
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      valid_until: '2026-09-18T00:00:00Z',
+      new_item: { title: 'Backend database', body: 'The backend uses PostgreSQL.', type: 'fact' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = SupersedeResponse.parse(res.json());
+
+    // The old item keeps its text and stops being current.
+    expect(result.superseded.status).toBe('superseded');
+    expect(result.superseded.valid_until).toBe('2026-09-18T00:00:00.000Z');
+    expect(result.superseded.body).toContain('The backend uses MySQL.');
+    expect(result.superseded.revision_number).toBe(2);
+    // The new item starts where the old one stopped.
+    expect(result.item.valid_from).toBe('2026-09-18T00:00:00.000Z');
+    expect(result.item.relations).toContainEqual({ type: 'supersedes', target: old.id });
+
+    const repository = join(dataDir, 'repositories', old.workspace_id);
+    // One commit, and it says what it did.
+    const log = await gitIn(repository, ['log', '-1', '--format=%s%n%b']);
+    expect(log).toContain('supersede(fact): Backend database');
+    expect(log).toContain(
+      `Knoverge-Change: ${result.item.id}@${result.item.current_revision_id} create`,
+    );
+    expect(log).toContain(
+      `Knoverge-Change: ${old.id}@${result.superseded.current_revision_id} superseded_by`,
+    );
+    const touched = await gitIn(repository, ['show', '--name-only', '--format=', 'HEAD']);
+    expect(touched).toContain(old.markdown_path);
+    expect(touched).toContain(result.item.markdown_path);
+
+    // The relation is recorded once and written twice: the new file carries
+    // it as a relation, the old file as superseded_by (ADR 0015).
+    const newFile = await readFile(join(repository, result.item.markdown_path), 'utf8');
+    expect(newFile).toContain(`target: ${old.id}`);
+    const oldFile = await readFile(join(repository, old.markdown_path), 'utf8');
+    expect(oldFile).toContain(`superseded_by: ${result.item.id}`);
+    expect(oldFile).toContain('status: superseded');
+    // Not a second relation, which would be a second thing to disagree.
+    expect(oldFile).not.toContain('type: supersedes');
+  });
+
+  it('refuses a supersession written against an older revision', async () => {
+    const old = await anItem('Moves on first', 'The first text.');
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: old.id,
+          base_revision_id: old.current_revision_id,
+          base_content_hash: old.content_hash,
+          body: 'Changed before anybody superseded it.',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      new_item: { title: 'Replacement', body: 'The replacement.', type: 'fact' },
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().code).toBe('REVISION_CONFLICT');
+  });
+
+  it('refuses to supersede an item that is already superseded', async () => {
+    const old = await anItem('Superseded twice', 'The original.');
+    const first = SupersedeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.supersede', {
+          old_item_id: old.id,
+          old_base_revision_id: old.current_revision_id,
+          old_base_content_hash: old.content_hash,
+          new_item: { title: 'First replacement', body: 'The first.', type: 'fact' },
+        })
+      ).json(),
+    );
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: old.id,
+      old_base_revision_id: first.superseded.current_revision_id,
+      old_base_content_hash: first.superseded.content_hash,
+      new_item: { title: 'Second replacement', body: 'The second.', type: 'fact' },
+    });
+    // The chain runs forward: what replaced it is what gets superseded next.
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/superseded/);
   });
 });

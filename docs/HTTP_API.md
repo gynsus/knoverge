@@ -137,6 +137,8 @@ POST /v1/admin/knowledge.create             a person writes an item directly
 POST /v1/admin/knowledge.update             requires base_revision_id and base_content_hash
 POST /v1/admin/knowledge.delete             logical: the file leaves the tree, the history keeps it
 POST /v1/admin/knowledge.restore            brings a deleted item back from its last revision
+POST /v1/admin/knowledge.supersede          one commit, two revisions: the old item stops being
+                                            current, the new one says what it replaced
 POST /v1/admin/taxonomy.create
 POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move

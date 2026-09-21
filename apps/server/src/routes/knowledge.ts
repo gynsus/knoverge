@@ -9,6 +9,8 @@ import {
   KnowledgeResponse,
   RestoreKnowledgeRequest,
   RevisionId,
+  SupersedeKnowledgeRequest,
+  SupersedeResponse,
   RevisionsResponse,
   UpdateKnowledgeRequest,
   type KnowledgeItemDetail,
@@ -208,6 +210,39 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
       assertHuman(actor.context.actorType);
       const result = await services.knowledge.restore(actor.context, request.body.item_id);
       return { item: detail(result) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/knowledge.supersede',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: SupersedeKnowledgeRequest, response: { 200: SupersedeResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      assertHuman(actor.context.actorType);
+      const body = request.body;
+      const result = await services.knowledge.supersede(actor.context, {
+        oldItemId: body.old_item_id,
+        oldBaseRevisionId: body.old_base_revision_id,
+        oldBaseContentHash: body.old_base_content_hash,
+        validUntil: body.valid_until,
+        newItem: {
+          title: body.new_item.title,
+          body: body.new_item.body,
+          type: body.new_item.type,
+          language: body.new_item.language,
+          categories: body.new_item.categories,
+          tags: body.new_item.tags,
+          slug: body.new_item.slug,
+          observedAt: body.new_item.observed_at,
+          relations: body.new_item.relations,
+          sources: body.new_item.sources,
+          external: body.new_item.external,
+        },
+      });
+      return { item: detail(result.new), superseded: detail(result.old) };
     },
   );
 
