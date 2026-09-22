@@ -1,4 +1,4 @@
-import type { MembershipRole, UserId, WorkspaceId } from '@knoverge/contracts';
+import type { ActorId, MembershipRole, UserId, WorkspaceId } from '@knoverge/contracts';
 import { ROLE_PERMISSIONS } from '@knoverge/policy';
 
 import type { ActorContext } from '../actor-context.ts';
@@ -16,7 +16,8 @@ import type { EventLedger } from '../ledger/ledger.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
-import type { ActorRepository, WorkspaceRepository } from './repository.ts';
+import type { ActorRepository, WorkspaceRecord, WorkspaceRepository } from './repository.ts';
+import type { CreateWorkspaceInput, WorkspaceService } from './service.ts';
 
 export interface MemberServiceOptions {
   uow: UnitOfWork;
@@ -27,6 +28,8 @@ export interface MemberServiceOptions {
   /** Resetting a password ends every session that used the old one. */
   sessions: SessionRepository;
   authorization: AuthorizationService;
+  /** Creating a workspace validates and inserts through the workspace service. */
+  workspaceService: WorkspaceService;
   ledger: EventLedger;
   clock?: Clock;
 }
@@ -61,6 +64,37 @@ export class MemberService {
 
   list(workspaceId: WorkspaceId): Promise<MemberWithUser[]> {
     return this.o.memberships.listForWorkspace(workspaceId);
+  }
+
+  /**
+   * Creates a workspace and makes `user` its owner, in one transaction.
+   *
+   * Who may do this is decided by the caller: the route requires the person to
+   * already administer a workspace, because `members.add` can create accounts
+   * on the installation, and those accounts are not scoped to a workspace.
+   * Anyone able to create a workspace would therefore be able to create users.
+   *
+   * `createdBy` is the caller's actor in the workspace whose administration
+   * authorised this, recorded on `workspace.created` so the act is attributable
+   * across the two workspaces (rule 3). The new workspace's own events are
+   * attributed to its system actor and to the owner actor created here.
+   */
+  async createWorkspace(
+    user: UserRecord,
+    input: CreateWorkspaceInput,
+    createdBy: { actorId: ActorId; workspaceId: WorkspaceId },
+  ): Promise<WorkspaceRecord> {
+    const prepared = await this.o.workspaceService.prepare(input);
+    const now = this.clock.now();
+    await this.o.uow.run(async (tx) => {
+      await this.o.workspaceService.createInTx(tx, prepared, input.requestId, createdBy);
+      // The user already exists, so user.created would be a second birth for
+      // an account that has one. Only the membership is new.
+      await addMember(this.o, tx, prepared.id, user, 'owner', input.requestId, now, {
+        recordUserCreated: false,
+      });
+    });
+    return prepared;
   }
 
   async add(

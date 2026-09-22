@@ -96,6 +96,7 @@ Require the corresponding workspace role or permission.
 ```text
 GET  /v1/taxonomy.list                      (any member with taxonomy.read)
 GET  /v1/workspace.get                      (any member)
+POST /v1/admin/workspace.create             a new workspace, with the caller as its owner
 POST /v1/admin/workspace.update
 GET  /v1/admin/members.list
 POST /v1/admin/members.add
@@ -170,6 +171,23 @@ POST /v1/admin/attachments.upload           (multipart, later milestone)
 ```
 
 Admin endpoints follow the same RPC style and the same error model.
+
+### Creating a workspace
+
+`POST /v1/admin/workspace.create` is the one admin endpoint that is not scoped
+to the current workspace: there is no workspace yet to hold a permission in. It
+requires a person's session — never an agent — and that person must already
+hold `workspace.admin` in some workspace they belong to. The reason is that
+creating a workspace makes you its owner, and an owner can create accounts
+through `members.add`; accounts belong to the installation rather than to a
+workspace, so anyone who could create a workspace could create users.
+
+The slug is unique across the installation and is therefore the request's own
+idempotency key: a resubmitted form is answered `VALIDATION_ERROR` rather than
+quietly creating a second workspace. The new workspace starts its own event
+chain with `workspace.created`, carrying `created_by_actor_id` and
+`created_by_workspace_id` so the act is attributable across the two. Its Git
+repository is created on the first write, as for any workspace.
 
 ## 7. Web-only read endpoints
 
