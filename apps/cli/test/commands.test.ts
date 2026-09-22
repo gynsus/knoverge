@@ -4,6 +4,7 @@ import { agentCommand } from '../src/commands/agent.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
+import { mcpCommand } from '../src/commands/mcp.ts';
 import { permissionsCommand } from '../src/commands/permissions.ts';
 import { taxonomyCommand } from '../src/commands/taxonomy.ts';
 import { userCommand } from '../src/commands/user.ts';
@@ -14,6 +15,7 @@ const EXPECTED: Record<string, string[]> = {
   agent: ['create', 'list', 'disable', 'token'],
   bootstrap: [],
   db: ['migrate', 'prune', 'reindex', 'status'],
+  mcp: ['check', 'stdio'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
   taxonomy: ['list', 'create', 'move', 'archive', 'restore'],
@@ -26,6 +28,7 @@ const commands = [
   bootstrapCommand(),
   dbCommand(),
   ledgerCommand(),
+  mcpCommand(),
   permissionsCommand(),
   taxonomyCommand(),
   userCommand(),
@@ -61,6 +64,14 @@ describe('command surface', () => {
     expect(required('taxonomy', 'create')).toEqual(['--name']);
     expect(required('taxonomy', 'move')).toEqual(['--category']);
     expect(required('workspace', 'create')).toEqual(['--slug', '--name']);
+  });
+
+  it('never makes a credential a flag, so it cannot reach the process list', () => {
+    // A command line is visible to every process on the machine and ends up
+    // in shell history; a token belongs in the environment.
+    for (const sub of mcpCommand().commands) {
+      expect(sub.options.map((o) => o.long)).not.toContain('--token');
+    }
   });
 
   it('never makes the bootstrap password a required flag, so it can come from the environment', () => {
