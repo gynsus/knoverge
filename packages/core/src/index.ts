@@ -154,6 +154,7 @@ export type {
   AliasRepository,
   CategoryPatch,
   CategoryRecord,
+  CategoryItemCounts,
   CategoryRepository,
   TaxonomyVersionRepository,
 } from './taxonomy/repository.ts';

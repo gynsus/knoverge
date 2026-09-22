@@ -15,6 +15,7 @@ import {
   sortedAliases,
   subtreeIds,
   withCategory,
+  withMerge,
   withMove,
   withSubtreeStatus,
   withUpdate,
@@ -109,7 +110,7 @@ export interface TaxonomyFileEntry {
  * has to be computed rather than read back.
  */
 /** What a taxonomy commit did, so recovery can rebuild the row it never wrote. */
-export type TaxonomyChangeKind = 'create' | 'update' | 'move' | 'archive' | 'restore';
+export type TaxonomyChangeKind = 'create' | 'update' | 'move' | 'archive' | 'restore' | 'merge';
 
 interface PlannedChange {
   subject: string;
@@ -119,6 +120,16 @@ interface PlannedChange {
   categories: CategoryRecord[];
   /** Aliases of every category, by category id, as they will be. */
   aliases: Map<string, string[]>;
+  /**
+   * Anything else the commit has to carry for recovery to rebuild this change.
+   *
+   * The taxonomy file says what the tree looks like, never what happened to
+   * make it look that way. A merge is the one change that cannot be told from
+   * the file alone — the closed category's status says it was merged and not
+   * into what — so the survivor's id travels in the commit rather than only in
+   * a database row a crash may have taken with it.
+   */
+  trailers?: [string, string][];
   apply: (tx: Tx, version: number, commitHash: string) => Promise<TaxonomyResult>;
 }
 
@@ -144,6 +155,10 @@ export interface UpdateCategoryInput {
 
 export interface CategoryWithAliases extends CategoryRecord {
   aliases: string[];
+  /** Items filed directly here. */
+  itemCount: number;
+  /** Items here or anywhere below, counted once each. */
+  subtreeItemCount: number;
 }
 
 export interface TaxonomyResult {
@@ -248,6 +263,7 @@ export class TaxonomyService {
       includeArchived: options.includeArchived ?? false,
     });
     const aliases = await this.o.aliases.listForWorkspace(workspaceId);
+    const counts = await this.o.categories.itemCounts(workspaceId);
     const byCategory = new Map<string, string[]>();
     for (const alias of aliases) {
       byCategory.set(alias.categoryId, [...(byCategory.get(alias.categoryId) ?? []), alias.alias]);
@@ -261,16 +277,24 @@ export class TaxonomyService {
         const base = root === undefined ? 0 : root.split('/').length;
         return c.path.split('/').length - base <= depth;
       })
-      .map((c) => ({ ...c, aliases: byCategory.get(c.id) ?? [] }));
+      .map((c) => ({
+        ...c,
+        aliases: byCategory.get(c.id) ?? [],
+        itemCount: counts.get(c.id)?.direct ?? 0,
+        subtreeItemCount: counts.get(c.id)?.subtree ?? 0,
+      }));
   }
 
   async get(workspaceId: WorkspaceId, categoryId: CategoryId): Promise<CategoryWithAliases | null> {
     const category = await this.o.categories.findById(workspaceId, categoryId);
     if (!category) return null;
     const aliases = await this.o.aliases.listForWorkspace(workspaceId);
+    const counts = await this.o.categories.itemCounts(workspaceId);
     return {
       ...category,
       aliases: aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
+      itemCount: counts.get(category.id)?.direct ?? 0,
+      subtreeItemCount: counts.get(category.id)?.subtree ?? 0,
     };
   }
 
@@ -357,7 +381,10 @@ export class TaxonomyService {
               ...(parent ? { parent_id: parent.id } : {}),
             },
           });
-          return { category: { ...category, aliases }, taxonomyVersion: version };
+          // A category that has just been created holds nothing, but the
+          // counts are read rather than assumed: one place decides what a
+          // category looks like on the way out.
+          return { category: await this.withAliases(category, tx), taxonomyVersion: version };
         },
       };
     });
@@ -444,10 +471,7 @@ export class TaxonomyService {
             },
           });
           const updated = await this.require(actor.workspaceId, category.id, tx);
-          return {
-            category: { ...updated, aliases: aliases ?? tree.aliases.get(category.id) ?? [] },
-            taxonomyVersion: version,
-          };
+          return { category: await this.withAliases(updated, tx), taxonomyVersion: version };
         },
       };
     });
@@ -529,6 +553,157 @@ export class TaxonomyService {
             },
           });
           const updated = await this.require(actor.workspaceId, category.id, tx);
+          return { category: await this.withAliases(updated, tx), taxonomyVersion: version };
+        },
+      };
+    });
+  }
+
+  /**
+   * Folds one category into another.
+   *
+   * Agents propose categories, so a workspace accumulates near-duplicates, and
+   * deleting one would take the knowledge filed under it. A merge moves
+   * everything to the survivor instead: the items, the direct children, and
+   * the aliases. The closed category stays in the tree with status `merged`
+   * and a pointer to where its contents went, and its old path becomes an
+   * alias of the survivor, so an agent that recorded that path still resolves.
+   *
+   * Item files do not move. An item's place in the repository is fixed when it
+   * is created and already survives being re-categorised, so a merge follows
+   * the same rule rather than inventing a second one.
+   */
+  async merge(
+    actor: ActorContext,
+    categoryId: CategoryId,
+    intoCategoryId: CategoryId,
+  ): Promise<TaxonomyResult> {
+    const now = this.clock.now();
+    return this.change(actor, async () => {
+      const tree = await this.tree(actor.workspaceId);
+      const source = this.requireIn(tree.categories, categoryId);
+      const target = this.requireIn(tree.categories, intoCategoryId);
+      if (source.id === target.id) {
+        throw new DomainError('VALIDATION_ERROR', 'a category cannot be merged into itself');
+      }
+      if (target.path === source.path || target.path.startsWith(`${source.path}/`)) {
+        // The survivor would become its own descendant's parent.
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          'a category cannot be merged into its own subtree',
+        );
+      }
+      if (source.status !== 'active' || target.status !== 'active') {
+        throw new DomainError('CATEGORY_CONFLICT', 'both categories must be active');
+      }
+
+      // A child of the closed category lands beside the survivor's own
+      // children, so two of the same slug would collide on the unique path.
+      const children = tree.categories.filter((c) => c.parentId === source.id);
+      const taken = new Set(
+        tree.categories.filter((c) => c.parentId === target.id).map((c) => c.slug),
+      );
+      const clash = children.find((c) => taken.has(c.slug));
+      if (clash) {
+        throw new DomainError(
+          'CATEGORY_CONFLICT',
+          `${target.path} already has a child called ${clash.slug}; rename one before merging`,
+          { objectIds: { category_id: clash.id, path: `${target.path}/${clash.slug}` } },
+        );
+      }
+      const deepest = Math.max(
+        0,
+        ...tree.categories
+          .filter((c) => c.path.startsWith(`${source.path}/`))
+          .map(
+            (c) =>
+              target.path.split('/').length +
+              c.path.split('/').length -
+              source.path.split('/').length,
+          ),
+      );
+      if (deepest > MAX_CATEGORY_DEPTH) {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `the merge would nest deeper than ${MAX_CATEGORY_DEPTH}`,
+        );
+      }
+
+      // Everything that pointed at the closed category keeps pointing
+      // somewhere: its own aliases, and the path it used to live at.
+      const existing = tree.aliases.get(target.id) ?? [];
+      const carried = [...(tree.aliases.get(source.id) ?? []), source.path, source.name];
+      const seen = new Set(existing.map(normaliseAlias));
+      const added: string[] = [];
+      for (const alias of carried) {
+        const normalised = normaliseAlias(alias);
+        if (normalised === '' || seen.has(normalised)) continue;
+        // An alias is unique across the workspace, so one already claimed by a
+        // third category is left behind rather than failing the whole merge.
+        const owner = await this.o.aliases.findByNormalised(actor.workspaceId, normalised);
+        if (owner && owner.categoryId !== source.id && owner.categoryId !== target.id) continue;
+        seen.add(normalised);
+        added.push(alias);
+      }
+      const targetAliases = [...existing, ...added];
+      const aliases = new Map(tree.aliases);
+      aliases.set(target.id, targetAliases);
+      aliases.set(source.id, []);
+      const moved = tree.categories
+        .filter((c) => c.path.startsWith(`${source.path}/`))
+        .map((c) => c.id);
+
+      return {
+        subject: `taxonomy: merge ${source.path} into ${target.path}`,
+        kind: 'merge',
+        objectIds: { category: source.id, path: source.path, into: target.path },
+        trailers: [['Knoverge-Category-Into', target.id]],
+        categories: withMerge(tree.categories, source, target),
+        aliases,
+        apply: async (tx, version, commitHash) => {
+          const items = await this.o.categories.recategoriseItems(tx, source.id, target.id);
+          await this.o.categories.reparentChildren(
+            tx,
+            actor.workspaceId,
+            source.id,
+            target.id,
+            now,
+          );
+          await this.o.categories.rewriteDescendantPaths(
+            tx,
+            actor.workspaceId,
+            source.path,
+            target.path,
+            now,
+          );
+          await this.o.categories.update(tx, source.id, {
+            status: 'merged',
+            mergedIntoCategoryId: target.id,
+            updatedAt: now,
+          });
+          // The closed category's rows go first: an alias being carried over
+          // is unique across the workspace, so writing it onto the survivor
+          // while the original still held it would collide.
+          await this.writeAliases(tx, source, [], now);
+          await this.writeAliases(tx, target, targetAliases, now);
+          await this.o.versions.bump(tx, actor.workspaceId, now, version, commitHash);
+          await this.o.ledger.append(tx, actor.workspaceId, actor, {
+            eventType: 'category.merged',
+            objectType: 'category',
+            objectId: source.id,
+            categoryIds: [source.id, target.id, ...moved],
+            metadata: {
+              path: source.path,
+              into_path: target.path,
+              into_category_id: target.id,
+              moved_items: items,
+              moved_categories: moved.length,
+              carried_aliases: added.length,
+              taxonomy_version: version,
+              git_commit: commitHash,
+            },
+          });
+          const updated = await this.require(actor.workspaceId, target.id, tx);
           return { category: await this.withAliases(updated, tx), taxonomyVersion: version };
         },
       };
@@ -759,6 +934,7 @@ export class TaxonomyService {
             // The file carries the whole tree; this is the one thing the file
             // cannot say, because a path is not an identity.
             ['Knoverge-Category', `${planned.objectIds['category'] as string} ${planned.kind}`],
+            ...(planned.trailers ?? []),
           ],
           author,
           at: now,
@@ -788,11 +964,14 @@ export class TaxonomyService {
 
   private async withAliases(category: CategoryRecord, tx?: Tx): Promise<CategoryWithAliases> {
     const aliases = await this.o.aliases.listForWorkspace(category.workspaceId, tx);
+    const counts = await this.o.categories.itemCounts(category.workspaceId);
     return {
       ...category,
       aliases: sortedAliases(
         aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
       ),
+      itemCount: counts.get(category.id)?.direct ?? 0,
+      subtreeItemCount: counts.get(category.id)?.subtree ?? 0,
     };
   }
 

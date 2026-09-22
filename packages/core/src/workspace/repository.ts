@@ -57,4 +57,6 @@ export interface ActorRepository {
   insert(tx: Tx, actor: ActorRecord): Promise<void>;
   findById(workspaceId: WorkspaceId, id: ActorId, tx?: Tx): Promise<ActorRecord | null>;
   findSystemActor(workspaceId: WorkspaceId): Promise<ActorRecord | null>;
+  /** Every actor in the workspace, for turning an id in an event into a name. */
+  listForWorkspace(workspaceId: WorkspaceId): Promise<ActorRecord[]>;
 }

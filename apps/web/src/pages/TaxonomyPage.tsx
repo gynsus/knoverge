@@ -1,353 +1,450 @@
 import type { CategorySummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { History, ListTree, Plus, Search, X } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
-import { adminApi } from '../api/admin.ts';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardTitle } from '@/components/ui/card';
-import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
-import { cn } from '@/lib/utils';
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Toast } from '@/components/ui/toast';
+import {
+  draftOf,
+  emptyDraft,
+  splitCommas,
+  splitLines,
+  type CategoryDraft,
+} from '@/lib/category-draft';
+import { ACTORS_KEY, TAXONOMY_HISTORY_KEY, TAXONOMY_KEY } from '@/lib/query-keys';
+import { buildTree, matching, subtreeIds } from '@/lib/taxonomy-tree';
+import { relativeTime } from '@/lib/relative-time';
+import { adminApi } from '../api/admin.ts';
+import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+import { CategoryDetails } from '../components/taxonomy/CategoryDetails.tsx';
+import { CategorySheet } from '../components/taxonomy/CategorySheet.tsx';
+import { CategoryTree } from '../components/taxonomy/CategoryTree.tsx';
+import { MergeDialog, MoveDialog } from '../components/taxonomy/TaxonomyDialogs.tsx';
+import { TaxonomyHistory } from '../components/taxonomy/TaxonomyHistory.tsx';
+
+type Shown = 'active' | 'all' | 'archived';
 
 /**
- * One step of indentation per level of the tree.
+ * The taxonomy, as something to work with rather than a list with a form
+ * under it.
  *
- * A fixed list rather than a computed class, because Tailwind only emits the
- * classes it can see in the source. Depth is capped: past six levels the
- * indentation costs more room than it explains, and the path is written beside
- * every entry anyway.
+ * A category here is not a folder: it carries guidance that tells an agent
+ * what belongs in it, aliases that let one be found under another name, and a
+ * record of who made it. None of that fitted on a row, so the tree keeps the
+ * shape and a panel beside it holds the category itself.
+ *
+ * Creating and editing moved into a sheet. The form used to hold the bottom
+ * half of the screen whether or not anybody was filling it in, which is half
+ * a screen not spent on the thing the page is for.
  */
-const INDENT = ['pl-0', 'pl-4', 'pl-8', 'pl-12', 'pl-16', 'pl-20', 'pl-24'] as const;
-
-const depthOf = (path: string): number => Math.min(path.split('/').length - 1, INDENT.length - 1);
-
-const TAXONOMY_KEY = ['taxonomy'] as const;
-
-/** Everything a category carries that a person can edit. */
-interface Draft {
-  name: string;
-  slug: string;
-  description: string;
-  inclusion: string;
-  exclusion: string;
-  aliases: string;
-}
-
-const emptyDraft: Draft = {
-  name: '',
-  slug: '',
-  description: '',
-  inclusion: '',
-  exclusion: '',
-  aliases: '',
-};
-
-function draftOf(category: CategorySummary): Draft {
-  return {
-    name: category.name,
-    slug: category.slug,
-    description: category.description ?? '',
-    inclusion: category.inclusion_guidance.join('\n'),
-    exclusion: category.exclusion_guidance.join('\n'),
-    aliases: category.aliases.join(', '),
-  };
-}
-
-/** One guidance line per line, blanks dropped. */
-function splitLines(value: string): string[] {
-  return value
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
-}
-
-function splitCommas(value: string): string[] {
-  return value
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== '');
-}
-
 export function TaxonomyPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const client = useQueryClient();
-  const [name, setName] = useState('');
-  const [parentPath, setParentPath] = useState('');
-  const [selected, setSelected] = useState<CategorySummary | null>(null);
-  // Every editable field of a category, not only its name. Guidance and
-  // aliases are what make a curated taxonomy useful, and neither was reachable.
-  const [draft, setDraft] = useState<Draft>(emptyDraft);
-  // Archiving takes the whole subtree, so it asks first.
-  const [confirmingArchive, setConfirmingArchive] = useState(false);
-  const detailHeading = useRef<HTMLHeadingElement>(null);
-  const lastTrigger = useRef<HTMLButtonElement | null>(null);
-
-  // The detail panel appears below the tree, so without moving focus a keyboard
-  // or screen reader user is left where they were with nothing to tell them.
-  useEffect(() => {
-    if (selected) detailHeading.current?.focus();
-    else lastTrigger.current?.focus();
-  }, [selected]);
+  const workspaces = useWorkspaceContext();
+  const [query, setQuery] = useState('');
+  const [shown, setShown] = useState<Shown>('active');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Null until somebody opens or closes something themselves; until then the
+  // tree decides for itself, below.
+  const [opened, setOpened] = useState<ReadonlySet<string> | null>(null);
+  const [editing, setEditing] = useState<CategorySummary | null>(null);
+  const [draft, setDraft] = useState<CategoryDraft>(emptyDraft);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [moving, setMoving] = useState<CategorySummary | null>(null);
+  const [merging, setMerging] = useState<CategorySummary | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [notice, setNotice] = useState<{ message: string; tone: 'status' | 'error' } | null>(null);
 
   const taxonomy = useQuery({
     queryKey: TAXONOMY_KEY,
     queryFn: ({ signal }) => adminApi.taxonomy.list(signal),
   });
-  const refresh = () => client.invalidateQueries({ queryKey: TAXONOMY_KEY });
+  const actors = useQuery({
+    queryKey: ACTORS_KEY,
+    queryFn: ({ signal }) => adminApi.workspace.actors(signal),
+  });
+
+  const refresh = async () => {
+    await client.invalidateQueries({ queryKey: TAXONOMY_KEY });
+    await client.invalidateQueries({ queryKey: TAXONOMY_HISTORY_KEY });
+  };
+  const done = (message: string) => {
+    setNotice({ message, tone: 'status' });
+    setSheetOpen(false);
+    setMoving(null);
+    setMerging(null);
+  };
+
+  const all = useMemo(() => taxonomy.data?.categories ?? [], [taxonomy.data]);
+  const categories = useMemo(
+    () =>
+      all.filter((c) =>
+        shown === 'all'
+          ? true
+          : shown === 'archived'
+            ? c.status !== 'active'
+            : c.status === 'active',
+      ),
+    [all, shown],
+  );
+  const { visible, matched } = useMemo(() => matching(categories, query), [categories, query]);
+  const tree = useMemo(() => buildTree(categories), [categories]);
+  const selected = all.find((c) => c.id === selectedId) ?? null;
+  const canManage = workspaces.can('taxonomy.manage');
+
+  /**
+   * A small taxonomy opens itself; a large one does not.
+   *
+   * Everything collapsed means a first visit shows a handful of words and no
+   * structure, which is the opposite of what a tree is for. Everything
+   * expanded at two hundred categories is a wall. The line is drawn at a
+   * screenful or so, and either way the first thing somebody does — opening
+   * or closing anything — takes the decision back.
+   */
+  const defaultOpen = useMemo(
+    () =>
+      new Set(
+        categories.length <= 40
+          ? categories.map((c) => c.id)
+          : categories.filter((c) => c.parent_id === null).map((c) => c.id),
+      ),
+    [categories],
+  );
+  // A search opens whatever it needs to show its matches; outside a search the
+  // person's own open and closed branches are what is on screen.
+  const expanded = query.trim() === '' ? (opened ?? defaultOpen) : visible;
+  const lastChange = all.reduce<string | null>(
+    (newest, c) => (newest === null || c.updated_at > newest ? c.updated_at : newest),
+    null,
+  );
 
   const create = useMutation({
-    mutationFn: () =>
-      adminApi.taxonomy.create({ name, ...(parentPath ? { parent_path: parentPath } : {}) }),
-    onSuccess: async () => {
-      setName('');
+    mutationFn: (next: CategoryDraft) => {
+      const parent = all.find((c) => c.id === next.parentId);
+      return adminApi.taxonomy.create({
+        name: next.name,
+        ...(parent ? { parent_path: parent.path } : {}),
+        ...(next.description ? { description: next.description } : {}),
+        inclusion_guidance: splitLines(next.inclusion),
+        exclusion_guidance: splitLines(next.exclusion),
+        aliases: splitCommas(next.aliases),
+      });
+    },
+    onSuccess: async (result) => {
       await refresh();
+      setSelectedId(result.category.id);
+      done(t('taxonomy.created', { name: result.category.name }));
     },
   });
+
   const save = useMutation({
-    mutationFn: (category: CategorySummary) =>
+    mutationFn: (next: CategoryDraft) =>
       adminApi.taxonomy.update({
-        category_id: category.id,
-        name: draft.name,
-        slug: draft.slug,
-        description: draft.description || null,
-        inclusion_guidance: splitLines(draft.inclusion),
-        exclusion_guidance: splitLines(draft.exclusion),
-        aliases: splitCommas(draft.aliases),
+        category_id: (editing as CategorySummary).id,
+        name: next.name,
+        slug: next.slug,
+        description: next.description || null,
+        inclusion_guidance: splitLines(next.inclusion),
+        exclusion_guidance: splitLines(next.exclusion),
+        aliases: splitCommas(next.aliases),
       }),
-    onSuccess: async () => {
-      setSelected(null);
+    onSuccess: async (result) => {
       await refresh();
+      done(t('taxonomy.saved', { name: result.category.name }));
     },
   });
+
   const move = useMutation({
-    mutationFn: ({ category, parentId }: { category: CategorySummary; parentId: string | null }) =>
+    mutationFn: (parentId: string | null) =>
       adminApi.taxonomy.move({
-        category_id: category.id,
+        category_id: (moving as CategorySummary).id,
         new_parent_id: parentId as CategorySummary['parent_id'],
       }),
-    onSuccess: async () => {
-      setSelected(null);
+    onSuccess: async (result) => {
       await refresh();
+      done(t('taxonomy.moved', { path: result.category.path }));
     },
   });
+
+  const merge = useMutation({
+    mutationFn: (intoId: string) =>
+      adminApi.taxonomy.merge({
+        category_id: (merging as CategorySummary).id,
+        into_category_id: intoId as CategorySummary['id'],
+      }),
+    onSuccess: async (result) => {
+      await refresh();
+      setSelectedId(result.category.id);
+      done(t('taxonomy.merged', { name: result.category.name }));
+    },
+  });
+
   const archive = useMutation({
     mutationFn: (category: CategorySummary) => adminApi.taxonomy.archive(category.id),
     onSuccess: async () => {
-      setSelected(null);
       await refresh();
+      done(t('taxonomy.archived'));
     },
   });
   const restore = useMutation({
     mutationFn: (category: CategorySummary) => adminApi.taxonomy.restore(category.id),
     onSuccess: async () => {
-      setSelected(null);
       await refresh();
+      done(t('taxonomy.restored'));
     },
   });
 
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    create.mutate();
+  const openSheet = (category: CategorySummary | null, parent: CategorySummary | null) => {
+    setEditing(category);
+    setDraft(category ? draftOf(category) : { ...emptyDraft, parentId: parent?.id ?? null });
+    setSheetOpen(true);
   };
 
-  const categories = taxonomy.data?.categories ?? [];
-  const parents = categories.filter((c) => c.status === 'active');
+  const select = (category: CategorySummary) => {
+    setSelectedId(category.id);
+    setDetailsOpen(true);
+  };
+
+  const actions = {
+    canManage,
+    onSelect: select,
+    onAddChild: (parent: CategorySummary) => openSheet(null, parent),
+    onEdit: (category: CategorySummary) => openSheet(category, null),
+    onMove: setMoving,
+    onMerge: setMerging,
+    onArchive: (category: CategorySummary) => archive.mutate(category),
+    onRestore: (category: CategorySummary) => restore.mutate(category),
+  };
+
+  const details = selected && (
+    <CategoryDetails
+      category={selected}
+      categories={all}
+      actors={actors.data?.actors ?? []}
+      canManage={canManage}
+      onEdit={() => openSheet(selected, null)}
+      onAddChild={() => openSheet(null, selected)}
+      onNotice={(message, tone) => setNotice({ message, tone })}
+      childCount={all.filter((c) => c.parent_id === selected.id).length}
+    />
+  );
 
   return (
-    <>
-      <Card aria-labelledby="taxonomy-title" className="grid gap-3 p-4 sm:p-6">
-        <CardTitle id="taxonomy-title">{t('taxonomy.title')}</CardTitle>
-        <p>
-          {t('taxonomy.intro')}{' '}
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-1.5">
+          <h2 className="text-2xl font-semibold tracking-tight">{t('taxonomy.title')}</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">{t('taxonomy.intro')}</p>
           {taxonomy.data && (
-            <small>{t('taxonomy.version', { version: taxonomy.data.taxonomy_version })}</small>
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <Badge variant="outline">
+                {t('taxonomy.version', { version: taxonomy.data.taxonomy_version })}
+              </Badge>
+              {lastChange && (
+                <span>
+                  {t('taxonomy.updated', { when: relativeTime(lastChange, i18n.language) })}
+                </span>
+              )}
+            </p>
           )}
-        </p>
-        {taxonomy.isPending && <p role="status">{t('common.loading')}</p>}
-        {taxonomy.isError && <ErrorNotice error={taxonomy.error} />}
-        {categories.length === 0 && taxonomy.isSuccess && <p>{t('taxonomy.empty')}</p>}
-        {/* The indentation is the hierarchy. It is a class rather than an
-            inline style because the interface carries no inline styles, which
-            is what lets the policy keep style-src to 'self'. */}
-        <ul className="grid gap-1">
-          {categories.map((category) => (
-            <li
-              key={category.id}
-              className={cn('flex flex-wrap items-baseline gap-2', INDENT[depthOf(category.path)])}
-            >
-              <Button
-                type="button"
-                variant="link"
-                className="h-auto p-0 text-left"
-                onClick={(event) => {
-                  lastTrigger.current = event.currentTarget;
-                  setSelected(category);
-                  setDraft(draftOf(category));
-                  setConfirmingArchive(false);
-                }}
-              >
-                {category.name}
-              </Button>
-              <code className="text-xs text-muted-foreground">{category.path}</code>
-              {category.status !== 'active' && (
-                <Badge>{t(`taxonomy.statuses.${category.status}`)}</Badge>
-              )}
-              {category.aliases.length > 0 && (
-                <small>
-                  {t('taxonomy.aliases_inline', { aliases: category.aliases.join(', ') })}
-                </small>
-              )}
-            </li>
-          ))}
-        </ul>
-      </Card>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setHistoryOpen(true)}>
+            <History aria-hidden="true" className="size-4" />
+            {t('taxonomy.history')}
+          </Button>
+          {canManage && (
+            <Button type="button" onClick={() => openSheet(null, null)}>
+              <Plus aria-hidden="true" className="size-4" />
+              {t('taxonomy.new_category')}
+            </Button>
+          )}
+        </div>
+      </div>
 
-      {selected && (
-        <Card aria-labelledby="category-detail-title" className="grid gap-3 p-4 sm:p-6">
-          <CardTitle id="category-detail-title" tabIndex={-1} ref={detailHeading}>
-            {selected.name}
-          </CardTitle>
-          {/* The same wrapper the create form uses, so the two cards edit the
-              same fields at the same width. Without it these were as wide as
-              the monitor while the form below was capped. */}
-          <FieldSet>
-            <Field label={t('taxonomy.rename')}>
-              <Input
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                maxLength={120}
-              />
-            </Field>
-            <Field label={t('taxonomy.slug')} hint={t('taxonomy.slug_hint')}>
-              <Input
-                value={draft.slug}
-                onChange={(e) => setDraft({ ...draft, slug: e.target.value })}
-                maxLength={64}
-              />
-            </Field>
-            <Field label={t('taxonomy.description')}>
-              <Textarea
-                rows={3}
-                value={draft.description}
-                onChange={(e) => setDraft({ ...draft, description: e.target.value })}
-                maxLength={2000}
-              />
-            </Field>
-            <Field label={t('taxonomy.inclusion')} hint={t('taxonomy.guidance_hint')}>
-              <Textarea
-                rows={3}
-                value={draft.inclusion}
-                onChange={(e) => setDraft({ ...draft, inclusion: e.target.value })}
-              />
-            </Field>
-            <Field label={t('taxonomy.exclusion')} hint={t('taxonomy.guidance_hint')}>
-              <Textarea
-                rows={3}
-                value={draft.exclusion}
-                onChange={(e) => setDraft({ ...draft, exclusion: e.target.value })}
-              />
-            </Field>
-            <Field label={t('taxonomy.aliases')} hint={t('taxonomy.aliases_hint')}>
-              <Input
-                value={draft.aliases}
-                onChange={(e) => setDraft({ ...draft, aliases: e.target.value })}
-              />
-            </Field>
-            <Field label={t('taxonomy.move_to')} hint={t('taxonomy.parent_hint')}>
-              <Select
-                value={selected.parent_id ?? ''}
-                onChange={(e) =>
-                  move.mutate({ category: selected, parentId: e.target.value || null })
-                }
-                disabled={move.isPending}
-              >
-                <option value="">{t('taxonomy.no_parent')}</option>
-                {categories
-                  // A category cannot move into its own subtree, and the server
-                  // refuses it, so it is not offered.
-                  .filter((c) => c.id !== selected.id && !c.path.startsWith(`${selected.path}/`))
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.path}
-                    </option>
-                  ))}
-              </Select>
-            </Field>
-          </FieldSet>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => save.mutate(selected)} disabled={save.isPending}>
-              {t('taxonomy.save')}
-            </Button>
-            {selected.status === 'archived' ? (
-              <Button
-                type="button"
-                onClick={() => restore.mutate(selected)}
-                disabled={restore.isPending}
-              >
-                {t('taxonomy.restore')}
-              </Button>
-            ) : confirmingArchive ? (
-              <>
-                <span className="self-center text-sm">{t('taxonomy.confirm_archive')}</span>
-                <Button
-                  type="button"
-                  variant="destructive"
-                  onClick={() => archive.mutate(selected)}
-                  disabled={archive.isPending}
-                >
-                  {t('taxonomy.confirm')}
-                </Button>
-                <Button variant="outline" type="button" onClick={() => setConfirmingArchive(false)}>
-                  {t('common.cancel')}
-                </Button>
-              </>
-            ) : (
-              <Button type="button" onClick={() => setConfirmingArchive(true)}>
-                {t('taxonomy.archive')}
-              </Button>
-            )}
-            <Button type="button" onClick={() => setSelected(null)}>
-              {t('common.close')}
-            </Button>
-          </div>
-          <ErrorNotice error={save.error ?? move.error ?? archive.error ?? restore.error} />
-        </Card>
+      {/* Taxonomy proposals are decided in the review inbox, which is where
+          every other proposal is decided. A second place to accept them would
+          be a second copy of the same rules. */}
+      {workspaces.can('knowledge.approve') && (
+        <p className="text-sm text-muted-foreground">
+          {t('taxonomy.proposals_hint')}{' '}
+          <Link to="/review" className="underline underline-offset-4">
+            {t('nav.review')}
+          </Link>
+        </p>
       )}
 
-      <Card aria-labelledby="new-category-title" className="grid gap-3 p-4 sm:p-6">
-        <CardTitle id="new-category-title">{t('taxonomy.new')}</CardTitle>
-        <form onSubmit={submit} className="grid gap-4">
-          <FieldSet disabled={create.isPending}>
-            <Field label={t('taxonomy.name')} hint={t('taxonomy.name_hint')}>
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required
-                maxLength={120}
-              />
-            </Field>
-            <Field label={t('taxonomy.parent')}>
-              <Select value={parentPath} onChange={(e) => setParentPath(e.target.value)}>
-                <option value="">{t('taxonomy.no_parent')}</option>
-                {parents.map((category) => (
-                  <option key={category.id} value={category.path}>
-                    {category.path}
-                  </option>
-                ))}
-              </Select>
-            </Field>
-          </FieldSet>
-          <ErrorNotice error={create.error} />
-          <Button type="submit" disabled={create.isPending} className="justify-self-start">
-            {create.isPending ? t('common.working') : t('taxonomy.create')}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative min-w-0 flex-1 lg:max-w-md">
+          <Search
+            aria-hidden="true"
+            className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label={t('taxonomy.search')}
+            placeholder={t('taxonomy.search')}
+            className="pr-9 pl-9"
+          />
+          {query !== '' && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label={t('taxonomy.search_clear')}
+              className="absolute top-1/2 right-3 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <X aria-hidden="true" className="size-4" />
+            </button>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <Select
+            value={shown}
+            onChange={(e) => setShown(e.target.value as Shown)}
+            aria-label={t('taxonomy.filter_status')}
+            className="sm:w-44"
+          >
+            <option value="active">{t('taxonomy.only_active')}</option>
+            <option value="archived">{t('taxonomy.only_closed')}</option>
+            <option value="all">{t('taxonomy.all_statuses')}</option>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() =>
+              setOpened((current) =>
+                (current ?? defaultOpen).size > 0
+                  ? new Set()
+                  : new Set(categories.map((c) => c.id)),
+              )
+            }
+          >
+            <ListTree aria-hidden="true" className="size-4" />
+            {expanded.size > 0 ? t('taxonomy.collapse_all') : t('taxonomy.expand_all')}
           </Button>
-        </form>
-      </Card>
-    </>
+        </div>
+      </div>
+
+      <ErrorNotice error={taxonomy.isError ? taxonomy.error : undefined} />
+      <ErrorNotice error={archive.error ?? restore.error} />
+      {taxonomy.isPending && <p role="status">{t('common.loading')}</p>}
+
+      {taxonomy.data &&
+        (all.length === 0 ? (
+          <EmptyTaxonomy canManage={canManage} onCreate={() => openSheet(null, null)} />
+        ) : (
+          <div className="grid min-h-[32rem] overflow-hidden rounded-lg border border-border lg:grid-cols-[minmax(0,1fr)_22rem]">
+            <section className="min-w-0 overflow-y-auto">
+              {tree.length === 0 ? (
+                <p className="p-6 text-sm text-muted-foreground">{t('taxonomy.no_matches')}</p>
+              ) : (
+                <CategoryTree
+                  nodes={tree}
+                  selectedId={selectedId}
+                  expanded={expanded}
+                  matched={matched}
+                  visible={query.trim() === '' ? new Set() : visible}
+                  onToggle={(id, open) =>
+                    setOpened((current) => {
+                      const next = new Set(current ?? defaultOpen);
+                      if (open) next.add(id);
+                      else next.delete(id);
+                      return next;
+                    })
+                  }
+                  {...actions}
+                />
+              )}
+            </section>
+            {/* Below the large breakpoint the tree needs the whole width, so
+                the panel becomes a sheet rather than a column squeezed to
+                nothing. */}
+            <aside className="hidden overflow-y-auto border-l border-border lg:block">
+              {details ?? (
+                <p className="p-6 text-sm text-muted-foreground">{t('taxonomy.choose_category')}</p>
+              )}
+            </aside>
+          </div>
+        ))}
+
+      <Sheet open={detailsOpen && selected !== null} onOpenChange={setDetailsOpen}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-md lg:hidden">
+          <SheetHeader className="sr-only">
+            <SheetTitle>{selected?.name ?? t('taxonomy.title')}</SheetTitle>
+          </SheetHeader>
+          {details}
+        </SheetContent>
+      </Sheet>
+
+      <CategorySheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        editing={editing}
+        initial={draft}
+        categories={all}
+        forbiddenParents={editing ? subtreeIds(all, editing) : []}
+        onSubmit={(next) => (editing ? save.mutate(next) : create.mutate(next))}
+        busy={create.isPending || save.isPending}
+        error={editing ? save.error : create.error}
+      />
+      <MoveDialog
+        category={moving}
+        categories={all}
+        onClose={() => setMoving(null)}
+        onConfirm={(parentId) => move.mutate(parentId)}
+        busy={move.isPending}
+        error={move.error}
+      />
+      <MergeDialog
+        category={merging}
+        categories={all}
+        onClose={() => setMerging(null)}
+        onConfirm={(intoId) => merge.mutate(intoId)}
+        busy={merge.isPending}
+        error={merge.error}
+      />
+      <TaxonomyHistory
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        actors={actors.data?.actors ?? []}
+      />
+      <Toast
+        message={notice?.message ?? null}
+        tone={notice?.tone ?? 'status'}
+        onDismiss={() => setNotice(null)}
+      />
+    </div>
+  );
+}
+
+function EmptyTaxonomy({ canManage, onCreate }: { canManage: boolean; onCreate: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid min-h-72 place-items-center gap-4 rounded-lg border border-dashed border-border px-6 py-12 text-center">
+      <span className="grid size-11 place-items-center rounded-lg bg-muted">
+        <ListTree aria-hidden="true" className="size-5 text-muted-foreground" />
+      </span>
+      <div className="grid gap-1">
+        <h3 className="font-medium">{t('taxonomy.empty')}</h3>
+        <p className="mx-auto max-w-sm text-sm text-muted-foreground">{t('taxonomy.empty_hint')}</p>
+      </div>
+      {canManage && (
+        <Button type="button" onClick={onCreate}>
+          <Plus aria-hidden="true" className="size-4" />
+          {t('taxonomy.first_category')}
+        </Button>
+      )}
+    </div>
   );
 }

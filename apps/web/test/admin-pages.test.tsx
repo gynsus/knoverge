@@ -106,6 +106,9 @@ const CATEGORY = {
   updated_at: '2026-09-19T00:00:00.000Z',
   item_count: 0,
   subtree_item_count: 0,
+  created_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  approved_by_actor_id: null,
+  merged_into_category_id: null,
 };
 
 /** Everything an owner holds, which is what these fixtures sign in as. */
@@ -152,6 +155,18 @@ const SIGNED_IN: Record<string, Handler> = {
   // The shell asks what the caller may do before it decides what to show.
   'GET /v1/workspace.get': () =>
     json({ workspace: SIGNED_IN_WORKSPACE, permissions: OWNER_PERMISSIONS }),
+  'GET /v1/actors.list': () =>
+    json({
+      actors: [
+        {
+          id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+          type: 'human',
+          display_name: 'Owner',
+          agent_id: null,
+          disabled: false,
+        },
+      ],
+    }),
 };
 
 function renderApp(path: string) {
@@ -261,7 +276,7 @@ describe('agents page', () => {
 });
 
 describe('taxonomy page', () => {
-  it('shows the tree with its version and adds a category', async () => {
+  it('shows the tree with its version and adds a category through the sheet', async () => {
     const categories = [CATEGORY];
     const calls = mockApi({
       ...SIGNED_IN,
@@ -283,14 +298,55 @@ describe('taxonomy page', () => {
     expect(screen.getByText('version 1')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Name'), 'Career');
-    await user.selectOptions(screen.getByLabelText('Parent'), 'projects');
-    await user.click(screen.getByRole('button', { name: 'Add category' }));
+    // The form is asked for rather than occupying the page: before this there
+    // is nothing on screen but the tree and its toolbar.
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'New category' }));
+    await user.type(await screen.findByLabelText('Name'), 'Career');
+    await user.click(screen.getByRole('button', { name: 'Create category' }));
+
     expect(await screen.findByRole('button', { name: 'Career' })).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/v1/admin/taxonomy.create')?.body).toMatchObject({
       name: 'Career',
-      parent_path: 'projects',
     });
+  });
+
+  it('searches names, paths, aliases and descriptions, and keeps the ancestors', async () => {
+    const parent = {
+      ...CATEGORY,
+      id: 'cat_p',
+      slug: 'projects',
+      path: 'projects',
+      name: 'Projects',
+    };
+    const child = {
+      ...CATEGORY,
+      id: 'cat_c',
+      parent_id: 'cat_p',
+      slug: 'architecture',
+      path: 'projects/architecture',
+      name: 'Architecture',
+      description: 'Authentication and system layout.',
+    };
+    const other = { ...CATEGORY, id: 'cat_o', slug: 'career', path: 'career', name: 'Career' };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 3, categories: [parent, child, other] }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Projects' });
+
+    // A word that appears only in a description, three levels from the root.
+    await user.type(screen.getByLabelText(/Search names/), 'authentication');
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Career' })).not.toBeInTheDocument(),
+    );
+    expect(screen.getByRole('button', { name: 'Architecture' })).toBeInTheDocument();
+    // Its parent stays, or the match would hang from nothing and the tree
+    // would have lost the one thing it is for.
+    expect(screen.getByRole('button', { name: 'Projects' })).toBeInTheDocument();
   });
 });
 
@@ -693,6 +749,9 @@ describe('editing a category', () => {
     updated_at: '2026-09-19T00:00:00.000Z',
     item_count: 0,
     subtree_item_count: 0,
+    created_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    approved_by_actor_id: null,
+    merged_into_category_id: null,
   };
   const CHILD = {
     ...ROOT,
@@ -701,6 +760,13 @@ describe('editing a category', () => {
     slug: 'web',
     path: 'projects/web',
     name: 'Web',
+  };
+  const OTHER = {
+    ...ROOT,
+    id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T5',
+    slug: 'archive',
+    path: 'archive',
+    name: 'Archive',
   };
 
   it('sends every field the contract allows, not only the name', async () => {
@@ -712,8 +778,10 @@ describe('editing a category', () => {
     });
     renderApp('/taxonomy');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Projects' }));
-    await user.type(screen.getByLabelText('Description'), 'Client work');
+    await user.click(await screen.findByRole('button', { name: 'Actions for Projects' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Edit' }));
+
+    await user.type(await screen.findByLabelText('Description'), 'Client work');
     await user.type(screen.getByLabelText('What belongs here'), 'Anything with a client');
     await user.type(screen.getByLabelText('Other names'), 'Clients, Work');
     await user.click(screen.getByRole('button', { name: 'Save' }));
@@ -727,21 +795,57 @@ describe('editing a category', () => {
     );
   });
 
-  it('moves a category to any parent, not only to the top level', async () => {
+  it('says what a move will do before it does it', async () => {
     const calls = mockApi({
       ...SIGNED_IN,
       'GET /v1/taxonomy.list?include_archived=true': () =>
-        json({ taxonomy_version: 1, categories: [ROOT, CHILD] }),
+        json({ taxonomy_version: 1, categories: [ROOT, CHILD, OTHER] }),
       'POST /v1/admin/taxonomy.move': () => json({ taxonomy_version: 2, category: CHILD }),
     });
     renderApp('/taxonomy');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Web' }));
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Move under' }), ROOT.id);
+    await user.click(await screen.findByRole('button', { name: 'Actions for Web' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Move' }));
+
+    // The dialog names the path it is leaving before anything is chosen.
+    expect(await screen.findByText('projects/web')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'New parent' }));
+    await user.click(await screen.findByRole('option', { name: /Archive/ }));
+    // The new path is worked out and shown before anything is sent.
+    expect(await screen.findByText('archive/web')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Move' }));
+
     await waitFor(() =>
       expect(calls.find((c) => c.url === '/v1/admin/taxonomy.move')?.body).toMatchObject({
         category_id: CHILD.id,
-        new_parent_id: ROOT.id,
+        new_parent_id: OTHER.id,
+      }),
+    );
+  });
+
+  it('folds one category into another and says what moves', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 1, categories: [ROOT, CHILD] }),
+      'POST /v1/admin/taxonomy.merge': () => json({ taxonomy_version: 2, category: ROOT }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Actions for Web' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Merge' }));
+
+    await user.click(await screen.findByRole('button', { name: 'Into' }));
+    await user.click(await screen.findByRole('option', { name: /Projects/ }));
+    // The one word on this screen that sounds reversible and is not, so what
+    // happens to the closed name is on screen at the moment of the click.
+    expect(await screen.findByText(/becomes an alias/)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Merge' }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/taxonomy.merge')?.body).toMatchObject({
+        category_id: CHILD.id,
+        into_category_id: ROOT.id,
       }),
     );
   });
@@ -845,13 +949,9 @@ describe('a form leaves room around its button', () => {
   it('separates the submit button from the last field on every form', async () => {
     // The forms written by hand had a gap and the ones migrated mechanically
     // did not, so a button sat against the field above it.
-    mockApi({
-      ...SIGNED_IN,
-      'GET /v1/taxonomy.list?include_archived=true': () =>
-        json({ taxonomy_version: 0, categories: [] }),
-    });
-    renderApp('/taxonomy');
-    const submit = await screen.findByRole('button', { name: 'Add category' });
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
+    renderApp('/workspaces/settings');
+    const submit = await screen.findByRole('button', { name: 'Save' });
     const form = submit.closest('form');
     expect(form?.className).toContain('gap-4');
     // And it is not stretched across the card by the grid it sits in.

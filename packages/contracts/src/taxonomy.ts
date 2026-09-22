@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { CategoryId, WorkspaceId } from './ids.ts';
+import { ActorId, CategoryId, WorkspaceId } from './ids.ts';
 
 export const CategoryStatus = z.enum(['proposed', 'active', 'merged', 'archived', 'rejected']);
 export type CategoryStatus = z.infer<typeof CategoryStatus>;
@@ -46,9 +46,20 @@ export const CategorySummary = z.object({
   item_count: z.number().int().nonnegative(),
   /** Items in this category and its descendants. */
   subtree_item_count: z.number().int().nonnegative(),
+  /** Who made it. An actor id; `actors.list` turns one into a name. */
+  created_by_actor_id: ActorId,
+  /** Who confirmed it, when it arrived as a proposal rather than a decision. */
+  approved_by_actor_id: ActorId.nullable(),
+  /** Where this one went, for a category a merge closed. */
+  merged_into_category_id: CategoryId.nullable(),
 });
 export type CategorySummary = z.infer<typeof CategorySummary>;
 
+/**
+ * `include_archived` means every category, closed ones included: archived,
+ * merged, and anything a review left behind. Without it the answer is the
+ * live tree, which is the only part anything can be filed into.
+ */
 export const TaxonomyListQuery = z.object({
   root_path: CategoryPath.optional(),
   depth: z.coerce.number().int().min(1).max(20).optional(),
@@ -109,6 +120,23 @@ export const MoveCategoryRequest = z.object({
   new_parent_id: CategoryId.nullable(),
 });
 export type MoveCategoryRequest = z.infer<typeof MoveCategoryRequest>;
+
+/**
+ * Folds one category into another.
+ *
+ * Agents propose categories, so a workspace collects near-duplicates —
+ * "Data Sources", "Data Providers", "Datasets" — and deleting one would take
+ * the knowledge filed under it with it. A merge moves everything to the
+ * survivor and leaves the closed category behind as a record, with its old
+ * path kept as an alias so anything that referred to it still resolves.
+ */
+export const MergeCategoryRequest = z.object({
+  /** The category that closes. */
+  category_id: CategoryId,
+  /** The one that survives and takes everything. */
+  into_category_id: CategoryId,
+});
+export type MergeCategoryRequest = z.infer<typeof MergeCategoryRequest>;
 
 export const ArchiveCategoryRequest = z.object({ category_id: CategoryId });
 export type ArchiveCategoryRequest = z.infer<typeof ArchiveCategoryRequest>;

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { DisplayName, Email, Password } from './auth.ts';
-import { LanguageTag, MembershipRole, UserStatus, WorkspaceSlug } from './identity.ts';
+import { ActorType, LanguageTag, MembershipRole, UserStatus, WorkspaceSlug } from './identity.ts';
 import { ItemType } from './knowledge.ts';
 import { PermissionAction } from './policy.ts';
 import { ActorId, UserId, WorkspaceId } from './ids.ts';
@@ -17,6 +17,29 @@ export const WorkspaceSummary = z.object({
   role: MembershipRole.nullable(),
 });
 export type WorkspaceSummary = z.infer<typeof WorkspaceSummary>;
+
+/**
+ * Who acted, for turning an actor id into a name.
+ *
+ * The event ledger and a category's provenance record an actor id and nothing
+ * else, so without this every history line reads `act_01J8Z…`. It carries a
+ * name and a type and no more: the members list and the agents list are
+ * administration and stay behind their permissions, while who has acted in a
+ * workspace is already visible to anybody who can read its events.
+ */
+export const ActorSummary = z.object({
+  id: ActorId,
+  type: ActorType,
+  display_name: z.string(),
+  /** Set when the actor is an agent, so an interface can link to it. */
+  agent_id: z.string().nullable(),
+  /** True once the actor can no longer act. */
+  disabled: z.boolean(),
+});
+export type ActorSummary = z.infer<typeof ActorSummary>;
+
+export const ActorsResponse = z.object({ actors: z.array(ActorSummary) });
+export type ActorsResponse = z.infer<typeof ActorsResponse>;
 
 export const WorkspaceResponse = z.object({
   workspace: WorkspaceSummary,

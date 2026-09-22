@@ -118,6 +118,14 @@ export function createActorRepository(db: Database): ActorRepository {
         .limit(1);
       return rows[0] ? toActor(rows[0]) : null;
     },
+    async listForWorkspace(workspaceId: WorkspaceId) {
+      const rows = await db
+        .select()
+        .from(actors)
+        .where(eq(actors.workspaceId, workspaceId))
+        .orderBy(asc(actors.createdAt));
+      return rows.map(toActor);
+    },
     async findSystemActor(workspaceId: WorkspaceId) {
       const rows = await db
         .select()
