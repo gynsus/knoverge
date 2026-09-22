@@ -127,6 +127,20 @@ async function main(): Promise<void> {
             : 'interrupted changes resolved',
         );
       }
+      // Fills the search index for knowledge recorded before the index
+      // existed, or before a restore that predates it. A feature that ships
+      // an index and leaves it empty for everything already there is a
+      // feature that quietly finds nothing, and an operator has no reason to
+      // suspect it.
+      for (const workspace of await services.repositories.workspaces.list()) {
+        const result = await services.knowledge.reindex(workspace.id, { onlyMissing: true });
+        if (result.indexed > 0 || result.missing > 0) {
+          logger.info(
+            { workspace: workspace.slug, indexed: result.indexed, missing: result.missing },
+            'search index filled for knowledge it did not hold',
+          );
+        }
+      }
       await jobs?.start();
     },
     { logger, name: 'database bootstrap', signal: stopping.signal },

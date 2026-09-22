@@ -1,7 +1,7 @@
 import type { EventFeedOptions } from '@knoverge/core';
 import type { EventId, WorkspaceId } from '@knoverge/contracts';
 import type { EventRecord, EventRepository, LedgerHead, Tx } from '@knoverge/core';
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
 
 import { LOCK_LEDGER } from '../locks.ts';
 
@@ -58,6 +58,8 @@ export function createEventRepository(db: Database): EventRepository {
         where.push(inArray(events.eventType, [...options.eventTypes]));
       }
       if (options.actorId) where.push(eq(events.actorId, options.actorId));
+      if (options.since) where.push(gte(events.createdAt, options.since));
+      if (options.until) where.push(lte(events.createdAt, options.until));
       if (options.categoryIds?.length) {
         // The snapshot the event carries, so scope is answered without
         // joining current state (ADR 0010): an item that has since moved is
@@ -72,7 +74,7 @@ export function createEventRepository(db: Database): EventRepository {
         .select()
         .from(events)
         .where(and(...where))
-        .orderBy(asc(events.sequence))
+        .orderBy(options.newestFirst ? desc(events.sequence) : asc(events.sequence))
         .limit(options.limit);
       return rows.map(toRecord);
     },

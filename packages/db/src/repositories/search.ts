@@ -74,6 +74,14 @@ export function createSearchRepository(db: Database): SearchRepository {
       return rows[0]?.total ?? 0;
     },
 
+    async indexedIds(workspaceId) {
+      const rows = await db
+        .select({ id: searchDocuments.knowledgeItemId })
+        .from(searchDocuments)
+        .where(eq(searchDocuments.workspaceId, workspaceId));
+      return new Set(rows.map((row) => row.id));
+    },
+
     async bodiesFor(workspaceId, itemIds) {
       const result = new Map<KnowledgeItemId, string>();
       if (itemIds.length === 0) return result;

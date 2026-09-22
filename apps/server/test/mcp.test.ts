@@ -736,3 +736,83 @@ describe('reading one item', () => {
     }
   });
 });
+
+describe('answers that must not depend on where a page falls', () => {
+  it('briefs on the right items, not the oldest ones', async () => {
+    // Twelve instructions, so the ones that matter are not the first written.
+    for (let i = 0; i < 12; i += 1) {
+      expect(
+        (
+          await admin.post('/v1/admin/knowledge.create', {
+            title: `Standing instruction ${i}`,
+            body: `Do the thing, variant ${i}.`,
+            type: 'instruction',
+          })
+        ).statusCode,
+      ).toBe(200);
+    }
+    const newest = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'The newest instruction of all',
+        body: 'Written last, and the one a session should start from.',
+        type: 'instruction',
+      })
+    ).json() as { item: { id: string } };
+
+    const client = await connect(agentToken);
+    try {
+      const briefing = KnowledgeBriefingResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_briefing',
+            arguments: { types: ['instruction'], include_recent: true },
+          })
+        ).structuredContent,
+      );
+      const instructions = briefing.sections.find((s) => s.kind === 'instructions');
+      // The briefing asks for instructions rather than for a page of
+      // everything, so the newest one is in it whatever else the workspace
+      // holds by now.
+      expect(instructions?.items.map((i) => i.item_id)).toContain(newest.item.id);
+      expect(
+        briefing.sections.find((s) => s.kind === 'recent')?.items.map((i) => i.item_id),
+      ).toContain(newest.item.id);
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('digests the period asked for, not the oldest events on record', async () => {
+    const marker = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'Something that happened just now',
+        body: 'The digest is about this.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string } };
+
+    const digest = ActivityDigestResponse.parse(
+      (
+        await admin.post('/v1/activity_digest', {
+          since: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        })
+      ).json(),
+    );
+    // The ledger is long by now; a digest that read its first page would say
+    // nothing happened in the last five minutes.
+    expect(digest.changed_items.map((i) => i.item_id)).toContain(marker.item.id);
+
+    const ancient = ActivityDigestResponse.parse(
+      (
+        await admin.post('/v1/activity_digest', {
+          since: '2020-01-01T00:00:00.000Z',
+          until: '2020-01-02T00:00:00.000Z',
+        })
+      ).json(),
+    );
+    // And a period nothing happened in is empty rather than full of the
+    // oldest events in the workspace.
+    expect(ancient.counts).toEqual([]);
+    expect(ancient.changed_items).toEqual([]);
+  });
+});

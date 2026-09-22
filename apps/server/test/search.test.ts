@@ -260,3 +260,37 @@ describe('searching knowledge', () => {
     expect(results).toEqual([]);
   });
 });
+
+describe('an index that was not there when the knowledge was written', () => {
+  it('is filled for what it does not hold, without touching what it does', async () => {
+    const item = await create({
+      title: 'Written before the index',
+      body: 'Nothing indexed this at the time.',
+      type: 'fact',
+    });
+    // The state an upgrade leaves behind: the item exists and the projection
+    // does not. Search answers nothing, and nothing says why.
+    await services.uow.run((tx) => services.repositories.search.remove(tx, item.id as never));
+    expect(
+      KnowledgeSearchResponse.parse((await search({ query: 'indexed this' })).json()).results,
+    ).toHaveLength(0);
+
+    const before = await services.repositories.search.countFor(
+      (await services.repositories.workspaces.findBySlug('personal'))!.id,
+    );
+    const result = await services.knowledge.reindex(
+      (await services.repositories.workspaces.findBySlug('personal'))!.id,
+      { onlyMissing: true },
+    );
+    // Only the gap, not the whole workspace.
+    expect(result.indexed).toBe(1);
+    expect(
+      await services.repositories.search.countFor(
+        (await services.repositories.workspaces.findBySlug('personal'))!.id,
+      ),
+    ).toBe(before + 1);
+    expect(
+      KnowledgeSearchResponse.parse((await search({ query: 'indexed this' })).json()).results,
+    ).toHaveLength(1);
+  });
+});

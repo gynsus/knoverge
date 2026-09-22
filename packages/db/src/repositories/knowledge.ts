@@ -101,22 +101,34 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
     async list(workspaceId: WorkspaceId, options: ListItemsOptions = {}) {
       const where = [eq(knowledgeItems.workspaceId, workspaceId)];
       if (options.status) where.push(eq(knowledgeItems.status, options.status));
+      if (options.types?.length) where.push(inArray(knowledgeItems.type, [...options.types]));
+      if (options.disputed !== undefined) {
+        where.push(eq(knowledgeItems.disputed, options.disputed));
+      }
+      if (options.updatedAfter) where.push(gt(knowledgeItems.updatedAt, options.updatedAfter));
       // Ids are ULIDs, so ordering by id is ordering by creation time and the
       // cursor is the last id of the previous page.
       if (options.after) where.push(gt(knowledgeItems.id, options.after));
-      if (options.categoryId) {
+      const categoryIds = options.categoryIds?.length
+        ? [...options.categoryIds]
+        : options.categoryId
+          ? [options.categoryId]
+          : [];
+      if (categoryIds.length > 0) {
         const ids = db
           .select({ id: knowledgeItemCategories.knowledgeItemId })
           .from(knowledgeItemCategories)
-          .where(eq(knowledgeItemCategories.categoryId, options.categoryId));
+          .where(inArray(knowledgeItemCategories.categoryId, categoryIds));
         where.push(inArray(knowledgeItems.id, ids));
       }
       const rows = await db
         .select()
         .from(knowledgeItems)
         .where(and(...where))
-        .orderBy(asc(knowledgeItems.id))
-        .limit(Math.min(options.limit ?? 50, 200));
+        .orderBy(
+          options.orderBy === 'updated' ? desc(knowledgeItems.updatedAt) : asc(knowledgeItems.id),
+        )
+        .limit(Math.min(options.limit ?? 50, 500));
       return rows.map(toItem);
     },
     async slugsInDirectory(workspaceId, directory, tx) {
