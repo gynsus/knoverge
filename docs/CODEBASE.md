@@ -96,10 +96,18 @@ Schema changes are made in `packages/db/src/schema`, then `pnpm --filter @knover
 A person can belong to several workspaces, and the server refuses a request
 that names none of them. `apps/web/src/auth/use-workspace.ts` holds the choice,
 sends it as `X-Knoverge-Workspace` on every request, and remembers it per
-browser. The picker sits in the sidebar header and appears only when there is
-more than one. Choosing another workspace clears every cached query but the
-authentication one: the page keys are not scoped by workspace, so without that
-the previous workspace's rows would stay on screen under the new one's name.
+browser. The switcher sits at the top of the sidebar and is shown whatever the
+number of workspaces: a control that appears the day a second one exists is a
+control nobody finds, and it is also the answer to "where am I", which somebody
+returning to a tab asks more often than "take me elsewhere". Choosing another
+workspace clears every cached query but the authentication one: the page keys
+are not scoped by workspace, so without that the previous workspace's rows would
+stay on screen under the new one's name.
+
+`apps/web/src/pages/WorkspacesPage.tsx` lists them with what each holds, and
+`/workspaces/settings` holds the settings of the one currently selected. The old
+singular addresses redirect, because a rename should not turn somebody's open
+tab into a blank page.
 
 The same hook reports what the caller may do, which `/v1/workspace.get` returns
 as `permissions`. Navigation entries and mutation controls are shown from that,
@@ -193,6 +201,29 @@ nobody read, which is the one thing a review is for. A reviewer who edits the
 text before approving sends it as `edits`, and the proposal records
 `approved_with_edits`, so the trail never claims the proposer wrote words they
 never saw.
+
+## Working with the taxonomy in the browser
+
+`apps/web/src/pages/TaxonomyPage.tsx` is a tree beside a panel, not a list with
+a form under it. A category here is not a folder: it carries guidance that tells
+an agent what belongs in it, aliases that let it be found under another name,
+counts, and a record of who made it. None of that fits on a row, so the tree
+keeps the shape and `components/taxonomy/CategoryDetails.tsx` holds the
+category. Below the large breakpoint the panel becomes a sheet.
+
+Search covers names, paths, aliases and descriptions, and a match keeps its
+ancestors — `lib/taxonomy-tree.ts` works that out — or a match three levels down
+would hang from nothing and the tree would have lost the one thing it is for.
+
+Creating and editing happen in a sheet rather than a permanent form, and moving
+and merging in dialogs that say what will happen before it does. Moving is
+deliberately not drag and drop: it rewrites the repository's directory layout
+and the scope of every permission written against those categories, and a
+gesture that can be made by accident is the wrong way to ask for that. Archive
+is offered where delete would be, because a category holds knowledge.
+
+Taxonomy proposals stay in the review inbox, where every other proposal is
+decided; the page links to it rather than growing a second copy of the rules.
 
 ## The taxonomy is the first thing in the repository
 

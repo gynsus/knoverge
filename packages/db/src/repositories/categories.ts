@@ -9,7 +9,7 @@ import type {
   TaxonomyVersionRepository,
   Tx,
 } from '@knoverge/core';
-import { and, asc, desc, eq, max, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, max, or, sql } from 'drizzle-orm';
 
 import { DomainError } from '@knoverge/core';
 
@@ -80,9 +80,14 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       return rows[0] ? toCategory(rows[0]) : null;
     },
     async list(workspaceId: WorkspaceId, options = {}) {
+      // Active only by default, rather than everything-but-archived. A merged
+      // category is as closed as an archived one: it holds nothing and
+      // refuses to be written to, so listing it beside the live ones invites
+      // an agent to file knowledge into a name that will answer
+      // CATEGORY_CONFLICT. The same goes for a proposed or rejected one.
       const where = options.includeArchived
         ? eq(categories.workspaceId, workspaceId)
-        : and(eq(categories.workspaceId, workspaceId), ne(categories.status, 'archived'));
+        : and(eq(categories.workspaceId, workspaceId), eq(categories.status, 'active'));
       const rows = await db.select().from(categories).where(where).orderBy(asc(categories.path));
       return rows.map(toCategory);
     },
