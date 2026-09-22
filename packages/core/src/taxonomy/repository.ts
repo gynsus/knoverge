@@ -31,6 +31,7 @@ export type CategoryPatch = Partial<
     | 'exclusionGuidance'
     | 'status'
     | 'parentId'
+    | 'mergedIntoCategoryId'
     | 'updatedAt'
   >
 >;
@@ -84,6 +85,37 @@ export interface CategoryRepository {
     newPath: string,
     at: Date,
   ): Promise<CategoryId[]>;
+  /**
+   * How many knowledge items each category holds, directly and with its
+   * descendants.
+   *
+   * The subtree number counts an item once however many categories in the
+   * branch it is filed under, which is what somebody reading "134 items" takes
+   * it to mean.
+   */
+  itemCounts(workspaceId: WorkspaceId): Promise<Map<CategoryId, CategoryItemCounts>>;
+  /** Hands every direct child of one category to another. Returns the ids moved. */
+  reparentChildren(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    fromParentId: CategoryId,
+    toParentId: CategoryId,
+    at: Date,
+  ): Promise<CategoryId[]>;
+  /**
+   * Re-points every knowledge item filed under one category to another, and
+   * answers with how many items moved.
+   *
+   * The table belongs to knowledge rather than to the taxonomy, but the
+   * operation is keyed entirely by category and is part of what a merge means;
+   * reaching it through a knowledge repository would give the taxonomy service
+   * a dependency on knowledge for one statement.
+   *
+   * An item already filed under both keeps one row. It inherits the closed
+   * category's primacy if it had it, because primacy says where an item
+   * belongs first and losing it would silently refile the item.
+   */
+  recategoriseItems(tx: Tx, fromCategoryId: CategoryId, toCategoryId: CategoryId): Promise<number>;
   /** Sets the status of a subtree in one statement. Returns the ids it changed. */
   /** Moves every category in the subtree that currently holds `from` to `to`. */
   setSubtreeStatus(
@@ -102,6 +134,17 @@ export interface AliasRecord {
   alias: string;
   normalisedAlias: string;
   createdAt: Date;
+}
+
+export interface CategoryItemCounts {
+  direct: number;
+  subtree: number;
+}
+
+/** What a merge moved, for the event that records it. */
+export interface MergeCounts {
+  items: number;
+  categories: number;
 }
 
 export interface AliasRepository {

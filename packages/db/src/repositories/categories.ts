@@ -2,6 +2,7 @@ import type { ActorId, CategoryId, WorkspaceId } from '@knoverge/contracts';
 import type {
   AliasRecord,
   AliasRepository,
+  CategoryItemCounts,
   CategoryPatch,
   CategoryRecord,
   CategoryRepository,
@@ -15,6 +16,7 @@ import { DomainError } from '@knoverge/core';
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
 import { categories, categoryAliases, taxonomyVersions } from '../schema/categories.ts';
+import { knowledgeItemCategories } from '../schema/knowledge.ts';
 import { asTx } from '../unit-of-work.ts';
 
 function toCategory(row: typeof categories.$inferSelect): CategoryRecord {
@@ -118,6 +120,88 @@ export function createCategoryRepository(db: Database): CategoryRepository {
         )
         .returning({ id: categories.id });
       return rows.map((r) => r.id as CategoryId);
+    },
+    async itemCounts(workspaceId: WorkspaceId) {
+      // One statement for the whole workspace. A count per category would be
+      // a query per row of the tree, and the tree is what asks for them.
+      //
+      // The descendant join is on the path prefix rather than on a recursive
+      // walk of parent ids: the path already is the branch, and the unique
+      // index on it is what keeps the two in step.
+      const rows = await db.execute<{
+        id: string;
+        direct: string | number;
+        subtree: string | number;
+      }>(sql`
+        select
+          c.id as id,
+          count(distinct kic_direct.knowledge_item_id) as direct,
+          count(distinct kic_subtree.knowledge_item_id) as subtree
+        from ${categories} as c
+        left join ${categories} as d
+          on d.workspace_id = c.workspace_id
+          and (d.path = c.path or d.path like c.path || '/%')
+        left join ${knowledgeItemCategories} as kic_subtree
+          on kic_subtree.category_id = d.id
+        left join ${knowledgeItemCategories} as kic_direct
+          on kic_direct.category_id = c.id
+        where c.workspace_id = ${workspaceId}
+        group by c.id
+      `);
+      const counts = new Map<CategoryId, CategoryItemCounts>();
+      for (const row of rows.rows ?? []) {
+        counts.set(row.id as CategoryId, {
+          direct: Number(row.direct),
+          subtree: Number(row.subtree),
+        });
+      }
+      return counts;
+    },
+    async reparentChildren(
+      tx: Tx,
+      workspaceId: WorkspaceId,
+      fromParentId: CategoryId,
+      toParentId: CategoryId,
+      at: Date,
+    ) {
+      const rows = await asTx(tx)
+        .update(categories)
+        .set({ parentId: toParentId, updatedAt: at })
+        .where(and(eq(categories.workspaceId, workspaceId), eq(categories.parentId, fromParentId)))
+        .returning({ id: categories.id });
+      return rows.map((r) => r.id as CategoryId);
+    },
+    async recategoriseItems(tx: Tx, fromCategoryId: CategoryId, toCategoryId: CategoryId) {
+      const db = asTx(tx);
+      // Primacy first, while both rows still exist: an item in both categories
+      // that was filed primarily under the closed one stays primary under the
+      // survivor.
+      await db.execute(sql`
+        update ${knowledgeItemCategories} as t
+        set is_primary = true
+        from ${knowledgeItemCategories} as s
+        where s.category_id = ${fromCategoryId}
+          and s.knowledge_item_id = t.knowledge_item_id
+          and t.category_id = ${toCategoryId}
+          and s.is_primary
+          and not t.is_primary
+      `);
+      // Then the rows that would collide, since (item, category) is the key.
+      await db.execute(sql`
+        delete from ${knowledgeItemCategories} as s
+        where s.category_id = ${fromCategoryId}
+          and exists (
+            select 1 from ${knowledgeItemCategories} as t
+            where t.knowledge_item_id = s.knowledge_item_id
+              and t.category_id = ${toCategoryId}
+          )
+      `);
+      const moved = await db
+        .update(knowledgeItemCategories)
+        .set({ categoryId: toCategoryId })
+        .where(eq(knowledgeItemCategories.categoryId, fromCategoryId))
+        .returning({ id: knowledgeItemCategories.knowledgeItemId });
+      return moved.length;
     },
     async rewriteDescendantPaths(
       tx: Tx,

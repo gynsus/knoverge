@@ -4,6 +4,7 @@ import {
   AddMemberRequest,
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
+  ActorsResponse,
   WorkspacesResponse,
   type ActorId,
   type WorkspaceId,
@@ -123,6 +124,30 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
       };
     },
   );
+
+  /**
+   * Who has acted in this workspace, by id.
+   *
+   * Events and a category's provenance record an actor id and nothing else, so
+   * without this every history line and every "created by" reads as
+   * `act_01J8Z…`. Any member may read it: the names are already attached to
+   * the events those members can read, and the lists this does not touch —
+   * members with their addresses, agents with their tiers and credentials —
+   * stay behind workspace.admin and agent.manage.
+   */
+  r.get('/v1/actors.list', { schema: { response: { 200: ActorsResponse } } }, async (request) => {
+    const actor = await resolveWorkspaceActor(services, request);
+    const actors = await services.repositories.actors.listForWorkspace(actor.context.workspaceId);
+    return {
+      actors: actors.map((a) => ({
+        id: a.id,
+        type: a.type,
+        display_name: a.displayName,
+        agent_id: a.agentId,
+        disabled: a.disabledAt !== null,
+      })),
+    };
+  });
 
   /**
    * The workspaces this person belongs to.
