@@ -30,4 +30,6 @@ export interface EventRepository {
   listAfter(workspaceId: WorkspaceId, afterSequence: number, limit: number): Promise<EventRecord[]>;
   /** The same, narrowed. Ascending by sequence, which is the cursor. */
   listFeed(workspaceId: WorkspaceId, options: EventFeedOptions): Promise<EventRecord[]>;
+  /** Where both cursors are now, or 0 for a workspace nothing has happened in. */
+  latestSequence(workspaceId: WorkspaceId): Promise<number>;
 }

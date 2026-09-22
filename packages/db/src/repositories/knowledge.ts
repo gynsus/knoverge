@@ -17,7 +17,7 @@ import type {
   Tx,
 } from '@knoverge/core';
 import { newId } from '@knoverge/core';
-import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
@@ -201,6 +201,14 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
         result.set(id, [...(result.get(id) ?? []), row.name]);
       }
       return result;
+    },
+
+    async countFor(workspaceId) {
+      const rows = await db
+        .select({ total: count() })
+        .from(knowledgeItems)
+        .where(eq(knowledgeItems.workspaceId, workspaceId));
+      return rows[0]?.total ?? 0;
     },
 
     async titlesOf(workspaceId, itemIds) {

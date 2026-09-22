@@ -7,8 +7,10 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import {
   EventsListResponse,
   KnowledgeChangesResponse,
+  KnowledgeIndexResponse,
   ProposalResult,
   TOOLS,
+  WorkspaceManifest,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
@@ -409,6 +411,71 @@ describe('the change feed', () => {
       expect(mine[2]!.category_paths_before).toEqual(['archive']);
       expect(mine[2]!.category_paths_after).toEqual([]);
       expect(feed.taxonomy_version).toBeGreaterThan(0);
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+describe('the first calls a client makes', () => {
+  it('describes the workspace and what this caller may do in it', async () => {
+    const client = await connect(agentToken);
+    try {
+      const result = await client.callTool({ name: 'workspace_manifest', arguments: {} });
+      const manifest = WorkspaceManifest.parse(result.structuredContent);
+      expect(manifest.workspace.name).toBe('Personal');
+      expect(manifest.server.name).toBe('knoverge');
+      expect(manifest.knowledge_types).toContain('decision');
+      expect(manifest.stats.items).toBeGreaterThan(0);
+      // An agent of the propose tier: it may read and propose, and rule 14
+      // means it may not write directly without a rule that says so.
+      expect(manifest.capabilities).toMatchObject({
+        can_read: true,
+        can_propose: true,
+        can_write_direct: false,
+        can_approve: false,
+      });
+      expect(manifest.change_sequence).toBeGreaterThan(0);
+      expect(manifest.event_sequence).toBe(manifest.change_sequence);
+    } finally {
+      await client.close();
+    }
+
+    // The owner sees the same workspace and a different set of capabilities.
+    const owner = WorkspaceManifest.parse((await admin.post('/v1/workspace_manifest', {})).json());
+    expect(owner.capabilities).toMatchObject({
+      can_write_direct: true,
+      can_approve: true,
+      can_manage_taxonomy: true,
+    });
+  });
+
+  it('indexes what the workspace holds, a page at a time', async () => {
+    const client = await connect(agentToken);
+    try {
+      const first = KnowledgeIndexResponse.parse(
+        (await client.callTool({ name: 'knowledge_index', arguments: { limit: 1 } }))
+          .structuredContent,
+      );
+      expect(first.records).toHaveLength(1);
+      expect(first.has_more).toBe(true);
+      const record = first.records[0]!;
+      // Enough to match against: what it is, where it is, and what it is at.
+      expect(record.content_hash).toMatch(/^sha256:/);
+      expect(record.abstract.length).toBeGreaterThan(0);
+      expect(record.abstract.length).toBeLessThanOrEqual(281);
+
+      const second = KnowledgeIndexResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_index',
+            arguments: { limit: 1, cursor: first.next_cursor },
+          })
+        ).structuredContent,
+      );
+      // The cursor is the item id, which sorts in creation order, so the page
+      // after it does not repeat what came before.
+      expect(second.records[0]?.item_id).not.toBe(record.item_id);
     } finally {
       await client.close();
     }

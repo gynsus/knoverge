@@ -76,5 +76,14 @@ export function createEventRepository(db: Database): EventRepository {
         .limit(options.limit);
       return rows.map(toRecord);
     },
+    async latestSequence(workspaceId: WorkspaceId) {
+      const rows = await db
+        .select({ sequence: events.sequence })
+        .from(events)
+        .where(eq(events.workspaceId, workspaceId))
+        .orderBy(desc(events.sequence))
+        .limit(1);
+      return rows[0]?.sequence ?? 0;
+    },
   };
 }

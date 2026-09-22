@@ -152,6 +152,9 @@ export interface KnowledgeRepository {
     itemIds: readonly KnowledgeItemId[],
   ): Promise<Map<KnowledgeItemId, string>>;
 
+  /** How many items the workspace holds, for a manifest. */
+  countFor(workspaceId: WorkspaceId): Promise<number>;
+
   /** The item already recorded under this external identity, if any. */
   findByExternal(
     workspaceId: WorkspaceId,

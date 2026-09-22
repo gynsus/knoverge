@@ -40,6 +40,10 @@ class MemoryEvents implements EventRepository {
       .slice(0, limit);
   }
 
+  async latestSequence(workspaceId: WorkspaceId) {
+    return this.forWorkspace(workspaceId).at(-1)?.sequence ?? 0;
+  }
+
   async listFeed(workspaceId: WorkspaceId, options: EventFeedOptions) {
     return this.forWorkspace(workspaceId)
       .filter((r) => r.sequence > options.afterSequence)

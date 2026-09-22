@@ -6,6 +6,8 @@ import {
   KnowledgeChangesResponse,
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
+  KnowledgeIndexInput,
+  KnowledgeIndexResponse,
   KnowledgeGetInput,
   KnowledgeHistoryInput,
   KnowledgeResponse,
@@ -28,6 +30,7 @@ import {
   WithdrawProposalRequest,
 } from './proposals.ts';
 import { TaxonomyListInput, TaxonomyListResponse } from './taxonomy.ts';
+import { WorkspaceManifest, WorkspaceManifestInput } from './workspaces.ts';
 
 /**
  * A tool name, which is also its HTTP path.
@@ -37,6 +40,7 @@ import { TaxonomyListInput, TaxonomyListResponse } from './taxonomy.ts';
  * uses keeps its `GET` alongside, over the same handler (ADR 0011).
  */
 export const ToolName = z.enum([
+  'workspace_manifest',
   'taxonomy_list',
   'knowledge_search',
   'knowledge_get',
@@ -51,6 +55,7 @@ export const ToolName = z.enum([
   'proposal_approve',
   'proposal_reject',
   'proposal_withdraw',
+  'knowledge_index',
   'knowledge_changes',
   'events_list',
 ]);
@@ -80,6 +85,14 @@ export interface ToolContract {
  * and are not offered to agents (ADR 0011).
  */
 export const TOOLS: readonly ToolContract[] = [
+  {
+    name: 'workspace_manifest',
+    description:
+      'What this workspace is, where its cursors are, what you may do in it and how much is in it. Call this first when you have no context for a workspace: everything else follows from it.',
+    input: WorkspaceManifestInput,
+    output: WorkspaceManifest,
+    readOnly: true,
+  },
   {
     name: 'taxonomy_list',
     description:
@@ -189,6 +202,14 @@ export const TOOLS: readonly ToolContract[] = [
     input: WithdrawProposalRequest,
     output: ProposalResult,
     readOnly: false,
+  },
+  {
+    name: 'knowledge_index',
+    description:
+      'Compact records of what the workspace holds, a page at a time. Read this before proposing anything, to find out what is already known; the abstracts are short on purpose, so fetch an item with knowledge_get when you need its text.',
+    input: KnowledgeIndexInput,
+    output: KnowledgeIndexResponse,
+    readOnly: true,
   },
   {
     name: 'knowledge_changes',

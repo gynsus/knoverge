@@ -74,6 +74,22 @@ export function createSearchRepository(db: Database): SearchRepository {
       return rows[0]?.total ?? 0;
     },
 
+    async bodiesFor(workspaceId, itemIds) {
+      const result = new Map<KnowledgeItemId, string>();
+      if (itemIds.length === 0) return result;
+      const rows = await db
+        .select({ id: searchDocuments.knowledgeItemId, body: searchDocuments.body })
+        .from(searchDocuments)
+        .where(
+          and(
+            eq(searchDocuments.workspaceId, workspaceId),
+            inArray(searchDocuments.knowledgeItemId, [...itemIds]),
+          ),
+        );
+      for (const row of rows) result.set(row.id as KnowledgeItemId, row.body);
+      return result;
+    },
+
     async search(query: SearchQuery): Promise<SearchHit[]> {
       const text = query.text.trim();
       if (text === '') return [];
