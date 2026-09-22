@@ -4,6 +4,7 @@ import {
   AddMemberRequest,
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
+  WorkspacesResponse,
   type ActorId,
   type WorkspaceId,
   MembersResponse,
@@ -119,6 +120,53 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           role: actor.role ?? null,
         },
         permissions: await services.authorization.heldActions(actor.context, actor.standing),
+      };
+    },
+  );
+
+  /**
+   * The workspaces this person belongs to.
+   *
+   * Not scoped to the current workspace — it is the list you choose one from,
+   * so scoping it to a choice already made would be circular. A person sees
+   * their own memberships and nothing else, which is why it needs no
+   * permission beyond a session: membership is the permission.
+   */
+  r.get(
+    '/v1/workspaces.list',
+    { schema: { response: { 200: WorkspacesResponse } } },
+    async (request) => {
+      const human = request.humanAuth;
+      // An agent is bound to one workspace and has no view across them.
+      if (!human) throw new DomainError('UNAUTHENTICATED', 'sign in required');
+
+      const memberships = await services.repositories.memberships.listForUser(human.user.id);
+      const stats = await services.repositories.workspaces.statsFor(
+        memberships.map((m) => m.workspaceId),
+      );
+      const records = await Promise.all(
+        memberships.map((m) => services.repositories.workspaces.findById(m.workspaceId)),
+      );
+      return {
+        workspaces: memberships.flatMap((membership, index) => {
+          const workspace = records[index];
+          if (!workspace) return [];
+          const counts = stats.get(membership.workspaceId);
+          return [
+            {
+              id: workspace.id,
+              slug: workspace.slug,
+              name: workspace.name,
+              description: workspace.description,
+              default_language: workspace.defaultLanguage,
+              created_at: workspace.createdAt.toISOString(),
+              role: membership.role,
+              item_count: counts?.items ?? 0,
+              agent_count: counts?.agents ?? 0,
+              last_activity_at: counts?.lastActivityAt?.toISOString() ?? null,
+            },
+          ];
+        }),
       };
     },
   );

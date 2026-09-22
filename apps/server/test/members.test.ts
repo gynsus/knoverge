@@ -10,6 +10,7 @@ import {
   MeResponse,
   MembersResponse,
   WorkspaceResponse,
+  WorkspacesResponse,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
@@ -339,6 +340,41 @@ describe('creating a workspace', () => {
     expect(events[0]?.metadata).toHaveProperty('created_by_actor_id');
     expect(events[0]?.metadata).toHaveProperty('created_by_workspace_id');
     expect((await services.ledger.verify(created.id)).ok).toBe(true);
+  });
+
+  it('lists the workspaces somebody belongs to, with what is in them', async () => {
+    const builder = await new Browser().signIn(BUILDER.email, BUILDER.password);
+    const res = await builder.get('/v1/workspaces.list');
+    expect(res.statusCode, res.body).toBe(200);
+    const listed = WorkspacesResponse.parse(res.json()).workspaces;
+
+    // Their own memberships and nothing else. A workspace they do not belong
+    // to is not theirs to know about.
+    expect(listed.map((w) => w.slug).sort()).toEqual(['personal', 'second']);
+    const second = listed.find((w) => w.slug === 'second')!;
+    expect(second).toMatchObject({
+      name: 'Second Workspace',
+      role: 'owner',
+      item_count: 0,
+      agent_count: 0,
+    });
+    // A workspace that has only just been created still has a ledger, so it
+    // has an activity time; a null here would mean nothing was recorded.
+    expect(second.last_activity_at).not.toBeNull();
+
+    // The counts are grouped in one query across every workspace, so the risk
+    // is a count landing against the wrong one. An agent in the first
+    // workspace must show there and nowhere else.
+    const agent = await owner.post('/v1/admin/agents.create', { name: 'counted-agent' });
+    expect(agent.statusCode, agent.body).toBe(200);
+    const after = WorkspacesResponse.parse(
+      (await builder.get('/v1/workspaces.list')).json(),
+    ).workspaces;
+    expect(after.find((w) => w.slug === 'personal')?.agent_count).toBe(1);
+    expect(after.find((w) => w.slug === 'second')?.agent_count).toBe(0);
+
+    // It is a person's view of their own memberships, so it needs a session.
+    expect((await new Browser().get('/v1/workspaces.list')).statusCode).toBe(401);
   });
 
   it('refuses a slug that is already taken', async () => {
