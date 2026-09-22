@@ -20,6 +20,9 @@ export const users = pgTable(
     passwordChangedAt: timestampTz('password_changed_at').notNull(),
     createdAt: timestampTz('created_at').notNull(),
     lastLoginAt: timestampTz('last_login_at'),
+    /** Which terms this person accepted, and when. Null for one never asked. */
+    termsVersion: varchar('terms_version', { length: 32 }),
+    termsAcceptedAt: timestampTz('terms_accepted_at'),
   },
   (t) => [uniqueIndex('users_email_lower_idx').on(sql`lower(${t.email})`)],
 );

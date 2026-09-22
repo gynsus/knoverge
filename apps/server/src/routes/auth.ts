@@ -113,6 +113,7 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
           email: body.email,
           password: body.password,
           displayName: body.display_name,
+          acceptedTermsVersion: body.accepted_terms_version,
           locale: body.locale,
         },
         workspace: body.workspace,

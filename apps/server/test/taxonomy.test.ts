@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { CategoryResponse, TaxonomyListResponse } from '@knoverge/contracts';
+import { TERMS_VERSION, CategoryResponse, TaxonomyListResponse } from '@knoverge/contracts';
 import { MAX_CATEGORY_DEPTH, parseLedgerKey, slugify } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -83,6 +83,7 @@ beforeAll(async () => {
     ...OWNER,
     display_name: 'Owner',
     workspace: { slug: 'personal', name: 'Personal' },
+    accepted_terms_version: TERMS_VERSION,
   });
   expect(res.statusCode, res.body).toBe(200);
 });

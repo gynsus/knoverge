@@ -51,11 +51,13 @@
   },
   "common": {
     "actions": "Actions",
+    "back": "Back",
     "cancel": "Cancel",
     "close": "Close",
     "dismiss": "Dismiss",
     "load_more": "Show more",
     "loading": "Loading...",
+    "next": "Next",
     "working": "Working..."
   },
   "errors": {
@@ -284,11 +286,20 @@
     "your_password": "Your password"
   },
   "setup": {
-    "title": "Set up Knoverge",
-    "intro": "Create the first administrator account and the first workspace. This page disappears once setup is complete.",
     "administrator": "Administrator",
-    "workspace": "First workspace",
-    "submit": "Create administrator and workspace"
+    "intro": "Create the first administrator account and the first workspace. This page disappears once setup is complete.",
+    "language": "Language",
+    "language_hint": "The language of this installation. You can change it later in Settings.",
+    "step_administrator": "Administrator",
+    "step_ahead": "(not yet)",
+    "step_done": "(done)",
+    "step_here": "(current step)",
+    "step_terms": "Terms",
+    "step_workspace": "Workspace",
+    "steps_label": "Setup steps",
+    "submit": "Create administrator and workspace",
+    "title": "Set up Knoverge",
+    "workspace": "First workspace"
   },
   "status": {
     "title": "Server status",
@@ -344,6 +355,50 @@
       "rejected": "Rejected"
     },
     "title": "Taxonomy",
+    "version": "version {{version}}"
+  },
+  "terms": {
+    "accept": "I have read the terms of use and accept them.",
+    "clauses": {
+      "1": {
+        "body": "Published under the Apache License 2.0 and provided as is, with no warranty of any kind. Nobody promises it is fit for your purpose, that it will keep running, or that it is free of defects.",
+        "title": "Free, and as is"
+      },
+      "2": {
+        "body": "To the fullest extent the law allows, the authors and contributors are not liable for any loss or damage from using it, including lost, corrupted or disclosed knowledge. The software is under development and a defect can lose work.",
+        "title": "Nobody is liable for what it does to your data"
+      },
+      "3": {
+        "body": "Keeping it secure, taking backups and testing that they restore, what is recorded in it and the rights you have to record it, and any legal obligation that applies to you — all yours. The software helps; it is not a substitute for an operator who checks.",
+        "title": "You run it, so you are responsible for it"
+      },
+      "4": {
+        "body": "The server contacts no external service unless you configure one. There is no telemetry, no analytics and no usage reporting — not off by default, but absent.",
+        "title": "Nothing is sent anywhere"
+      },
+      "5": {
+        "body": "They are off unless you configure a provider. If you do, what you send goes to that provider under their terms. Everything the software needs to do its job works without any provider at all.",
+        "title": "AI features are optional, and send data where you point them"
+      },
+      "6": {
+        "body": "An agent reads and proposes within the permissions you grant it, and writes directly only where a policy rule allows. What it records is attributable to it, and reviewing that is your decision to make or delegate.",
+        "title": "Agents act with the authority you give them"
+      },
+      "7": {
+        "body": "This is software you run, not a service anybody operates for you. There is no support obligation, no response time and no uptime commitment.",
+        "title": "No service, no support, no uptime"
+      },
+      "8": {
+        "body": "A later version of the software may ship later terms, which apply from the version you upgrade to and do not reach back. You are free to amend them for your own installation.",
+        "title": "These terms can change"
+      },
+      "9": {
+        "body": "This installation records which version you accepted, and when, so that question can be answered later. The record is kept locally, like everything else.",
+        "title": "Accepting them"
+      }
+    },
+    "preamble": "Knoverge is free and open-source software that you run yourself. These terms are written to be read rather than to be impressive, and they are not legal advice. The full text is in TERMS.md.",
+    "title": "Terms of use",
     "version": "version {{version}}"
   },
   "workspace": {

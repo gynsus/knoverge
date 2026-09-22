@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  TERMS_VERSION,
   ActivityDigestResponse,
   EventsListResponse,
   KnowledgeBriefingResponse,
@@ -110,6 +111,7 @@ beforeAll(async () => {
         password: 'correct horse battery staple',
         display_name: 'Owner',
         workspace: { slug: 'personal', name: 'Personal' },
+        accepted_terms_version: TERMS_VERSION,
       })
     ).statusCode,
   ).toBe(200);

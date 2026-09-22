@@ -17,6 +17,8 @@ export interface PasswordInputProps {
   required?: boolean;
   minLength?: number;
   autoComplete?: string;
+  /** Icon only, for a row that has no width to spare. */
+  compact?: boolean;
 }
 
 /**
@@ -40,6 +42,7 @@ export function PasswordInput({
   required,
   minLength,
   autoComplete,
+  compact = false,
 }: PasswordInputProps) {
   const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
@@ -97,9 +100,18 @@ export function PasswordInput({
           <Eye className="size-4" aria-hidden="true" />
         )}
       </Button>
-      <Button type="button" variant="outline" onClick={() => void generate()}>
+      <Button
+        type="button"
+        variant="outline"
+        {...(compact ? { size: 'icon' as const } : {})}
+        onClick={() => void generate()}
+        // Named either way: without the label showing, the icon alone is what
+        // a screen reader would have to guess at.
+        aria-label={t('password.generate')}
+        title={t('password.generate')}
+      >
         <Sparkles className="size-4" aria-hidden="true" />
-        {t('password.generate')}
+        {!compact && t('password.generate')}
       </Button>
     </div>
   );

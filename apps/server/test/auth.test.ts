@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { AuthStatusResponse, MeResponse, SessionsResponse } from '@knoverge/contracts';
+import {
+  TERMS_VERSION,
+  AuthStatusResponse,
+  MeResponse,
+  SessionsResponse,
+} from '@knoverge/contracts';
 import { MAX_FAILED_LOGINS, parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -134,6 +139,7 @@ describe('bootstrap', () => {
     const res = await b.post('/v1/bootstrap', {
       ...ADMIN,
       workspace: { slug: 'personal', name: 'Personal' },
+      accepted_terms_version: TERMS_VERSION,
     });
     expect(res.statusCode, res.body).toBe(200);
     expect(b.cookies.has(SESSION_COOKIE)).toBe(true);
@@ -163,6 +169,7 @@ describe('bootstrap', () => {
       ...ADMIN,
       email: 'leak@example.com',
       workspace: { slug: 'leak', name: 'Leak' },
+      accepted_terms_version: TERMS_VERSION,
     });
     expect(res.statusCode).toBe(403);
     expect(await services.repositories.workspaces.list()).toHaveLength(before.length);
@@ -176,6 +183,7 @@ describe('bootstrap', () => {
       ...ADMIN,
       email: 'x@example.com',
       workspace: { slug: 'x', name: 'X' },
+      accepted_terms_version: TERMS_VERSION,
     });
     expect(res.statusCode).toBe(403);
     expect(res.json().code).toBe('FORBIDDEN');
@@ -511,5 +519,15 @@ describe('the generated API description', () => {
     expect(headers).toContain('X-Knoverge-Workspace');
     expect(headers).toContain('Idempotency-Key');
     expect(headers).toContain('X-Request-Id');
+  });
+});
+
+describe('accepting the terms', () => {
+  it('records which version, and when', async () => {
+    const user = await services.repositories.users.findByEmail('owner@example.com');
+    // An unrecorded click protects nobody: the point of asking is being able
+    // to answer later who agreed to what.
+    expect(user?.termsVersion).toBe(TERMS_VERSION);
+    expect(user?.termsAcceptedAt).toBeInstanceOf(Date);
   });
 });

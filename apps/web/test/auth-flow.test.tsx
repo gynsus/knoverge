@@ -1,11 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
 import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MeResponse } from '@knoverge/contracts';
+
+import { TERMS_VERSION } from '@knoverge/contracts';
 
 import { resetCsrfToken } from '../src/api/client.ts';
 import { App } from '../src/App.tsx';
@@ -105,18 +107,31 @@ describe('first run', () => {
     renderApp('/');
     expect(await screen.findByRole('heading', { name: 'Set up Knoverge' })).toBeInTheDocument();
 
+    const user = userEvent.setup();
+
+    // Step one: the terms, with nothing else to do while reading them.
+    const steps = screen.getByRole('list', { name: 'Setup steps' });
+    expect(within(steps).getAllByRole('listitem')).toHaveLength(3);
+    expect(screen.getByRole('heading', { name: /Terms of use/ })).toBeInTheDocument();
+    // Each clause is there to be read, not summarised into one paragraph.
+    expect(screen.getByText('Nothing is sent anywhere', { exact: false })).toBeInTheDocument();
+    // Nothing moves until they are accepted.
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+    await user.click(screen.getByLabelText(/accept them/));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
     // Both groups read as headings and stand apart from the first field under
     // them. A legend takes no part in the grid gap, so this is not automatic.
-    for (const name of ['Administrator', 'First workspace']) {
-      const legend = screen.getByText(name, { selector: 'legend' });
-      expect(legend.className).toContain('mb-3');
-      expect(legend.className).toContain('font-semibold');
-    }
-
-    const user = userEvent.setup();
+    const legend = screen.getByText('Administrator', { selector: 'legend' });
+    expect(legend.className).toContain('mb-3');
+    expect(legend.className).toContain('font-semibold');
     await user.type(screen.getByLabelText('Your name'), 'Owner');
     await user.type(screen.getByLabelText('Email'), 'owner@example.com');
     await user.type(screen.getByLabelText('Password'), 'correct horse battery staple');
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+
+    // Step three: the workspace, and only now is anything sent.
+    expect(calls.some((c) => c.url === '/v1/bootstrap')).toBe(false);
     await user.type(screen.getByLabelText('Workspace name'), 'Personal Knowledge');
     expect(screen.getByLabelText('Workspace identifier')).toHaveValue('personal-knowledge');
     await user.click(screen.getByRole('button', { name: 'Create administrator and workspace' }));
@@ -129,7 +144,30 @@ describe('first run', () => {
       display_name: 'Owner',
       locale: 'en',
       workspace: { slug: 'personal-knowledge', name: 'Personal Knowledge' },
+      // Which version was shown and accepted, recorded against the user: an
+      // unrecorded click protects nobody.
+      accepted_terms_version: TERMS_VERSION,
     });
+  });
+
+  it('lets somebody go back without losing what they typed', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: true, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
+    });
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Set up Knoverge' });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText(/accept them/));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    await user.type(screen.getByLabelText('Your name'), 'Owner');
+
+    await user.click(screen.getByRole('button', { name: 'Back' }));
+    // The steps are a way of asking, not a sequence of commitments.
+    expect(screen.getByLabelText(/accept them/)).toBeChecked();
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByLabelText('Your name')).toHaveValue('Owner');
   });
 });
 
@@ -198,6 +236,13 @@ describe('sign in', () => {
 });
 
 describe('the password field on first run', () => {
+  /** The wizard, walked as far as the step the password is on. */
+  async function toAdministratorStep(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByRole('heading', { name: 'Set up Knoverge' });
+    await user.click(screen.getByLabelText(/accept them/));
+    await user.click(screen.getByRole('button', { name: 'Next' }));
+  }
+
   /**
    * A clipboard, since jsdom has none.
    *
@@ -225,10 +270,9 @@ describe('the password field on first run', () => {
       'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
     });
     renderApp('/');
-    await screen.findByRole('heading', { name: 'Set up Knoverge' });
-
     const user = userEvent.setup();
     const clipboard = stubClipboard();
+    await toAdministratorStep(user);
     const field = screen.getByLabelText('Password') as HTMLInputElement;
     // Hidden to begin with, as a password field is.
     expect(field.type).toBe('password');
@@ -249,10 +293,9 @@ describe('the password field on first run', () => {
       'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
     });
     renderApp('/');
-    await screen.findByRole('heading', { name: 'Set up Knoverge' });
-
     const user = userEvent.setup();
     const clipboard = stubClipboard();
+    await toAdministratorStep(user);
     await user.type(screen.getByLabelText('Password'), 'typed by a person');
     await user.click(screen.getByRole('button', { name: 'Show the password and copy it' }));
     await waitFor(() => expect(clipboard.written).toEqual(['typed by a person']));
@@ -271,11 +314,10 @@ describe('the password field on first run', () => {
       'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
     });
     renderApp('/');
-    await screen.findByRole('heading', { name: 'Set up Knoverge' });
-
     const user = userEvent.setup();
     const clipboard = stubClipboard();
     clipboard.fail = true;
+    await toAdministratorStep(user);
     await user.click(screen.getByRole('button', { name: 'Generate' }));
     // The password is still generated and still in the field; only the copy
     // failed, and the message says which.
