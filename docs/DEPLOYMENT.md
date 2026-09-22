@@ -217,7 +217,7 @@ docker compose exec knoverge knoverge taxonomy create --name "Pixel Brisbane" --
 docker compose exec knoverge knoverge taxonomy list
 ```
 
-Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`.
+Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`. Give the latter `--owner <email>` naming an account that already exists: without an owner the workspace has no members, and the interface lists the workspaces you belong to, so nobody can open it. The command says so when the option is left out.
 
 ### Maintenance
 

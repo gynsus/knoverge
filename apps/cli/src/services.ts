@@ -10,6 +10,7 @@ import {
   AuthorizationAdminService,
   AuthorizationService,
   BootstrapService,
+  MemberService,
   CrossStoreWriter,
   EventLedger,
   IdempotencyService,
@@ -211,6 +212,22 @@ export function createServices() {
         ledger: ledger(),
       }),
   );
+  // Only what creating a workspace with an owner needs. The command line has
+  // no request and no actor, so nothing here is asked to authorise anything.
+  const members = lazy(
+    () =>
+      new MemberService({
+        uow,
+        memberships: repositories.memberships,
+        actors: repositories.actors,
+        workspaces: repositories.workspaces,
+        users: users(),
+        sessions: repositories.sessions,
+        authorization: authorization(),
+        workspaceService: workspaces(),
+        ledger: ledger(),
+      }),
+  );
   const bootstrap = lazy(
     () =>
       new BootstrapService({
@@ -252,6 +269,9 @@ export function createServices() {
     },
     get workspaces() {
       return workspaces();
+    },
+    get members() {
+      return members();
     },
     get bootstrap() {
       return bootstrap();

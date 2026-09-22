@@ -140,45 +140,51 @@ function SignedInShell({ displayName, onLogout }: { displayName: string; onLogou
           <WorkspaceSwitcher workspaces={workspaces} />
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {visible.map((item) => {
-                  const Icon = item.icon;
-                  const active =
-                    item.to === '/'
-                      ? location.pathname === '/'
-                      : location.pathname.startsWith(item.to);
-                  return (
-                    <SidebarMenuItem key={item.to}>
-                      {/* The label stays in the markup when the rail is
+          {/* A real landmark. Without it the application's navigation is a
+              column of links a screen reader can only reach by walking the
+              page, and the one shortcut every screen reader offers for
+              "take me to the navigation" lands nowhere. */}
+          <nav aria-label={t('nav.label')}>
+            <SidebarGroup>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {visible.map((item) => {
+                    const Icon = item.icon;
+                    const active =
+                      item.to === '/'
+                        ? location.pathname === '/'
+                        : location.pathname.startsWith(item.to);
+                    return (
+                      <SidebarMenuItem key={item.to}>
+                        {/* The label stays in the markup when the rail is
                           collapsed, so the accessible name survives. The
                           tooltip is for a pointer, and a touch screen has
                           none. */}
-                      <SidebarMenuButton
-                        asChild
-                        isActive={active}
-                        tooltip={t(`nav.${item.key}`)}
-                        // A tint of 1.13:1 is not an indicator, and hovering any
-                        // item reproduced it exactly. The border and the colour
-                        // are 6.5:1 and belong to the current section alone.
-                        className="data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:text-primary"
-                      >
-                        <NavLink
-                          to={item.to}
-                          end={item.to === '/'}
-                          onClick={() => setOpenMobile(false)}
+                        <SidebarMenuButton
+                          asChild
+                          isActive={active}
+                          tooltip={t(`nav.${item.key}`)}
+                          // A tint of 1.13:1 is not an indicator, and hovering any
+                          // item reproduced it exactly. The border and the colour
+                          // are 6.5:1 and belong to the current section alone.
+                          className="data-[active=true]:border-l-2 data-[active=true]:border-primary data-[active=true]:text-primary"
                         >
-                          <Icon className="size-4" />
-                          <span>{t(`nav.${item.key}`)}</span>
-                        </NavLink>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+                          <NavLink
+                            to={item.to}
+                            end={item.to === '/'}
+                            onClick={() => setOpenMobile(false)}
+                          >
+                            <Icon className="size-4" />
+                            <span>{t(`nav.${item.key}`)}</span>
+                          </NavLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </nav>
         </SidebarContent>
         {/* Never hidden when the rail collapses: this holds the only way to
             sign out, the collapsed state is remembered across reloads, and a

@@ -125,3 +125,17 @@ describe('output a script can read', () => {
     );
   });
 });
+
+describe('creating a workspace from the command line', () => {
+  const create = workspaceCommand().commands.find((c) => c.name() === 'create')!;
+
+  it('offers an owner, because a workspace without one is reachable from nothing', () => {
+    // The interface lists the workspaces you belong to. Nobody belongs to a
+    // workspace created with no members, so it exists and opens for no one.
+    const owner = create.options.find((o) => o.long === '--owner');
+    expect(owner).toBeDefined();
+    // Not mandatory: the option arrived after the command did, and a script
+    // that already calls this should keep working. It warns instead.
+    expect(owner?.mandatory).toBeFalsy();
+  });
+});
