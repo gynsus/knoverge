@@ -18,6 +18,8 @@ import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import pino from 'pino';
+
 import { buildApp } from '../src/app.ts';
 import { createServices, type Services } from '../src/services.ts';
 
@@ -69,6 +71,9 @@ beforeAll(async () => {
   });
   await runMigrations(services.database.db, migrationsFolder);
   app = await buildApp({
+    // Errors visible: without this an unhandled one reaches the test as
+    // "internal error" and nothing says what it was.
+    loggerInstance: pino({ level: 'error' }),
     version: 'test',
     probes: { database: async () => ok, dataDir: async () => ok },
     services,

@@ -1,11 +1,18 @@
 import { z } from 'zod';
 
-import { EventsListInput, EventsListResponse } from './events.ts';
+import {
+  ActivityDigestInput,
+  ActivityDigestResponse,
+  EventsListInput,
+  EventsListResponse,
+} from './events.ts';
 import {
   KnowledgeChangesInput,
   KnowledgeChangesResponse,
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
+  KnowledgeBriefingInput,
+  KnowledgeBriefingResponse,
   KnowledgeIndexInput,
   KnowledgeIndexResponse,
   KnowledgeGetInput,
@@ -56,8 +63,10 @@ export const ToolName = z.enum([
   'proposal_reject',
   'proposal_withdraw',
   'knowledge_index',
+  'knowledge_briefing',
   'knowledge_changes',
   'events_list',
+  'activity_digest',
 ]);
 export type ToolName = z.infer<typeof ToolName>;
 
@@ -212,6 +221,14 @@ export const TOOLS: readonly ToolContract[] = [
     readOnly: true,
   },
   {
+    name: 'knowledge_briefing',
+    description:
+      'What to know before starting work in a part of the tree: the standing instructions, the settled decisions and what has moved lately, within a character budget. Ordered by how far the workspace trusts each item, then by how recent it is.',
+    input: KnowledgeBriefingInput,
+    output: KnowledgeBriefingResponse,
+    readOnly: true,
+  },
+  {
     name: 'knowledge_changes',
     description:
       'What changed after a checkpoint, limited to what you may read. The synchronisation primitive: store next_sequence and ask again from it. It names no actors — who made a change is what events_list answers.',
@@ -225,6 +242,14 @@ export const TOOLS: readonly ToolContract[] = [
       'The audit feed: what happened in this workspace and who made it happen, after a cursor. For keeping a copy of the knowledge in step use knowledge_changes instead, which answers your read scope and names no actors.',
     input: EventsListInput,
     output: EventsListResponse,
+    readOnly: true,
+  },
+  {
+    name: 'activity_digest',
+    description:
+      'What happened in a period: how many events of each kind, which items changed, and which proposals were decided. Counts and lists, with no narrative.',
+    input: ActivityDigestInput,
+    output: ActivityDigestResponse,
     readOnly: true,
   },
 ];

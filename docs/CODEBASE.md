@@ -136,6 +136,19 @@ same handler function (ADR 0011). The handler takes the parsed input and the
 request; the request is there for what the input does not carry — who is
 calling, which workspace, and the idempotency key.
 
+## What a briefing decides
+
+`apps/server/src/routes/briefing.ts` orders items by how far the workspace
+trusts them — review state, evidence state, and a heavy penalty for disputed —
+and then by how recent they are. A disputed item sits below everything else on
+purpose: a briefing that hides a contradiction is how the contradiction gets
+acted on, and one that leads with it is how it gets resolved.
+
+When the character budget runs out, an item is abridged to its opening
+paragraph before any item is dropped, because half an instruction is worth more
+than none of it. `truncated` says when something went, so a caller narrows the
+request rather than treating a short answer as the whole picture.
+
 ## The MCP endpoint
 
 `apps/server/src/routes/mcp.ts` serves `/mcp` over Streamable HTTP, driven by

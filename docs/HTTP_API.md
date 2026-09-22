@@ -122,7 +122,8 @@ POST /v1/<tool_name>                        every MCP tool, generated from the c
                                             knowledge_propose_update, knowledge_propose_delete,
                                             knowledge_propose_supersede, proposal_list,
                                             proposal_get, proposal_approve, proposal_reject,
-                                            proposal_withdraw, knowledge_changes, events_list.
+                                            proposal_withdraw, knowledge_changes,
+                                            events_list, activity_digest.
                                             202 while a proposal
                                             is pending,
                                             200 once it is decided.

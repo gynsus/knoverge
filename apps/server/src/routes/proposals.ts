@@ -29,7 +29,7 @@ import type { Services } from '../services.ts';
  * An update carries it only when it is changing it, and a delete never; those
  * are named by the item they are about instead.
  */
-function proposedTitle(proposal: ProposalRecord): string | null {
+export function proposedTitle(proposal: ProposalRecord): string | null {
   const payload = proposal.proposedPayload as Record<string, unknown>;
   const source =
     proposal.proposalType === 'knowledge_supersede'

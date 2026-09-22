@@ -130,3 +130,34 @@ export const EventsListResponse = z.object({
   has_more: z.boolean(),
 });
 export type EventsListResponse = z.infer<typeof EventsListResponse>;
+
+/** What happened in a period, counted rather than narrated. */
+export const ActivityDigestInput = z.object({
+  since: z.iso.datetime({ offset: true }),
+  until: z.iso.datetime({ offset: true }).nullable().default(null),
+  category_paths: z.array(CategoryPath).max(20).default([]),
+});
+export type ActivityDigestInput = z.infer<typeof ActivityDigestInput>;
+
+export const ActivityDigestResponse = z.object({
+  since: z.iso.datetime({ offset: true }),
+  until: z.iso.datetime({ offset: true }),
+  /** How many events of each type, largest first. */
+  counts: z.array(z.object({ event_type: EventType, count: z.number().int().positive() })),
+  changed_items: z.array(
+    z.object({
+      item_id: z.string(),
+      title: z.string().nullable(),
+      change_kinds: z.array(z.string()),
+      last_changed_at: z.iso.datetime({ offset: true }),
+    }),
+  ),
+  resolved_proposals: z.array(
+    z.object({
+      proposal_id: z.string(),
+      status: z.string(),
+      resolved_at: z.iso.datetime({ offset: true }),
+    }),
+  ),
+});
+export type ActivityDigestResponse = z.infer<typeof ActivityDigestResponse>;
