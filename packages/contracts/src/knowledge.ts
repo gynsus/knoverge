@@ -374,7 +374,23 @@ export type SearchResult = z.infer<typeof SearchResult>;
 export const KnowledgeSearchResponse = z.object({ results: z.array(SearchResult) });
 export type KnowledgeSearchResponse = z.infer<typeof KnowledgeSearchResponse>;
 
-export const KnowledgeGetInput = z.object({ item_id: KnowledgeItemId });
+/**
+ * Reading one item.
+ *
+ * Bounded, because a `document` may run to two hundred kilobytes and an agent
+ * that asks for one should not lose its context to it. The answer says how
+ * much there was and whether this is all of it, so a caller can ask for the
+ * rest rather than work from a fragment without knowing.
+ */
+export const KnowledgeGetInput = z.object({
+  item_id: KnowledgeItemId,
+  /** A past revision, or the current one when absent. */
+  revision_id: RevisionId.nullable().default(null),
+  include_provenance: z.boolean().default(true),
+  include_relations: z.boolean().default(true),
+  max_chars: z.number().int().min(100).max(200_000).default(20_000),
+  offset: z.number().int().nonnegative().default(0),
+});
 export type KnowledgeGetInput = z.infer<typeof KnowledgeGetInput>;
 
 export const KnowledgeHistoryInput = z.object({ item_id: KnowledgeItemId });
@@ -387,7 +403,13 @@ export const KnowledgeDiffInput = z.object({
 });
 export type KnowledgeDiffInput = z.infer<typeof KnowledgeDiffInput>;
 
-export const KnowledgeResponse = z.object({ item: KnowledgeItemDetail });
+export const KnowledgeResponse = z.object({
+  item: KnowledgeItemDetail,
+  /** The whole body's length, whatever slice of it came back. */
+  total_chars: z.number().int().nonnegative(),
+  /** True when the body is a slice, so a caller knows to ask for the rest. */
+  truncated: z.boolean(),
+});
 export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;
 
 export const KnowledgeListResponse = z.object({

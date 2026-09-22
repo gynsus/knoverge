@@ -10,6 +10,7 @@ import {
   KnowledgeBriefingResponse,
   KnowledgeChangesResponse,
   KnowledgeIndexResponse,
+  KnowledgeResponse,
   ProposalResult,
   TOOLS,
   TaxonomyProposeResult,
@@ -624,6 +625,112 @@ describe('proposing a category', () => {
       expect(detail.proposal.reason).toContain('where data comes from');
       expect(detail.proposal.proposed_payload.name).toBe('Data sources');
       expect(detail.proposal.proposed_payload.exampleTitles).toHaveLength(2);
+    } finally {
+      await client.close();
+    }
+  });
+});
+
+describe('reading one item', () => {
+  it('bounds what it returns, and says how much there was', async () => {
+    const body = `${'A paragraph that goes on. '.repeat(400)}`;
+    const item = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'A long document',
+        body,
+        type: 'document',
+      })
+    ).json() as { item: { id: string; current_revision_id: string; content_hash: string } };
+
+    const client = await connect(agentToken);
+    try {
+      const result = await client.callTool({
+        name: 'knowledge_get',
+        arguments: { item_id: item.item.id, max_chars: 500 },
+      });
+      const answer = KnowledgeResponse.parse(result.structuredContent);
+      // An agent asking for a document must not lose its context to one.
+      expect(answer.item.body).toHaveLength(500);
+      expect(answer.truncated).toBe(true);
+      expect(answer.total_chars).toBeGreaterThan(500);
+
+      // And can ask for the rest, from where it stopped.
+      const rest = KnowledgeResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_get',
+            arguments: { item_id: item.item.id, offset: 500, max_chars: 500 },
+          })
+        ).structuredContent,
+      );
+      expect(rest.item.body).not.toBe(answer.item.body);
+      expect(rest.truncated).toBe(true);
+
+      // What it does not want, it does not receive.
+      const bare = KnowledgeResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_get',
+            arguments: {
+              item_id: item.item.id,
+              include_provenance: false,
+              include_relations: false,
+            },
+          })
+        ).structuredContent,
+      );
+      expect(bare.item.sources).toEqual([]);
+      expect(bare.item.relations).toEqual([]);
+    } finally {
+      await client.close();
+    }
+
+    // The browser gets the whole thing, because the editor writes back what
+    // it was given and a slice would be saved over the rest.
+    const inBrowser = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${item.item.id}`)).json(),
+    );
+    expect(inBrowser.truncated).toBe(false);
+    expect(inBrowser.item.body.length).toBe(inBrowser.total_chars);
+  });
+
+  it('reads a revision the item used to have', async () => {
+    const created = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'Changed its mind',
+        body: 'What it said at first.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string; current_revision_id: string; content_hash: string } };
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: created.item.id,
+          base_revision_id: created.item.current_revision_id,
+          base_content_hash: created.item.content_hash,
+          body: 'What it says now.',
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const client = await connect(agentToken);
+    try {
+      const past = KnowledgeResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_get',
+            arguments: { item_id: created.item.id, revision_id: created.item.current_revision_id },
+          })
+        ).structuredContent,
+      );
+      // Read from the commit that wrote it, because that is where the text is.
+      expect(past.item.body).toContain('What it said at first.');
+
+      const now = KnowledgeResponse.parse(
+        (await client.callTool({ name: 'knowledge_get', arguments: { item_id: created.item.id } }))
+          .structuredContent,
+      );
+      expect(now.item.body).toContain('What it says now.');
     } finally {
       await client.close();
     }
