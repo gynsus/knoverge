@@ -177,6 +177,7 @@ export type {
   WorkspacePatch,
   WorkspaceRecord,
   WorkspaceRepository,
+  WorkspaceStats,
 } from './workspace/repository.ts';
 export {
   MemberService,
