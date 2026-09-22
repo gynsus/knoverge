@@ -486,3 +486,53 @@ export const KnowledgeDiffResponse = z.object({
   metadata_changes: z.array(MetadataChange),
 });
 export type KnowledgeDiffResponse = z.infer<typeof KnowledgeDiffResponse>;
+
+/**
+ * The incremental synchronisation primitive.
+ *
+ * Canonical knowledge changes after a checkpoint, limited to what the caller
+ * may read. It names no actors: who did something is the audit feed's
+ * question, and a synchronising agent does not need it (ADR 0010).
+ */
+export const KnowledgeChangesInput = z.object({
+  after_sequence: z.number().int().nonnegative().default(0),
+  category_paths: z.array(CategoryPath).max(20).default([]),
+  types: z.array(ItemType).max(20).default([]),
+  limit: z.number().int().min(1).max(500).default(200),
+});
+export type KnowledgeChangesInput = z.infer<typeof KnowledgeChangesInput>;
+
+export const ChangeKindFeed = z.enum([
+  'created',
+  'updated',
+  'moved',
+  'superseded',
+  'deleted',
+  'restored',
+  'relation_changed',
+  'taxonomy_changed',
+]);
+export type ChangeKindFeed = z.infer<typeof ChangeKindFeed>;
+
+export const KnowledgeChange = z.object({
+  sequence: z.number().int().positive(),
+  change_kind: ChangeKindFeed,
+  item_id: z.string(),
+  revision_id: z.string().nullable(),
+  content_hash: z.string().nullable(),
+  frontmatter_hash: z.string().nullable(),
+  category_paths_before: z.array(CategoryPath),
+  category_paths_after: z.array(CategoryPath),
+  taxonomy_version: z.number().int().nonnegative(),
+  changed_at: z.iso.datetime({ offset: true }),
+});
+export type KnowledgeChange = z.infer<typeof KnowledgeChange>;
+
+export const KnowledgeChangesResponse = z.object({
+  changes: z.array(KnowledgeChange),
+  next_sequence: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+  /** The taxonomy the workspace is at now, so a client can notice a rename. */
+  taxonomy_version: z.number().int().nonnegative(),
+});
+export type KnowledgeChangesResponse = z.infer<typeof KnowledgeChangesResponse>;

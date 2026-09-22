@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { EventsListResponse, ProposalResult, TOOLS } from '@knoverge/contracts';
+import {
+  EventsListResponse,
+  KnowledgeChangesResponse,
+  ProposalResult,
+  TOOLS,
+} from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -313,5 +318,99 @@ describe('the audit feed', () => {
     expect(page.events).toHaveLength(1);
     expect(page.has_more).toBe(true);
     expect(page.next_sequence).toBe(page.events[0]!.sequence);
+  });
+});
+
+describe('the change feed', () => {
+  it('reports what changed after a checkpoint, without saying who', async () => {
+    const client = await connect(agentToken);
+    try {
+      const start = KnowledgeChangesResponse.parse(
+        (await client.callTool({ name: 'knowledge_changes', arguments: {} })).structuredContent,
+      );
+
+      const item = (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Changed while you were away',
+          body: 'Written after the checkpoint.',
+          type: 'fact',
+        })
+      ).json() as { item: { id: string; current_revision_id: string; content_hash: string } };
+
+      const since = KnowledgeChangesResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_changes',
+            arguments: { after_sequence: start.next_sequence },
+          })
+        ).structuredContent,
+      );
+      const created = since.changes.find((c) => c.item_id === item.item.id);
+      expect(created?.change_kind).toBe('created');
+      expect(created?.revision_id).toBe(item.item.current_revision_id);
+      expect(created?.content_hash).toBe(item.item.content_hash);
+      // ADR 0010: this feed does not reveal who made a change.
+      expect(JSON.stringify(since.changes)).not.toContain('act_');
+      expect(Object.keys(created!)).not.toContain('actor_id');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('follows one item through a move, a delete and a restore', async () => {
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Archive' })).statusCode).toBe(
+      200,
+    );
+    const client = await connect(agentToken);
+    try {
+      const start = KnowledgeChangesResponse.parse(
+        (await client.callTool({ name: 'knowledge_changes', arguments: {} })).structuredContent,
+      );
+      const item = (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Travelling item',
+          body: 'It will move.',
+          type: 'fact',
+        })
+      ).json() as { item: { id: string; current_revision_id: string; content_hash: string } };
+      const moved = (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.item.id,
+          base_revision_id: item.item.current_revision_id,
+          base_content_hash: item.item.content_hash,
+          categories: ['archive'],
+        })
+      ).json() as { item: { current_revision_id: string; content_hash: string } };
+      expect(
+        (
+          await admin.post('/v1/admin/knowledge.delete', {
+            item_id: item.item.id,
+            base_revision_id: moved.item.current_revision_id,
+            base_content_hash: moved.item.content_hash,
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      const feed = KnowledgeChangesResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_changes',
+            arguments: { after_sequence: start.next_sequence, limit: 500 },
+          })
+        ).structuredContent,
+      );
+      const mine = feed.changes.filter((c) => c.item_id === item.item.id);
+      expect(mine.map((c) => c.change_kind)).toEqual(['created', 'moved', 'deleted']);
+      // The move says where it came from as well as where it went, which is
+      // what tells a client that an item left the part of the tree it follows.
+      const move = mine[1]!;
+      expect(move.category_paths_before).toEqual([]);
+      expect(move.category_paths_after).toEqual(['archive']);
+      expect(mine[2]!.category_paths_before).toEqual(['archive']);
+      expect(mine[2]!.category_paths_after).toEqual([]);
+      expect(feed.taxonomy_version).toBeGreaterThan(0);
+    } finally {
+      await client.close();
+    }
   });
 });
