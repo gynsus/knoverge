@@ -29,6 +29,9 @@ import {
   parseTaxonomy,
   renderTaxonomy,
   type FlatCategory,
+  parseItem,
+  renderItem,
+  uniqueSlug,
 } from '@knoverge/git-store';
 
 import {
@@ -140,6 +143,10 @@ beforeAll(async () => {
     git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
+    items: repositories.knowledge,
+    parseItem,
+    renderItem,
+    uniqueSlug,
     workspaces: {
       findById: async (id) => {
         const workspace = await repositories.workspaces.findById(id);

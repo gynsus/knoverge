@@ -156,6 +156,8 @@ export function createServices(config: ServicesConfig) {
     ledger,
     git,
     taxonomyPath: TAXONOMY_PATH,
+    items: repositories.knowledge,
+    uniqueSlug,
     parseTaxonomy,
   });
   const recovery = new RecoveryService({
@@ -220,6 +222,10 @@ export function createServices(config: ServicesConfig) {
     git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
+    items: repositories.knowledge,
+    parseItem,
+    renderItem,
+    uniqueSlug,
     workspaces: {
       findById: async (workspaceId) => {
         const workspace = await repositories.workspaces.findById(workspaceId);

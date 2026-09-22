@@ -130,6 +130,16 @@ A revision additionally has `frontmatter_hash` (sha256 of the canonical YAML ser
 
 ## 6. Taxonomy file
 
+A category's path is the directory its knowledge lives in, so a change that
+moves a path moves the files under it in the same commit, and rewrites the
+`categories` in their frontmatter to the paths those categories now have. One
+commit therefore carries `taxonomy.yaml`, the moved files and their rewritten
+frontmatter, and the repository is never between two states. It is not a new
+revision of the items: what changed is the name of a category they belong to,
+and frontmatter is a projection of that. ADR 0016 has the reasoning, including
+why the revision rows are left alone.
+
+
 An empty field is left out rather than written as `null` or `[]`: the file is meant to be read by a person, and a page of empty lists is not.
 
 ```yaml

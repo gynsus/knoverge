@@ -134,6 +134,17 @@ export interface KnowledgeRepository {
     tx?: Tx,
   ): Promise<KnowledgeItemRecord | null>;
   list(workspaceId: WorkspaceId, options?: ListItemsOptions): Promise<KnowledgeItemRecord[]>;
+  /**
+   * Every item whose file sits under a directory, itself or nested.
+   *
+   * What a taxonomy change needs when a category path moves: the files under
+   * the old path are exactly the knowledge that has to travel with it.
+   */
+  pathsUnderDirectory(
+    workspaceId: WorkspaceId,
+    directory: string,
+    tx?: Tx,
+  ): Promise<{ id: KnowledgeItemId; slug: string; markdownPath: string }[]>;
   /** The slugs already used in one directory, so a new one can avoid them. */
   slugsInDirectory(workspaceId: WorkspaceId, directory: string, tx?: Tx): Promise<string[]>;
 

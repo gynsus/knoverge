@@ -5,12 +5,20 @@ import {
   CategorySlug,
   Guidance,
   type CategoryId,
+  type Frontmatter,
+  type KnowledgeItemId,
   type WorkspaceId,
 } from '@knoverge/contracts';
 
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
+import {
+  planRelocation,
+  rewriteCategoryPath,
+  type ItemFileLookup,
+  type PlannedMove,
+} from './relocate.ts';
 import {
   sortedAliases,
   subtreeIds,
@@ -73,6 +81,22 @@ export interface TaxonomyServiceOptions {
   /** Where the file lives in the repository. */
   taxonomyPath: string;
   workspaces: WorkspaceLookup;
+  /**
+   * Knowledge files live under category paths, so a path that moves takes
+   * them with it (ADR 0016). This is the only thing the taxonomy asks of the
+   * knowledge store, and it asks by file path rather than by item.
+   */
+  items: ItemFileLookup & {
+    update(
+      tx: Tx,
+      id: KnowledgeItemId,
+      patch: { slug?: string; markdownPath?: string; updatedAt?: Date },
+    ): Promise<void>;
+  };
+  /** Reads and rewrites one item file, so its frontmatter can follow its category. */
+  parseItem: (text: string) => { frontmatter: Frontmatter; body: string };
+  renderItem: (item: { frontmatter: Frontmatter; body: string }) => string;
+  uniqueSlug: (wanted: string, taken: ReadonlySet<string>) => string;
   clock?: Clock;
 }
 
@@ -120,6 +144,14 @@ interface PlannedChange {
   categories: CategoryRecord[];
   /** Aliases of every category, by category id, as they will be. */
   aliases: Map<string, string[]>;
+  /**
+   * Category paths this change moves, as old prefix to new.
+   *
+   * The knowledge filed under a category lives in a directory named after its
+   * path, so a path that moves takes the files with it. One prefix covers the
+   * whole branch: the category's own items and every descendant's.
+   */
+  pathChanges?: { from: string; to: string }[];
   /**
    * Anything else the commit has to carry for recovery to rebuild this change.
    *
@@ -431,6 +463,9 @@ export class TaxonomyService {
         subject: `taxonomy: update ${newPath ?? category.path}`,
         kind: 'update',
         objectIds: { category: category.id, path: newPath ?? category.path },
+        // A rename is a path change like any other: everything filed under
+        // the old name has to follow it.
+        ...(newPath ? { pathChanges: [{ from: category.path, to: newPath }] } : {}),
         categories: withUpdate(
           tree.categories,
           category.id,
@@ -527,6 +562,7 @@ export class TaxonomyService {
         subject: `taxonomy: move ${category.path} to ${newPath}`,
         kind: 'move',
         objectIds: { category: category.id, path: newPath, previous_path: category.path },
+        pathChanges: [{ from: category.path, to: newPath }],
         categories: withMove(tree.categories, category.id, parent?.id ?? null, {
           from: category.path,
           to: newPath,
@@ -658,6 +694,10 @@ export class TaxonomyService {
         kind: 'merge',
         objectIds: { category: source.id, path: source.path, into: target.path },
         trailers: [['Knoverge-Category-Into', target.id]],
+        // One prefix covers both halves of a merge: the items filed directly
+        // in the closed category, which now belong to the survivor, and every
+        // descendant category's items, whose paths move with them.
+        pathChanges: [{ from: source.path, to: target.path }],
         categories: withMerge(tree.categories, source, target),
         aliases,
         apply: async (tx, version, commitHash) => {
@@ -861,6 +901,11 @@ export class TaxonomyService {
   ): Promise<TaxonomyResult> {
     let planned: PlannedChange | undefined;
     let version = 0;
+    let relocated: Awaited<ReturnType<TaxonomyService['relocate']>> = {
+      writes: [],
+      removals: [],
+      moved: [],
+    };
     return this.o.crossStore.run<TaxonomyResult>(actor, {
       type: 'taxonomy',
       objectIds: {},
@@ -918,11 +963,24 @@ export class TaxonomyService {
             { objectIds: { workspace_id: actor.workspaceId, bytes: String(size) } },
           );
         }
+        // The knowledge under a category that moved travels in the same
+        // commit, so the repository is never between two states (ADR 0016).
+        relocated = await this.relocate(actor.workspaceId, planned.pathChanges ?? []);
         await this.o.git.write(actor.workspaceId, [
           { path: this.o.taxonomyPath, content: rendered },
+          ...relocated.writes,
         ]);
+        if (relocated.removals.length > 0) {
+          await this.o.git.remove(actor.workspaceId, relocated.removals);
+        }
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [this.o.taxonomyPath],
+          // Removals are staged as readily as writes under the same pathspec,
+          // so the old names have to be named for the commit to drop them.
+          paths: [
+            this.o.taxonomyPath,
+            ...relocated.writes.map((w) => w.path),
+            ...relocated.removals,
+          ],
           subject: planned.subject,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -948,9 +1006,65 @@ export class TaxonomyService {
       },
       record: async (tx, operation) => {
         if (!planned) throw new DomainError('INTERNAL_ERROR', 'the change was never planned');
+        const now = this.clock.now();
+        // Where the file is now. The revisions are left alone: each one
+        // records where its file was at its own commit, which is what
+        // history, diff and restore read it by.
+        for (const move of relocated.moved) {
+          await this.o.items.update(tx, move.id, {
+            slug: move.slug,
+            markdownPath: move.to,
+            updatedAt: now,
+          });
+        }
         return planned.apply(tx, version, operation.gitCommitHash as string);
       },
     });
+  }
+
+  /**
+   * The knowledge that travels with a category path.
+   *
+   * The plan is worked out without touching the repository, so recovery can
+   * ask for the same one; this adds the part only a writer can do — reading
+   * each file, rewriting the category paths in its frontmatter, and rendering
+   * it at its new name (ADR 0016).
+   */
+  private async relocate(
+    workspaceId: WorkspaceId,
+    changes: readonly { from: string; to: string }[],
+  ): Promise<{
+    writes: { path: string; content: string }[];
+    removals: string[];
+    moved: PlannedMove[];
+  }> {
+    const moved = await planRelocation(
+      { items: this.o.items, uniqueSlug: this.o.uniqueSlug },
+      workspaceId,
+      changes,
+    );
+    const writes: { path: string; content: string }[] = [];
+    for (const move of moved) {
+      const file = await this.o.git.read(workspaceId, move.from);
+      if (file === null) {
+        // The index says a file is there and the repository disagrees. Moving
+        // what is not there would write an empty file over a name.
+        throw new DomainError(
+          'INTERNAL_ERROR',
+          `${move.from} is missing from the repository; restore it before changing the taxonomy`,
+          { objectIds: { knowledge_item: move.id, path: move.from } },
+        );
+      }
+      const parsed = this.o.parseItem(file);
+      const frontmatter: Frontmatter = {
+        ...parsed.frontmatter,
+        categories: parsed.frontmatter.categories.map((path) =>
+          changes.reduce((current, change) => rewriteCategoryPath(current, change), path),
+        ),
+      };
+      writes.push({ path: move.to, content: this.o.renderItem({ ...parsed, frontmatter }) });
+    }
+    return { writes, removals: moved.map((m) => m.from), moved };
   }
 
   /** The commit author: the actor, so the log points back at who did it. */
