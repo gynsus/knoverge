@@ -9,7 +9,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "lint": "eslint . && node scripts/check-locales.mjs",
+    "lint": "eslint . && node scripts/check-locales.mjs && node scripts/check-theme-tokens.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

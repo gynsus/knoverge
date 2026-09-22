@@ -72,6 +72,17 @@
   --color-foreground: var(--foreground);
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
+  /* Anything that floats over the page — a menu, a toast — is a card that
+     happens to be detached from the flow, so it is filled like one. Without
+     these the generated components ask for a colour that does not exist and
+     Tailwind emits nothing, which is transparent rather than obviously
+     broken: the page reads straight through the menu. */
+  --color-popover: var(--card);
+  --color-popover-foreground: var(--card-foreground);
+  /* What a keyboard or a pointer is resting on, the same pair the sidebar
+     already uses for the section it is over. */
+  --color-accent: var(--muted);
+  --color-accent-foreground: var(--foreground);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-primary: var(--primary);
