@@ -8,5 +8,6 @@ export * from './knowledge.ts';
 export * from './operations.ts';
 export * from './policy.ts';
 export * from './proposals.ts';
+export * from './search.ts';
 export * from './users.ts';
 export * from './workspaces.ts';

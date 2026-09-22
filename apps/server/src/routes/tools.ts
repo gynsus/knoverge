@@ -4,7 +4,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
-import { knowledgeDiff, knowledgeGet, knowledgeHistory } from './knowledge.ts';
+import { knowledgeDiff, knowledgeGet, knowledgeHistory, knowledgeSearch } from './knowledge.ts';
 import {
   knowledgeProposeCreate,
   knowledgeProposeDelete,
@@ -38,6 +38,7 @@ export type ToolHandler = (
  */
 const HANDLERS: Record<ToolName, ToolHandler> = {
   taxonomy_list: taxonomyList as ToolHandler,
+  knowledge_search: knowledgeSearch as ToolHandler,
   knowledge_get: knowledgeGet as ToolHandler,
   knowledge_history: knowledgeHistory as ToolHandler,
   knowledge_diff: knowledgeDiff as ToolHandler,

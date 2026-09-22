@@ -24,6 +24,7 @@ import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { CommitAuthor, GitStore } from '../ports/git-store.ts';
 import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
+import type { SearchRepository } from '../search/repository.ts';
 import type {
   CategoryRecord,
   CategoryRepository,
@@ -106,6 +107,8 @@ export interface KnowledgeServiceOptions {
   revisions: RevisionRepository;
   sources: SourceRepository;
   relations: RelationRepository;
+  /** The lexical index, written with the revision it describes. */
+  search: SearchRepository;
   categories: CategoryRepository;
   versions: TaxonomyVersionRepository;
   actors: ActorLookup;
@@ -396,6 +399,7 @@ export class KnowledgeService {
         await this.o.items.setTags(tx, actor.workspaceId, itemId, p.frontmatter.tags);
         await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
         await this.writeRelations(tx, actor, itemId, p.frontmatter.relations, p.now);
+        await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, p.body, p.now);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.created',
           objectType: 'knowledge_item',
@@ -570,6 +574,15 @@ export class KnowledgeService {
         await this.o.items.setTags(tx, actor.workspaceId, input.itemId, p.frontmatter.tags);
         await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
         await this.writeRelations(tx, actor, input.itemId, p.frontmatter.relations, p.now);
+        await this.index(
+          tx,
+          actor.workspaceId,
+          input.itemId,
+          revisionId,
+          p.frontmatter,
+          p.body,
+          p.now,
+        );
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: p.kind === 'move' ? 'knowledge.moved' : 'knowledge.updated',
           objectType: 'knowledge_item',
@@ -940,6 +953,26 @@ export class KnowledgeService {
         );
         // One relation row, on the new item, pointing at what it replaced.
         await this.writeRelations(tx, actor, newItemId, pNew.frontmatter.relations, pNew.now);
+        await this.index(
+          tx,
+          actor.workspaceId,
+          newItemId,
+          newRevisionId,
+          pNew.frontmatter,
+          pNew.body,
+          pNew.now,
+        );
+        // The superseded item stays findable: it is history, not a mistake,
+        // and a search filtered to active items already leaves it out.
+        await this.index(
+          tx,
+          actor.workspaceId,
+          input.oldItemId,
+          oldRevisionId,
+          pOld.frontmatter,
+          pOld.body,
+          pOld.now,
+        );
 
         const oldRevision = this.revisionOf(
           actor,
@@ -1229,6 +1262,7 @@ export class KnowledgeService {
           deletedAt: p.now,
           updatedAt: p.now,
         });
+        await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, '', p.now);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.deleted',
           objectType: 'knowledge_item',
@@ -1331,6 +1365,7 @@ export class KnowledgeService {
             position: index,
           })),
         );
+        await this.index(tx, actor.workspaceId, item.id, revisionId, p.frontmatter, p.body, p.now);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.restored',
           objectType: 'knowledge_item',
@@ -1439,6 +1474,90 @@ export class KnowledgeService {
         });
       }
     }
+  }
+
+  /**
+   * Rebuilds the lexical index for a whole workspace from the files.
+   *
+   * The index is a projection, so it is never restored — it is rebuilt. A
+   * PostgreSQL backup older than the repository, or a change to how text is
+   * tokenised, both end here. Git is read for every item, because Git is
+   * where the knowledge is; PostgreSQL only says which items there are.
+   */
+  async reindex(workspaceId: WorkspaceId): Promise<{ indexed: number; missing: number }> {
+    let indexed = 0;
+    let missing = 0;
+    let after: KnowledgeItemId | undefined;
+    for (;;) {
+      const page = await this.o.items.list(workspaceId, {
+        limit: 200,
+        ...(after ? { after } : {}),
+      });
+      if (page.length === 0) break;
+      after = page[page.length - 1]!.id;
+      for (const item of page) {
+        if (item.status === 'deleted') {
+          await this.o.uow.run((tx) => this.o.search.remove(tx, item.id));
+          continue;
+        }
+        const file = await this.o.git.read(workspaceId, item.markdownPath);
+        if (file === null) {
+          // The database names a file the repository does not have. Saying so
+          // beats writing an empty index row that would look like an item
+          // with no text in it.
+          missing += 1;
+          continue;
+        }
+        const parsed = this.o.parseItem(file);
+        await this.o.uow.run((tx) =>
+          this.o.search.upsert(tx, {
+            knowledgeItemId: item.id,
+            workspaceId,
+            revisionId: item.currentRevisionId as RevisionId,
+            language: parsed.frontmatter.language,
+            title: parsed.frontmatter.title,
+            body: parsed.body,
+            updatedAt: item.updatedAt,
+          }),
+        );
+        indexed += 1;
+      }
+    }
+    return { indexed, missing };
+  }
+
+  /**
+   * The lexical index for one revision, written with it.
+   *
+   * `ARCHITECTURE.md` describes projections as jobs, which is right for an
+   * embedding: that needs a provider and can fail. A tsvector needs nothing
+   * but the text, so writing it in the same transaction costs nothing and
+   * means a search never disagrees with what was just written.
+   */
+  private async index(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    itemId: KnowledgeItemId,
+    revisionId: RevisionId,
+    frontmatter: Frontmatter,
+    body: string,
+    at: Date,
+  ): Promise<void> {
+    if (frontmatter.status === 'deleted') {
+      // Out of the index with the file: an item nobody can read should not be
+      // findable. The history keeps it, and restoring puts it back.
+      await this.o.search.remove(tx, itemId);
+      return;
+    }
+    await this.o.search.upsert(tx, {
+      knowledgeItemId: itemId,
+      workspaceId,
+      revisionId,
+      language: frontmatter.language,
+      title: frontmatter.title,
+      body,
+      updatedAt: at,
+    });
   }
 
   private async writeRelations(

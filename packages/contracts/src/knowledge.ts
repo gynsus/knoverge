@@ -327,6 +327,53 @@ export const SupersedeResponse = z.object({
 });
 export type SupersedeResponse = z.infer<typeof SupersedeResponse>;
 
+/**
+ * Looking for something by what it says.
+ *
+ * Rule 8: search returns candidates. Every result carries the revision and
+ * content hash it was found at, so the caller can fetch the canonical item
+ * and see whether it has moved on since.
+ */
+export const KnowledgeSearchInput = z.object({
+  query: z.string().trim().min(1).max(500),
+  /** Slug paths; resolved to ids before anything is authorised (rule 13). */
+  category_paths: z.array(CategoryPath).max(20).default([]),
+  types: z.array(ItemType).max(20).default([]),
+  /** Active only by default: what the workspace currently asserts. */
+  statuses: z.array(ItemStatus).max(8).default(['active']),
+  languages: z.array(LanguageTag).max(8).default([]),
+  review_states: z.array(ReviewState).max(4).default([]),
+  include_disputed: z.boolean().default(true),
+  limit: z.number().int().min(1).max(100).default(20),
+  include_snippets: z.boolean().default(true),
+});
+export type KnowledgeSearchInput = z.infer<typeof KnowledgeSearchInput>;
+
+/** One candidate, with enough of the item to decide whether to read it. */
+export const SearchResult = z.object({
+  item_id: KnowledgeItemId,
+  title: z.string(),
+  type: ItemType,
+  status: ItemStatus,
+  language: LanguageTag,
+  review_state: ReviewState,
+  evidence_state: EvidenceState,
+  disputed: z.boolean(),
+  category_paths: z.array(CategoryPath),
+  revision_id: RevisionId,
+  content_hash: z.string(),
+  updated_at: z.iso.datetime({ offset: true }),
+  /** 0 to 1, relative to the best hit of this search and no other. */
+  score: z.number(),
+  score_components: z.object({ title: z.number(), lexical: z.number() }),
+  /** The passage the match was found in, with `<b>` around the terms. */
+  snippet: z.string().nullable(),
+});
+export type SearchResult = z.infer<typeof SearchResult>;
+
+export const KnowledgeSearchResponse = z.object({ results: z.array(SearchResult) });
+export type KnowledgeSearchResponse = z.infer<typeof KnowledgeSearchResponse>;
+
 export const KnowledgeGetInput = z.object({ item_id: KnowledgeItemId });
 export type KnowledgeGetInput = z.infer<typeof KnowledgeGetInput>;
 

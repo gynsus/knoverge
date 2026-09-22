@@ -6,6 +6,8 @@ import {
   KnowledgeGetInput,
   KnowledgeHistoryInput,
   KnowledgeResponse,
+  KnowledgeSearchInput,
+  KnowledgeSearchResponse,
   RevisionsResponse,
 } from './knowledge.ts';
 import {
@@ -33,6 +35,7 @@ import { TaxonomyListInput, TaxonomyListResponse } from './taxonomy.ts';
  */
 export const ToolName = z.enum([
   'taxonomy_list',
+  'knowledge_search',
   'knowledge_get',
   'knowledge_history',
   'knowledge_diff',
@@ -78,6 +81,14 @@ export const TOOLS: readonly ToolContract[] = [
       'The category tree of the workspace, with the taxonomy version it is at. Read this before proposing knowledge, so an item lands in a category that exists.',
     input: TaxonomyListInput,
     output: TaxonomyListResponse,
+    readOnly: true,
+  },
+  {
+    name: 'knowledge_search',
+    description:
+      'Find knowledge by what it says. Returns candidates, best first, each with the revision and content hash it was found at — read the item itself before acting on one.',
+    input: KnowledgeSearchInput,
+    output: KnowledgeSearchResponse,
     readOnly: true,
   },
   {

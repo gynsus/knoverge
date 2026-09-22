@@ -16,6 +16,7 @@ import {
   type KnowledgeItemSummary,
   type RevisionSummary,
 } from '@knoverge/contracts';
+import type { KnowledgeSearchInput, KnowledgeSearchResponse } from '@knoverge/contracts';
 import {
   DomainError,
   type ItemResult,
@@ -25,7 +26,7 @@ import {
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { requirePermission } from '../plugins/actor-context.ts';
+import { requireListPermission, requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -300,6 +301,101 @@ export async function knowledgeGet(
   const actor = await requirePermission(services, request, 'knowledge.read');
   const result = await services.knowledge.get(actor.context, input.item_id);
   return { item: detail(result) };
+}
+
+/**
+ * Finding knowledge by what it says.
+ *
+ * Rule 8: this returns candidates. Each carries the revision and content hash
+ * it was found at, so a caller that wants to act on one reads the canonical
+ * item first and sees whether it has moved on.
+ *
+ * A scoped grant searches its own branch. The filter runs over the results,
+ * which is right for a read: a hit the caller may not see is not a hit, and
+ * the alternative — refusing the whole search — would deny anybody whose
+ * grant covers one category.
+ */
+export async function knowledgeSearch(
+  services: Services,
+  request: FastifyRequest,
+  input: KnowledgeSearchInput,
+): Promise<KnowledgeSearchResponse> {
+  const actor = await requireListPermission(services, request, 'knowledge.search');
+  const workspaceId = actor.context.workspaceId;
+
+  // Paths to ids before anything is authorised, and the subtree with them: a
+  // search in `projects` means the projects, not only the folder itself.
+  const categoryIds: string[] = [];
+  for (const path of input.category_paths) {
+    const category = await services.repositories.categories.findByPath(workspaceId, path);
+    if (!category) {
+      throw new DomainError('NOT_FOUND', `no category at ${path}`, { objectIds: { path } });
+    }
+    const subtree = await services.repositories.categories.listSubtree(workspaceId, category.path);
+    categoryIds.push(...subtree.map((c) => c.id));
+  }
+
+  // The workspace's own language parses the query when the caller names none:
+  // a query parsed as `simple` never meets a stemmed vector.
+  const workspace = await services.repositories.workspaces.findById(workspaceId);
+  const hits = await services.repositories.search.search({
+    workspaceId,
+    text: input.query,
+    ...(workspace ? { defaultLanguage: workspace.defaultLanguage } : {}),
+    ...(categoryIds.length ? { categoryIds } : {}),
+    ...(input.types.length ? { types: input.types } : {}),
+    ...(input.statuses.length ? { statuses: input.statuses } : {}),
+    ...(input.languages.length ? { languages: input.languages } : {}),
+    ...(input.review_states.length ? { reviewStates: input.review_states } : {}),
+    includeDisputed: input.include_disputed,
+    limit: input.limit,
+    includeSnippets: input.include_snippets,
+  });
+  if (hits.length === 0) return { results: [] };
+
+  // The categories each hit belongs to, for the cards and for the filter.
+  const rows = await services.repositories.knowledge.categoriesOf(
+    workspaceId,
+    hits.map((hit) => hit.itemId),
+  );
+  const tree = await services.repositories.categories.list(workspaceId, { includeArchived: true });
+  const pathOf = new Map(tree.map((c) => [c.id, c.path]));
+  const byItem = new Map<string, { ids: string[]; paths: string[] }>();
+  for (const row of rows) {
+    const entry = byItem.get(row.knowledgeItemId) ?? { ids: [], paths: [] };
+    entry.ids.push(row.categoryId);
+    const path = pathOf.get(row.categoryId);
+    if (path) entry.paths.push(path);
+    byItem.set(row.knowledgeItemId, entry);
+  }
+
+  const visible = await services.authorization.filter(
+    actor.context,
+    actor.standing,
+    'knowledge.read',
+    hits,
+    (hit) => ({ categoryIds: byItem.get(hit.itemId)?.ids ?? [] }),
+  );
+
+  return {
+    results: visible.map((hit) => ({
+      item_id: hit.itemId,
+      title: hit.title,
+      type: hit.type,
+      status: hit.status,
+      language: hit.language,
+      review_state: hit.reviewState,
+      evidence_state: hit.evidenceState,
+      disputed: hit.disputed,
+      category_paths: byItem.get(hit.itemId)?.paths ?? [],
+      revision_id: hit.revisionId,
+      content_hash: hit.contentHash,
+      updated_at: hit.updatedAt.toISOString(),
+      score: hit.score,
+      score_components: { title: hit.components.title, lexical: hit.components.lexical },
+      snippet: hit.snippet,
+    })) as KnowledgeSearchResponse['results'],
+  };
 }
 
 export async function knowledgeHistory(
