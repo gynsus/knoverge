@@ -298,7 +298,7 @@ An alias is unique per workspace after case folding and space collapsing, not me
 TaxonomyVersion
 - workspace_id
 - version (monotonic; unique with workspace_id)
-- git_commit_hash (commit that wrote taxonomy.yaml; filled from Milestone 2)
+- git_commit_hash (commit that wrote taxonomy.yaml)
 - created_at
 ```
 

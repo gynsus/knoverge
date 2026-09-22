@@ -158,9 +158,11 @@ POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
 POST /v1/admin/taxonomy.restore
-POST /v1/admin/taxonomy.merge              (arrives with knowledge items, Milestone 2)
+POST /v1/admin/taxonomy.merge              (not scheduled; the schema carries merged_into_category_id
+                                            and the event type, the operation itself does not exist)
 
-POST /v1/admin/knowledge.rename_slug        (Milestone 2)
+POST /v1/admin/knowledge.rename_slug        (not scheduled; a slug changes today only by changing
+                                            the title, which moves the file)
 POST /v1/admin/embedding_profile.set        (Milestone 6)
 POST /v1/admin/webhooks.upsert              (Milestone 9)
 POST /v1/admin/integrity.check              (Milestone 9)

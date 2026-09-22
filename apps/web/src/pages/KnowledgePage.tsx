@@ -1,6 +1,6 @@
 import type { ItemType, KnowledgeItemDetail } from '@knoverge/contracts';
 import { ItemType as ItemTypes } from '@knoverge/contracts';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -233,10 +233,16 @@ export function KnowledgePage() {
   const [fresh, setFresh] = useState<Draft>(emptyDraft);
   const lastTrigger = useRef<HTMLElement | null>(null);
 
-  const items = useQuery({
+  // Paged, because a knowledge base outgrows one page and a list that stops
+  // at fifty while claiming to be complete is a list that hides things.
+  const items = useInfiniteQuery({
     queryKey: ITEMS_KEY,
-    queryFn: ({ signal }) => adminApi.knowledge.list(signal),
+    queryFn: ({ pageParam, signal }) =>
+      adminApi.knowledge.list(pageParam as string | undefined, signal),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_cursor ?? undefined,
   });
+  const listed = items.data?.pages.flatMap((page) => page.items) ?? [];
   const selected = useQuery({
     queryKey: [...ITEMS_KEY, selectedId],
     queryFn: ({ signal }) => adminApi.knowledge.get(selectedId as string, signal),
@@ -281,9 +287,9 @@ export function KnowledgePage() {
         <p>{t('knowledge.intro')}</p>
         {items.isPending && <p role="status">{t('common.loading')}</p>}
         <ErrorNotice error={items.error} />
-        {items.data?.items.length === 0 && <p>{t('knowledge.empty')}</p>}
+        {items.data && listed.length === 0 && <p>{t('knowledge.empty')}</p>}
         <ul className="grid gap-1">
-          {items.data?.items.map((entry) => (
+          {listed.map((entry) => (
             <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
               <Button
                 type="button"
@@ -304,6 +310,17 @@ export function KnowledgePage() {
             </li>
           ))}
         </ul>
+        {items.hasNextPage && (
+          <Button
+            type="button"
+            variant="outline"
+            className="justify-self-start"
+            onClick={() => void items.fetchNextPage()}
+            disabled={items.isFetchingNextPage}
+          >
+            {items.isFetchingNextPage ? t('common.working') : t('common.load_more')}
+          </Button>
+        )}
       </Card>
 
       <ErrorNotice error={selected.error} />

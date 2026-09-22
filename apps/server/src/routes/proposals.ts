@@ -119,6 +119,7 @@ export async function proposalList(
   const actor = await resolveWorkspaceActor(services, request);
   const scope = await readScope(services, actor);
   const proposals = await services.proposals.list(actor.context.workspaceId, {
+    limit: input.limit,
     ...(input.status ? { status: input.status } : {}),
     ...(scope === 'own' ? { proposedByActorId: actor.context.actorId } : {}),
   });

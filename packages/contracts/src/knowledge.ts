@@ -412,6 +412,20 @@ export const KnowledgeResponse = z.object({
 });
 export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;
 
+/**
+ * A page of items, for the browser's list.
+ *
+ * Coerced from a query string, which carries only strings. The tool for
+ * listing at scale is `knowledge_index`; this is what a page of the web
+ * interface asks for.
+ */
+export const KnowledgeListQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  /** The id the previous page ended at; ids sort in creation order. */
+  cursor: KnowledgeItemId.optional(),
+});
+export type KnowledgeListQuery = z.infer<typeof KnowledgeListQuery>;
+
 export const KnowledgeListResponse = z.object({
   items: z.array(KnowledgeItemSummary),
   /** The cursor for the next page, or null at the end. */

@@ -196,7 +196,10 @@ export const WithdrawProposalRequest = z.object({
 });
 export type WithdrawProposalRequest = z.infer<typeof WithdrawProposalRequest>;
 
-export const ProposalListInput = z.object({ status: ProposalStatus.optional() });
+export const ProposalListInput = z.object({
+  status: ProposalStatus.optional(),
+  limit: z.number().int().min(1).max(200).default(50),
+});
 export type ProposalListInput = z.infer<typeof ProposalListInput>;
 
 export const ProposalGetInput = z.object({ proposal_id: ProposalId });

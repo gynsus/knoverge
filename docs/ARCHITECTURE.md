@@ -65,7 +65,7 @@ Knoverge ships as **one application image** plus PostgreSQL. See ADR 0005.
 A single Node.js process hosts:
 
 - HTTP API under `/v1` (RPC-style, mirrors MCP tools; plus auth and admin endpoints);
-- MCP endpoint under `/mcp` (Streamable HTTP; Milestone 4);
+- MCP endpoint under `/mcp` (Streamable HTTP, stateless: every call carries its own credential);
 - the static web bundle under `/`;
 - the background worker (pg-boss consumer);
 - health checks under `/health/live` and `/health/ready`.
@@ -112,7 +112,7 @@ All strings come from message catalogues (English source, Russian first). See `I
 - `db migrate` / `db prune`;
 - `integrity check` (Milestone 9): cross-store and ledger verification, and the way to resolve a workspace the write guard has closed;
 - `backup` / `restore` helpers (Milestone 9);
-- `mcp stdio` (Milestone 4): local stdio bridge that proxies to a remote Knoverge MCP endpoint with a bearer token.
+- `mcp stdio`: local stdio bridge that proxies to a remote Knoverge MCP endpoint with a bearer token from the environment.
 
 ### PostgreSQL
 

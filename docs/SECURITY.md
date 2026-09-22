@@ -26,7 +26,7 @@ The application itself must not assume the proxy is trustworthy unless `KNOVERGE
 
 ## 3. Security baseline by milestone
 
-The server may face the Internet from Milestone 4 on, so the baseline arrives before that.
+The server may face the Internet from Milestone 4 on, which has shipped, so the baseline is in place.
 
 Milestone 1 (web and accounts):
 
@@ -36,15 +36,15 @@ Milestone 1 (web and accounts):
 - request body size limits;
 - security headers: CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Frame-Options`, HSTS when behind TLS.
 
-Milestone 4 (agents):
+Milestone 4 (agents), shipped:
 
-- per-agent rate limits for read/search, proposal writes and sync batches;
-- MCP request size and concurrency limits;
-- connection limits per token.
+- per-credential rate limits, one budget for reads and a tighter one for writes; the sync batch bucket arrives with the sync operations in Milestone 5;
+- MCP request size limit (512 KiB, under the megabyte accepted elsewhere);
+- at most eight requests in flight per credential, which a per-minute budget cannot express.
 
 Milestone 9 (operations): audit export, backup tooling, webhooks, token rotation UI, advanced hardening.
 
-Until Milestone 4 ships, public exposure is not recommended.
+Milestone 9 hardening has not shipped, so an Internet-facing deployment should sit behind a reverse proxy that terminates TLS and adds its own rate limiting.
 
 ## 4. Human authentication
 

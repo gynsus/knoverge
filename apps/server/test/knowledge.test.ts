@@ -782,3 +782,40 @@ describe('superseding an item', () => {
     expect(res.json().message).toMatch(/superseded/);
   });
 });
+
+describe('listing what the workspace holds', () => {
+  it('pages, and says null only when there is nothing after', async () => {
+    // Enough that one page cannot hold them, which is the case the old list
+    // answered by showing the first fifty and calling that everything.
+    for (let i = 0; i < 4; i += 1) {
+      expect(
+        (
+          await admin.post('/v1/admin/knowledge.create', {
+            title: `Paged item ${i}`,
+            body: `One of several, number ${i}.`,
+            type: 'fact',
+          })
+        ).statusCode,
+      ).toBe(200);
+    }
+
+    const first = KnowledgeListResponse.parse(
+      (await admin.get('/v1/knowledge.list?limit=2')).json(),
+    );
+    expect(first.items).toHaveLength(2);
+    expect(first.next_cursor).not.toBeNull();
+
+    const second = KnowledgeListResponse.parse(
+      (await admin.get(`/v1/knowledge.list?limit=2&cursor=${first.next_cursor}`)).json(),
+    );
+    // Ids sort in creation order, so a page taken while items are being added
+    // neither repeats nor skips.
+    expect(second.items.map((i) => i.id)).not.toContain(first.items[0]!.id);
+
+    const last = KnowledgeListResponse.parse(
+      (await admin.get('/v1/knowledge.list?limit=200')).json(),
+    );
+    // Null exactly when there is nothing after, not merely when a page is short.
+    expect(last.next_cursor).toBeNull();
+  });
+});
