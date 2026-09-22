@@ -173,7 +173,6 @@
     "skip_to_content": "Skip to content",
     "taxonomy": "Taxonomy",
     "toggle_sidebar": "Show or hide the navigation",
-    "workspace": "Workspace",
     "workspace_settings": "Workspace settings",
     "workspace_switch": "Current workspace: {{name}}. Switch workspace",
     "workspaces": "Workspaces"
@@ -434,5 +433,35 @@
     "saved": "Workspace updated.",
     "this_is_you": "This is you",
     "title": "Workspace"
+  },
+  "workspaces": {
+    "actions": "Actions for {{name}}",
+    "agents_one": "{{count}} agent",
+    "agents_other": "{{count}} agents",
+    "all_roles": "Every role",
+    "count_one": "{{count}} workspace",
+    "count_other": "{{count}} workspaces",
+    "current": "Current",
+    "empty": "No workspaces yet",
+    "empty_filtered": "No workspaces found",
+    "empty_filtered_hint": "Try a different search, or clear the filters.",
+    "empty_hint": "Create one to hold knowledge and connect agents to it.",
+    "filter_role": "Filter by role",
+    "intro": "Separate bodies of knowledge, each with its own agents, members and access.",
+    "items_one": "{{count}} item",
+    "items_other": "{{count}} items",
+    "never_active": "Nothing recorded yet",
+    "no_description": "No description",
+    "open": "Open",
+    "reset_filters": "Clear filters",
+    "search": "Search workspaces",
+    "search_clear": "Clear the search",
+    "settings": "Settings",
+    "sort": "Sort",
+    "sort_activity": "Recently active",
+    "sort_items": "Most knowledge",
+    "sort_name": "By name",
+    "title": "Workspaces",
+    "updated": "Updated {{when}}"
   }
 }

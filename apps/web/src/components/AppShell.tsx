@@ -50,7 +50,7 @@ const NAV = [
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },
   { to: '/agents', key: 'agents', icon: Bot, needs: 'agent.manage' },
   { to: '/policy', key: 'policy', icon: ShieldCheck, needs: 'policy.manage' },
-  { to: '/workspace', key: 'workspace', icon: Building2 },
+  { to: '/workspaces', key: 'workspaces', icon: Building2 },
   { to: '/settings', key: 'settings', icon: Settings },
 ] as const satisfies readonly {
   to: string;

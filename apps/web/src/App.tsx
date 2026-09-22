@@ -1,4 +1,4 @@
-import { Route, Routes } from 'react-router';
+import { Navigate, Route, Routes } from 'react-router';
 
 import { AnonymousOnly, RequireAuth } from './auth/guards.tsx';
 import { AppShell } from './components/AppShell.tsx';
@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/SettingsPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
 import { TaxonomyPage } from './pages/TaxonomyPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
+import { WorkspacesPage } from './pages/WorkspacesPage.tsx';
 
 export function App() {
   return (
@@ -31,8 +32,14 @@ export function App() {
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />
-          <Route path="/workspace" element={<WorkspacePage />} />
-          <Route path="/workspace/new" element={<NewWorkspacePage />} />
+          <Route path="/workspaces" element={<WorkspacesPage />} />
+          <Route path="/workspaces/new" element={<NewWorkspacePage />} />
+          <Route path="/workspaces/settings" element={<WorkspacePage />} />
+          {/* The section was singular until it listed more than one thing.
+              Somebody's open tab or bookmark should not become a blank page
+              over a rename. */}
+          <Route path="/workspace" element={<Navigate to="/workspaces" replace />} />
+          <Route path="/workspace/new" element={<Navigate to="/workspaces/new" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

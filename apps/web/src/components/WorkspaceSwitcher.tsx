@@ -109,14 +109,14 @@ export function WorkspaceSwitcher({ workspaces }: { workspaces: WorkspaceContext
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link to="/workspace" onClick={() => setOpenMobile(false)}>
+              <Link to="/workspaces/settings" onClick={() => setOpenMobile(false)}>
                 <Settings2 aria-hidden="true" />
                 {t('nav.workspace_settings')}
               </Link>
             </DropdownMenuItem>
             {canCreate && (
               <DropdownMenuItem asChild>
-                <Link to="/workspace/new" onClick={() => setOpenMobile(false)}>
+                <Link to="/workspaces/new" onClick={() => setOpenMobile(false)}>
                   <Plus aria-hidden="true" />
                   {t('workspace.create')}
                 </Link>

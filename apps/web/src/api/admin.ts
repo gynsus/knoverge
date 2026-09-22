@@ -35,6 +35,7 @@ import type {
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
   WorkspaceResponse,
+  WorkspacesResponse,
 } from '@knoverge/contracts';
 
 import { apiGet, apiPost } from './client.ts';
@@ -76,6 +77,7 @@ export const adminApi = {
   },
   workspace: {
     get: (signal?: AbortSignal) => apiGet<WorkspaceResponse>('/v1/workspace.get', signal),
+    list: (signal?: AbortSignal) => apiGet<WorkspacesResponse>('/v1/workspaces.list', signal),
     create: (body: CreateWorkspaceRequest) =>
       apiPost<CreateWorkspaceResponse>('/v1/admin/workspace.create', body),
     update: (body: UpdateWorkspaceRequest) =>
