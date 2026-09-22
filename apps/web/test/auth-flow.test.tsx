@@ -196,3 +196,92 @@ describe('sign in', () => {
     expect(await screen.findByText('Your workspaces')).toBeInTheDocument();
   });
 });
+
+describe('the password field on first run', () => {
+  /**
+   * A clipboard, since jsdom has none.
+   *
+   * Installed after `userEvent.setup()`, which puts its own in place: one
+   * installed before is quietly replaced, and the test then measures
+   * user-event's clipboard rather than the page's use of it.
+   */
+  function stubClipboard(): { written: string[]; fail?: boolean } {
+    const state: { written: string[]; fail?: boolean } = { written: [] };
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: {
+        writeText: async (text: string) => {
+          if (state.fail) throw new Error('refused');
+          state.written.push(text);
+        },
+      },
+    });
+    return state;
+  }
+
+  it('generates a password, shows it, copies it and says so', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: true, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
+    });
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Set up Knoverge' });
+
+    const user = userEvent.setup();
+    const clipboard = stubClipboard();
+    const field = screen.getByLabelText('Password') as HTMLInputElement;
+    // Hidden to begin with, as a password field is.
+    expect(field.type).toBe('password');
+
+    await user.click(screen.getByRole('button', { name: 'Generate' }));
+    await waitFor(() => expect(clipboard.written).toHaveLength(1));
+    expect(field.value).toBe(clipboard.written[0]);
+    expect(field.value.length).toBeGreaterThanOrEqual(12);
+    // Generating reveals: a password copied and hidden is one nobody can
+    // check they still have.
+    expect(field.type).toBe('text');
+    expect(await screen.findByRole('status')).toHaveTextContent('copied to the clipboard');
+  });
+
+  it('copies again when the password is revealed', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: true, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
+    });
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Set up Knoverge' });
+
+    const user = userEvent.setup();
+    const clipboard = stubClipboard();
+    await user.type(screen.getByLabelText('Password'), 'typed by a person');
+    await user.click(screen.getByRole('button', { name: 'Show the password and copy it' }));
+    await waitFor(() => expect(clipboard.written).toEqual(['typed by a person']));
+    expect((screen.getByLabelText('Password') as HTMLInputElement).type).toBe('text');
+
+    // Hiding does not copy: there is no reason to, and a clipboard that
+    // changes when somebody hides something is a surprise.
+    await user.click(screen.getByRole('button', { name: 'Hide the password' }));
+    expect(clipboard.written).toHaveLength(1);
+    expect((screen.getByLabelText('Password') as HTMLInputElement).type).toBe('password');
+  });
+
+  it('says when the clipboard refused, rather than claiming it worked', async () => {
+    mockApi({
+      'GET /v1/auth/status': () => json({ bootstrap_required: true, authenticated: false }),
+      'GET /v1/auth/csrf': () => json({ token: 'csrf-1' }),
+    });
+    renderApp('/');
+    await screen.findByRole('heading', { name: 'Set up Knoverge' });
+
+    const user = userEvent.setup();
+    const clipboard = stubClipboard();
+    clipboard.fail = true;
+    await user.click(screen.getByRole('button', { name: 'Generate' }));
+    // The password is still generated and still in the field; only the copy
+    // failed, and the message says which.
+    expect((screen.getByLabelText('Password') as HTMLInputElement).value.length).toBeGreaterThan(
+      11,
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('copy it from the field');
+  });
+});
