@@ -217,7 +217,8 @@ describe('sign in', () => {
     await user.type(screen.getByLabelText('Password'), 'correct horse battery staple');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByText('Your workspaces')).toBeInTheDocument();
-    expect(screen.getByText(/Personal/)).toBeInTheDocument();
+    // Named once by the switcher in the rail and once by the card on the page.
+    expect(screen.getAllByText(/Personal/).length).toBeGreaterThan(0);
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
     await waitFor(() =>
       expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument(),

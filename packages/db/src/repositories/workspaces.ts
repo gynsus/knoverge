@@ -6,12 +6,16 @@ import type {
   WorkspacePatch,
   WorkspaceRecord,
   WorkspaceRepository,
+  WorkspaceStats,
 } from '@knoverge/core';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, max } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { rethrowUniqueViolation } from '../errors.ts';
 import { actors } from '../schema/actors.ts';
+import { agents } from '../schema/agents.ts';
+import { events } from '../schema/events.ts';
+import { knowledgeItems } from '../schema/knowledge.ts';
 import { workspaces } from '../schema/workspaces.ts';
 import { asTx } from '../unit-of-work.ts';
 
@@ -47,6 +51,47 @@ export function createWorkspaceRepository(db: Database): WorkspaceRepository {
     async list() {
       const rows = await db.select().from(workspaces).orderBy(asc(workspaces.createdAt));
       return rows.map(toWorkspace);
+    },
+    async statsFor(workspaceIds) {
+      const stats = new Map<WorkspaceId, WorkspaceStats>();
+      if (workspaceIds.length === 0) return stats;
+      const ids = [...workspaceIds];
+      for (const id of ids) stats.set(id, { items: 0, agents: 0, lastActivityAt: null });
+
+      const [itemRows, agentRows, activityRows] = await Promise.all([
+        db
+          .select({ workspaceId: knowledgeItems.workspaceId, total: count() })
+          .from(knowledgeItems)
+          .where(inArray(knowledgeItems.workspaceId, ids))
+          .groupBy(knowledgeItems.workspaceId),
+        db
+          .select({ workspaceId: agents.workspaceId, total: count() })
+          .from(agents)
+          .where(inArray(agents.workspaceId, ids))
+          .groupBy(agents.workspaceId),
+        // The ledger is append-only, so its newest row is the last time
+        // anything material happened. `workspaces.updated_at` would answer a
+        // narrower question: when the settings were last edited.
+        db
+          .select({ workspaceId: events.workspaceId, at: max(events.createdAt) })
+          .from(events)
+          .where(inArray(events.workspaceId, ids))
+          .groupBy(events.workspaceId),
+      ]);
+
+      for (const row of itemRows) {
+        const entry = stats.get(row.workspaceId as WorkspaceId);
+        if (entry) entry.items = row.total;
+      }
+      for (const row of agentRows) {
+        const entry = stats.get(row.workspaceId as WorkspaceId);
+        if (entry) entry.agents = row.total;
+      }
+      for (const row of activityRows) {
+        const entry = stats.get(row.workspaceId as WorkspaceId);
+        if (entry) entry.lastActivityAt = row.at ?? null;
+      }
+      return stats;
     },
   };
 }

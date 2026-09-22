@@ -369,7 +369,7 @@ describe('workspace page', () => {
       'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
       'POST /v1/admin/workspace.update': () => json({ ok: true }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     expect(await screen.findByDisplayValue('Personal')).toBeInTheDocument();
     expect(screen.getByText('owner@example.com')).toBeInTheDocument();
 
@@ -402,7 +402,7 @@ describe('workspace page', () => {
         return json({ members });
       },
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText('Email'), 'member@example.com');
     await user.type(screen.getByLabelText('Initial password'), 'a long enough passphrase');
@@ -424,7 +424,7 @@ describe('workspace page', () => {
       'POST /v1/admin/members.update': () => json({ ok: true }),
       'POST /v1/admin/members.remove': () => json({ ok: true }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     const user = userEvent.setup();
     const select = await screen.findByLabelText(`Role of ${MEMBERS[1]!.display_name}`);
 
@@ -453,7 +453,7 @@ describe('workspace page', () => {
       'GET /v1/workspace.get': () =>
         json({ workspace: { ...WORKSPACE, role: 'reviewer' }, permissions: REVIEWER_PERMISSIONS }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     expect(await screen.findByDisplayValue('Personal')).toBeDisabled();
     expect(screen.queryByText('Members')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
@@ -468,6 +468,12 @@ describe('choosing a workspace', () => {
     role: 'admin',
   };
   const twoWorkspaces = { ...ME, memberships: [...ME.memberships, SECOND] };
+
+  /** Opens the switcher and chooses a workspace by name. */
+  async function switchTo(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(await screen.findByRole('button', { name: /Current workspace:/ }));
+    await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }));
+  }
 
   it('names the workspace on every request, and lets the person change it', async () => {
     // Without the header the server refuses a person who belongs to more than
@@ -485,10 +491,7 @@ describe('choosing a workspace', () => {
     expect(scoped.every((c) => c.workspace === ME.memberships[0]!.workspace_id)).toBe(true);
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Workspace' }),
-      SECOND.workspace_id,
-    );
+    await switchTo(user, 'Team');
     await waitFor(() =>
       expect(
         calls.some((c) => c.url === '/v1/workspace.get' && c.workspace === SECOND.workspace_id),
@@ -521,10 +524,7 @@ describe('choosing a workspace', () => {
     await screen.findByRole('button', { name: 'Projects' });
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Workspace' }),
-      SECOND.workspace_id,
-    );
+    await switchTo(user, 'Team');
     await waitFor(() =>
       expect(
         calls.some(
@@ -545,11 +545,14 @@ describe('choosing a workspace', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('offers no picker to a person who belongs to one workspace', async () => {
+  it('still names the workspace to a person who belongs to one', async () => {
+    // The switcher is not hidden below two workspaces. It says where somebody
+    // is, and it is where the second workspace is made from; a control that
+    // appears only once a second one exists is one nobody finds.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
     renderApp('/');
     await screen.findByText('Your workspaces');
-    expect(screen.queryByRole('combobox', { name: 'Workspace' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Current workspace: Personal/ })).toBeInTheDocument();
   });
 });
 

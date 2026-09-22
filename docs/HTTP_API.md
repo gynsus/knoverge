@@ -96,6 +96,8 @@ Require the corresponding workspace role or permission.
 ```text
 GET  /v1/taxonomy.list                      (any member with taxonomy.read)
 GET  /v1/workspace.get                      (any member)
+GET  /v1/workspaces.list                    the caller's own memberships, with counts
+POST /v1/admin/workspace.create             a new workspace, with the caller as its owner
 POST /v1/admin/workspace.update
 GET  /v1/admin/members.list
 POST /v1/admin/members.add
@@ -170,6 +172,38 @@ POST /v1/admin/attachments.upload           (multipart, later milestone)
 ```
 
 Admin endpoints follow the same RPC style and the same error model.
+
+### Listing workspaces
+
+`GET /v1/workspaces.list` answers with the workspaces the caller belongs to and
+nothing else, so membership is the whole permission: it is the list you choose
+a workspace from, and scoping it to a workspace already chosen would be
+circular. It needs a person's session; an agent is bound to one workspace and
+has no view across them.
+
+Each entry carries the counts a list has to show without opening anything —
+items, agents, and when the workspace last had an event. The counts are of the
+whole workspace rather than of what this caller may read: they say how big it
+is, not what is visible, and a member already knows the workspace exists. They
+come from three grouped queries whatever the number of workspaces, never one
+set per row.
+
+### Creating a workspace
+
+`POST /v1/admin/workspace.create` is the one admin endpoint that is not scoped
+to the current workspace: there is no workspace yet to hold a permission in. It
+requires a person's session — never an agent — and that person must already
+hold `workspace.admin` in some workspace they belong to. The reason is that
+creating a workspace makes you its owner, and an owner can create accounts
+through `members.add`; accounts belong to the installation rather than to a
+workspace, so anyone who could create a workspace could create users.
+
+The slug is unique across the installation and is therefore the request's own
+idempotency key: a resubmitted form is answered `VALIDATION_ERROR` rather than
+quietly creating a second workspace. The new workspace starts its own event
+chain with `workspace.created`, carrying `created_by_actor_id` and
+`created_by_workspace_id` so the act is attributable across the two. Its Git
+repository is created on the first write, as for any workspace.
 
 ## 7. Web-only read endpoints
 

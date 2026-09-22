@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { DisplayName, Email, Password } from './auth.ts';
-import { LanguageTag, MembershipRole, UserStatus } from './identity.ts';
+import { LanguageTag, MembershipRole, UserStatus, WorkspaceSlug } from './identity.ts';
 import { ItemType } from './knowledge.ts';
 import { PermissionAction } from './policy.ts';
 import { ActorId, UserId, WorkspaceId } from './ids.ts';
@@ -31,6 +31,53 @@ export const WorkspaceResponse = z.object({
   permissions: z.array(PermissionAction),
 });
 export type WorkspaceResponse = z.infer<typeof WorkspaceResponse>;
+
+/**
+ * One workspace as a list of them shows it.
+ *
+ * Carries what somebody needs to choose between workspaces without opening
+ * each one: how much is in it, how many agents reach it, and when anything
+ * last happened. The counts are of the whole workspace rather than of what
+ * this caller may see — they say how big it is, not what is readable — and a
+ * list of workspaces you belong to gives nothing away that membership did not.
+ */
+export const WorkspaceListEntry = z.object({
+  id: WorkspaceId,
+  slug: z.string(),
+  name: z.string(),
+  description: z.string().nullable(),
+  default_language: LanguageTag,
+  created_at: z.iso.datetime(),
+  /** The caller's role in this workspace. Never null here: it is theirs. */
+  role: MembershipRole,
+  item_count: z.number().int().nonnegative(),
+  agent_count: z.number().int().nonnegative(),
+  /** The newest event in this workspace's ledger, or null if nothing happened yet. */
+  last_activity_at: z.iso.datetime().nullable(),
+});
+export type WorkspaceListEntry = z.infer<typeof WorkspaceListEntry>;
+
+export const WorkspacesResponse = z.object({ workspaces: z.array(WorkspaceListEntry) });
+export type WorkspacesResponse = z.infer<typeof WorkspacesResponse>;
+
+/**
+ * Creates a workspace, with the caller as its owner.
+ *
+ * The slug is the natural idempotency key: it is unique across the
+ * installation, so a resubmitted form is refused rather than silently
+ * creating a second workspace under the same name. That is why this request
+ * carries no `idempotency_key` of its own.
+ */
+export const CreateWorkspaceRequest = z.object({
+  slug: WorkspaceSlug,
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(2000).optional(),
+  default_language: LanguageTag.optional(),
+});
+export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequest>;
+
+export const CreateWorkspaceResponse = z.object({ workspace: WorkspaceSummary });
+export type CreateWorkspaceResponse = z.infer<typeof CreateWorkspaceResponse>;
 
 export const UpdateWorkspaceRequest = z.object({
   name: z.string().trim().min(1).max(120).optional(),

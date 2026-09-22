@@ -4,7 +4,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { TERMS_VERSION, MembersResponse, WorkspaceResponse } from '@knoverge/contracts';
+import {
+  TERMS_VERSION,
+  CreateWorkspaceResponse,
+  MeResponse,
+  MembersResponse,
+  WorkspaceResponse,
+  WorkspacesResponse,
+} from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -270,5 +277,143 @@ describe('members', () => {
       user_id: 'usr_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+/**
+ * Creating a workspace is done by accounts of its own rather than by `owner`,
+ * because a second membership changes what every later request from that
+ * browser needs: with more than one workspace the selection header stops being
+ * optional.
+ */
+describe('creating a workspace', () => {
+  const BUILDER = { email: 'builder@example.com', password: 'a long enough passphrase' };
+  const WATCHER = { email: 'watcher@example.com', password: 'another long passphrase' };
+
+  it('creates a workspace with the caller as its owner', async () => {
+    // An owner, because workspace.admin is the owner's permission: the admin
+    // role manages agents and policy but not the workspace itself.
+    const added = await owner.post('/v1/admin/members.add', {
+      email: BUILDER.email,
+      role: 'owner',
+      display_name: 'Builder',
+      initial_password: BUILDER.password,
+    });
+    expect(added.statusCode, added.body).toBe(200);
+
+    const builder = await new Browser().signIn(BUILDER.email, BUILDER.password);
+    const res = await builder.post('/v1/admin/workspace.create', {
+      slug: 'second',
+      name: 'Second Workspace',
+      description: 'Made by an administrator of the first.',
+      default_language: 'ru',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const created = CreateWorkspaceResponse.parse(res.json()).workspace;
+    expect(created).toMatchObject({
+      slug: 'second',
+      name: 'Second Workspace',
+      default_language: 'ru',
+      role: 'owner',
+    });
+
+    // The session sees the membership, so the interface can switch into it.
+    const me = MeResponse.parse((await builder.get('/v1/auth/me')).json());
+    expect(me.memberships.map((m) => m.workspace_slug).sort()).toEqual(['personal', 'second']);
+    expect(me.memberships.find((m) => m.workspace_slug === 'second')?.role).toBe('owner');
+
+    // With two memberships the workspace has to be named.
+    expect((await builder.get('/v1/workspace.get')).statusCode).toBe(400);
+    const scoped = await builder.request({
+      method: 'GET',
+      url: '/v1/workspace.get',
+      headers: { 'x-knoverge-workspace': created.id },
+    });
+    expect(scoped.statusCode, scoped.body).toBe(200);
+    expect(WorkspaceResponse.parse(scoped.json()).permissions).toContain('workspace.admin');
+
+    // A new chain: workspace.created first, attributed across the two
+    // workspaces, then the owner's membership.
+    const events = await services.repositories.events.listAfter(created.id, 0, 200);
+    expect(events.map((e) => e.eventType)).toEqual(['workspace.created', 'membership.created']);
+    expect(events[0]?.metadata).toMatchObject({ slug: 'second' });
+    expect(events[0]?.metadata).toHaveProperty('created_by_actor_id');
+    expect(events[0]?.metadata).toHaveProperty('created_by_workspace_id');
+    expect((await services.ledger.verify(created.id)).ok).toBe(true);
+  });
+
+  it('lists the workspaces somebody belongs to, with what is in them', async () => {
+    const builder = await new Browser().signIn(BUILDER.email, BUILDER.password);
+    const res = await builder.get('/v1/workspaces.list');
+    expect(res.statusCode, res.body).toBe(200);
+    const listed = WorkspacesResponse.parse(res.json()).workspaces;
+
+    // Their own memberships and nothing else. A workspace they do not belong
+    // to is not theirs to know about.
+    expect(listed.map((w) => w.slug).sort()).toEqual(['personal', 'second']);
+    const second = listed.find((w) => w.slug === 'second')!;
+    expect(second).toMatchObject({
+      name: 'Second Workspace',
+      role: 'owner',
+      item_count: 0,
+      agent_count: 0,
+    });
+    // A workspace that has only just been created still has a ledger, so it
+    // has an activity time; a null here would mean nothing was recorded.
+    expect(second.last_activity_at).not.toBeNull();
+
+    // The counts are grouped in one query across every workspace, so the risk
+    // is a count landing against the wrong one. An agent in the first
+    // workspace must show there and nowhere else.
+    const agent = await owner.post('/v1/admin/agents.create', { name: 'counted-agent' });
+    expect(agent.statusCode, agent.body).toBe(200);
+    const after = WorkspacesResponse.parse(
+      (await builder.get('/v1/workspaces.list')).json(),
+    ).workspaces;
+    expect(after.find((w) => w.slug === 'personal')?.agent_count).toBe(1);
+    expect(after.find((w) => w.slug === 'second')?.agent_count).toBe(0);
+
+    // It is a person's view of their own memberships, so it needs a session.
+    expect((await new Browser().get('/v1/workspaces.list')).statusCode).toBe(401);
+  });
+
+  it('refuses a slug that is already taken', async () => {
+    const builder = await new Browser().signIn(BUILDER.email, BUILDER.password);
+    const res = await builder.post('/v1/admin/workspace.create', {
+      slug: 'personal',
+      name: 'Another Personal',
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('refuses somebody who holds workspace.admin nowhere', async () => {
+    // An administrator rather than a viewer: the role manages agents and
+    // policy, and is still not enough to bring another workspace into being.
+    const added = await owner.post('/v1/admin/members.add', {
+      email: WATCHER.email,
+      role: 'admin',
+      display_name: 'Watcher',
+      initial_password: WATCHER.password,
+    });
+    expect(added.statusCode, added.body).toBe(200);
+
+    const watcher = await new Browser().signIn(WATCHER.email, WATCHER.password);
+    const res = await watcher.post('/v1/admin/workspace.create', {
+      slug: 'watchers-place',
+      name: "Watcher's place",
+    });
+    expect(res.statusCode, res.body).toBe(403);
+    expect(res.json().code).toBe('FORBIDDEN');
+  });
+
+  it('refuses a caller with no session, which is every agent', async () => {
+    const anonymous = new Browser();
+    anonymous.csrf = ((await anonymous.get('/v1/auth/csrf')).json() as { token: string }).token;
+    const res = await anonymous.post('/v1/admin/workspace.create', {
+      slug: 'nobodys',
+      name: 'Nobody',
+    });
+    expect(res.statusCode, res.body).toBe(401);
   });
 });
