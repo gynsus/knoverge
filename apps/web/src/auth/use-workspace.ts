@@ -1,4 +1,4 @@
-import type { PermissionAction, WorkspaceResponse } from '@knoverge/contracts';
+import type { MembershipRole, PermissionAction, WorkspaceResponse } from '@knoverge/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
@@ -27,8 +27,8 @@ function remember(id: string): void {
 }
 
 export interface WorkspaceContext {
-  /** The workspaces this person belongs to. */
-  available: { id: string; slug: string; name: string }[];
+  /** The workspaces this person belongs to, with the role they hold in each. */
+  available: { id: string; slug: string; name: string; role: MembershipRole }[];
   selectedId: string | undefined;
   select(id: string): void;
   workspace: WorkspaceResponse['workspace'] | undefined;
@@ -55,6 +55,7 @@ export function useWorkspaceContext(): WorkspaceContext {
     id: m.workspace_id,
     slug: m.workspace_slug,
     name: m.workspace_name,
+    role: m.role,
   }));
 
   // Only an explicit choice is state. Everything else is derived, so a

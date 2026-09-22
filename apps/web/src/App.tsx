@@ -7,6 +7,7 @@ import { HomePage } from './pages/HomePage.tsx';
 import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
+import { NewWorkspacePage } from './pages/NewWorkspacePage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
@@ -31,6 +32,7 @@ export function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/workspace" element={<WorkspacePage />} />
+          <Route path="/workspace/new" element={<NewWorkspacePage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

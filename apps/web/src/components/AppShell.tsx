@@ -15,7 +15,6 @@ import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet, useLocation } from 'react-router';
 
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
 import {
   Sidebar,
   SidebarContent,
@@ -36,6 +35,7 @@ import { useAuth } from '../auth/use-auth.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from './ErrorNotice.tsx';
 import { LanguageSwitcher } from './LanguageSwitcher.tsx';
+import { WorkspaceSwitcher } from './WorkspaceSwitcher.tsx';
 
 /**
  * Each section names the permission that makes it useful. A section whose
@@ -122,25 +122,15 @@ function SignedInShell({ displayName, onLogout }: { displayName: string; onLogou
   return (
     <>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="gap-2 px-3 py-3">
-          <div className="group-data-[collapsible=icon]:hidden">
-            <p className="text-sm font-semibold leading-tight">{t('app.name')}</p>
-            <p className="text-xs text-muted-foreground">{t('app.tagline')}</p>
-          </div>
-          {workspaces.available.length > 1 && (
-            <Select
-              value={workspaces.selectedId ?? ''}
-              onChange={(e) => workspaces.select(e.target.value)}
-              aria-label={t('nav.workspace_label')}
-              className="h-8 text-sm group-data-[collapsible=icon]:hidden"
-            >
-              {workspaces.available.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </Select>
-          )}
+        <SidebarHeader className="gap-2 px-2 py-3">
+          {/* The product name, once. The tagline went with the sign-in page:
+              somebody already inside does not need to be told what this is,
+              and the line under the workspace name is better spent saying
+              which workspace they are in and as what. */}
+          <p className="px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase group-data-[collapsible=icon]:hidden">
+            {t('app.name')}
+          </p>
+          <WorkspaceSwitcher workspaces={workspaces} />
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>

@@ -469,6 +469,12 @@ describe('choosing a workspace', () => {
   };
   const twoWorkspaces = { ...ME, memberships: [...ME.memberships, SECOND] };
 
+  /** Opens the switcher and chooses a workspace by name. */
+  async function switchTo(user: ReturnType<typeof userEvent.setup>, name: string) {
+    await user.click(await screen.findByRole('button', { name: /Current workspace:/ }));
+    await user.click(await screen.findByRole('menuitemradio', { name: new RegExp(name) }));
+  }
+
   it('names the workspace on every request, and lets the person change it', async () => {
     // Without the header the server refuses a person who belongs to more than
     // one workspace, so every page failed for them with a validation error
@@ -485,10 +491,7 @@ describe('choosing a workspace', () => {
     expect(scoped.every((c) => c.workspace === ME.memberships[0]!.workspace_id)).toBe(true);
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Workspace' }),
-      SECOND.workspace_id,
-    );
+    await switchTo(user, 'Team');
     await waitFor(() =>
       expect(
         calls.some((c) => c.url === '/v1/workspace.get' && c.workspace === SECOND.workspace_id),
@@ -521,10 +524,7 @@ describe('choosing a workspace', () => {
     await screen.findByRole('button', { name: 'Projects' });
 
     const user = userEvent.setup();
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Workspace' }),
-      SECOND.workspace_id,
-    );
+    await switchTo(user, 'Team');
     await waitFor(() =>
       expect(
         calls.some(
@@ -545,11 +545,14 @@ describe('choosing a workspace', () => {
     ).toBeGreaterThan(0);
   });
 
-  it('offers no picker to a person who belongs to one workspace', async () => {
+  it('still names the workspace to a person who belongs to one', async () => {
+    // The switcher is not hidden below two workspaces. It says where somebody
+    // is, and it is where the second workspace is made from; a control that
+    // appears only once a second one exists is one nobody finds.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
     renderApp('/');
     await screen.findByText('Your workspaces');
-    expect(screen.queryByRole('combobox', { name: 'Workspace' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Current workspace: Personal/ })).toBeInTheDocument();
   });
 });
 
