@@ -36,7 +36,12 @@ import {
   RejectProposalRequest,
   WithdrawProposalRequest,
 } from './proposals.ts';
-import { TaxonomyListInput, TaxonomyListResponse } from './taxonomy.ts';
+import {
+  TaxonomyListInput,
+  TaxonomyListResponse,
+  TaxonomyProposeInput,
+  TaxonomyProposeResult,
+} from './taxonomy.ts';
 import { WorkspaceManifest, WorkspaceManifestInput } from './workspaces.ts';
 
 /**
@@ -49,6 +54,7 @@ import { WorkspaceManifest, WorkspaceManifestInput } from './workspaces.ts';
 export const ToolName = z.enum([
   'workspace_manifest',
   'taxonomy_list',
+  'taxonomy_propose',
   'knowledge_search',
   'knowledge_get',
   'knowledge_history',
@@ -109,6 +115,14 @@ export const TOOLS: readonly ToolContract[] = [
     input: TaxonomyListInput,
     output: TaxonomyListResponse,
     readOnly: true,
+  },
+  {
+    name: 'taxonomy_propose',
+    description:
+      'Propose a category for knowledge that has nowhere to go. Answers use_existing when the tree already covers it, so read that before making a second category for the same thing.',
+    input: TaxonomyProposeInput,
+    output: TaxonomyProposeResult,
+    readOnly: false,
   },
   {
     name: 'knowledge_search',

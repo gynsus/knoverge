@@ -181,6 +181,10 @@ proposal_created  (returns proposal id)
 created           (returns category id/path)
 ```
 
+`use_existing` is checked first and matches on the normalised name under the same parent, because that is the collision a proposer makes: "Data Sources" beside an existing "data sources". An agent told this should put its knowledge in the category it was pointed at rather than ask again under another name.
+
+Otherwise policy decides as it does for knowledge (rule 14): a rule may let this actor create categories outright, and without one the proposal waits. The proposal carries the reason and the example titles, because those are what a reviewer judges a category on.
+
 ### Reading knowledge
 
 #### `knowledge_search`

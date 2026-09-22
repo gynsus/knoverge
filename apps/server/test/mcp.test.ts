@@ -12,6 +12,7 @@ import {
   KnowledgeIndexResponse,
   ProposalResult,
   TOOLS,
+  TaxonomyProposeResult,
   WorkspaceManifest,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
@@ -562,5 +563,69 @@ describe('starting a working session', () => {
     expect(digest.changed_items[0]!.change_kinds.length).toBeGreaterThan(0);
     // Rule 9: counts and lists, which need no provider at all.
     expect(Object.keys(digest)).not.toContain('narrative');
+  });
+});
+
+describe('proposing a category', () => {
+  it('points at what already exists rather than making a second one', async () => {
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Runbooks' })).statusCode).toBe(
+      200,
+    );
+    const client = await connect(agentToken);
+    try {
+      const result = TaxonomyProposeResult.parse(
+        (
+          await client.callTool({
+            name: 'taxonomy_propose',
+            // The same name in a different case, which is the collision a
+            // proposer actually makes.
+            arguments: { name: 'runbooks', reason: 'Nowhere to put operational steps.' },
+          })
+        ).structuredContent,
+      );
+      expect(result.result).toBe('use_existing');
+      expect(result.category?.path).toBe('runbooks');
+      expect(result.explanation).toContain('runbooks');
+      expect(result.proposal_id).toBeNull();
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('records a proposal when the tree has nowhere for it', async () => {
+    const client = await connect(agentToken);
+    try {
+      const result = TaxonomyProposeResult.parse(
+        (
+          await client.callTool({
+            name: 'taxonomy_propose',
+            arguments: {
+              name: 'Data sources',
+              reason: 'Nothing distinguishes where data comes from.',
+              example_titles: ['Weather feed', 'Council collection schedule'],
+            },
+          })
+        ).structuredContent,
+      );
+      expect(result.result).toBe('proposal_created');
+      expect(result.category).toBeNull();
+
+      // It reaches the reviewer, with what a reviewer judges it on.
+      const detail = (
+        await admin.get(`/v1/proposal.get?proposal_id=${result.proposal_id}`)
+      ).json() as {
+        proposal: {
+          proposal_type: string;
+          reason: string;
+          proposed_payload: { name: string; exampleTitles: string[] };
+        };
+      };
+      expect(detail.proposal.proposal_type).toBe('category_create');
+      expect(detail.proposal.reason).toContain('where data comes from');
+      expect(detail.proposal.proposed_payload.name).toBe('Data sources');
+      expect(detail.proposal.proposed_payload.exampleTitles).toHaveLength(2);
+    } finally {
+      await client.close();
+    }
   });
 });

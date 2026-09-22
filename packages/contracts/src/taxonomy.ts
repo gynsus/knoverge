@@ -130,3 +130,38 @@ export const CategoryResponse = z.object({
   category: CategorySummary,
 });
 export type CategoryResponse = z.infer<typeof CategoryResponse>;
+
+/**
+ * Proposing a category.
+ *
+ * Available to the default `propose` tier, because an agent that cannot say
+ * where knowledge belongs will put it in the wrong place or not record it at
+ * all. What happens to the proposal is a policy question, exactly as it is
+ * for knowledge.
+ */
+export const TaxonomyProposeInput = z.object({
+  name: CategoryName,
+  parent_path: CategoryPath.optional(),
+  description: z.string().trim().max(2000).optional(),
+  /** Why the existing tree does not already cover this. */
+  reason: z.string().trim().max(2000).optional(),
+  /** What would go in it, which is how a reviewer judges whether it is needed. */
+  example_titles: z.array(z.string().trim().max(300)).max(10).default([]),
+  request_id: z.string().max(128).optional(),
+  idempotency_key: z.string().max(128).optional(),
+});
+export type TaxonomyProposeInput = z.infer<typeof TaxonomyProposeInput>;
+
+export const TaxonomyProposeResult = z.object({
+  /**
+   * `use_existing` when the tree already has somewhere for this,
+   * `proposal_created` when somebody has to decide, `created` when a rule let
+   * it through.
+   */
+  result: z.enum(['use_existing', 'proposal_created', 'created']),
+  category: CategorySummary.nullable(),
+  proposal_id: z.string().nullable(),
+  /** Why the answer is what it is, for an agent deciding what to do next. */
+  explanation: z.string(),
+});
+export type TaxonomyProposeResult = z.infer<typeof TaxonomyProposeResult>;

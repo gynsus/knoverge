@@ -11,8 +11,12 @@ import {
   type CategorySummary,
   type WorkspaceId,
 } from '@knoverge/contracts';
-import type { TaxonomyListInput } from '@knoverge/contracts';
-import type { CategoryWithAliases } from '@knoverge/core';
+import type {
+  TaxonomyListInput,
+  TaxonomyProposeInput,
+  TaxonomyProposeResult,
+} from '@knoverge/contracts';
+import { DomainError, type CategoryRecord, type CategoryWithAliases } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
@@ -242,4 +246,114 @@ export async function taxonomyList(
     taxonomy_version: version,
     categories: visible.map((c) => summary(c, input.include_guidance)),
   };
+}
+
+/**
+ * Proposing a category.
+ *
+ * Three answers, and the interesting one is the first. An agent that wants a
+ * category the tree already has should be told so and pointed at it, rather
+ * than given a second one under a different name — which is how a taxonomy
+ * stops being a taxonomy. A close-enough existing category is matched by
+ * name, and the agent is told which and why.
+ *
+ * Otherwise policy decides, as it does for knowledge: a rule may let this
+ * actor create categories outright, and without one the proposal waits
+ * (rule 14). The proposal carries the reason and the example titles, because
+ * a reviewer judging whether a category is needed judges it on those.
+ */
+export async function taxonomyPropose(
+  services: Services,
+  request: FastifyRequest,
+  input: TaxonomyProposeInput,
+): Promise<TaxonomyProposeResult> {
+  const actor = await resolveWorkspaceActor(services, request);
+  await services.authorization.require(actor.context, actor.standing, 'taxonomy.propose');
+  const workspaceId = actor.context.workspaceId;
+
+  const tree = await services.repositories.categories.list(workspaceId, {});
+  const parent = input.parent_path ? tree.find((c) => c.path === input.parent_path) : undefined;
+  if (input.parent_path && !parent) {
+    throw new DomainError('NOT_FOUND', `no category at ${input.parent_path}`, {
+      objectIds: { path: input.parent_path },
+    });
+  }
+
+  // Somewhere the tree already has for this. Matching on the normalised name
+  // under the same parent, because that is the collision a proposer makes:
+  // "Data Sources" beside an existing "data sources".
+  const normalised = input.name.trim().toLowerCase();
+  const existing = tree.find(
+    (c) =>
+      c.name.trim().toLowerCase() === normalised && (c.parentId ?? null) === (parent?.id ?? null),
+  );
+  if (existing) {
+    return {
+      result: 'use_existing',
+      category: await withAliases(services, workspaceId, existing),
+      proposal_id: null,
+      explanation: `${existing.path} already covers this; put the knowledge there rather than making a second category for it.`,
+    };
+  }
+
+  const decision = await services.authorization.policyFor(
+    actor.context,
+    actor.standing,
+    'taxonomy.create',
+    parent ? { categoryIds: [parent.id] } : {},
+  );
+  if (decision === 'deny') {
+    await services.authorization.recordDenied(
+      actor.context,
+      'taxonomy.create',
+      'policy_deny',
+      parent ? { categoryIds: [parent.id] } : {},
+    );
+    throw new DomainError('FORBIDDEN', 'policy refuses this category');
+  }
+
+  if (decision === 'allow_direct') {
+    const created = await services.taxonomy.create(actor.context, {
+      name: input.name,
+      ...(input.parent_path ? { parentPath: input.parent_path } : {}),
+      ...(input.description ? { description: input.description } : {}),
+    });
+    return {
+      result: 'created',
+      category: await withAliases(services, workspaceId, created.category),
+      proposal_id: null,
+      explanation: 'a policy rule allows you to create categories here.',
+    };
+  }
+
+  const proposal = await services.proposals.proposeCategory(actor.context, actor.standing, {
+    name: input.name,
+    parentPath: input.parent_path,
+    description: input.description,
+    reason: input.reason,
+    exampleTitles: input.example_titles,
+    ...(parent ? { parentId: parent.id } : {}),
+  });
+  return {
+    result: 'proposal_created',
+    category: null,
+    proposal_id: proposal.id,
+    explanation:
+      'recorded for review; put the knowledge in an existing category until somebody decides.',
+  };
+}
+
+/** A category as the contract shows one, with the aliases it carries. */
+async function withAliases(
+  services: Services,
+  workspaceId: WorkspaceId,
+  category: CategoryRecord,
+): Promise<CategorySummary> {
+  const aliases = await services.repositories.aliases.listForWorkspace(workspaceId);
+  return summary({
+    ...category,
+    aliases: aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
+    itemCount: 0,
+    subtreeItemCount: 0,
+  } as CategoryWithAliases);
 }
