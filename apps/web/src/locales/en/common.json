@@ -53,6 +53,7 @@
     "actions": "Actions",
     "cancel": "Cancel",
     "close": "Close",
+    "dismiss": "Dismiss",
     "load_more": "Show more",
     "loading": "Loading...",
     "working": "Working..."
@@ -172,6 +173,15 @@
     "toggle_sidebar": "Show or hide the navigation",
     "workspace": "Workspace",
     "workspace_label": "Workspace"
+  },
+  "password": {
+    "copied": "The password was copied to the clipboard.",
+    "copy_failed": "The clipboard refused it. Copy the password from the field.",
+    "generate": "Generate",
+    "generated_copied": "A password was generated and copied to the clipboard.",
+    "generated_not_copied": "A password was generated. The clipboard refused it, so copy it from the field.",
+    "hide": "Hide the password",
+    "show": "Show the password and copy it"
   },
   "policy": {
     "action": "Action",

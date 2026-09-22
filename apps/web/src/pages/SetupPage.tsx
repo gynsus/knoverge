@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Field, FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import { Toast } from '@/components/ui/toast';
+import { PasswordInput } from '../components/PasswordInput.tsx';
 import { authApi } from '../api/auth.ts';
 import { useAuth } from '../auth/use-auth.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
@@ -31,6 +33,7 @@ export function SetupPage() {
     workspace_slug: '',
   });
   const [slugTouched, setSlugTouched] = useState(false);
+  const [notice, setNotice] = useState<{ message: string; tone: 'status' | 'error' } | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
 
@@ -96,10 +99,10 @@ export function SetupPage() {
               />
             </Field>
             <Field label={t('fields.password')} hint={t('fields.password_hint')}>
-              <Input
-                type="password"
+              <PasswordInput
                 value={form.password}
-                onChange={update('password')}
+                onChange={(password) => setForm((prev) => ({ ...prev, password }))}
+                onNotice={(message, tone) => setNotice({ message, tone })}
                 required
                 minLength={12}
                 autoComplete="new-password"
@@ -129,6 +132,11 @@ export function SetupPage() {
           </Button>
         </form>
       </CardContent>
+      <Toast
+        message={notice?.message ?? null}
+        tone={notice?.tone ?? 'status'}
+        onDismiss={() => setNotice(null)}
+      />
     </Card>
   );
 }
