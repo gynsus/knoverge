@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 
 import {
   AddMemberRequest,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResponse,
+  type ActorId,
+  type WorkspaceId,
   MembersResponse,
   OkResponse,
   RemoveMemberRequest,
@@ -11,9 +15,9 @@ import {
   WorkspaceResponse,
   type MemberSummary,
 } from '@knoverge/contracts';
-import type { MemberWithUser } from '@knoverge/core';
+import type { MemberWithUser, UserRecord } from '@knoverge/core';
 import { DomainError } from '@knoverge/core';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import {
@@ -35,6 +39,60 @@ function memberSummary(member: MemberWithUser): MemberSummary {
     joined_at: member.createdAt.toISOString(),
     last_login_at: member.lastLoginAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * The person behind a workspace-creating request, and the membership that
+ * authorises it: one where they hold `workspace.admin`.
+ *
+ * The permission is asked of the authorisation service rather than read off
+ * the role, so somebody granted workspace administration explicitly is treated
+ * the same as an owner — the same rule the rest of the interface follows.
+ */
+async function resolveCreator(
+  services: Services,
+  request: FastifyRequest,
+): Promise<{ user: UserRecord; actorId: ActorId; workspaceId: WorkspaceId }> {
+  const human = request.humanAuth;
+  // An agent has a workspace of its own and no standing outside it. Creating
+  // one is a person's act.
+  if (!human) throw new DomainError('UNAUTHENTICATED', 'sign in required');
+
+  const memberships = await services.repositories.memberships.listForUser(human.user.id);
+  for (const membership of memberships) {
+    const context = {
+      workspaceId: membership.workspaceId,
+      actorId: membership.actorId,
+      actorType: 'human' as const,
+      sessionId: human.session.id,
+      requestId: request.id,
+    };
+    const held = await services.authorization.heldActions(context, { role: membership.role });
+    if (held.includes('workspace.admin')) {
+      return {
+        user: human.user,
+        actorId: membership.actorId,
+        workspaceId: membership.workspaceId,
+      };
+    }
+  }
+  // Recorded where it can be seen: the first workspace this person belongs to.
+  // A refusal with nowhere to record it is still a refusal.
+  const first = memberships[0];
+  if (first) {
+    await services.authorization.recordDenied(
+      {
+        workspaceId: first.workspaceId,
+        actorId: first.actorId,
+        actorType: 'human',
+        sessionId: human.session.id,
+        requestId: request.id,
+      },
+      'workspace.admin',
+      'no_grant',
+    );
+  }
+  throw new DomainError('FORBIDDEN', 'creating a workspace requires administering an existing one');
 }
 
 /** Workspace settings and membership. Requires workspace.admin. */
@@ -61,6 +119,56 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           role: actor.role ?? null,
         },
         permissions: await services.authorization.heldActions(actor.context, actor.standing),
+      };
+    },
+  );
+
+  /**
+   * Creates a workspace, with the caller as its owner.
+   *
+   * Not scoped to the current workspace, so it cannot go through
+   * `requirePermission`: there is no workspace yet to hold a permission in.
+   * The rule instead is that the caller must already administer one. Creating
+   * a workspace makes you its owner, and an owner can create accounts on the
+   * installation through `members.add` — accounts are global, not scoped to a
+   * workspace. Letting a viewer create a workspace would therefore let a
+   * viewer create users, which is the thing administration is for.
+   *
+   * An agent never reaches this: it requires a person's session.
+   */
+  r.post(
+    '/v1/admin/workspace.create',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: CreateWorkspaceRequest, response: { 200: CreateWorkspaceResponse } },
+    },
+    async (request) => {
+      const creator = await resolveCreator(services, request);
+      const workspace = await services.members.createWorkspace(
+        creator.user,
+        {
+          slug: request.body.slug,
+          name: request.body.name,
+          requestId: request.id,
+          ...(request.body.description !== undefined
+            ? { description: request.body.description }
+            : {}),
+          ...(request.body.default_language !== undefined
+            ? { defaultLanguage: request.body.default_language }
+            : {}),
+        },
+        { actorId: creator.actorId, workspaceId: creator.workspaceId },
+      );
+      return {
+        workspace: {
+          id: workspace.id,
+          slug: workspace.slug,
+          name: workspace.name,
+          description: workspace.description,
+          default_language: workspace.defaultLanguage,
+          created_at: workspace.createdAt.toISOString(),
+          role: 'owner' as const,
+        },
       };
     },
   );

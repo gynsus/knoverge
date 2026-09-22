@@ -217,6 +217,22 @@ The same registered agent may use different models over time. See `SECURITY.md` 
 
 ## 6. Workspace isolation
 
+A workspace is the unit everything else hangs off: one body of knowledge, one
+taxonomy, one set of members and agents, one Git repository, one event chain.
+Nothing is shared between two of them, and nothing spans them — there is no
+cross-workspace search, no shared category, no item that belongs to both.
+
+That makes the right size of a workspace the size of a boundary somebody
+actually wants: a client, a product, a team, a person's own notes. Splitting
+one team's work across several workspaces means their agents have to be
+connected to each separately and can never relate one to another. It is a
+heavier boundary than a folder and a lighter one than an installation.
+
+An installation may hold many. The first arrives with first-run setup; later
+ones are created by somebody who already holds `workspace.admin`, from the
+switcher in the interface or with `knoverge workspace create`. Creating one
+makes the creator its owner and leaves every other workspace untouched.
+
 All knowledge belongs to a workspace.
 
 All major database tables include `workspace_id`.

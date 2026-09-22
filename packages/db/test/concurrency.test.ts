@@ -156,6 +156,7 @@ beforeAll(async () => {
     workspaces: repositories.workspaces,
     users,
     authorization,
+    workspaceService: workspaces,
     ledger,
   });
 });

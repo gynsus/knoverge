@@ -236,6 +236,7 @@ export function createServices(config: ServicesConfig) {
     workspaces: repositories.workspaces,
     users,
     authorization,
+    workspaceService: workspaces,
     ledger,
   });
   const bootstrap = new BootstrapService({

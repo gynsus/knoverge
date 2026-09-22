@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { DisplayName, Email, Password } from './auth.ts';
-import { LanguageTag, MembershipRole, UserStatus } from './identity.ts';
+import { LanguageTag, MembershipRole, UserStatus, WorkspaceSlug } from './identity.ts';
 import { ItemType } from './knowledge.ts';
 import { PermissionAction } from './policy.ts';
 import { ActorId, UserId, WorkspaceId } from './ids.ts';
@@ -31,6 +31,25 @@ export const WorkspaceResponse = z.object({
   permissions: z.array(PermissionAction),
 });
 export type WorkspaceResponse = z.infer<typeof WorkspaceResponse>;
+
+/**
+ * Creates a workspace, with the caller as its owner.
+ *
+ * The slug is the natural idempotency key: it is unique across the
+ * installation, so a resubmitted form is refused rather than silently
+ * creating a second workspace under the same name. That is why this request
+ * carries no `idempotency_key` of its own.
+ */
+export const CreateWorkspaceRequest = z.object({
+  slug: WorkspaceSlug,
+  name: z.string().trim().min(1).max(120),
+  description: z.string().trim().max(2000).optional(),
+  default_language: LanguageTag.optional(),
+});
+export type CreateWorkspaceRequest = z.infer<typeof CreateWorkspaceRequest>;
+
+export const CreateWorkspaceResponse = z.object({ workspace: WorkspaceSummary });
+export type CreateWorkspaceResponse = z.infer<typeof CreateWorkspaceResponse>;
 
 export const UpdateWorkspaceRequest = z.object({
   name: z.string().trim().min(1).max(120).optional(),
