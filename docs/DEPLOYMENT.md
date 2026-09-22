@@ -46,7 +46,7 @@ Then:
 ```text
 Web UI:     http://localhost:3000/
 HTTP API:   http://localhost:3000/v1
-MCP:        http://localhost:3000/mcp (Milestone 4)
+MCP:        http://localhost:3000/mcp
 Health:     http://localhost:3000/health/ready
 ```
 

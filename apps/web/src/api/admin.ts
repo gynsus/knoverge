@@ -89,7 +89,11 @@ export const adminApi = {
       apiPost<OkResponse>('/v1/admin/members.remove', { user_id: userId }),
   },
   knowledge: {
-    list: (signal?: AbortSignal) => apiGet<KnowledgeListResponse>('/v1/knowledge.list', signal),
+    list: (cursor: string | undefined, signal?: AbortSignal) =>
+      apiGet<KnowledgeListResponse>(
+        cursor ? `/v1/knowledge.list?cursor=${encodeURIComponent(cursor)}` : '/v1/knowledge.list',
+        signal,
+      ),
     get: (itemId: string, signal?: AbortSignal) =>
       apiGet<KnowledgeResponse>(`/v1/knowledge.get?item_id=${encodeURIComponent(itemId)}`, signal),
     revisions: (itemId: string, signal?: AbortSignal) =>

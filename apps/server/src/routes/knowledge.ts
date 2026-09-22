@@ -5,6 +5,7 @@ import {
   KnowledgeDiffResponse,
   KnowledgeItemId,
   KnowledgeHistoryInput,
+  KnowledgeListQuery,
   KnowledgeListResponse,
   KnowledgeResponse,
   RestoreKnowledgeRequest,
@@ -285,11 +286,23 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
 
   r.get(
     '/v1/knowledge.list',
-    { schema: { response: { 200: KnowledgeListResponse } } },
+    { schema: { querystring: KnowledgeListQuery, response: { 200: KnowledgeListResponse } } },
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.read');
-      const items = await services.knowledge.list(actor.context, {});
-      return { items: items.map(summary), next_cursor: null };
+      const query = request.query;
+      // One more than asked for, so the cursor is null exactly when there is
+      // nothing after this page. Answering null while more exists is how a
+      // list tells somebody their workspace is smaller than it is.
+      const items = await services.knowledge.list(actor.context, {
+        limit: query.limit + 1,
+        ...(query.cursor ? { after: query.cursor } : {}),
+      });
+      const page = items.slice(0, query.limit);
+      return {
+        items: page.map(summary),
+        next_cursor:
+          items.length > query.limit ? ((page[page.length - 1]?.item.id ?? null) as never) : null,
+      };
     },
   );
 
