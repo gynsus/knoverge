@@ -502,7 +502,7 @@ Event
 - after_content_hash nullable
 - proposal_id nullable
 - source_reference_id nullable
-- category_ids_json          (snapshot of the affected item's categories, for scoped change feeds)
+- category_ids_json          (the categories the event touched, before and after, for scoped feeds)
 - metadata_json
 - prev_event_hash
 - event_hash
@@ -519,6 +519,14 @@ Two feeds are derived from the ledger:
 
 - **audit feed** (`events_list`): all events, gated by `events.read_own` / `events.read_all`;
 - **knowledge change feed** (`knowledge_changes`): only `knowledge.*`, `relation.*` and `category.*` events, filtered by the caller's `knowledge.read` scope using `category_ids_json`.
+
+`category_ids_json` holds the union of where the item was and where it ended
+up, not only the latter. ADR 0010 says an item that leaves the caller's scope
+must appear to them as `deleted`; with only the new categories, an item moved
+out of a branch somebody follows would simply stop appearing, and they would
+keep a copy of something they may no longer read. The two sides separately are
+in the event's metadata as `categories_before` and `categories_after`, which is
+what the feed reports.
 
 Event types recorded in the ledger:
 

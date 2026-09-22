@@ -410,8 +410,11 @@ export class KnowledgeService {
           metadata: {
             revision: revisionId,
             content_hash: revision.contentHash,
+            frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             item_type: input.type,
+            categories_before: [],
+            categories_after: p.chosen.map((c) => c.id),
           },
         });
         return {
@@ -561,6 +564,13 @@ export class KnowledgeService {
           observedAt: p.frontmatter.observed_at ? new Date(p.frontmatter.observed_at) : null,
           updatedAt: p.now,
         });
+        // Read before the write, because the change feed has to say what an
+        // item moved out of as well as what it moved into: an item that left
+        // the caller's scope must reach them as a removal rather than simply
+        // stop appearing (ADR 0010).
+        const before = (await this.o.items.categoriesOf(actor.workspaceId, [input.itemId])).map(
+          (row) => row.categoryId as string,
+        );
         await this.o.items.setCategories(
           tx,
           input.itemId,
@@ -587,14 +597,19 @@ export class KnowledgeService {
           eventType: p.kind === 'move' ? 'knowledge.moved' : 'knowledge.updated',
           objectType: 'knowledge_item',
           objectId: input.itemId,
-          categoryIds: p.chosen.map((c) => c.id),
+          // Both sides, so the filter matches whoever could see the item
+          // before as well as whoever can see it now.
+          categoryIds: [...new Set([...before, ...p.chosen.map((c) => c.id)])],
           metadata: {
             revision: revisionId,
             before_revision: current.revision.id,
             before_hash: current.revision.contentHash,
             content_hash: revision.contentHash,
+            frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             change_kind: p.kind,
+            categories_before: before,
+            categories_after: p.chosen.map((c) => c.id),
           },
         });
         return {
@@ -974,6 +989,9 @@ export class KnowledgeService {
           pOld.now,
         );
 
+        const oldCategoryIds = (
+          await this.o.items.categoriesOf(actor.workspaceId, [input.oldItemId])
+        ).map((row) => row.categoryId as string);
         const oldRevision = this.revisionOf(
           actor,
           input.oldItemId,
@@ -1000,22 +1018,29 @@ export class KnowledgeService {
           metadata: {
             revision: newRevisionId,
             content_hash: newRevision.contentHash,
+            frontmatter_hash: newRevision.frontmatterHash,
             git_commit: pNew.commitHash,
             item_type: pNew.frontmatter.type,
             supersedes: input.oldItemId,
+            categories_before: [],
+            categories_after: pNew.chosen.map((c) => c.id),
           },
         });
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.superseded',
           objectType: 'knowledge_item',
           objectId: input.oldItemId,
+          categoryIds: oldCategoryIds,
           metadata: {
             revision: oldRevisionId,
             before_revision: old.revision.id,
             before_hash: old.revision.contentHash,
             content_hash: oldRevision.contentHash,
+            frontmatter_hash: oldRevision.frontmatterHash,
             git_commit: pOld.commitHash,
             superseded_by: newItemId,
+            categories_before: oldCategoryIds,
+            categories_after: oldCategoryIds,
           },
         });
 
@@ -1263,14 +1288,23 @@ export class KnowledgeService {
           updatedAt: p.now,
         });
         await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, '', p.now);
+        const gone = (await this.o.items.categoriesOf(actor.workspaceId, [itemId])).map(
+          (row) => row.categoryId as string,
+        );
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.deleted',
           objectType: 'knowledge_item',
           objectId: itemId,
+          // Where it was, so the change feed reaches whoever could see it.
+          categoryIds: gone,
           metadata: {
             revision: revisionId,
             before_revision: current.revision.id,
+            content_hash: revision.contentHash,
+            frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
+            categories_before: gone,
+            categories_after: [],
           },
         });
         return { ...current, revision, item: { ...current.item, status: 'deleted' } };
@@ -1374,7 +1408,11 @@ export class KnowledgeService {
           metadata: {
             revision: revisionId,
             restored_from: previous.id,
+            content_hash: revision.contentHash,
+            frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
+            categories_before: [],
+            categories_after: p.chosen.map((c) => c.id),
           },
         });
         return {

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { csrfUnlessBearer } from '../plugins/security.ts';
+import { knowledgeChanges } from './changes.ts';
 import { eventsList } from './events.ts';
 import type { Services } from '../services.ts';
 import { knowledgeDiff, knowledgeGet, knowledgeHistory, knowledgeSearch } from './knowledge.ts';
@@ -52,6 +53,7 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   proposal_approve: proposalApprove as ToolHandler,
   proposal_reject: proposalReject as ToolHandler,
   proposal_withdraw: proposalWithdraw as ToolHandler,
+  knowledge_changes: knowledgeChanges as ToolHandler,
   events_list: eventsList as ToolHandler,
 };
 

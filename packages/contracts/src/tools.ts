@@ -2,6 +2,8 @@ import { z } from 'zod';
 
 import { EventsListInput, EventsListResponse } from './events.ts';
 import {
+  KnowledgeChangesInput,
+  KnowledgeChangesResponse,
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
   KnowledgeGetInput,
@@ -49,6 +51,7 @@ export const ToolName = z.enum([
   'proposal_approve',
   'proposal_reject',
   'proposal_withdraw',
+  'knowledge_changes',
   'events_list',
 ]);
 export type ToolName = z.infer<typeof ToolName>;
@@ -186,6 +189,14 @@ export const TOOLS: readonly ToolContract[] = [
     input: WithdrawProposalRequest,
     output: ProposalResult,
     readOnly: false,
+  },
+  {
+    name: 'knowledge_changes',
+    description:
+      'What changed after a checkpoint, limited to what you may read. The synchronisation primitive: store next_sequence and ask again from it. It names no actors — who made a change is what events_list answers.',
+    input: KnowledgeChangesInput,
+    output: KnowledgeChangesResponse,
+    readOnly: true,
   },
   {
     name: 'events_list',

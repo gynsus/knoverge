@@ -122,7 +122,8 @@ POST /v1/<tool_name>                        every MCP tool, generated from the c
                                             knowledge_propose_update, knowledge_propose_delete,
                                             knowledge_propose_supersede, proposal_list,
                                             proposal_get, proposal_approve, proposal_reject,
-                                            proposal_withdraw, events_list. 202 while a proposal
+                                            proposal_withdraw, knowledge_changes, events_list.
+                                            202 while a proposal
                                             is pending,
                                             200 once it is decided.
 POST /v1/knowledge_propose_create           an agent proposes; 202 when review is needed
