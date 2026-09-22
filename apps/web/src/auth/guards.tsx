@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Navigate, Outlet, useLocation } from 'react-router';
 
+import { MainSkeleton } from '../components/AppSkeleton.tsx';
 import { useAuth } from './use-auth.ts';
 
 /** Routes that need a signed-in user. Redirects to setup or login otherwise. */
@@ -10,7 +11,10 @@ export function RequireAuth() {
   const location = useLocation();
   switch (auth.state.kind) {
     case 'loading':
-      return <p role="status">{t('common.loading')}</p>;
+      // The shell answers this case first, so this is a second line rather
+      // than the one anybody sees. It is the page area because that is where
+      // a guard renders: the chrome around it is already on screen.
+      return <MainSkeleton />;
     case 'setup':
       return <Navigate to="/setup" replace />;
     case 'anonymous':
@@ -28,7 +32,10 @@ export function AnonymousOnly({ page }: { page: 'login' | 'setup' }) {
   const auth = useAuth();
   switch (auth.state.kind) {
     case 'loading':
-      return <p role="status">{t('common.loading')}</p>;
+      // The shell answers this case first, so this is a second line rather
+      // than the one anybody sees. It is the page area because that is where
+      // a guard renders: the chrome around it is already on screen.
+      return <MainSkeleton />;
     case 'authenticated':
       return <Navigate to="/" replace />;
     case 'setup':

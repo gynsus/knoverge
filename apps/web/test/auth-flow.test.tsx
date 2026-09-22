@@ -328,3 +328,42 @@ describe('the password field on first run', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('copy it from the field');
   });
 });
+
+describe('before the session answers', () => {
+  /** A request that never settles, which is the loading state made to hold still. */
+  function pending() {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise<Response>(() => undefined)),
+    );
+  }
+
+  it('shows the outline of the application, not a card and a language picker', async () => {
+    pending();
+    const { container } = renderApp('/');
+
+    // The chrome is true whichever way the answer goes, so it is real: the
+    // same sidebar component, not a div shaped like one.
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="sidebar"]')).toBeInTheDocument(),
+    );
+    expect(container.querySelectorAll('.animate-pulse').length).toBeGreaterThan(5);
+
+    // What used to be here: a name, a tagline, a language picker and the word
+    // "Loading", all of which vanish a moment later for anybody signed in.
+    expect(screen.queryByRole('heading', { name: 'Knoverge' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Language' })).not.toBeInTheDocument();
+    // The word is still there for a screen reader, and only for one.
+    expect(screen.getByText('Loading...')).toHaveClass('sr-only');
+  });
+
+  it('still says it is loading to somebody who cannot see it', async () => {
+    pending();
+    renderApp('/');
+    // The placeholders carry no information and are hidden; the fact is
+    // stated once instead of being drawn eight times.
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent('Loading...');
+    expect(status).toHaveAttribute('aria-busy', 'true');
+  });
+});
