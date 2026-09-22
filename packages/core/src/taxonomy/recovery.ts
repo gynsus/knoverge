@@ -18,7 +18,7 @@ import type {
 import type { TaxonomyChangeKind } from './service.ts';
 
 /** `Knoverge-Category: cat_... <kind>` */
-const CATEGORY = /^(cat_[0-9A-HJKMNP-TV-Z]{26})\s+(create|update|move|archive|restore)$/;
+const CATEGORY = /^(cat_[0-9A-HJKMNP-TV-Z]{26})\s+(create|update|move|archive|restore|merge)$/;
 
 /** One category as `taxonomy.yaml` carries it. */
 export interface TaxonomyFileCategory {
@@ -81,6 +81,11 @@ export class TaxonomyRecovery {
     if (!match || !versionTrailer) return false;
     const categoryId = match[1] as CategoryId;
     const kind = match[2] as TaxonomyChangeKind;
+    // Which category a merge folded this one into. The file records that the
+    // closed category was merged and never says where its contents went.
+    const intoId = trailers.find(([name]) => name === 'Knoverge-Category-Into')?.[1] as
+      CategoryId | undefined;
+    if (kind === 'merge' && !intoId) return false;
     const version = Number(versionTrailer);
     if (!Number.isSafeInteger(version) || version < 1) return false;
 
@@ -110,11 +115,29 @@ export class TaxonomyRecovery {
       const existing = await this.o.categories.findById(operation.workspaceId, categoryId, tx);
       if (kind === 'create') {
         if (!existing) await this.insert(tx, operation, categoryId, entry, now);
+      } else if (kind === 'merge') {
+        if (!existing) throw new Error(`category ${categoryId} is missing`);
+        const target = await this.o.categories.findById(
+          operation.workspaceId,
+          intoId as CategoryId,
+          tx,
+        );
+        if (!target) throw new Error(`category ${intoId} is missing`);
+        await this.mergeInto(tx, operation.workspaceId, existing, target, now);
+        // Both sides of a merge change their aliases, and the closed one's
+        // pass to the survivor. Writing only the category the trailer names
+        // would leave the survivor without what it inherited.
+        const targetEntry = parsed.categories.find((c) => c.path === target.path);
+        if (!targetEntry) throw new Error(`${target.path} is missing from the committed taxonomy`);
+        await this.writeAliases(tx, operation.workspaceId, categoryId, entry.aliases, now);
+        await this.writeAliases(tx, operation.workspaceId, target.id, targetEntry.aliases, now);
       } else {
         if (!existing) throw new Error(`category ${categoryId} is missing`);
         await this.apply(tx, operation.workspaceId, existing, entry, kind, now);
       }
-      await this.writeAliases(tx, operation.workspaceId, categoryId, entry.aliases, now);
+      if (kind !== 'merge') {
+        await this.writeAliases(tx, operation.workspaceId, categoryId, entry.aliases, now);
+      }
       await this.o.versions.bump(tx, operation.workspaceId, now, version, commitHash);
       await this.o.ledger.append(tx, operation.workspaceId, actor, {
         eventType: eventFor(kind),
@@ -130,6 +153,31 @@ export class TaxonomyRecovery {
       });
     });
     return true;
+  }
+
+  /**
+   * Replays a merge, from a commit that landed before PostgreSQL was written.
+   *
+   * Every statement is one that can be run twice: the items still pointing at
+   * the closed category are exactly the ones the lost transaction had not
+   * moved, and a descendant already under the survivor's path no longer
+   * matches the old prefix.
+   */
+  private async mergeInto(
+    tx: Tx,
+    workspaceId: WorkspaceId,
+    source: CategoryRecord,
+    target: CategoryRecord,
+    now: Date,
+  ): Promise<void> {
+    await this.o.categories.recategoriseItems(tx, source.id, target.id);
+    await this.o.categories.reparentChildren(tx, workspaceId, source.id, target.id, now);
+    await this.o.categories.rewriteDescendantPaths(tx, workspaceId, source.path, target.path, now);
+    await this.o.categories.update(tx, source.id, {
+      status: 'merged',
+      mergedIntoCategoryId: target.id,
+      updatedAt: now,
+    });
   }
 
   private async insert(
@@ -261,7 +309,8 @@ function eventFor(
   | 'category.updated'
   | 'category.moved'
   | 'category.archived'
-  | 'category.restored' {
+  | 'category.restored'
+  | 'category.merged' {
   switch (kind) {
     case 'create':
       return 'category.created';
@@ -271,6 +320,8 @@ function eventFor(
       return 'category.archived';
     case 'restore':
       return 'category.restored';
+    case 'merge':
+      return 'category.merged';
     default:
       return 'category.updated';
   }

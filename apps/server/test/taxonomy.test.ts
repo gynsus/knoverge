@@ -1,12 +1,18 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { TERMS_VERSION, CategoryResponse, TaxonomyListResponse } from '@knoverge/contracts';
+import {
+  TERMS_VERSION,
+  ActorsResponse,
+  CategoryResponse,
+  TaxonomyListResponse,
+} from '@knoverge/contracts';
 import { MAX_CATEGORY_DEPTH, parseLedgerKey, slugify } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
+import { parseTaxonomy } from '@knoverge/git-store';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -454,5 +460,136 @@ describe('slugify', () => {
     expect(slugify('Pixel Brisbane')).toBe('pixel-brisbane');
     expect(slugify('  Über Café!  ')).toBe('uber-cafe');
     expect(slugify('A'.repeat(100))).toHaveLength(64);
+  });
+});
+
+describe('merging', () => {
+  /** The tree as the workspace holds it now, by path. */
+  async function tree() {
+    const res = await admin.get('/v1/taxonomy.list?include_archived=true');
+    expect(res.statusCode, res.body).toBe(200);
+    const listed = TaxonomyListResponse.parse(res.json());
+    return new Map(listed.categories.map((c) => [c.path, c]));
+  }
+
+  it('moves children and aliases, keeps the old path reachable and records it', async () => {
+    const survivor = await create({ name: 'Data Sources', aliases: ['datasets'] });
+    const closing = await create({ name: 'Data Providers', aliases: ['providers'] });
+    await create({ name: 'External', parent_path: closing.category.path });
+
+    const res = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: closing.category.id,
+      into_category_id: survivor.category.id,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const merged = CategoryResponse.parse(res.json());
+    expect(merged.category.id).toBe(survivor.category.id);
+
+    const after = await tree();
+    // The closed category stays, saying where everything went. Deleting it
+    // would take the record of the merge with it.
+    const closed = after.get('data-providers')!;
+    expect(closed.status).toBe('merged');
+    expect(closed.merged_into_category_id).toBe(survivor.category.id);
+    expect(closed.aliases).toEqual([]);
+
+    // Its child moved rather than being orphaned or deleted.
+    expect(after.has('data-providers/external')).toBe(false);
+    expect(after.get('data-sources/external')?.parent_id).toBe(survivor.category.id);
+
+    // Anything that referred to the closed category still resolves: its own
+    // aliases, its name, and the path it used to live at.
+    expect(after.get('data-sources')!.aliases).toEqual(
+      expect.arrayContaining(['datasets', 'providers', 'data-providers', 'Data Providers']),
+    );
+
+    const events = await services.repositories.events.listAfter(
+      merged.category.workspace_id,
+      0,
+      500,
+    );
+    expect(events.at(-1)).toMatchObject({
+      eventType: 'category.merged',
+      metadata: { path: 'data-providers', into_path: 'data-sources', moved_categories: 1 },
+    });
+    expect((await services.ledger.verify(merged.category.workspace_id)).ok).toBe(true);
+  });
+
+  it('commits a taxonomy file that agrees with the database', async () => {
+    // The file is rendered from a projection of the change rather than from
+    // the database, so the two are separate implementations of one rule. A
+    // merge is the newest of them and has the most to get wrong.
+    const survivor = await create({ name: 'Runbooks' });
+    const closing = await create({ name: 'Run Books' });
+    await create({ name: 'Deploys', parent_path: closing.category.path });
+    const res = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: closing.category.id,
+      into_category_id: survivor.category.id,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    const listed = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    // Read off disk and parsed with the repository's own reader: the point is
+    // what somebody without the application would find, and comparing against
+    // the rendered text would pin the test to the file's layout rather than to
+    // its content.
+    const file = await readFile(
+      join(dataDir, 'repositories', listed.categories[0]!.workspace_id, 'taxonomy.yaml'),
+      'utf8',
+    );
+    const committed = parseTaxonomy(file);
+    expect(committed.version).toBe(listed.taxonomy_version);
+    expect(committed.categories.map((c) => c.path).sort()).toEqual(
+      listed.categories.map((c) => c.path).sort(),
+    );
+    // The moved child is at its new place, and the closed category says so.
+    expect(committed.categories.find((c) => c.path === 'runbooks/deploys')).toBeDefined();
+    expect(committed.categories.find((c) => c.path === 'run-books')?.status).toBe('merged');
+  });
+
+  it('refuses a merge that would swallow the survivor or collide', async () => {
+    const parent = await create({ name: 'Playbooks' });
+    const child = await create({ name: 'Onboarding', parent_path: parent.category.path });
+
+    const intoOwnSubtree = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: parent.category.id,
+      into_category_id: child.category.id,
+    });
+    expect(intoOwnSubtree.statusCode, intoOwnSubtree.body).toBe(400);
+
+    const intoItself = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: parent.category.id,
+      into_category_id: parent.category.id,
+    });
+    expect(intoItself.statusCode, intoItself.body).toBe(400);
+
+    // Two children of the same slug cannot share a parent.
+    const other = await create({ name: 'Handbooks' });
+    await create({ name: 'Onboarding', parent_path: other.category.path });
+    const clash = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: parent.category.id,
+      into_category_id: other.category.id,
+    });
+    expect(clash.statusCode, clash.body).toBe(409);
+    expect(clash.json().code).toBe('CATEGORY_CONFLICT');
+  });
+});
+
+describe('actor names', () => {
+  it('turns the actor id on a category into something readable', async () => {
+    const listed = TaxonomyListResponse.parse((await admin.get('/v1/taxonomy.list')).json());
+    const category = listed.categories[0]!;
+    expect(category.created_by_actor_id).toMatch(/^act_/);
+
+    const res = await admin.get('/v1/actors.list');
+    expect(res.statusCode, res.body).toBe(200);
+    const actors = ActorsResponse.parse(res.json()).actors;
+    const creator = actors.find((a) => a.id === category.created_by_actor_id);
+    expect(creator).toMatchObject({ type: 'human', display_name: 'Owner', disabled: false });
+    // The workspace's own actor is there too, which is what the ledger
+    // attributes a workspace's first events to.
+    expect(actors.some((a) => a.type === 'system')).toBe(true);
   });
 });

@@ -106,6 +106,9 @@ const CATEGORY = {
   updated_at: '2026-09-19T00:00:00.000Z',
   item_count: 0,
   subtree_item_count: 0,
+  created_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  approved_by_actor_id: null,
+  merged_into_category_id: null,
 };
 
 /** Everything an owner holds, which is what these fixtures sign in as. */

@@ -97,6 +97,7 @@ Require the corresponding workspace role or permission.
 GET  /v1/taxonomy.list                      (any member with taxonomy.read)
 GET  /v1/workspace.get                      (any member)
 GET  /v1/workspaces.list                    the caller's own memberships, with counts
+GET  /v1/actors.list                        (any member) actor ids to names, for events and provenance
 POST /v1/admin/workspace.create             a new workspace, with the caller as its owner
 POST /v1/admin/workspace.update
 GET  /v1/admin/members.list
@@ -160,8 +161,7 @@ POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
 POST /v1/admin/taxonomy.restore
-POST /v1/admin/taxonomy.merge              (not scheduled; the schema carries merged_into_category_id
-                                            and the event type, the operation itself does not exist)
+POST /v1/admin/taxonomy.merge               folds one category into another
 
 POST /v1/admin/knowledge.rename_slug        (not scheduled; a slug changes today only by changing
                                             the title, which moves the file)
@@ -172,6 +172,30 @@ POST /v1/admin/attachments.upload           (multipart, later milestone)
 ```
 
 Admin endpoints follow the same RPC style and the same error model.
+
+### Merging categories
+
+`POST /v1/admin/taxonomy.merge` folds one category into another. Agents propose
+categories, so a workspace collects near-duplicates, and deleting one would take
+the knowledge filed under it.
+
+The items move to the survivor, the direct children become its children, and the
+closed category's aliases, its name and the path it used to live at all become
+aliases of the survivor, so anything that recorded the old path still resolves.
+The closed category stays in the tree with status `merged` and
+`merged_into_category_id` pointing at where its contents went; the merge is a
+record rather than an erasure.
+
+Item files do not move. An item's place in the repository is fixed when it is
+created and already survives being re-categorised, so a merge follows that rule
+rather than inventing a second one.
+
+It is refused when the two are the same, when the survivor is inside the closing
+category's subtree, when either is not active, or when a child would collide
+with one the survivor already has. The commit carries `Knoverge-Category-Into`
+so that a merge interrupted between Git and PostgreSQL is replayed rather than
+leaving the workspace closed to writes: the taxonomy file says a category was
+merged and cannot say into what.
 
 ### Listing workspaces
 

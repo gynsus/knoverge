@@ -2,6 +2,7 @@ import {
   ArchiveCategoryRequest,
   CategoryResponse,
   CreateCategoryRequest,
+  MergeCategoryRequest,
   MoveCategoryRequest,
   RestoreCategoryRequest,
   TaxonomyListQuery,
@@ -43,9 +44,11 @@ function summary(category: CategoryWithAliases, includeGuidance = true): Categor
     status: category.status,
     created_at: category.createdAt.toISOString(),
     updated_at: category.updatedAt.toISOString(),
-    // Knowledge items arrive in Milestone 2; the counts are part of the contract already.
-    item_count: 0,
-    subtree_item_count: 0,
+    item_count: category.itemCount,
+    subtree_item_count: category.subtreeItemCount,
+    created_by_actor_id: category.createdByActorId,
+    approved_by_actor_id: category.approvedByActorId,
+    merged_into_category_id: category.mergedIntoCategoryId,
   };
 }
 
@@ -173,6 +176,33 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
         actor.context,
         request.body.category_id,
         request.body.new_parent_id,
+      );
+      return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/taxonomy.merge',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: MergeCategoryRequest, response: { 200: CategoryResponse } },
+    },
+    async (request) => {
+      // Both ends, and everything under the category that closes: a merge
+      // moves that whole subtree to the survivor, so a branch-scoped
+      // administrator must not be able to push a branch they do not hold into
+      // one they do, or take a restricted child along with it.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        categoryIds: [
+          ...(await subtreeOf(services, actor.context.workspaceId, request.body.category_id)),
+          request.body.into_category_id,
+        ],
+      });
+      const result = await services.taxonomy.merge(
+        actor.context,
+        request.body.category_id,
+        request.body.into_category_id,
       );
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },
@@ -350,10 +380,11 @@ async function withAliases(
   category: CategoryRecord,
 ): Promise<CategorySummary> {
   const aliases = await services.repositories.aliases.listForWorkspace(workspaceId);
+  const counts = await services.repositories.categories.itemCounts(workspaceId);
   return summary({
     ...category,
     aliases: aliases.filter((a) => a.categoryId === category.id).map((a) => a.alias),
-    itemCount: 0,
-    subtreeItemCount: 0,
-  } as CategoryWithAliases);
+    itemCount: counts.get(category.id)?.direct ?? 0,
+    subtreeItemCount: counts.get(category.id)?.subtree ?? 0,
+  });
 }

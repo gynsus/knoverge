@@ -84,6 +84,33 @@ export function sortedAliases(aliases: readonly string[]): string[] {
   return [...aliases].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
+/**
+ * The tree with one category folded into another.
+ *
+ * The closed category keeps its own path, because its path becomes an alias
+ * of the survivor and an alias pointing at a path that moved would point
+ * nowhere. Everything below it moves: a descendant's path swaps the closed
+ * category's prefix for the survivor's, and what were direct children become
+ * direct children of the survivor.
+ */
+export function withMerge(
+  categories: readonly CategoryRecord[],
+  source: CategoryRecord,
+  target: CategoryRecord,
+): CategoryRecord[] {
+  return categories.map((category) => {
+    if (category.id === source.id) {
+      return { ...category, status: 'merged' as const, mergedIntoCategoryId: target.id };
+    }
+    if (!category.path.startsWith(`${source.path}/`)) return category;
+    return {
+      ...category,
+      path: `${target.path}${category.path.slice(source.path.length)}`,
+      ...(category.parentId === source.id ? { parentId: target.id } : {}),
+    };
+  });
+}
+
 /** The ids a subtree change touches, which is what the event records. */
 export function subtreeIds(
   categories: readonly CategoryRecord[],
