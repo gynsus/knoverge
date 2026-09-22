@@ -177,7 +177,12 @@ None so far. The web interface reads the same routes agents do. If it ever needs
 
 One per-actor budget covers every route: 600 requests a minute, keyed on the agent, then the signed-in user, then the address. Two routes have their own, tighter budgets: sign-in at 10 a minute per address and first-run setup at 5, both keyed on the address because there is no actor yet, and readiness at 120 a minute because it is unauthenticated and runs every probe.
 
-Separate buckets for reads, proposal writes and sync batches are not implemented. They arrive with the operations they meter.
+The tool routes and the MCP endpoint have two buckets of their own, per credential: 600 reads a minute and 60 writes. A write takes the workspace lock, makes a commit and appends to the ledger; a read does none of those, and one budget for both would be set for the cheap one and leave the expensive one unprotected. Having two also means an agent that has used up its writes can still read enough to decide what to do next. Sync batches get their own bucket with the sync operations, in Milestone 5.
+
+Alongside them, two limits a per-minute budget cannot express:
+
+- **In flight at once**: eight requests per credential. A rate limit counts requests over a minute and says nothing about how many are running now, so a client that opens fifty connections and holds them is inside every budget while occupying fifty database connections and fifty lock waiters.
+- **Body size**: 512 KiB for a tool call and for the MCP endpoint, under the 1 MiB the server accepts anywhere. A tool call carries one item's text; anything larger is a mistake or an attempt.
 
 Limits are in-process (single node) in MVP. Exceeding a limit returns `RATE_LIMITED` with `Retry-After`.
 
