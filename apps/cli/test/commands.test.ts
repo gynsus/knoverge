@@ -13,7 +13,7 @@ import { workspaceCommand } from '../src/commands/workspace.ts';
 const EXPECTED: Record<string, string[]> = {
   agent: ['create', 'list', 'disable', 'token'],
   bootstrap: [],
-  db: ['migrate', 'prune', 'status'],
+  db: ['migrate', 'prune', 'reindex', 'status'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
   taxonomy: ['list', 'create', 'move', 'archive', 'restore'],

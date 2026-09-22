@@ -39,6 +39,12 @@ export {
   type MatchReason,
 } from './knowledge/duplicates.ts';
 export type {
+  SearchDocumentRecord,
+  SearchHit,
+  SearchQuery,
+  SearchRepository,
+} from './search/repository.ts';
+export type {
   DuplicateRow,
   ItemCategoryRecord,
   KnowledgeItemRecord,

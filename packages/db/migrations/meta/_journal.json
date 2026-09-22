@@ -57,6 +57,13 @@
       "when": 1789964062758,
       "tag": "0007_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1790050377548,
+      "tag": "0008_search",
+      "breakpoints": true
     }
   ]
 }

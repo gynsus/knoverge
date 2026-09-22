@@ -108,6 +108,19 @@ copy of the rule in the browser drifts from it. A reviewer granted an action
 explicitly would otherwise be shown a control they are entitled to use, and a
 viewer would be shown forms whose every submission is refused.
 
+## Search
+
+`search_documents` is a projection of canonical content, written in the same
+transaction as the revision it describes. `ARCHITECTURE.md` describes
+projections as jobs, which is right for an embedding — that needs a provider
+and can fail. A tsvector needs nothing but the text, so writing it with the
+revision costs nothing and means a search never disagrees with what was just
+written. Recovery writes it too, for a change that reached Git and no further.
+
+Nothing there is authoritative: losing the table costs a `knoverge db reindex`,
+which reads every file from the repository and rebuilds the rows, and costs no
+knowledge at all.
+
 ## One contract, two transports
 
 `packages/contracts/src/tools.ts` lists every operation offered as a tool: its

@@ -9,6 +9,7 @@ import type {
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
+import type { SearchRepository } from '../search/repository.ts';
 import type { OperationRecord } from '../operations/repository.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
@@ -48,6 +49,7 @@ export interface KnowledgeRecoveryOptions {
   revisions: RevisionRepository;
   categories: CategoryRepository;
   relations: RelationRepository;
+  search: SearchRepository;
   ledger: EventLedger;
   git: GitStore;
   parseItem: (text: string) => { frontmatter: Frontmatter; body: string };
@@ -291,6 +293,10 @@ export class KnowledgeRecovery {
         });
       }
       await this.o.revisions.insert(tx, revision);
+      if (plan.kind === 'delete') {
+        // Out of the index with the file, as an ordinary delete does.
+        await this.o.search.remove(tx, plan.itemId);
+      }
       if (plan.kind !== 'delete') {
         await this.o.items.setCategories(tx, plan.itemId, plan.categories);
         await this.o.items.setTags(tx, operation.workspaceId, plan.itemId, f.tags);
@@ -298,6 +304,18 @@ export class KnowledgeRecovery {
         // carries the portable copy and PostgreSQL carries the queryable one,
         // and a recovered supersession whose relation is missing leaves the
         // index disagreeing with the file it was recovered from.
+        // The lexical index, which the ordinary write path fills in the same
+        // transaction. A recovered item that nothing can find is a recovered
+        // item nobody will use.
+        await this.o.search.upsert(tx, {
+          knowledgeItemId: plan.itemId,
+          workspaceId: operation.workspaceId,
+          revisionId: plan.revisionId,
+          language: f.language,
+          title: f.title,
+          body: plan.body,
+          updatedAt: plan.now,
+        });
         await this.o.relations.replaceForItem(
           tx,
           operation.workspaceId,

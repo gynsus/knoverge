@@ -13,6 +13,7 @@ import {
   CrossStoreWriter,
   EventLedger,
   IdempotencyService,
+  KnowledgeService,
   MaintenanceService,
   TaxonomyService,
   SessionService,
@@ -21,7 +22,17 @@ import {
   parseLedgerKey,
 } from '@knoverge/core';
 import { createDatabase, createRepositories, createUnitOfWork } from '@knoverge/db';
-import { TAXONOMY_PATH, createGitStore, renderTaxonomy } from '@knoverge/git-store';
+import {
+  TAXONOMY_PATH,
+  contentHash,
+  createGitStore,
+  frontmatterHash,
+  parseItem,
+  renderItem,
+  renderTaxonomy,
+  slugifyTitle,
+  uniqueSlug,
+} from '@knoverge/git-store';
 
 function required(name: string): string {
   const value = process.env[name];
@@ -164,6 +175,33 @@ export function createServices() {
         actors: repositories.actors,
       }),
   );
+  // Only the reindex command builds this, and it reads the repository rather
+  // than writing to it: the cross-store writer it would need for a write is
+  // the server's, and a command-line rebuild takes no lock on knowledge.
+  const knowledge = lazy(
+    () =>
+      new KnowledgeService({
+        uow,
+        items: repositories.knowledge,
+        revisions: repositories.revisions,
+        sources: repositories.sources,
+        relations: repositories.relations,
+        search: repositories.search,
+        categories: repositories.categories,
+        versions: repositories.taxonomyVersions,
+        actors: repositories.actors,
+        workspaces: repositories.workspaces,
+        ledger: ledger(),
+        crossStore: crossStore(),
+        git: git(),
+        slugifyTitle,
+        uniqueSlug,
+        renderItem,
+        parseItem,
+        contentHash,
+        frontmatterHash,
+      }),
+  );
   const workspaces = lazy(
     () =>
       new WorkspaceService({
@@ -202,6 +240,9 @@ export function createServices() {
     },
     get taxonomy() {
       return taxonomy();
+    },
+    get knowledge() {
+      return knowledge();
     },
     get users() {
       return users();

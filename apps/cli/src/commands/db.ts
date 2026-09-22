@@ -69,5 +69,19 @@ export function dbCommand(): Command {
       });
     });
 
+  db.command('reindex')
+    .description('Rebuild the search index from the repository files')
+    .action(async () => {
+      await withServices(async (services) => {
+        for (const workspace of await services.repositories.workspaces.list()) {
+          const result = await services.knowledge.reindex(workspace.id);
+          console.log(
+            `${workspace.slug}: indexed ${result.indexed} item(s)` +
+              (result.missing > 0 ? `, ${result.missing} with no file in the repository` : ''),
+          );
+        }
+      });
+    });
+
   return db;
 }
