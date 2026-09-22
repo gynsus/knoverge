@@ -886,6 +886,11 @@ describe('the navigation rail', () => {
     // stays in the markup rather than being replaced by one.
     const taxonomy = await screen.findByRole('link', { name: 'Taxonomy' });
     expect(taxonomy).toHaveAccessibleName('Taxonomy');
+    // A real landmark around them. Without it the shortcut every screen
+    // reader offers for "take me to the navigation" lands nowhere, and the
+    // links can only be reached by walking the page from the top.
+    const rail = screen.getByRole('navigation', { name: 'Sections' });
+    expect(rail).toContainElement(taxonomy);
     expect(screen.getByRole('button', { name: 'Show or hide the navigation' })).toBeInTheDocument();
   });
 
