@@ -5,7 +5,9 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  ActivityDigestResponse,
   EventsListResponse,
+  KnowledgeBriefingResponse,
   KnowledgeChangesResponse,
   KnowledgeIndexResponse,
   ProposalResult,
@@ -19,6 +21,8 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import pino from 'pino';
 
 import { buildApp } from '../src/app.ts';
 import { createServices, type Services } from '../src/services.ts';
@@ -84,6 +88,7 @@ beforeAll(async () => {
   });
   await runMigrations(services.database.db, migrationsFolder);
   app = await buildApp({
+    loggerInstance: pino({ level: 'error' }),
     version: 'test',
     probes: { database: async () => ok, dataDir: async () => ok },
     services,
@@ -479,5 +484,83 @@ describe('the first calls a client makes', () => {
     } finally {
       await client.close();
     }
+  });
+});
+
+describe('starting a working session', () => {
+  it('briefs on what to know, most trusted first, within the budget', async () => {
+    const write = async (payload: Record<string, unknown>) => {
+      const res = await admin.post('/v1/admin/knowledge.create', payload);
+      expect(res.statusCode, res.body).toBe(200);
+      return (res.json() as { item: { id: string } }).item;
+    };
+    const long = await write({
+      title: 'A long instruction',
+      // Long enough that the smallest budget the contract allows cannot hold
+      // it whole, so the abridging path is the one under test.
+      body: `The opening paragraph, which is what survives abridging.\n\n${'Filler that the budget will not stretch to. '.repeat(40)}`,
+      type: 'instruction',
+    });
+    // A person writing is a person reviewing, so this one is human_reviewed
+    // and outranks the agent's proposal below.
+    await write({
+      title: 'Checked instruction',
+      body: 'A person wrote this, so a person reviewed it.',
+      type: 'instruction',
+    });
+    await write({ title: 'A settled decision', body: 'We chose this.', type: 'decision' });
+
+    // The same tool over HTTP, because a briefing is a read a person may want
+    // as readily as an agent does.
+    const direct = await admin.post('/v1/knowledge_briefing', {});
+    expect(direct.statusCode, direct.body).toBe(200);
+    const client = await connect(agentToken);
+    try {
+      const briefing = KnowledgeBriefingResponse.parse(
+        (await client.callTool({ name: 'knowledge_briefing', arguments: {} })).structuredContent,
+      );
+      const instructions = briefing.sections.find((s) => s.kind === 'instructions')!;
+      expect(instructions.items.map((i) => i.title)).toContain('Checked instruction');
+      expect(briefing.sections.find((s) => s.kind === 'decisions')?.items).not.toHaveLength(0);
+      expect(briefing.sections.find((s) => s.kind === 'recent')?.items.length).toBeGreaterThan(0);
+      expect(briefing.truncated).toBe(false);
+      expect(briefing.change_sequence).toBeGreaterThan(0);
+
+      // A budget too small for the bodies abridges before it drops, and says
+      // so, so a caller narrows the request rather than trusting a short answer.
+      const tight = KnowledgeBriefingResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_briefing',
+            arguments: { max_chars: 1000 },
+          })
+        ).structuredContent,
+      );
+      expect(tight.truncated).toBe(true);
+      const abridged = tight.sections.flatMap((s) => s.items).find((i) => i.item_id === long.id);
+      // Half an instruction is worth more than none of it, so the opening
+      // survives and the rest goes.
+      expect(abridged?.abridged).toBe(true);
+      expect(abridged?.markdown).toContain('The opening paragraph');
+      expect(abridged?.markdown).not.toContain('Filler');
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('digests a period into counts and lists, with no narrative', async () => {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const digest = ActivityDigestResponse.parse(
+      (await admin.post('/v1/activity_digest', { since })).json(),
+    );
+    expect(digest.counts.length).toBeGreaterThan(0);
+    // Largest first, so the first line of a digest is what mattered most.
+    expect(digest.counts[0]!.count).toBeGreaterThanOrEqual(
+      digest.counts[digest.counts.length - 1]!.count,
+    );
+    expect(digest.changed_items.length).toBeGreaterThan(0);
+    expect(digest.changed_items[0]!.change_kinds.length).toBeGreaterThan(0);
+    // Rule 9: counts and lists, which need no provider at all.
+    expect(Object.keys(digest)).not.toContain('narrative');
   });
 });

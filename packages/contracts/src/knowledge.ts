@@ -579,3 +579,53 @@ export const KnowledgeIndexResponse = z.object({
   has_more: z.boolean(),
 });
 export type KnowledgeIndexResponse = z.infer<typeof KnowledgeIndexResponse>;
+
+/**
+ * A token-budgeted context pack for a part of the tree.
+ *
+ * The first substantive call of a working session: what an agent should know
+ * before it starts, in an amount it can afford to read.
+ */
+export const KnowledgeBriefingInput = z.object({
+  category_paths: z.array(CategoryPath).max(20).default([]),
+  types: z.array(ItemType).max(20).default(['instruction', 'preference', 'decision', 'procedure']),
+  include_recent: z.boolean().default(true),
+  recent_days: z.number().int().min(1).max(365).default(14),
+  max_chars: z.number().int().min(1000).max(200_000).default(24_000),
+});
+export type KnowledgeBriefingInput = z.infer<typeof KnowledgeBriefingInput>;
+
+export const BriefingSectionKind = z.enum([
+  'instructions',
+  'preferences',
+  'decisions',
+  'procedures',
+  'recent',
+  'open_conflicts',
+  'pending_proposals',
+]);
+export type BriefingSectionKind = z.infer<typeof BriefingSectionKind>;
+
+export const BriefingItem = z.object({
+  item_id: z.string(),
+  /** Null only for a proposal whose payload retention has emptied it. */
+  title: z.string().nullable(),
+  type: ItemType.nullable(),
+  revision_id: z.string().nullable(),
+  content_hash: z.string().nullable(),
+  /** Absent in the compact sections, which name items rather than carry them. */
+  markdown: z.string().nullable(),
+  /** True when only the opening survived the budget. */
+  abridged: z.boolean(),
+  updated_at: z.iso.datetime({ offset: true }),
+});
+export type BriefingItem = z.infer<typeof BriefingItem>;
+
+export const KnowledgeBriefingResponse = z.object({
+  taxonomy_version: z.number().int().nonnegative(),
+  change_sequence: z.number().int().nonnegative(),
+  sections: z.array(z.object({ kind: BriefingSectionKind, items: z.array(BriefingItem) })),
+  /** True when the budget dropped something, so a caller knows to narrow it. */
+  truncated: z.boolean(),
+});
+export type KnowledgeBriefingResponse = z.infer<typeof KnowledgeBriefingResponse>;

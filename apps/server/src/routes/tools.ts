@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { csrfUnlessBearer } from '../plugins/security.ts';
+import { activityDigest, knowledgeBriefing } from './briefing.ts';
 import { knowledgeChanges } from './changes.ts';
 import { eventsList } from './events.ts';
 import { knowledgeIndex, workspaceManifest } from './manifest.ts';
@@ -42,6 +43,7 @@ export type ToolHandler = (
 const HANDLERS: Record<ToolName, ToolHandler> = {
   workspace_manifest: workspaceManifest as ToolHandler,
   knowledge_index: knowledgeIndex as ToolHandler,
+  knowledge_briefing: knowledgeBriefing as ToolHandler,
   taxonomy_list: taxonomyList as ToolHandler,
   knowledge_search: knowledgeSearch as ToolHandler,
   knowledge_get: knowledgeGet as ToolHandler,
@@ -58,6 +60,7 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   proposal_withdraw: proposalWithdraw as ToolHandler,
   knowledge_changes: knowledgeChanges as ToolHandler,
   events_list: eventsList as ToolHandler,
+  activity_digest: activityDigest as ToolHandler,
 };
 
 /** The handler a tool runs, for the MCP adapter as well as for HTTP. */
