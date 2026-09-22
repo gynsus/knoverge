@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  TERMS_VERSION,
   AgentResponse,
   AgentsResponse,
   CredentialsResponse,
@@ -93,6 +94,7 @@ beforeAll(async () => {
     ...OWNER,
     display_name: 'Owner',
     workspace: { slug: 'personal', name: 'Personal' },
+    accepted_terms_version: TERMS_VERSION,
   });
   expect(res.statusCode, res.body).toBe(200);
 

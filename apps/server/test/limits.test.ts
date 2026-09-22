@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { TERMS_VERSION } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -85,6 +86,7 @@ beforeAll(async () => {
         password: 'correct horse battery staple',
         display_name: 'Owner',
         workspace: { slug: 'personal', name: 'Personal' },
+        accepted_terms_version: TERMS_VERSION,
       })
     ).statusCode,
   ).toBe(200);

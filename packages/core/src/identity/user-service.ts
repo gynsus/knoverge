@@ -39,6 +39,8 @@ export interface CreateUserInput {
   password: string;
   displayName: string;
   locale?: string;
+  /** Which terms this person accepted, for the ones who were asked. */
+  acceptedTermsVersion?: string | undefined;
 }
 
 export class UserService {
@@ -87,6 +89,8 @@ export class UserService {
       passwordChangedAt: now,
       createdAt: now,
       lastLoginAt: null,
+      termsVersion: input.acceptedTermsVersion ?? null,
+      termsAcceptedAt: input.acceptedTermsVersion ? now : null,
     };
   }
 

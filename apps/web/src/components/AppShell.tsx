@@ -63,6 +63,7 @@ export function AppShell() {
   const { t } = useTranslation();
   const auth = useAuth();
   const me = auth.state.kind === 'authenticated' ? auth.state.me : null;
+  const onSetup = useLocation().pathname === '/setup';
 
   // Anonymous pages are one card in the middle of the screen. A navigation
   // rail with nothing in it would only take space away from them.
@@ -76,8 +77,10 @@ export function AppShell() {
           </div>
           {/* Kept here and nowhere else in the chrome: somebody choosing a
               language before they have an account has no settings page to go
-              to, and the first thing a new operator sees is this screen. */}
-          <LanguageSwitcher />
+              to. First run is the exception — its own first step asks, and
+              two pickers on one screen only make somebody wonder which is
+              the one that counts. */}
+          {!onSetup && <LanguageSwitcher />}
         </header>
         <main id="main" tabIndex={-1} className="grid gap-4">
           <Outlet />

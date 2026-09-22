@@ -87,6 +87,15 @@ export type SessionsResponse = z.infer<typeof SessionsResponse>;
 export const RevokeSessionRequest = z.object({ session_id: SessionId });
 export type RevokeSessionRequest = z.infer<typeof RevokeSessionRequest>;
 
+/**
+ * The terms of use the application currently shows.
+ *
+ * `TERMS.md` carries the same version and the same clauses. Bumping this
+ * without changing the text, or the other way round, leaves an installation
+ * recording that somebody agreed to something they never read.
+ */
+export const TERMS_VERSION = '2026-09-22';
+
 export const BootstrapRequest = z.object({
   email: Email,
   password: Password,
@@ -96,6 +105,12 @@ export const BootstrapRequest = z.object({
     slug: z.string(),
     name: z.string().trim().min(1).max(120),
   }),
+  /**
+   * Which version of the terms was shown and accepted. Recorded against the
+   * user: an unrecorded click protects nobody, and the point of asking is
+   * being able to answer later who agreed to what.
+   */
+  accepted_terms_version: z.literal(TERMS_VERSION),
 });
 export type BootstrapRequest = z.infer<typeof BootstrapRequest>;
 

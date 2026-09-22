@@ -21,6 +21,9 @@ export interface UserRecord {
   passwordChangedAt: Date;
   createdAt: Date;
   lastLoginAt: Date | null;
+  /** The terms this person accepted, and when. Null for one never asked. */
+  termsVersion: string | null;
+  termsAcceptedAt: Date | null;
 }
 
 export interface UserRepository {

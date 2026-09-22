@@ -25,8 +25,12 @@ Not yet: the reconciliation protocol (Milestone 5), semantic search (6), summari
 ```bash
 cp .env.example .env          # set KNOVERGE_LEDGER_KEY and KNOVERGE_TOKEN_PEPPER
 docker compose up -d
-open http://localhost:3000    # first run asks you to create the owner account
+open http://localhost:3000    # first run: the terms, the owner account, the workspace
 ```
+
+The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,
+no telemetry, and the operator is responsible for backups and for what goes
+in. The installation records which version was accepted and when.
 
 Then create an agent under **Agents**, issue it a token, and point a client at the endpoint:
 
