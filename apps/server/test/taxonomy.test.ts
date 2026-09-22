@@ -549,6 +549,30 @@ describe('merging', () => {
     expect(committed.categories.find((c) => c.path === 'run-books')?.status).toBe('merged');
   });
 
+  it('takes the closed category out of the live tree', async () => {
+    const survivor = await create({ name: 'Incidents' });
+    const closing = await create({ name: 'Incident Reports' });
+    const merged = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: closing.category.id,
+      into_category_id: survivor.category.id,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+
+    // A merged category holds nothing and refuses to be written to, so
+    // listing it beside the live ones would invite an agent to file knowledge
+    // into a name that answers CATEGORY_CONFLICT.
+    const live = TaxonomyListResponse.parse((await admin.get('/v1/taxonomy.list')).json());
+    expect(live.categories.map((c) => c.path)).not.toContain('incident-reports');
+    expect(live.categories.every((c) => c.status === 'active')).toBe(true);
+
+    // It is still there for anybody asking for the closed ones, which is how
+    // the merge stays readable.
+    const all = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    expect(all.categories.map((c) => c.path)).toContain('incident-reports');
+  });
+
   it('refuses a merge that would swallow the survivor or collide', async () => {
     const parent = await create({ name: 'Playbooks' });
     const child = await create({ name: 'Onboarding', parent_path: parent.category.path });

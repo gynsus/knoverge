@@ -55,6 +55,11 @@ export const CategorySummary = z.object({
 });
 export type CategorySummary = z.infer<typeof CategorySummary>;
 
+/**
+ * `include_archived` means every category, closed ones included: archived,
+ * merged, and anything a review left behind. Without it the answer is the
+ * live tree, which is the only part anything can be filed into.
+ */
 export const TaxonomyListQuery = z.object({
   root_path: CategoryPath.optional(),
   depth: z.coerce.number().int().min(1).max(20).optional(),
