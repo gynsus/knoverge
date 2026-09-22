@@ -174,7 +174,9 @@
     "taxonomy": "Taxonomy",
     "toggle_sidebar": "Show or hide the navigation",
     "workspace": "Workspace",
-    "workspace_label": "Workspace"
+    "workspace_settings": "Workspace settings",
+    "workspace_switch": "Current workspace: {{name}}. Switch workspace",
+    "workspaces": "Workspaces"
   },
   "password": {
     "copied": "The password was copied to the clipboard.",
@@ -408,6 +410,9 @@
     "apply_role": "Apply role",
     "confirm": "Remove",
     "confirm_remove": "Remove {{name}} from this workspace?",
+    "create": "Create workspace",
+    "create_intro": "A workspace has its own knowledge, taxonomy, members and agents, and its own Git repository. Nothing is shared between workspaces. You will be its owner.",
+    "create_submit": "Create and switch to it",
     "default_language": "Default content language",
     "default_language_hint": "Used for knowledge items that do not state their own language.",
     "description": "Description",

@@ -7,6 +7,8 @@ import type {
   CreateAgentRequest,
   CreateCategoryRequest,
   CreateKnowledgeRequest,
+  CreateWorkspaceRequest,
+  CreateWorkspaceResponse,
   CredentialsResponse,
   DeleteKnowledgeRequest,
   IssueCredentialRequest,
@@ -74,6 +76,8 @@ export const adminApi = {
   },
   workspace: {
     get: (signal?: AbortSignal) => apiGet<WorkspaceResponse>('/v1/workspace.get', signal),
+    create: (body: CreateWorkspaceRequest) =>
+      apiPost<CreateWorkspaceResponse>('/v1/admin/workspace.create', body),
     update: (body: UpdateWorkspaceRequest) =>
       apiPost<OkResponse>('/v1/admin/workspace.update', body),
     members: (signal?: AbortSignal) => apiGet<MembersResponse>('/v1/admin/members.list', signal),

@@ -11,6 +11,7 @@ import { Field, FieldGroup } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Steps } from '@/components/ui/steps';
 import { Toast } from '@/components/ui/toast';
+import { slugify } from '@/lib/slug';
 import { LanguageSwitcher } from '../components/LanguageSwitcher.tsx';
 import { PasswordInput } from '../components/PasswordInput.tsx';
 import { authApi } from '../api/auth.ts';
@@ -19,15 +20,6 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 
 /** How many clauses the terms have. The catalogue carries the text of each. */
 const TERMS_CLAUSES = 9;
-
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
 
 /**
  * First run, in three steps.
