@@ -73,11 +73,25 @@ export interface ItemCategoryRecord {
 export interface ListItemsOptions {
   /** Items in this category, and optionally its descendants. */
   categoryId?: CategoryId;
+  /** Any of these categories, for a subtree already resolved to ids. */
+  categoryIds?: readonly CategoryId[];
   includeDescendants?: boolean;
   status?: ItemStatus;
+  types?: readonly ItemType[];
+  /** Only items the workspace marks as contested. */
+  disputed?: boolean;
+  updatedAfter?: Date;
   limit?: number;
   /** The id the previous page ended at; ids sort in creation order. */
   after?: KnowledgeItemId;
+  /**
+   * `created` is the paging order, because ids sort that way and a cursor
+   * over them neither repeats nor skips. `updated` is for a caller that wants
+   * the newest few and will not page: taking a page in creation order and
+   * then sorting it by recency answers with the oldest items in the
+   * workspace, whatever the caller asked for.
+   */
+  orderBy?: 'created' | 'updated';
 }
 
 export interface KnowledgeRepository {

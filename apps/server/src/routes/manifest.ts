@@ -131,9 +131,15 @@ export async function knowledgeIndex(
     }
   }
 
+  // Filtered in the query, not after it. Taking a page and discarding from it
+  // answers with fewer than the limit — or with nothing at all — while more
+  // records match, and a client paging through would stop at the first such
+  // page believing it had reached the end.
   const summaries = await services.knowledge.list(actor.context, {
     limit: input.limit + 1,
     ...(input.cursor ? { after: input.cursor } : {}),
+    ...(wanted.size > 0 ? { categoryIds: [...wanted] as never } : {}),
+    ...(input.updated_after ? { updatedAfter: new Date(input.updated_after) } : {}),
   });
   const rows = await services.repositories.knowledge.categoriesOf(
     workspaceId,
@@ -144,17 +150,11 @@ export async function knowledgeIndex(
     byItem.set(row.knowledgeItemId, [...(byItem.get(row.knowledgeItemId) ?? []), row.categoryId]);
   }
 
-  const matching = summaries.filter((entry) => {
-    const ids = byItem.get(entry.item.id) ?? [];
-    if (wanted.size > 0 && !ids.some((id) => wanted.has(id))) return false;
-    if (input.updated_after && entry.item.updatedAt <= new Date(input.updated_after)) return false;
-    return true;
-  });
   const visible = await services.authorization.filter(
     actor.context,
     actor.standing,
     'knowledge.read',
-    matching,
+    summaries,
     (entry) => ({ categoryIds: byItem.get(entry.item.id) ?? [] }),
   );
   const page = visible.slice(0, input.limit);

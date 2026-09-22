@@ -17,6 +17,15 @@ export interface EventFeedOptions {
   categoryIds?: readonly string[] | undefined;
   /** Only this actor's events, for a caller holding `events.read_own`. */
   actorId?: string | undefined;
+  /** A period, bounded in the query rather than by the caller afterwards. */
+  since?: Date | undefined;
+  until?: Date | undefined;
+  /**
+   * Newest first, for a caller that wants the last few of something rather
+   * than the first page of everything. A feed reading forward from a cursor
+   * leaves this alone.
+   */
+  newestFirst?: boolean | undefined;
 }
 
 export interface EventRepository {

@@ -119,7 +119,19 @@ written. Recovery writes it too, for a change that reached Git and no further.
 
 Nothing there is authoritative: losing the table costs a `knoverge db reindex`,
 which reads every file from the repository and rebuilds the rows, and costs no
-knowledge at all.
+knowledge at all. The server fills the gaps at startup, for knowledge recorded
+before the index existed or restored from a backup that predates it — a search
+that quietly finds nothing gives an operator no reason to suspect it.
+
+## Filtering belongs in the query
+
+Several tools answer "some of what the workspace holds", and each one asks the
+database for exactly that rather than for a page of everything. A page taken
+first and filtered afterwards is wrong in a way that never announces itself: a
+briefing built from the first two hundred items by creation order describes the
+oldest corner of the workspace, and a digest built from the first five thousand
+events says nothing happened yesterday. Both did, until an audit asked what
+happens past the first page.
 
 ## One contract, two transports
 

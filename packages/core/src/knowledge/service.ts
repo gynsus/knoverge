@@ -1544,7 +1544,17 @@ export class KnowledgeService {
    * tokenised, both end here. Git is read for every item, because Git is
    * where the knowledge is; PostgreSQL only says which items there are.
    */
-  async reindex(workspaceId: WorkspaceId): Promise<{ indexed: number; missing: number }> {
+  async reindex(
+    workspaceId: WorkspaceId,
+    options: { onlyMissing?: boolean } = {},
+  ): Promise<{ indexed: number; missing: number }> {
+    // `onlyMissing` is what startup uses: the whole workspace is rebuilt when
+    // an operator asks for it, and on every boot only what the index does not
+    // already hold. A feature that ships an index and never fills it for the
+    // knowledge already there is a feature that answers nothing, silently.
+    const already = options.onlyMissing
+      ? await this.o.search.indexedIds(workspaceId)
+      : new Set<string>();
     let indexed = 0;
     let missing = 0;
     let after: KnowledgeItemId | undefined;
@@ -1557,9 +1567,10 @@ export class KnowledgeService {
       after = page[page.length - 1]!.id;
       for (const item of page) {
         if (item.status === 'deleted') {
-          await this.o.uow.run((tx) => this.o.search.remove(tx, item.id));
+          if (!options.onlyMissing) await this.o.uow.run((tx) => this.o.search.remove(tx, item.id));
           continue;
         }
+        if (already.has(item.id)) continue;
         const file = await this.o.git.read(workspaceId, item.markdownPath);
         if (file === null) {
           // The database names a file the repository does not have. Saying so

@@ -68,6 +68,8 @@ export interface SearchRepository {
   search(query: SearchQuery): Promise<SearchHit[]>;
   /** For `knoverge db reindex`: what the index currently holds. */
   countFor(workspaceId: WorkspaceId): Promise<number>;
+  /** Which items the index already holds, so startup fills only the gaps. */
+  indexedIds(workspaceId: WorkspaceId): Promise<Set<string>>;
   /**
    * The indexed body of each item, for an abstract.
    *

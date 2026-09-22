@@ -7,6 +7,7 @@ import type {
   ItemType,
   KnowledgeBriefingInput,
   KnowledgeBriefingResponse,
+  WorkspaceId,
 } from '@knoverge/contracts';
 import { DomainError, type ItemSummary, type KnowledgeItemRecord } from '@knoverge/core';
 import type { FastifyRequest } from 'fastify';
@@ -25,6 +26,37 @@ const SECTION_OF: Partial<Record<ItemType, BriefingSectionKind>> = {
 
 /** At most this many items in a compact section, which only names things. */
 const COMPACT_LIMIT = 25;
+
+/**
+ * At most this many items in the sections that carry text.
+ *
+ * The character budget usually bites first; this is the ceiling on how many
+ * are considered for it, so a workspace with thousands of instructions does
+ * not read them all to answer one briefing.
+ */
+const CARRYING_LIMIT = 200;
+
+/** How many events one digest reads. A period longer than this is summarised
+ * from its most recent part, which is the part anybody asks about. */
+const DIGEST_LIMIT = 5000;
+
+/** The categories of several items at once, for scope and for the cards. */
+async function categoriesOf(
+  services: Services,
+  workspaceId: WorkspaceId,
+  items: readonly ItemSummary[],
+): Promise<Map<string, string[]>> {
+  const byItem = new Map<string, string[]>();
+  if (items.length === 0) return byItem;
+  const rows = await services.repositories.knowledge.categoriesOf(
+    workspaceId,
+    items.map((entry) => entry.item.id),
+  );
+  for (const row of rows) {
+    byItem.set(row.knowledgeItemId, [...(byItem.get(row.knowledgeItemId) ?? []), row.categoryId]);
+  }
+  return byItem;
+}
 
 /**
  * How much an item is to be trusted, from what the workspace knows about it.
@@ -84,40 +116,57 @@ export async function knowledgeBriefing(
     }
   }
 
-  const summaries = await services.knowledge.list(actor.context, { limit: 500 });
-  const rows = await services.repositories.knowledge.categoriesOf(
-    workspaceId,
-    summaries.map((entry) => entry.item.id),
-  );
-  const byItem = new Map<string, string[]>();
-  for (const row of rows) {
-    byItem.set(row.knowledgeItemId, [...(byItem.get(row.knowledgeItemId) ?? []), row.categoryId]);
-  }
+  // Narrow queries rather than one broad one. Asking for a page of items in
+  // creation order and sorting it afterwards answers with the oldest items in
+  // the workspace, whatever the caller asked for: a briefing built that way
+  // is systematically wrong for any workspace past its first page, and says
+  // nothing about it.
+  const scoped = {
+    status: 'active' as const,
+    ...(wanted.size > 0 ? { categoryIds: [...wanted] as never } : {}),
+  };
+  const carryingTypes = input.types.filter((type) => SECTION_OF[type]);
+  const carrying = carryingTypes.length
+    ? await services.knowledge.list(actor.context, {
+        ...scoped,
+        types: carryingTypes,
+        limit: CARRYING_LIMIT,
+      })
+    : [];
+  const recent = input.include_recent
+    ? await services.knowledge.list(actor.context, {
+        ...scoped,
+        updatedAfter: new Date(Date.now() - input.recent_days * 24 * 60 * 60 * 1000),
+        orderBy: 'updated',
+        limit: COMPACT_LIMIT,
+      })
+    : [];
+  const contested = await services.knowledge.list(actor.context, {
+    ...scoped,
+    disputed: true,
+    orderBy: 'updated',
+    limit: COMPACT_LIMIT,
+  });
 
-  const inScope = await services.authorization.filter(
-    actor.context,
-    actor.standing,
-    'knowledge.read',
-    summaries.filter((entry) => {
-      if (entry.item.status !== 'active') return false;
-      if (wanted.size === 0) return true;
-      return (byItem.get(entry.item.id) ?? []).some((id) => wanted.has(id));
-    }),
-    (entry) => ({ categoryIds: byItem.get(entry.item.id) ?? [] }),
-  );
+  const byItem = await categoriesOf(services, workspaceId, [...carrying, ...recent, ...contested]);
+  const visible = async (items: ItemSummary[]) =>
+    services.authorization.filter(
+      actor.context,
+      actor.standing,
+      'knowledge.read',
+      items,
+      (entry) => ({ categoryIds: byItem.get(entry.item.id) ?? [] }),
+    );
 
-  const ordered = [...inScope].sort((a, b) => {
+  // Trust, then freshness: a reviewed, source-backed item outranks one nobody
+  // has checked, and a disputed one falls below both.
+  const ordered = (await visible(carrying)).sort((a, b) => {
     const byTrust = trust(b.item) - trust(a.item);
     return byTrust !== 0 ? byTrust : b.item.updatedAt.getTime() - a.item.updatedAt.getTime();
   });
-
-  // The sections that carry text, in the order a reader wants them.
-  const carrying = ordered.filter(
-    (entry) => input.types.includes(entry.item.type) && SECTION_OF[entry.item.type],
-  );
   const bodies = await services.repositories.search.bodiesFor(
     workspaceId,
-    carrying.map((entry) => entry.item.id),
+    ordered.map((entry) => entry.item.id),
   );
 
   const sections = new Map<BriefingSectionKind, BriefingItem[]>();
@@ -127,7 +176,7 @@ export async function knowledgeBriefing(
 
   let spent = 0;
   let truncated = false;
-  for (const entry of carrying) {
+  for (const entry of ordered) {
     const kind = SECTION_OF[entry.item.type]!;
     const full = bodies.get(entry.item.id) ?? '';
     let markdown: string | null = full;
@@ -157,21 +206,11 @@ export async function knowledgeBriefing(
     } as BriefingItem);
   }
 
-  if (input.include_recent) {
-    const since = Date.now() - input.recent_days * 24 * 60 * 60 * 1000;
-    for (const entry of ordered
-      .filter((e) => e.item.updatedAt.getTime() >= since)
-      .sort((a, b) => b.item.updatedAt.getTime() - a.item.updatedAt.getTime())
-      .slice(0, COMPACT_LIMIT)) {
-      push('recent', compact(entry));
-    }
-  }
+  for (const entry of await visible(recent)) push('recent', compact(entry));
 
   // Anything the workspace itself says is contested. A briefing that hides
   // those is a briefing that gets one of them acted on.
-  for (const entry of ordered.filter((e) => e.item.disputed).slice(0, COMPACT_LIMIT)) {
-    push('open_conflicts', compact(entry));
-  }
+  for (const entry of await visible(contested)) push('open_conflicts', compact(entry));
 
   const pending = (
     await services.proposals.list(workspaceId, { status: 'pending', limit: COMPACT_LIMIT })
@@ -257,14 +296,19 @@ export async function activityDigest(
   }
 
   const all = await services.authorization.check(actor.context, actor.standing, 'events.read_all');
-  const events = (
-    await services.repositories.events.listFeed(workspaceId, {
-      afterSequence: 0,
-      limit: 5000,
-      ...(categoryIds.length ? { categoryIds } : {}),
-      ...(all.allowed ? {} : { actorId: actor.context.actorId }),
-    })
-  ).filter((event) => event.createdAt >= since && event.createdAt <= until);
+  // The period is part of the query, and the newest are what a digest is
+  // about. Taking the oldest few thousand events and filtering them to a
+  // period afterwards answers "nothing happened" for any workspace whose
+  // ledger is longer than the page — which is every workspace, eventually.
+  const events = await services.repositories.events.listFeed(workspaceId, {
+    afterSequence: 0,
+    limit: DIGEST_LIMIT,
+    since,
+    until,
+    newestFirst: true,
+    ...(categoryIds.length ? { categoryIds } : {}),
+    ...(all.allowed ? {} : { actorId: actor.context.actorId }),
+  });
 
   const counts = new Map<EventType, number>();
   const items = new Map<string, { kinds: Set<string>; at: Date }>();
