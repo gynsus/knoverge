@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/sidebar';
 import { useAuth } from '../auth/use-auth.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
+import { AppSkeleton } from './AppSkeleton.tsx';
 import { ErrorNotice } from './ErrorNotice.tsx';
 import { LanguageSwitcher } from './LanguageSwitcher.tsx';
 import { WorkspaceSwitcher } from './WorkspaceSwitcher.tsx';
@@ -64,6 +65,12 @@ export function AppShell() {
   const auth = useAuth();
   const me = auth.state.kind === 'authenticated' ? auth.state.me : null;
   const onSetup = useLocation().pathname === '/setup';
+
+  // Before the session answers, neither layout is the right one: showing the
+  // anonymous card means a name, a tagline and a language picker that vanish a
+  // moment later for the signed-in majority. The outline of the application is
+  // true whichever way the answer goes, so that is what is shown.
+  if (auth.state.kind === 'loading') return <AppSkeleton />;
 
   // Anonymous pages are one card in the middle of the screen. A navigation
   // rail with nothing in it would only take space away from them.
