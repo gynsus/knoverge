@@ -617,3 +617,141 @@ describe('actor names', () => {
     expect(actors.some((a) => a.type === 'system')).toBe(true);
   });
 });
+
+/**
+ * The file a change commits, against the database that change wrote.
+ *
+ * `taxonomy.yaml` is rendered from a projection of the change — Git is
+ * committed before PostgreSQL, so the file has to be built from a tree that
+ * does not exist in the database yet. That makes `projection.ts` a second
+ * implementation of what the SQL statements do, and two implementations of one
+ * rule drift. Its own comment says a test pins them together; there was no
+ * such test.
+ */
+describe('the committed file agrees with the database', () => {
+  /** Every category as the two sides describe it, ready to be compared. */
+  async function bothSides() {
+    const listed = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    const file = await readFile(
+      join(dataDir, 'repositories', listed.categories[0]!.workspace_id, 'taxonomy.yaml'),
+      'utf8',
+    );
+    const committed = parseTaxonomy(file);
+    const shape = (c: {
+      path: string;
+      slug: string;
+      name: string;
+      status: string;
+      description: string | null;
+      aliases: readonly string[];
+      inclusionGuidance?: readonly string[];
+      exclusionGuidance?: readonly string[];
+      inclusion_guidance?: readonly string[];
+      exclusion_guidance?: readonly string[];
+    }) => ({
+      path: c.path,
+      slug: c.slug,
+      name: c.name,
+      status: c.status,
+      description: c.description,
+      aliases: [...c.aliases].sort(),
+      inclusion: [...(c.inclusionGuidance ?? c.inclusion_guidance ?? [])],
+      exclusion: [...(c.exclusionGuidance ?? c.exclusion_guidance ?? [])],
+    });
+    const byPath = (a: { path: string }, b: { path: string }) => a.path.localeCompare(b.path);
+    return {
+      version: { file: committed.version, database: listed.taxonomy_version },
+      file: committed.categories.map(shape).sort(byPath),
+      database: listed.categories.map(shape).sort(byPath),
+    };
+  }
+
+  async function expectAgreement() {
+    const sides = await bothSides();
+    expect(sides.version.file).toBe(sides.version.database);
+    expect(sides.file).toEqual(sides.database);
+
+    // The file records nesting and never a parent id, so comparing the two
+    // sides cannot catch a projection that moved a path and left the parent
+    // behind. The database has to agree with itself: a category's parent is
+    // whatever sits at its path with the last segment removed.
+    const listed = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    const byPath = new Map(listed.categories.map((c) => [c.path, c]));
+    for (const category of listed.categories) {
+      const cut = category.path.lastIndexOf('/');
+      const expected = cut === -1 ? null : (byPath.get(category.path.slice(0, cut))?.id ?? null);
+      expect(
+        { path: category.path, parent: category.parent_id },
+        `${category.path} should hang from ${cut === -1 ? 'the root' : category.path.slice(0, cut)}`,
+      ).toEqual({ path: category.path, parent: expected });
+    }
+  }
+
+  it('after every kind of change', async () => {
+    // One workspace, one change at a time, checked after each: a projection
+    // can be right for a create and wrong for a move, and a single check at
+    // the end would only ever catch the last one.
+    const root = await create({
+      name: 'Pinning',
+      description: 'A branch to change in every way there is.',
+      inclusion_guidance: ['things that belong'],
+      exclusion_guidance: ['things that do not'],
+      aliases: ['pinned'],
+    });
+    await expectAgreement();
+
+    const child = await create({ name: 'Inner', parent_path: root.category.path });
+    const grandchild = await create({ name: 'Deeper', parent_path: child.category.path });
+    await expectAgreement();
+
+    // Renamed with a descendant under it. A leaf takes its new path from the
+    // patch, so renaming one exercises nothing: the subtree rewrite is the
+    // part of the projection a rename can get wrong.
+    const update = await admin.post('/v1/admin/taxonomy.update', {
+      category_id: child.category.id,
+      name: 'Inner Renamed',
+      slug: 'inner-renamed',
+      description: 'now with a description',
+      aliases: ['inside', 'within'],
+    });
+    expect(update.statusCode, update.body).toBe(200);
+    await expectAgreement();
+    const afterRename = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    expect(afterRename.categories.map((c) => c.path)).toContain('pinning/inner-renamed/deeper');
+    expect(grandchild.category.path).toBe('pinning/inner/deeper');
+
+    const elsewhere = await create({ name: 'Elsewhere' });
+    await create({ name: 'Tagalong', parent_path: elsewhere.category.path });
+    const moved = await admin.post('/v1/admin/taxonomy.move', {
+      category_id: child.category.id,
+      new_parent_id: elsewhere.category.id,
+    });
+    expect(moved.statusCode, moved.body).toBe(200);
+    await expectAgreement();
+
+    const archived = await admin.post('/v1/admin/taxonomy.archive', {
+      category_id: elsewhere.category.id,
+    });
+    expect(archived.statusCode, archived.body).toBe(200);
+    await expectAgreement();
+
+    const restored = await admin.post('/v1/admin/taxonomy.restore', {
+      category_id: elsewhere.category.id,
+    });
+    expect(restored.statusCode, restored.body).toBe(200);
+    await expectAgreement();
+
+    const merged = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: elsewhere.category.id,
+      into_category_id: root.category.id,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+    await expectAgreement();
+  });
+});

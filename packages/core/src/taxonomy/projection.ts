@@ -12,9 +12,18 @@ import type { CategoryRecord } from './repository.ts';
  * database yet, which is what these build.
  *
  * They are a second implementation of what the SQL statements do, and two
- * implementations of one rule drift. `taxonomy-projection.test.ts` pins them
- * together: every mutation is applied to a real database and the result is
- * compared with what these return.
+ * implementations of one rule drift. "the committed file agrees with the
+ * database" in `apps/server/test/taxonomy.test.ts` pins them: every kind of
+ * change is made through its route against a real database and a real
+ * repository, and the committed file is parsed back and compared with what the
+ * database now holds.
+ *
+ * What that cannot reach is `parentId`. The file records nesting and derives it
+ * from paths, so a parent in this projection is never rendered and never read.
+ * It is kept because these functions claim to return the tree as it will be,
+ * and a tree with the parents left out of it is not that. The database's own
+ * parents are checked against its own paths instead, which is where a forgotten
+ * re-parent actually shows up.
  */
 
 /** The tree with one category added. */
