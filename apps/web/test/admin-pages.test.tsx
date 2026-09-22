@@ -369,7 +369,7 @@ describe('workspace page', () => {
       'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
       'POST /v1/admin/workspace.update': () => json({ ok: true }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     expect(await screen.findByDisplayValue('Personal')).toBeInTheDocument();
     expect(screen.getByText('owner@example.com')).toBeInTheDocument();
 
@@ -402,7 +402,7 @@ describe('workspace page', () => {
         return json({ members });
       },
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText('Email'), 'member@example.com');
     await user.type(screen.getByLabelText('Initial password'), 'a long enough passphrase');
@@ -424,7 +424,7 @@ describe('workspace page', () => {
       'POST /v1/admin/members.update': () => json({ ok: true }),
       'POST /v1/admin/members.remove': () => json({ ok: true }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     const user = userEvent.setup();
     const select = await screen.findByLabelText(`Role of ${MEMBERS[1]!.display_name}`);
 
@@ -453,7 +453,7 @@ describe('workspace page', () => {
       'GET /v1/workspace.get': () =>
         json({ workspace: { ...WORKSPACE, role: 'reviewer' }, permissions: REVIEWER_PERMISSIONS }),
     });
-    renderApp('/workspace');
+    renderApp('/workspaces/settings');
     expect(await screen.findByDisplayValue('Personal')).toBeDisabled();
     expect(screen.queryByText('Members')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();

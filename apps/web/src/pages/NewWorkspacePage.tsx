@@ -111,7 +111,7 @@ export function NewWorkspacePage() {
           <Button type="submit" disabled={create.isPending}>
             {create.isPending ? t('common.working') : t('workspace.create_submit')}
           </Button>
-          <Button type="button" variant="outline" onClick={() => void navigate('/workspace')}>
+          <Button type="button" variant="outline" onClick={() => void navigate('/workspaces')}>
             {t('common.cancel')}
           </Button>
         </div>
