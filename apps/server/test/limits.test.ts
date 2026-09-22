@@ -94,9 +94,9 @@ beforeAll(async () => {
   });
   const agentId = (created.json() as { agent: { id: string } }).agent.id;
   token = (
-    (
-      await admin.post('/v1/admin/agents.credentials.issue', { agent_id: agentId })
-    ).json() as { token: string }
+    (await admin.post('/v1/admin/agents.credentials.issue', { agent_id: agentId })).json() as {
+      token: string;
+    }
   ).token;
 }, 180_000);
 
