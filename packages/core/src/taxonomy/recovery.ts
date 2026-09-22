@@ -3,6 +3,9 @@ import type { CategoryId, WorkspaceId } from '@knoverge/contracts';
 import type { ActorContext } from '../actor-context.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { OperationRecord } from '../operations/repository.ts';
+import type { KnowledgeItemId } from '@knoverge/contracts';
+
+import { planRelocation, type ItemFileLookup } from './relocate.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { GitStore } from '../ports/git-store.ts';
@@ -41,6 +44,18 @@ export interface TaxonomyRecoveryOptions {
   git: GitStore;
   taxonomyPath: string;
   parseTaxonomy: (text: string) => { version: number; categories: TaxonomyFileCategory[] };
+  /**
+   * The knowledge index, because a path change took files with it and the
+   * commit that moved them landed while PostgreSQL did not (ADR 0016).
+   */
+  items: ItemFileLookup & {
+    update(
+      tx: Tx,
+      id: KnowledgeItemId,
+      patch: { slug?: string; markdownPath?: string; updatedAt?: Date },
+    ): Promise<void>;
+  };
+  uniqueSlug: (wanted: string, taken: ReadonlySet<string>) => string;
   clock?: Clock;
 }
 
@@ -113,6 +128,33 @@ export class TaxonomyRecovery {
     const actor = this.actorOf(operation);
     await this.o.uow.run(async (tx) => {
       const existing = await this.o.categories.findById(operation.workspaceId, categoryId, tx);
+      // The files are already where the commit put them; what was lost is the
+      // index saying so. The plan touches no repository and is worked out from
+      // the same unchanged rows, so asking for it again gives the same answer
+      // the writer got.
+      const moves =
+        existing && kind !== 'create'
+          ? await planRelocation(
+              { items: this.o.items, uniqueSlug: this.o.uniqueSlug },
+              operation.workspaceId,
+              kind === 'merge'
+                ? [
+                    {
+                      from: existing.path,
+                      to: (await this.targetPath(operation, intoId, tx)) ?? existing.path,
+                    },
+                  ]
+                : [{ from: existing.path, to: entry.path }],
+            )
+          : [];
+      for (const move of moves) {
+        await this.o.items.update(tx, move.id, {
+          slug: move.slug,
+          markdownPath: move.to,
+          updatedAt: now,
+        });
+      }
+
       if (kind === 'create') {
         if (!existing) await this.insert(tx, operation, categoryId, entry, now);
       } else if (kind === 'merge') {
@@ -178,6 +220,17 @@ export class TaxonomyRecovery {
       mergedIntoCategoryId: target.id,
       updatedAt: now,
     });
+  }
+
+  /** Where a merge sent its contents, for the relocation it also performed. */
+  private async targetPath(
+    operation: OperationRecord,
+    intoId: CategoryId | undefined,
+    tx: Tx,
+  ): Promise<string | null> {
+    if (!intoId) return null;
+    const target = await this.o.categories.findById(operation.workspaceId, intoId, tx);
+    return target?.path ?? null;
   }
 
   private async insert(

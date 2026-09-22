@@ -8,6 +8,7 @@ import {
   TERMS_VERSION,
   KnowledgeDiffResponse,
   KnowledgeListResponse,
+  CategoryResponse,
   KnowledgeResponse,
   RevisionsResponse,
   SupersedeResponse,
@@ -819,5 +820,146 @@ describe('listing what the workspace holds', () => {
     );
     // Null exactly when there is nothing after, not merely when a page is short.
     expect(last.next_cursor).toBeNull();
+  });
+});
+
+describe('the repository follows the taxonomy', () => {
+  /** The item file as the repository holds it, or null when it is not there. */
+  async function fileAt(path: string) {
+    const listed = KnowledgeListResponse.parse((await admin.get('/v1/knowledge.list')).json());
+    const workspaceId = listed.items[0]!.workspace_id;
+    try {
+      return await readFile(join(dataDir, 'repositories', workspaceId, path), 'utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  it('moves the knowledge under a category that is renamed', async () => {
+    const category = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Playbooks' })).json(),
+    ).category;
+    const created = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Restarting the worker',
+          body: 'Stop it, wait for the lock, start it.\n',
+          type: 'instruction',
+          categories: [category.path],
+        })
+      ).json(),
+    ).item;
+    expect(created.markdown_path).toBe('knowledge/playbooks/restarting-the-worker.md');
+
+    const renamed = await admin.post('/v1/admin/taxonomy.update', {
+      category_id: category.id,
+      name: 'Field Guides',
+      slug: 'field-guides',
+    });
+    expect(renamed.statusCode, renamed.body).toBe(200);
+
+    // The file is where the taxonomy now says it is, and nowhere else. A
+    // directory no category claims is the whole of what rule 1 forbids.
+    expect(await fileAt('knowledge/playbooks/restarting-the-worker.md')).toBeNull();
+    const moved = await fileAt('knowledge/field-guides/restarting-the-worker.md');
+    expect(moved).not.toBeNull();
+    // And it says so itself, for somebody reading the repository without us.
+    expect(moved).toContain('- field-guides');
+    expect(moved).not.toContain('- playbooks');
+
+    // The index agrees, so the next write goes to the file that exists.
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${created.id}`)).json(),
+    ).item;
+    expect(item.markdown_path).toBe('knowledge/field-guides/restarting-the-worker.md');
+
+    // The revision is untouched: it records where its file was at its own
+    // commit, which is how history and restore read it back.
+    const revisions = RevisionsResponse.parse(
+      (await admin.get(`/v1/knowledge.revisions?item_id=${created.id}`)).json(),
+    );
+    expect(revisions.revisions).toHaveLength(1);
+    expect(revisions.revisions[0]?.markdown_path).toBe(
+      'knowledge/playbooks/restarting-the-worker.md',
+    );
+  });
+
+  it('carries the knowledge of a merged category to the survivor', async () => {
+    const survivor = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Data Sources' })).json(),
+    ).category;
+    const closing = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Data Providers' })).json(),
+    ).category;
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Where the weather comes from',
+          body: 'An hourly feed, keyed by station.\n',
+          type: 'fact',
+          categories: [closing.path],
+        })
+      ).json(),
+    ).item;
+
+    const merged = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: closing.id,
+      into_category_id: survivor.id,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+
+    // The item belongs to the survivor now, so leaving its file in the closed
+    // category's directory would have the repository disagree with the index
+    // it is supposed to be the canonical copy of.
+    expect(await fileAt('knowledge/data-providers/where-the-weather-comes-from.md')).toBeNull();
+    const moved = await fileAt('knowledge/data-sources/where-the-weather-comes-from.md');
+    expect(moved).toContain('- data-sources');
+
+    const after = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${item.id}`)).json(),
+    ).item;
+    expect(after.markdown_path).toBe('knowledge/data-sources/where-the-weather-comes-from.md');
+    expect(after.categories).toEqual(['data-sources']);
+  });
+
+  it('gives a new name to an item that would collide at the destination', async () => {
+    const keep = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Kept' })).json(),
+    ).category;
+    const close = CategoryResponse.parse(
+      (await admin.post('/v1/admin/taxonomy.create', { name: 'Closing' })).json(),
+    ).category;
+    const title = 'The same name twice';
+    await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: 'The one that was already there.\n',
+      type: 'fact',
+      categories: [keep.path],
+    });
+    const travelling = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title,
+          body: 'The one that has to move.\n',
+          type: 'fact',
+          categories: [close.path],
+        })
+      ).json(),
+    ).item;
+
+    const merged = await admin.post('/v1/admin/taxonomy.merge', {
+      category_id: close.id,
+      into_category_id: keep.id,
+    });
+    expect(merged.statusCode, merged.body).toBe(200);
+
+    // Two files cannot share a name. The identity is the id in the
+    // frontmatter, so the file name is what gives way.
+    const after = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${travelling.id}`)).json(),
+    ).item;
+    expect(after.markdown_path).toBe('knowledge/kept/the-same-name-twice-2.md');
+    expect(await fileAt('knowledge/kept/the-same-name-twice.md')).toContain('already there');
+    expect(await fileAt('knowledge/kept/the-same-name-twice-2.md')).toContain('has to move');
   });
 });

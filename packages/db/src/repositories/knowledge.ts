@@ -131,6 +131,28 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
         .limit(Math.min(options.limit ?? 50, 500));
       return rows.map(toItem);
     },
+    async pathsUnderDirectory(workspaceId, directory, tx) {
+      const rows = await reader(tx)
+        .select({
+          id: knowledgeItems.id,
+          slug: knowledgeItems.slug,
+          markdownPath: knowledgeItems.markdownPath,
+        })
+        .from(knowledgeItems)
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            sql`${knowledgeItems.markdownPath} LIKE ${`${directory}/%`}`,
+          ),
+        )
+        .orderBy(asc(knowledgeItems.markdownPath));
+      return rows.map((r) => ({
+        id: r.id as KnowledgeItemId,
+        slug: r.slug,
+        markdownPath: r.markdownPath,
+      }));
+    },
+
     async slugsInDirectory(workspaceId, directory, tx) {
       const rows = await reader(tx)
         .select({ slug: knowledgeItems.slug })

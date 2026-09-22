@@ -167,6 +167,10 @@ export function createServices() {
         git: git(),
         renderTaxonomy,
         taxonomyPath: TAXONOMY_PATH,
+        items: repositories.knowledge,
+        parseItem,
+        renderItem,
+        uniqueSlug,
         workspaces: {
           findById: async (workspaceId) => {
             const workspace = await repositories.workspaces.findById(workspaceId);

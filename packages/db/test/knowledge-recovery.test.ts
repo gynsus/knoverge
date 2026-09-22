@@ -176,6 +176,10 @@ beforeAll(async () => {
     git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
+    items: repositories.knowledge,
+    parseItem,
+    renderItem,
+    uniqueSlug,
     workspaces,
     actors: repositories.actors,
   };
@@ -209,6 +213,8 @@ beforeAll(async () => {
         ledger,
         git,
         taxonomyPath: TAXONOMY_PATH,
+        items: repositories.knowledge,
+        uniqueSlug,
         parseTaxonomy,
       }).complete(operation)),
   });
