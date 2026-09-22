@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { CategoryPath } from './taxonomy.ts';
+
 /**
  * Ledger event types (DATA_MODEL.md section 22). Only material changes are events.
  */
@@ -75,3 +77,56 @@ export const ObjectType = z.enum([
   'integrity_check',
 ]);
 export type ObjectType = z.infer<typeof ObjectType>;
+
+/**
+ * The audit feed: what happened, and who made it happen.
+ *
+ * `after_sequence` is a position in the per-workspace ledger sequence, never
+ * an object id (ADR 0010). A caller stores the `next_sequence` it was given
+ * and passes it back.
+ */
+export const EventsListInput = z.object({
+  after_sequence: z.number().int().nonnegative().default(0),
+  event_types: z.array(EventType).max(40).default([]),
+  category_paths: z.array(CategoryPath).max(20).default([]),
+  limit: z.number().int().min(1).max(500).default(200),
+});
+export type EventsListInput = z.infer<typeof EventsListInput>;
+
+/**
+ * One event as the feed shows it.
+ *
+ * Ids, hashes, actor context and safe metadata; never knowledge text, a
+ * proposal payload or a secret (rule 4).
+ */
+export const EventSummary = z.object({
+  id: z.string(),
+  sequence: z.number().int().positive(),
+  event_type: EventType,
+  object_type: ObjectType,
+  object_id: z.string(),
+  actor_id: z.string(),
+  agent_id: z.string().nullable(),
+  request_id: z.string(),
+  session_id: z.string().nullable(),
+  client: z.string().nullable(),
+  provider: z.string().nullable(),
+  model: z.string().nullable(),
+  before_revision_id: z.string().nullable(),
+  before_content_hash: z.string().nullable(),
+  after_revision_id: z.string().nullable(),
+  after_content_hash: z.string().nullable(),
+  proposal_id: z.string().nullable(),
+  category_paths: z.array(CategoryPath),
+  metadata: z.record(z.string(), z.unknown()),
+  created_at: z.iso.datetime({ offset: true }),
+});
+export type EventSummary = z.infer<typeof EventSummary>;
+
+export const EventsListResponse = z.object({
+  events: z.array(EventSummary),
+  /** Where to resume. The same as the last event's sequence, or the cursor. */
+  next_sequence: z.number().int().nonnegative(),
+  has_more: z.boolean(),
+});
+export type EventsListResponse = z.infer<typeof EventsListResponse>;

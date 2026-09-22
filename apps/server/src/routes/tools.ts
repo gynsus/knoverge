@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { csrfUnlessBearer } from '../plugins/security.ts';
+import { eventsList } from './events.ts';
 import type { Services } from '../services.ts';
 import { knowledgeDiff, knowledgeGet, knowledgeHistory, knowledgeSearch } from './knowledge.ts';
 import {
@@ -51,6 +52,7 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   proposal_approve: proposalApprove as ToolHandler,
   proposal_reject: proposalReject as ToolHandler,
   proposal_withdraw: proposalWithdraw as ToolHandler,
+  events_list: eventsList as ToolHandler,
 };
 
 /** The handler a tool runs, for the MCP adapter as well as for HTTP. */
