@@ -20,7 +20,7 @@ import {
   proposalReject,
   proposalWithdraw,
 } from './proposals.ts';
-import { taxonomyList } from './taxonomy.ts';
+import { taxonomyList, taxonomyPropose } from './taxonomy.ts';
 
 /**
  * What every tool handler looks like from the outside.
@@ -45,6 +45,7 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   knowledge_index: knowledgeIndex as ToolHandler,
   knowledge_briefing: knowledgeBriefing as ToolHandler,
   taxonomy_list: taxonomyList as ToolHandler,
+  taxonomy_propose: taxonomyPropose as ToolHandler,
   knowledge_search: knowledgeSearch as ToolHandler,
   knowledge_get: knowledgeGet as ToolHandler,
   knowledge_history: knowledgeHistory as ToolHandler,

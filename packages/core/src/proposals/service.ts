@@ -66,6 +66,16 @@ export interface ProposeDeleteInput extends DeleteItemInput {
   confidence?: number | undefined;
 }
 
+export interface ProposeCategoryInput {
+  name: string;
+  parentPath?: string | undefined;
+  parentId?: string | undefined;
+  description?: string | undefined;
+  reason?: string | undefined;
+  /** What would go in it, which is how a reviewer judges whether it is needed. */
+  exampleTitles?: readonly string[] | undefined;
+}
+
 export interface ProposeSupersedeInput extends SupersedeInput {
   reason?: string | undefined;
   confidence?: number | undefined;
@@ -443,6 +453,63 @@ export class ProposalService {
         };
       },
     });
+  }
+
+  /**
+   * Proposing a category.
+   *
+   * A taxonomy proposal carries no knowledge, so there is nothing to apply
+   * and nothing to conflict with: it is a question for a person, recorded so
+   * they can answer it. Approving one is the taxonomy service's own create,
+   * which the review workflow reaches in a later milestone; until then a
+   * reviewer reads the proposal and makes the category themselves.
+   */
+  async proposeCategory(
+    actor: ActorContext,
+    standing: ActorStanding,
+    input: ProposeCategoryInput,
+  ): Promise<ProposalRecord> {
+    await this.o.authorization.require(actor, standing, 'taxonomy.propose');
+    const now = this.clock.now();
+    const proposal: ProposalRecord = {
+      id: newId('prop') as ProposalId,
+      workspaceId: actor.workspaceId,
+      proposalType: 'category_create',
+      targetItemId: null,
+      targetCategoryId: (input.parentId ?? null) as CategoryId | null,
+      status: 'pending',
+      proposedByActorId: actor.actorId,
+      baseRevisionId: null,
+      baseContentHash: null,
+      proposedPayload: {
+        name: input.name,
+        parentPath: input.parentPath ?? null,
+        description: input.description ?? null,
+        exampleTitles: [...(input.exampleTitles ?? [])],
+      },
+      reason: input.reason ?? null,
+      confidence: null,
+      acknowledgedDuplicateIds: [],
+      syncSessionId: null,
+      policyDecision: 'require_review',
+      policyRuleId: null,
+      createdAt: now,
+      resolvedAt: null,
+      resolvedByActorId: null,
+      resolutionNote: null,
+      resultRevisionIds: [],
+    };
+    await this.o.uow.run(async (tx) => {
+      await this.o.proposals.insert(tx, proposal);
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType: 'category.proposed',
+        objectType: 'proposal',
+        objectId: proposal.id,
+        ...(input.parentId ? { categoryIds: [input.parentId] } : {}),
+        metadata: { proposal_type: 'category_create', policy_decision: 'require_review' },
+      });
+    });
+    return proposal;
   }
 
   /** Proposing that an item leave the current index. The history keeps it. */
