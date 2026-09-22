@@ -38,7 +38,17 @@ permissions and scopes
 
 OAuth 2.1 (authorization server with dynamic client registration) is a later milestone for hosts such as ChatGPT and Claude.ai connectors. See ADR 0004.
 
-The `knoverge mcp stdio` (Milestone 4) command runs a local stdio bridge that forwards to the remote endpoint with a token from the environment.
+`knoverge mcp stdio` runs a local stdio bridge that forwards to the remote endpoint with a token from the environment:
+
+```bash
+KNOVERGE_MCP_URL=https://knoverge.example/mcp KNOVERGE_TOKEN=knv_... knoverge mcp stdio
+```
+
+Every MCP host speaks stdio; not every one speaks Streamable HTTP, and fewer still let a person attach an `Authorization` header to it. The bridge holds no state and parses no messages — a message that arrives is a message that leaves — so a tool added to the server needs no change here.
+
+The token comes from the environment and never from a flag: a command line is visible to every process on the machine and ends up in shell history.
+
+`knoverge mcp check` connects the same way and lists the tools the endpoint offers, which is how an operator tells a bad token from a bad URL.
 
 ## 4. Context metadata
 

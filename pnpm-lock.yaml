@@ -409,6 +409,9 @@ importers:
       '@knoverge/git-store':
         specifier: workspace:*
         version: link:../../packages/git-store
+      '@modelcontextprotocol/sdk':
+        specifier: 'catalog:'
+        version: 1.30.0(zod@4.6.5)
       '@node-rs/argon2':
         specifier: 'catalog:'
         version: 2.2.1
