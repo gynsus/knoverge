@@ -8,6 +8,41 @@ Its purpose is not merely to provide "long-term memory". It is a **knowledge led
 
 Every important change is attributable to a specific actor, traceable to its source, versioned, reviewable, and reversible.
 
+## What works today
+
+Knoverge is under development and already runs. As of Milestone 4:
+
+- **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, diff, logical delete and restore, and supersession as one atomic operation.
+- **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-one tools at `POST /v1/<tool_name>`, from one contract. Per-credential rate limits, request size and concurrency limits.
+- **Review** — agents propose, policy decides, and a person approves, edits and approves, rejects or withdraws, with a diff of what would change. Nothing an agent writes becomes canonical without a rule that says so.
+- **Finding things** — lexical search with per-language stemming, a compact index for reconciliation, a briefing that fits a budget, an audit feed and a change feed.
+- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, backups with a restore drill, and recovery for a write that reached Git and no further.
+
+Not yet: the reconciliation protocol (Milestone 5), semantic search (6), summaries and digests with an LLM (8), OAuth for hosted connectors (10), attachments and media (11-12).
+
+## Trying it
+
+```bash
+cp .env.example .env          # set KNOVERGE_LEDGER_KEY and KNOVERGE_TOKEN_PEPPER
+docker compose up -d
+open http://localhost:3000    # first run asks you to create the owner account
+```
+
+Then create an agent under **Agents**, issue it a token, and point a client at the endpoint:
+
+```bash
+claude mcp add knoverge --transport http http://localhost:3000/mcp \
+  --header "Authorization: Bearer knv_..."
+```
+
+A host that speaks only stdio runs the bridge instead:
+
+```bash
+KNOVERGE_MCP_URL=http://localhost:3000/mcp KNOVERGE_TOKEN=knv_... knoverge mcp stdio
+```
+
+`knoverge mcp check` lists the tools an endpoint offers, which answers "is the token right" before a host is configured with it.
+
 ## Core idea
 
 A user may work with many independent AI systems:
