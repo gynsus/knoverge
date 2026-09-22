@@ -1,4 +1,5 @@
 import type {
+  ActorsResponse,
   AddMemberRequest,
   ApproveProposalRequest,
   AgentResponse,
@@ -16,6 +17,7 @@ import type {
   KnowledgeDiffResponse,
   KnowledgeListResponse,
   KnowledgeResponse,
+  MergeCategoryRequest,
   MoveCategoryRequest,
   OkResponse,
   PolicyRuleResponse,
@@ -63,6 +65,8 @@ export const adminApi = {
     update: (body: UpdateCategoryRequest) =>
       apiPost<CategoryResponse>('/v1/admin/taxonomy.update', body),
     move: (body: MoveCategoryRequest) => apiPost<CategoryResponse>('/v1/admin/taxonomy.move', body),
+    merge: (body: MergeCategoryRequest) =>
+      apiPost<CategoryResponse>('/v1/admin/taxonomy.merge', body),
     restore: (categoryId: string) =>
       apiPost<CategoryResponse>('/v1/admin/taxonomy.restore', { category_id: categoryId }),
     archive: (categoryId: string) =>
@@ -78,6 +82,7 @@ export const adminApi = {
   workspace: {
     get: (signal?: AbortSignal) => apiGet<WorkspaceResponse>('/v1/workspace.get', signal),
     list: (signal?: AbortSignal) => apiGet<WorkspacesResponse>('/v1/workspaces.list', signal),
+    actors: (signal?: AbortSignal) => apiGet<ActorsResponse>('/v1/actors.list', signal),
     create: (body: CreateWorkspaceRequest) =>
       apiPost<CreateWorkspaceResponse>('/v1/admin/workspace.create', body),
     update: (body: UpdateWorkspaceRequest) =>
