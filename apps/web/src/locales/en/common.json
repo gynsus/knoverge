@@ -131,6 +131,7 @@
     "tags": "Tags",
     "tags_hint": "Comma separated, lower case.",
     "title": "Knowledge",
+    "truncated": "Only part of this item was loaded, so it cannot be edited here. Reload the page, or read it with the API.",
     "type": "Type",
     "types": {
       "fact": "Fact",

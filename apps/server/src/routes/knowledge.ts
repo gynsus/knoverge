@@ -3,7 +3,7 @@ import {
   DeleteKnowledgeRequest,
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
-  KnowledgeGetInput,
+  KnowledgeItemId,
   KnowledgeHistoryInput,
   KnowledgeListResponse,
   KnowledgeResponse,
@@ -16,14 +16,20 @@ import {
   type KnowledgeItemSummary,
   type RevisionSummary,
 } from '@knoverge/contracts';
-import type { KnowledgeSearchInput, KnowledgeSearchResponse } from '@knoverge/contracts';
+import type {
+  KnowledgeGetInput,
+  KnowledgeSearchInput,
+  KnowledgeSearchResponse,
+} from '@knoverge/contracts';
 import {
   DomainError,
+  MAX_BODY_BYTES,
   type ItemResult,
   type ItemSummary,
   type RevisionRecord,
 } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { requireListPermission, requirePermission } from '../plugins/actor-context.ts';
@@ -68,6 +74,12 @@ function summary(entry: ItemSummary): KnowledgeItemSummary {
     created_at: item.createdAt.toISOString(),
     updated_at: item.updatedAt.toISOString(),
   } as KnowledgeItemSummary;
+}
+
+/** An item answered in full, for the routes a person writes through. */
+function whole(result: ItemResult): KnowledgeResponse {
+  const item = detail(result);
+  return { item, total_chars: result.body.length, truncated: false };
 }
 
 function detail(result: ItemResult): KnowledgeItemDetail {
@@ -148,7 +160,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         sources: request.body.sources,
         external: request.body.external,
       });
-      return { item: detail(result) };
+      return whole(result);
     },
   );
 
@@ -177,7 +189,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         sources: request.body.sources,
         relations: request.body.relations,
       });
-      return { item: detail(result) };
+      return whole(result);
     },
   );
 
@@ -195,7 +207,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         baseRevisionId: request.body.base_revision_id,
         baseContentHash: request.body.base_content_hash,
       });
-      return { item: detail(result) };
+      return whole(result);
     },
   );
 
@@ -209,7 +221,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
       const actor = await requirePermission(services, request, 'knowledge.write');
       assertHuman(actor.context.actorType);
       const result = await services.knowledge.restore(actor.context, request.body.item_id);
-      return { item: detail(result) };
+      return whole(result);
     },
   );
 
@@ -283,8 +295,24 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
 
   r.get(
     '/v1/knowledge.get',
-    { schema: { querystring: KnowledgeGetInput, response: { 200: KnowledgeResponse } } },
-    (request) => knowledgeGet(services, request, request.query),
+    {
+      schema: {
+        querystring: z.object({ item_id: KnowledgeItemId }),
+        response: { 200: KnowledgeResponse },
+      },
+    },
+    // The whole body, always. The editor writes back what it was given, and a
+    // budget here would mean a person opening a long document and saving the
+    // first twenty thousand characters of it over the rest.
+    (request) =>
+      knowledgeGet(services, request, {
+        item_id: request.query['item_id'],
+        revision_id: null,
+        include_provenance: true,
+        include_relations: true,
+        max_chars: MAX_BODY_BYTES,
+        offset: 0,
+      }),
   );
 }
 
@@ -299,8 +327,27 @@ export async function knowledgeGet(
   input: KnowledgeGetInput,
 ): Promise<KnowledgeResponse> {
   const actor = await requirePermission(services, request, 'knowledge.read');
-  const result = await services.knowledge.get(actor.context, input.item_id);
-  return { item: detail(result) };
+  const result = await services.knowledge.get(
+    actor.context,
+    input.item_id,
+    input.revision_id ?? undefined,
+  );
+  // Bounded, because a document may run to two hundred kilobytes and an agent
+  // that asks for one should not lose its context to it. The answer says how
+  // much there was, so a caller asks for the rest rather than working from a
+  // fragment without knowing it is one.
+  const whole = result.body;
+  const slice = whole.slice(input.offset, input.offset + input.max_chars);
+  const item = detail({ ...result, body: slice });
+  return {
+    item: {
+      ...item,
+      ...(input.include_provenance ? {} : { sources: [] }),
+      ...(input.include_relations ? {} : { relations: [] }),
+    },
+    total_chars: whole.length,
+    truncated: input.offset > 0 || slice.length < whole.length,
+  };
 }
 
 /**

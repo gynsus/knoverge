@@ -248,6 +248,12 @@ Input:
 
 Returns canonical Markdown plus metadata. When the body exceeds `max_chars`, the response contains the slice starting at `offset`, `total_chars`, and `truncated: true`. Default `max_chars` is 20000.
 
+The bound is the point: a `document` may run to two hundred kilobytes, and an agent that asks for one should not lose its context to it. A caller that wants the rest asks again from `offset`.
+
+`revision_id` reads a revision the item used to have, from the commit that wrote it — PostgreSQL keeps the frontmatter of every revision and the text of none.
+
+The browser's `GET /v1/knowledge.get` asks for the whole body rather than a slice, because the editor writes back what it was given and a slice would be saved over the rest.
+
 #### `knowledge_index`
 
 Returns compact index pages for reconciliation.

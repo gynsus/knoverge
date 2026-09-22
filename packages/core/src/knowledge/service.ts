@@ -1105,22 +1105,44 @@ export class KnowledgeService {
   }
 
   /** One item with its body, read from the file that is canonical. */
-  async get(actor: ActorContext, itemId: KnowledgeItemId): Promise<ItemResult> {
+  /**
+   * One item, at its current revision or at one it had.
+   *
+   * A past revision is read from the commit that wrote it, because that is
+   * where it is: PostgreSQL keeps the frontmatter of every revision and the
+   * text of none. Reading the current one is a plain file read.
+   */
+  async get(
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    atRevision?: RevisionId | undefined,
+  ): Promise<ItemResult> {
     const item = await this.o.items.findById(actor.workspaceId, itemId);
     if (!item || item.deletedAt) {
       throw new DomainError('NOT_FOUND', 'knowledge item not found', {
         objectIds: { knowledge_item: itemId },
       });
     }
-    const revision = item.currentRevisionId
-      ? await this.o.revisions.findById(actor.workspaceId, item.currentRevisionId)
+    const wanted = atRevision ?? item.currentRevisionId;
+    const revision = wanted
+      ? await this.o.revisions.findById(actor.workspaceId, wanted as RevisionId)
       : null;
     if (!revision) {
-      throw new DomainError('INTERNAL_ERROR', 'the item has no current revision', {
-        objectIds: { knowledge_item: itemId },
+      throw new DomainError(
+        atRevision ? 'NOT_FOUND' : 'INTERNAL_ERROR',
+        atRevision ? 'no such revision of this item' : 'the item has no current revision',
+        { objectIds: { knowledge_item: itemId, ...(atRevision ? { revision: atRevision } : {}) } },
+      );
+    }
+    if (revision.knowledgeItemId !== itemId) {
+      throw new DomainError('VALIDATION_ERROR', 'that revision belongs to a different item', {
+        objectIds: { knowledge_item: itemId, revision: revision.id },
       });
     }
-    const file = await this.o.git.read(actor.workspaceId, item.markdownPath);
+    const file =
+      atRevision && atRevision !== item.currentRevisionId
+        ? await this.o.git.readAt(actor.workspaceId, revision.gitCommitHash, revision.markdownPath)
+        : await this.o.git.read(actor.workspaceId, item.markdownPath);
     if (file === null) {
       // The database says the item exists and the repository does not have it.
       // That is the corruption the architecture calls unrepairable, so it is

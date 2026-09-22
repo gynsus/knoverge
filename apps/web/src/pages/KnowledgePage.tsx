@@ -58,11 +58,14 @@ const draftOf = (item: KnowledgeItemDetail): Draft => ({
  */
 function ItemEditor({
   item,
+  truncated,
   mayWrite,
   onChanged,
   onClose,
 }: {
   item: KnowledgeItemDetail;
+  /** Whether the body is only part of what the item holds. */
+  truncated: boolean;
   mayWrite: boolean;
   onChanged: () => Promise<void>;
   onClose: () => void;
@@ -120,7 +123,8 @@ function ItemEditor({
         <Badge>{t(`knowledge.evidence.${item.evidence_state}`)}</Badge>
         <small>{t('knowledge.revision', { number: item.revision_number })}</small>
       </p>
-      <FieldSet disabled={!mayWrite || save.isPending}>
+      {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
+      <FieldSet disabled={!mayWrite || truncated || save.isPending}>
         <Field label={t('knowledge.item_title')}>
           <Input
             value={draft.title}
@@ -162,7 +166,7 @@ function ItemEditor({
       </FieldSet>
       <ErrorNotice error={save.error ?? remove.error ?? restore.error} />
       <div className="flex flex-wrap gap-2">
-        {mayWrite && item.status !== 'deleted' && (
+        {mayWrite && !truncated && item.status !== 'deleted' && (
           <Button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
             {save.isPending ? t('common.working') : t('knowledge.save')}
           </Button>
@@ -307,6 +311,10 @@ export function KnowledgePage() {
         <ItemEditor
           key={selected.data.item.id}
           item={selected.data.item}
+          // Saving a slice would write it over the rest. The browser asks for
+          // the whole body, so this never fires; it is here because the cost
+          // of being wrong about that is somebody's document.
+          truncated={selected.data.truncated}
           mayWrite={mayWrite}
           onChanged={refresh}
           onClose={close}
