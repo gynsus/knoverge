@@ -7,6 +7,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES, limitConcurrency } from '../plugins/agent-limits.ts';
 import type { CallMeta } from '../plugins/actor-decorators.ts';
 import type { Services } from '../services.ts';
 import { handlerFor } from './tools.ts';
@@ -113,34 +114,46 @@ function serverFor(services: Services, request: FastifyRequest, version: string)
  * deployment can run several containers without sticky routing.
  */
 export function registerMcpRoutes(app: FastifyInstance, services: Services, version: string): void {
-  app.post('/mcp', { schema: { hide: true } }, async (request, reply) => {
-    // Before anything else: who is calling. Every tool resolves the actor
-    // again when it runs, but a client with no credential would otherwise
-    // connect, be handed the tool list, and be refused one call at a time
-    // with no way to tell a bad token from a bad request.
-    await resolveWorkspaceActor(services, request);
-    const server = serverFor(services, request, version);
-    // The SDK documents `sessionIdGenerator: undefined` as stateless mode,
-    // and `exactOptionalPropertyTypes` refuses an explicitly undefined
-    // optional property, so the options are built rather than declared. The
-    // transport's own callbacks are optional in fact and required in its
-    // `Transport` type, which is the same mismatch from the other side.
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    } as unknown as ConstructorParameters<typeof StreamableHTTPServerTransport>[0]);
-    // Fastify owns the response from here: the transport writes to the raw
-    // socket, so the route must not also return a body.
-    reply.hijack();
-    try {
-      await server.connect(transport as unknown as Transport);
-      await transport.handleRequest(request.raw, reply.raw, request.body);
-    } finally {
-      // Per request, so the server and its transport go with it.
-      await transport.close().catch(() => undefined);
-      await server.close().catch(() => undefined);
-    }
-  });
+  app.post(
+    '/mcp',
+    {
+      schema: { hide: true },
+      onRequest: limitConcurrency(app),
+      // Every tool arrives through this one route, so it takes the stricter
+      // of the two budgets: a client that only reads is inside it, and one
+      // that writes at speed is what the budget is for.
+      config: { rateLimit: AGENT_LIMITS.write },
+      bodyLimit: MAX_TOOL_BODY_BYTES,
+    },
+    async (request, reply) => {
+      // Before anything else: who is calling. Every tool resolves the actor
+      // again when it runs, but a client with no credential would otherwise
+      // connect, be handed the tool list, and be refused one call at a time
+      // with no way to tell a bad token from a bad request.
+      await resolveWorkspaceActor(services, request);
+      const server = serverFor(services, request, version);
+      // The SDK documents `sessionIdGenerator: undefined` as stateless mode,
+      // and `exactOptionalPropertyTypes` refuses an explicitly undefined
+      // optional property, so the options are built rather than declared. The
+      // transport's own callbacks are optional in fact and required in its
+      // `Transport` type, which is the same mismatch from the other side.
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true,
+      } as unknown as ConstructorParameters<typeof StreamableHTTPServerTransport>[0]);
+      // Fastify owns the response from here: the transport writes to the raw
+      // socket, so the route must not also return a body.
+      reply.hijack();
+      try {
+        await server.connect(transport as unknown as Transport);
+        await transport.handleRequest(request.raw, reply.raw, request.body);
+      } finally {
+        // Per request, so the server and its transport go with it.
+        await transport.close().catch(() => undefined);
+        await server.close().catch(() => undefined);
+      }
+    },
+  );
 
   // A client that opens the stream or ends a session is told plainly that
   // this endpoint keeps none, rather than being left waiting.

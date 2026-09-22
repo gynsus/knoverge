@@ -2,6 +2,7 @@ import { TOOLS, type ToolName } from '@knoverge/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
+import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES, limitConcurrency } from '../plugins/agent-limits.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import { activityDigest, knowledgeBriefing } from './briefing.ts';
 import { knowledgeChanges } from './changes.ts';
@@ -99,7 +100,14 @@ export function registerToolRoutes(app: FastifyInstance, services: Services): vo
       {
         // A tool call from a browser session still needs the token; one with a
         // bearer credential does not, because there is no cookie to ride on.
-        ...(tool.readOnly ? {} : { onRequest: csrfUnlessBearer(app) }),
+        onRequest: tool.readOnly
+          ? [limitConcurrency(app)]
+          : [csrfUnlessBearer(app), limitConcurrency(app)],
+        // A write takes the workspace lock, makes a commit and appends to the
+        // ledger; a read does none of those. One budget for both would be set
+        // for the cheap one and leave the expensive one unprotected.
+        config: { rateLimit: tool.readOnly ? AGENT_LIMITS.read : AGENT_LIMITS.write },
+        bodyLimit: MAX_TOOL_BODY_BYTES,
         schema: {
           operationId: tool.name,
           description: tool.description,
