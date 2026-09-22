@@ -536,3 +536,46 @@ export const KnowledgeChangesResponse = z.object({
   taxonomy_version: z.number().int().nonnegative(),
 });
 export type KnowledgeChangesResponse = z.infer<typeof KnowledgeChangesResponse>;
+
+/**
+ * Compact index pages, for reconciliation.
+ *
+ * What an agent reads to decide what it already knows, before proposing
+ * anything. One record per item, small enough that a whole workspace fits in
+ * a few pages.
+ */
+export const KnowledgeIndexInput = z.object({
+  category_paths: z.array(CategoryPath).max(20).default([]),
+  updated_after: z.iso.datetime({ offset: true }).nullable().default(null),
+  /** The id the previous page ended at; ids sort in creation order. */
+  cursor: KnowledgeItemId.nullable().default(null),
+  limit: z.number().int().min(1).max(500).default(200),
+});
+export type KnowledgeIndexInput = z.infer<typeof KnowledgeIndexInput>;
+
+export const KnowledgeIndexRecord = z.object({
+  item_id: KnowledgeItemId,
+  title: z.string(),
+  type: ItemType,
+  category_paths: z.array(CategoryPath),
+  status: ItemStatus,
+  review_state: ReviewState,
+  evidence_state: EvidenceState,
+  disputed: z.boolean(),
+  language: LanguageTag,
+  revision_id: RevisionId,
+  content_hash: z.string(),
+  source_system: z.string().nullable(),
+  external_key: z.string().nullable(),
+  updated_at: z.iso.datetime({ offset: true }),
+  /** Short on purpose: enough to match against, not enough to work from. */
+  abstract: z.string(),
+});
+export type KnowledgeIndexRecord = z.infer<typeof KnowledgeIndexRecord>;
+
+export const KnowledgeIndexResponse = z.object({
+  records: z.array(KnowledgeIndexRecord),
+  next_cursor: KnowledgeItemId.nullable(),
+  has_more: z.boolean(),
+});
+export type KnowledgeIndexResponse = z.infer<typeof KnowledgeIndexResponse>;

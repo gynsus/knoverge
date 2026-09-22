@@ -54,6 +54,8 @@ export interface ServicesConfig {
   tokenPepper: string;
   /** Workspace repositories live under this directory. */
   dataDir: string;
+  /** What the manifest reports as the running build. */
+  version?: string;
   poolMax?: number;
   /** Told when a pooled connection dies while nobody is using it. */
   onPoolError?: (error: Error) => void;
@@ -245,6 +247,7 @@ export function createServices(config: ServicesConfig) {
     ledger,
   });
   return {
+    serverVersion: config.version ?? '0.0.0',
     database,
     uow,
     repositories,

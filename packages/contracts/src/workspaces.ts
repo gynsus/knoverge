@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { DisplayName, Email, Password } from './auth.ts';
 import { LanguageTag, MembershipRole, UserStatus } from './identity.ts';
+import { ItemType } from './knowledge.ts';
 import { PermissionAction } from './policy.ts';
 import { ActorId, UserId, WorkspaceId } from './ids.ts';
 
@@ -90,3 +91,47 @@ export type ResetMemberPasswordRequest = z.infer<typeof ResetMemberPasswordReque
 
 export const RemoveMemberRequest = z.object({ user_id: UserId });
 export type RemoveMemberRequest = z.infer<typeof RemoveMemberRequest>;
+
+/**
+ * A compact description of the workspace, for an agent with no context.
+ *
+ * The first call a client makes: it says what the workspace is, where the two
+ * cursors are, what this caller may do, and whether it has synchronised here
+ * before. Everything else can be worked out from it.
+ */
+export const WorkspaceManifestInput = z.object({});
+export type WorkspaceManifestInput = z.infer<typeof WorkspaceManifestInput>;
+
+export const WorkspaceManifest = z.object({
+  server: z.object({
+    name: z.literal('knoverge'),
+    version: z.string(),
+    contract_version: z.string(),
+  }),
+  workspace: z.object({
+    id: WorkspaceId,
+    name: z.string(),
+    default_language: z.string(),
+  }),
+  taxonomy_version: z.number().int().nonnegative(),
+  /** Positions in the one per-workspace ledger sequence; the names say why. */
+  change_sequence: z.number().int().nonnegative(),
+  event_sequence: z.number().int().nonnegative(),
+  knowledge_types: z.array(ItemType),
+  capabilities: z.object({
+    can_read: z.boolean(),
+    can_propose: z.boolean(),
+    can_propose_taxonomy: z.boolean(),
+    /** True only when a policy rule grants this actor allow_direct. */
+    can_write_direct: z.boolean(),
+    can_approve: z.boolean(),
+    can_manage_taxonomy: z.boolean(),
+    semantic_search: z.boolean(),
+  }),
+  stats: z.object({
+    items: z.number().int().nonnegative(),
+    categories: z.number().int().nonnegative(),
+    pending_proposals: z.number().int().nonnegative(),
+  }),
+});
+export type WorkspaceManifest = z.infer<typeof WorkspaceManifest>;

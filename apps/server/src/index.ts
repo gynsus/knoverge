@@ -45,6 +45,7 @@ async function main(): Promise<void> {
     ledgerKey: config.ledgerKey,
     tokenPepper: config.tokenPepper,
     dataDir: config.dataDir,
+    version: pkg.version,
   });
   const database = services.database;
 

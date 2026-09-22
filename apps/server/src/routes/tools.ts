@@ -5,6 +5,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import { knowledgeChanges } from './changes.ts';
 import { eventsList } from './events.ts';
+import { knowledgeIndex, workspaceManifest } from './manifest.ts';
 import type { Services } from '../services.ts';
 import { knowledgeDiff, knowledgeGet, knowledgeHistory, knowledgeSearch } from './knowledge.ts';
 import {
@@ -39,6 +40,8 @@ export type ToolHandler = (
  * being advertised and then answering 404.
  */
 const HANDLERS: Record<ToolName, ToolHandler> = {
+  workspace_manifest: workspaceManifest as ToolHandler,
+  knowledge_index: knowledgeIndex as ToolHandler,
   taxonomy_list: taxonomyList as ToolHandler,
   knowledge_search: knowledgeSearch as ToolHandler,
   knowledge_get: knowledgeGet as ToolHandler,

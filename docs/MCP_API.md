@@ -113,7 +113,9 @@ Output:
 }
 ```
 
-`can_write_direct` is true only if at least one policy rule grants `allow_direct` to this actor.
+`can_write_direct` is true only if at least one policy rule grants `allow_direct` to this actor. Holding `knowledge.write` is not enough: rule 14 says a trusted agent still waits for review until a rule says otherwise, so the two questions have different answers and the manifest answers the one a client acts on.
+
+`onboarding` arrives with the sync sessions it describes, in Milestone 5.
 
 #### `taxonomy_list`
 

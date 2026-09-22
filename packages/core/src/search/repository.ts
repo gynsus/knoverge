@@ -68,4 +68,14 @@ export interface SearchRepository {
   search(query: SearchQuery): Promise<SearchHit[]>;
   /** For `knoverge db reindex`: what the index currently holds. */
   countFor(workspaceId: WorkspaceId): Promise<number>;
+  /**
+   * The indexed body of each item, for an abstract.
+   *
+   * The projection already holds the text, so a page of index records costs
+   * one query rather than one file read per item.
+   */
+  bodiesFor(
+    workspaceId: WorkspaceId,
+    itemIds: readonly KnowledgeItemId[],
+  ): Promise<Map<KnowledgeItemId, string>>;
 }
