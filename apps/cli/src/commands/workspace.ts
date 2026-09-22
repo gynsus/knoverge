@@ -9,22 +9,55 @@ export function workspaceCommand(): Command {
 
   cmd
     .command('create')
-    .description('Create a workspace with its system actor')
+    .description('Create a workspace, with an owner unless one is refused')
     .requiredOption('--slug <slug>', 'URL-safe identifier, e.g. personal')
     .requiredOption('--name <name>', 'display name')
     .option('--description <text>')
     .option('--language <tag>', 'default content language', 'en')
+    .option('--owner <email>', 'an existing account to own it')
     .action(
-      async (opts: { slug: string; name: string; description?: string; language: string }) => {
+      async (opts: {
+        slug: string;
+        name: string;
+        description?: string;
+        language: string;
+        owner?: string;
+      }) => {
         await withServices(async (services) => {
-          const workspace = await services.workspaces.create({
+          const input = {
             slug: opts.slug,
             name: opts.name,
             ...(opts.description ? { description: opts.description } : {}),
             defaultLanguage: opts.language,
             requestId: `cli:${randomUUID()}`,
-          });
-          console.log(`created workspace ${workspace.id} (${workspace.slug})`);
+          };
+
+          // Without an owner the workspace has no members, and a workspace
+          // with no members is reachable from nothing: the interface lists
+          // what you belong to, and you belong to this one no more than
+          // anybody else does.
+          if (!opts.owner) {
+            const workspace = await services.workspaces.create(input);
+            console.log(`created workspace ${workspace.id} (${workspace.slug})`);
+            console.warn(
+              `warning: ${workspace.slug} has no members, so nobody can open it. ` +
+                `Re-run with --owner <email>, or add one from another workspace's settings.`,
+            );
+            return;
+          }
+
+          const owner = await services.users.findByEmail(opts.owner);
+          if (!owner) {
+            // Deliberately not created here: an account needs a password, and
+            // a password typed into a shell is a password in the history file.
+            throw new Error(
+              `no account for ${opts.owner}. Create the person first, then run this again.`,
+            );
+          }
+          const workspace = await services.members.createWorkspace(owner, input);
+          console.log(
+            `created workspace ${workspace.id} (${workspace.slug}), owned by ${owner.email}`,
+          );
         });
       },
     );

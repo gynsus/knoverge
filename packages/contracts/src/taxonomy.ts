@@ -2,6 +2,20 @@ import { z } from 'zod';
 
 import { ActorId, CategoryId, WorkspaceId } from './ids.ts';
 
+/**
+ * What state a category is in.
+ *
+ * `active` is the live tree. `archived` is hidden and restorable. `merged`
+ * holds nothing and points at where its contents went.
+ *
+ * `proposed` and `rejected` are written by nothing today: a category an agent
+ * suggests is a proposal object, decided in the review inbox, and only becomes
+ * a category when somebody accepts it. They are kept because the alternative
+ * design — a category that exists in the tree while it is being decided — is
+ * the one the archive and restore operations were written against, and
+ * removing the values would foreclose it. Nothing reads them either, so a
+ * caller can treat anything that is not `active` as closed.
+ */
 export const CategoryStatus = z.enum(['proposed', 'active', 'merged', 'archived', 'rejected']);
 export type CategoryStatus = z.infer<typeof CategoryStatus>;
 

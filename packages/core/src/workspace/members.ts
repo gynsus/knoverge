@@ -82,7 +82,13 @@ export class MemberService {
   async createWorkspace(
     user: UserRecord,
     input: CreateWorkspaceInput,
-    createdBy: { actorId: ActorId; workspaceId: WorkspaceId },
+    /**
+     * The caller's actor in the workspace whose administration authorised
+     * this. Absent when the command line does it: the operator owns the
+     * database and has no actor anywhere, and inventing one would put a name
+     * on the event that belongs to nobody.
+     */
+    createdBy?: { actorId: ActorId; workspaceId: WorkspaceId },
   ): Promise<WorkspaceRecord> {
     const prepared = await this.o.workspaceService.prepare(input);
     const now = this.clock.now();
