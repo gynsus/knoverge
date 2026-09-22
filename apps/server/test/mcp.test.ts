@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ProposalResult, TOOLS } from '@knoverge/contracts';
+import { EventsListResponse, ProposalResult, TOOLS } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -267,5 +267,51 @@ describe('the MCP endpoint', () => {
     });
     expect(res.statusCode).toBe(405);
     expect(res.headers['allow']).toBe('POST');
+  });
+});
+
+describe('the audit feed', () => {
+  it('shows an agent only its own events, and the owner everything', async () => {
+    const client = await connect(agentToken);
+    try {
+      const proposed = await client.callTool({
+        name: 'knowledge_propose_create',
+        arguments: { title: 'Audited', body: 'Made by the agent.', type: 'fact' },
+      });
+      expect(proposed.isError).toBeFalsy();
+
+      const mine = await client.callTool({ name: 'events_list', arguments: {} });
+      const feed = EventsListResponse.parse(mine.structuredContent);
+      expect(feed.events.length).toBeGreaterThan(0);
+      // events.read_own is what an agent holds: its own work and nobody's else.
+      const actors = new Set(feed.events.map((e) => e.actor_id));
+      expect(actors.size).toBe(1);
+      expect(feed.events.every((e) => e.agent_id !== null)).toBe(true);
+      // The cursor is the sequence, and asking again from it is empty.
+      const after = await client.callTool({
+        name: 'events_list',
+        arguments: { after_sequence: feed.next_sequence },
+      });
+      expect(EventsListResponse.parse(after.structuredContent).events).toEqual([]);
+    } finally {
+      await client.close();
+    }
+
+    // The owner holds events.read_all and sees the workspace, not one actor.
+    const all = EventsListResponse.parse(
+      (await admin.post('/v1/events_list', { limit: 500 })).json(),
+    );
+    expect(new Set(all.events.map((e) => e.actor_id)).size).toBeGreaterThan(1);
+    // Rule 4: ids, hashes and actor context, never the knowledge itself.
+    expect(JSON.stringify(all.events)).not.toContain('Made by the agent.');
+  });
+
+  it('pages, and says when there is more', async () => {
+    const page = EventsListResponse.parse(
+      (await admin.post('/v1/events_list', { limit: 1, after_sequence: 0 })).json(),
+    );
+    expect(page.events).toHaveLength(1);
+    expect(page.has_more).toBe(true);
+    expect(page.next_sequence).toBe(page.events[0]!.sequence);
   });
 });

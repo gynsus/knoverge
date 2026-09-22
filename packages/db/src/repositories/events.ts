@@ -1,6 +1,7 @@
+import type { EventFeedOptions } from '@knoverge/core';
 import type { EventId, WorkspaceId } from '@knoverge/contracts';
 import type { EventRecord, EventRepository, LedgerHead, Tx } from '@knoverge/core';
-import { and, asc, desc, eq, gt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, sql } from 'drizzle-orm';
 
 import { LOCK_LEDGER } from '../locks.ts';
 
@@ -46,6 +47,33 @@ export function createEventRepository(db: Database): EventRepository {
         .where(and(eq(events.workspaceId, workspaceId), gt(events.sequence, afterSequence)))
         .orderBy(asc(events.sequence))
         .limit(limit);
+      return rows.map(toRecord);
+    },
+    async listFeed(workspaceId: WorkspaceId, options: EventFeedOptions) {
+      const where = [
+        eq(events.workspaceId, workspaceId),
+        gt(events.sequence, options.afterSequence),
+      ];
+      if (options.eventTypes?.length) {
+        where.push(inArray(events.eventType, [...options.eventTypes]));
+      }
+      if (options.actorId) where.push(eq(events.actorId, options.actorId));
+      if (options.categoryIds?.length) {
+        // The snapshot the event carries, so scope is answered without
+        // joining current state (ADR 0010): an item that has since moved is
+        // still shown to whoever could see it when it changed.
+        where.push(
+          sql`${events.categoryIds} ?| ${sql.raw(
+            `ARRAY[${options.categoryIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(',')}]`,
+          )}`,
+        );
+      }
+      const rows = await db
+        .select()
+        .from(events)
+        .where(and(...where))
+        .orderBy(asc(events.sequence))
+        .limit(options.limit);
       return rows.map(toRecord);
     },
   };

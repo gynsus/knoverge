@@ -7,6 +7,7 @@ import {
   genesisHash,
   parseLedgerKey,
   type EventRecord,
+  type EventFeedOptions,
   type EventRepository,
   type Tx,
 } from '../src/index.ts';
@@ -37,6 +38,19 @@ class MemoryEvents implements EventRepository {
     return this.forWorkspace(workspaceId)
       .filter((r) => r.sequence > after)
       .slice(0, limit);
+  }
+
+  async listFeed(workspaceId: WorkspaceId, options: EventFeedOptions) {
+    return this.forWorkspace(workspaceId)
+      .filter((r) => r.sequence > options.afterSequence)
+      .filter((r) => !options.eventTypes?.length || options.eventTypes.includes(r.eventType))
+      .filter((r) => !options.actorId || r.actorId === options.actorId)
+      .filter(
+        (r) =>
+          !options.categoryIds?.length ||
+          r.categoryIds.some((id) => options.categoryIds!.includes(id)),
+      )
+      .slice(0, options.limit);
   }
 }
 

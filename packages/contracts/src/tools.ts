@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { EventsListInput, EventsListResponse } from './events.ts';
 import {
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
@@ -48,6 +49,7 @@ export const ToolName = z.enum([
   'proposal_approve',
   'proposal_reject',
   'proposal_withdraw',
+  'events_list',
 ]);
 export type ToolName = z.infer<typeof ToolName>;
 
@@ -184,6 +186,14 @@ export const TOOLS: readonly ToolContract[] = [
     input: WithdrawProposalRequest,
     output: ProposalResult,
     readOnly: false,
+  },
+  {
+    name: 'events_list',
+    description:
+      'The audit feed: what happened in this workspace and who made it happen, after a cursor. For keeping a copy of the knowledge in step use knowledge_changes instead, which answers your read scope and names no actors.',
+    input: EventsListInput,
+    output: EventsListResponse,
+    readOnly: true,
   },
 ];
 
