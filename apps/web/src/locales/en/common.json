@@ -18,6 +18,7 @@
     "name": "Name",
     "never_used": "Never",
     "new": "Register an agent",
+    "new_intro": "A registered agent reaches this workspace with a token you issue, under the tier you choose.",
     "no_credentials": "No tokens issued yet.",
     "revoke": "Revoke",
     "states": {
@@ -91,6 +92,7 @@
   },
   "knowledge": {
     "add": "Add an item",
+    "add_intro": "One item holds one assertion. A whole notes file is a document, not a fact.",
     "body": "Text",
     "body_hint": "Markdown. This is the knowledge itself.",
     "categories": "Categories",

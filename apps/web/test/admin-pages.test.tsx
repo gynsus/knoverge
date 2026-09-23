@@ -217,7 +217,10 @@ describe('agents page', () => {
     expect(await screen.findByText('Claude Code')).toBeInTheDocument();
 
     const user = userEvent.setup();
-    await user.type(screen.getByLabelText('Name'), 'Cursor');
+    // The form is asked for rather than occupying the page.
+    expect(screen.queryByLabelText('Name')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Register an agent' }));
+    await user.type(await screen.findByLabelText('Name'), 'Cursor');
     await user.click(screen.getByRole('button', { name: 'Register agent' }));
     expect(await screen.findByText('Cursor')).toBeInTheDocument();
     expect(calls.find((c) => c.url === '/v1/admin/agents.create')?.body).toMatchObject({
@@ -249,8 +252,8 @@ describe('agents page', () => {
     });
     renderApp('/agents');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Manage' }));
-    await user.click(screen.getByRole('button', { name: 'Issue token' }));
+    await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
+    await user.click(await screen.findByRole('button', { name: 'Issue token' }));
 
     // The instruction is announced; the secret itself is deliberately outside
     // the live region, so a screen reader does not read the token aloud.
@@ -706,6 +709,9 @@ describe('policy page', () => {
     });
     renderApp('/policy');
     const user = userEvent.setup();
+    // The form is asked for rather than occupying the page below the rules.
+    expect(screen.queryByLabelText('Decision')).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'New rule' }));
     await screen.findByRole('heading', { name: 'New rule' });
     await user.selectOptions(screen.getByLabelText('Decision'), 'allow_direct');
     await user.click(screen.getByRole('button', { name: 'Create rule' }));
@@ -872,7 +878,7 @@ describe('managing an agent', () => {
     });
     renderApp('/agents');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Manage' }));
+    await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
     // A disabled agent could never be brought back from the browser.
     await user.click(screen.getByRole('button', { name: 'Enable agent' }));
     await waitFor(() =>
@@ -1032,7 +1038,7 @@ describe('a checkbox is a checkbox', () => {
     // The migration turned every input into the text Input, which made this a
     // full-width text box with a tick floating in the middle of it.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/policy.rules': () => json({ rules: [] }) });
-    renderApp('/policy');
+    renderApp('/policy?new');
     const enabled = await screen.findByRole('checkbox', { name: 'Enabled' });
     expect(enabled).toBeChecked();
     const user = userEvent.setup();
@@ -1118,7 +1124,7 @@ describe('knowledge page', () => {
 
     // Scoped to the editor: the form for a new item carries the same labels,
     // which is why both are named regions.
-    const editor = within(await screen.findByRole('region', { name: ITEM.title }));
+    const editor = within(await screen.findByRole('dialog', { name: ITEM.title }));
     const body = editor.getByLabelText('Text');
     await user.clear(body);
     await user.type(body, 'Rewritten.');
@@ -1152,7 +1158,7 @@ describe('knowledge page', () => {
     renderApp('/knowledge');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: ITEM.title }));
-    const editor = within(await screen.findByRole('region', { name: ITEM.title }));
+    const editor = within(await screen.findByRole('dialog', { name: ITEM.title }));
     await user.click(editor.getByRole('button', { name: 'Save' }));
 
     // A conflict is the one answer this page must not swallow — and it is
