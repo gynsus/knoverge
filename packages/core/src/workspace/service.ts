@@ -87,6 +87,7 @@ export class WorkspaceService {
       settings: {},
       createdAt: now,
       updatedAt: now,
+      archivedAt: null,
     };
   }
 

@@ -155,6 +155,12 @@ A listing endpoint asks whether the actor holds the action anywhere, then filter
 
 The same applies to humans: a workspace role carries a baseline set of permissions (`viewer` reads, `reviewer` also writes and approves, `admin` also manages agents, taxonomy and policy, `owner` also administers the workspace).
 
+### An archived workspace
+
+While `workspaces.archived_at` is set, every action that would change the knowledge is dropped before any grant is read: the four `knowledge.propose_*` actions, `knowledge.write`, `knowledge.approve`, `taxonomy.propose` and `taxonomy.manage`. It outranks a role, a trust tier and an explicit allow, so no credential and no `allow_direct` rule can write there. The refusal is recorded as `command.denied` with the reason `workspace_archived`, which is deliberately distinguishable from a missing grant.
+
+Reading is untouched, and administration is not frozen: `workspace.admin` is how the workspace is brought back, and `agent.manage` is how a credential is revoked. The system actor — the operator on the host — is unconstrained, as everywhere else. ADR 0018 has the reasoning.
+
 ## 8. Scoped access
 
 Permissions and policy rules carry a scope selector stored by **stable category ids** with `include_descendants`, plus optional type and language filters. Paths are accepted by the API and UI for convenience and resolved to ids at write time.

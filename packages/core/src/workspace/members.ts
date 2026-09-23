@@ -266,6 +266,37 @@ export class MemberService {
   }
 
   /**
+   * Archives the workspace, or brings it back (ADR 0018).
+   *
+   * Archiving is a state, not a deletion: nothing is removed, and reading,
+   * search and history go on working. What stops is every change, refused by
+   * the authorisation service for everyone at once, so this method has no
+   * cascade to run and no rows to rewrite.
+   *
+   * Asking twice for the state it is already in does nothing and records
+   * nothing. An event that says a workspace was archived when it already was
+   * is a line in an append-only ledger that tells a reader nothing happened.
+   */
+  async setArchived(actor: ActorContext, archived: boolean): Promise<void> {
+    const now = this.clock.now();
+    await this.o.uow.run(async (tx) => {
+      const workspace = await this.o.workspaces.findById(actor.workspaceId);
+      if (!workspace) throw new DomainError('NOT_FOUND', 'workspace not found');
+      if ((workspace.archivedAt !== null) === archived) return;
+      await this.o.workspaces.update(tx, actor.workspaceId, {
+        archivedAt: archived ? now : null,
+        updatedAt: now,
+      });
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType: archived ? 'workspace.archived' : 'workspace.restored',
+        objectType: 'workspace',
+        objectId: actor.workspaceId,
+        metadata: { slug: workspace.slug },
+      });
+    });
+  }
+
+  /**
    * A role is a set of permissions, so handing one out is handing out every
    * action in it. An administrator cannot create a member more powerful than
    * themselves, which is the same rule permission grants follow.

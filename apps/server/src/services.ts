@@ -99,6 +99,7 @@ export function createServices(config: ServicesConfig) {
     grants: repositories.grants,
     rules: repositories.policyRules,
     categories: repositories.categories,
+    workspaces: repositories.workspaces,
     ledger,
   });
   const agentService = new AgentService({
@@ -262,6 +263,7 @@ export function createServices(config: ServicesConfig) {
     sync: repositories.sync,
     items: repositories.knowledge,
     categories: repositories.categories,
+    workspaces: repositories.workspaces,
   });
   const bootstrap = new BootstrapService({
     uow,

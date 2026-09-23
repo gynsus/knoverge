@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 
 import {
   AddMemberRequest,
+  ArchiveWorkspaceRequest,
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
   ActorsResponse,
@@ -122,6 +123,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           description: workspace.description,
           default_language: workspace.defaultLanguage,
           created_at: workspace.createdAt.toISOString(),
+          archived_at: workspace.archivedAt?.toISOString() ?? null,
           // Null for an agent, which has a trust tier and no role. Reporting
           // 'viewer' invented a membership the caller does not have.
           role: actor.role ?? null,
@@ -272,6 +274,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
               description: workspace.description,
               default_language: workspace.defaultLanguage,
               created_at: workspace.createdAt.toISOString(),
+              archived_at: workspace.archivedAt?.toISOString() ?? null,
               role: membership.role,
               item_count: counts?.items ?? 0,
               agent_count: counts?.agents ?? 0,
@@ -328,6 +331,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           description: workspace.description,
           default_language: workspace.defaultLanguage,
           created_at: workspace.createdAt.toISOString(),
+          archived_at: null,
           role: 'owner' as const,
         },
       };
@@ -347,6 +351,26 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
         description: request.body.description,
         defaultLanguage: request.body.default_language,
       });
+      return { ok: true as const };
+    },
+  );
+
+  /**
+   * Archives this workspace, or brings it back (ADR 0018).
+   *
+   * Behind `workspace.admin`, the permission that already covers the workspace
+   * itself rather than what is in it. It is deliberately not frozen by the
+   * archive, because it is the way back.
+   */
+  r.post(
+    '/v1/admin/workspace.archive',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: ArchiveWorkspaceRequest, response: { 200: OkResponse } },
+    },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'workspace.admin');
+      await services.members.setArchived(actor.context, request.body.archived);
       return { ok: true as const };
     },
   );

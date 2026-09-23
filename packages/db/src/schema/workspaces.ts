@@ -11,4 +11,6 @@ export const workspaces = pgTable('workspaces', {
   settings: json('settings').notNull().default({}),
   createdAt: timestampTz('created_at').notNull(),
   updatedAt: timestampTz('updated_at').notNull(),
+  /** Set while the workspace is kept but accepts no changes. Reversible. */
+  archivedAt: timestampTz('archived_at'),
 });

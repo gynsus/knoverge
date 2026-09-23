@@ -50,6 +50,8 @@ export interface SyncServiceOptions {
       options?: { includeArchived?: boolean },
     ): Promise<{ id: CategoryId; path: string }[]>;
   };
+  /** Read to refuse a new pass in a workspace that accepts no changes. */
+  workspaces: { findById(id: WorkspaceId): Promise<{ archivedAt: Date | null } | null> };
   clock?: Clock;
 }
 
@@ -89,6 +91,14 @@ export class SyncService {
   ): Promise<SyncSessionRecord> {
     const agentId = this.requireAgent(actor);
     const namespace = input.source_namespace ?? null;
+
+    // A pass exists to end in proposals, and an archived workspace takes none.
+    // Refusing at the door is the honest answer: the alternative is an agent
+    // spending an inventory upload to be told no at every write.
+    const workspace = await this.o.workspaces.findById(actor.workspaceId);
+    if (workspace?.archivedAt != null) {
+      throw new DomainError('FORBIDDEN', 'this workspace is archived and accepts no changes');
+    }
 
     if (input.previous_sync_id) {
       const existing = await this.o.sync.findSession(actor.workspaceId, input.previous_sync_id);

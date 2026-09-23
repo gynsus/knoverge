@@ -6,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   TERMS_VERSION,
+  AgentResponse,
   CreateWorkspaceResponse,
+  type WorkspaceId,
+  IssueCredentialResponse,
   MeResponse,
   MembersResponse,
   WorkspaceResponse,
@@ -421,5 +424,132 @@ describe('creating a workspace', () => {
       name: 'Nobody',
     });
     expect(res.statusCode, res.body).toBe(401);
+  });
+});
+
+/**
+ * A workspace that is kept and no longer written to (ADR 0018).
+ *
+ * The interesting half is not that archiving sets a date. It is that a date
+ * is enough: nothing cascades, no rows are rewritten, and every write stops
+ * because the authorisation service stops holding the actions that make one.
+ */
+describe('archiving a workspace', () => {
+  let workspaceId: WorkspaceId;
+
+  // The owner is signed in already. A browser of its own would be a
+  // sign-in the login limiter counts, and this suite is at the edge of it.
+  const scoped = (method: 'GET' | 'POST', url: string, payload?: unknown) =>
+    owner.request({
+      method,
+      url,
+      headers: { 'x-knoverge-workspace': workspaceId },
+      ...(payload === undefined ? {} : { payload: payload as Record<string, unknown> }),
+    });
+
+  beforeAll(async () => {
+    const created = await owner.post('/v1/admin/workspace.create', {
+      slug: 'retired',
+      name: 'Retired project',
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    workspaceId = CreateWorkspaceResponse.parse(created.json()).workspace.id;
+  });
+
+  it('keeps the workspace readable and refuses every change', async () => {
+    const before = await scoped('POST', '/v1/admin/taxonomy.create', { name: 'Before' });
+    expect(before.statusCode, before.body).toBe(200);
+
+    const archived = await scoped('POST', '/v1/admin/workspace.archive', { archived: true });
+    expect(archived.statusCode, archived.body).toBe(200);
+
+    // Reading is untouched. An archive nobody can read is a deletion with
+    // extra steps.
+    expect((await scoped('GET', '/v1/taxonomy.list')).statusCode).toBe(200);
+    expect((await scoped('GET', '/v1/knowledge.list')).statusCode).toBe(200);
+
+    const after = await scoped('POST', '/v1/admin/taxonomy.create', { name: 'After' });
+    expect(after.statusCode, after.body).toBe(403);
+    expect(after.json().code).toBe('FORBIDDEN');
+    expect(after.json().message).toMatch(/archived/);
+
+    // The refusal says the workspace was the reason, not a missing grant:
+    // somebody reading the trail later has to be able to tell those apart.
+    const events = await services.repositories.events.listAfter(workspaceId, 0, 200);
+    expect(events.at(-1)).toMatchObject({
+      eventType: 'command.denied',
+      metadata: { reason: 'workspace_archived' },
+    });
+    expect(events.some((e) => e.eventType === 'workspace.archived')).toBe(true);
+    expect((await services.ledger.verify(workspaceId)).ok).toBe(true);
+  });
+
+  it('stops offering what it would refuse, and keeps the way back', async () => {
+    const res = await scoped('GET', '/v1/workspace.get');
+    expect(res.statusCode, res.body).toBe(200);
+    const body = WorkspaceResponse.parse(res.json());
+    expect(body.workspace.archived_at).not.toBeNull();
+    // The interface shows controls from this list, so an archived workspace
+    // that still reported taxonomy.manage would offer a button that fails.
+    expect(body.permissions).not.toContain('taxonomy.manage');
+    expect(body.permissions).not.toContain('knowledge.approve');
+    expect(body.permissions).toContain('knowledge.read');
+    // Administration is deliberately untouched: it is how the workspace comes
+    // back, and freezing it would make archiving one-way.
+    expect(body.permissions).toContain('workspace.admin');
+
+    // The list and the session both carry the state, because the workspace
+    // list and the switcher are built from them.
+    const listed = WorkspacesResponse.parse(
+      (await owner.get('/v1/workspaces.list')).json(),
+    ).workspaces;
+    expect(listed.find((w) => w.slug === 'retired')?.archived_at).not.toBeNull();
+    expect(listed.find((w) => w.slug === 'personal')?.archived_at).toBeNull();
+    const me = MeResponse.parse((await owner.get('/v1/auth/me')).json());
+    expect(
+      me.memberships.find((m) => m.workspace_slug === 'retired')?.workspace_archived_at,
+    ).not.toBeNull();
+  });
+
+  it('records nothing when asked for the state it is already in', async () => {
+    const before = await services.repositories.events.listAfter(workspaceId, 0, 500);
+    const again = await scoped('POST', '/v1/admin/workspace.archive', { archived: true });
+    expect(again.statusCode, again.body).toBe(200);
+    const after = await services.repositories.events.listAfter(workspaceId, 0, 500);
+    expect(after).toHaveLength(before.length);
+  });
+
+  it('brings the workspace back', async () => {
+    const restored = await scoped('POST', '/v1/admin/workspace.archive', { archived: false });
+    expect(restored.statusCode, restored.body).toBe(200);
+
+    const created = await scoped('POST', '/v1/admin/taxonomy.create', { name: 'After all' });
+    expect(created.statusCode, created.body).toBe(200);
+
+    const body = WorkspaceResponse.parse((await scoped('GET', '/v1/workspace.get')).json());
+    expect(body.workspace.archived_at).toBeNull();
+    expect(body.permissions).toContain('taxonomy.manage');
+
+    const events = await services.repositories.events.listAfter(workspaceId, 0, 500);
+    expect(events.some((e) => e.eventType === 'workspace.restored')).toBe(true);
+    expect((await services.ledger.verify(workspaceId)).ok).toBe(true);
+  });
+
+  it('is not something an agent can do to the workspace it writes to', async () => {
+    const agent = await scoped('POST', '/v1/admin/agents.create', { name: 'retiring-agent' });
+    expect(agent.statusCode, agent.body).toBe(200);
+    const issued = await scoped('POST', '/v1/admin/agents.credentials.issue', {
+      agent_id: AgentResponse.parse(agent.json()).agent.id,
+    });
+    expect(issued.statusCode, issued.body).toBe(200);
+    const token = IssueCredentialResponse.parse(issued.json()).token;
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/workspace.archive',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { archived: true },
+    });
+    expect(res.statusCode, res.body).toBe(403);
   });
 });

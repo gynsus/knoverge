@@ -28,7 +28,14 @@ function remember(id: string): void {
 
 export interface WorkspaceContext {
   /** The workspaces this person belongs to, with the role they hold in each. */
-  available: { id: string; slug: string; name: string; role: MembershipRole }[];
+  available: {
+    id: string;
+    slug: string;
+    name: string;
+    role: MembershipRole;
+    /** Set while that workspace is archived: readable, closed to changes. */
+    archivedAt: string | null;
+  }[];
   selectedId: string | undefined;
   select(id: string): void;
   workspace: WorkspaceResponse['workspace'] | undefined;
@@ -56,6 +63,7 @@ export function useWorkspaceContext(): WorkspaceContext {
     slug: m.workspace_slug,
     name: m.workspace_name,
     role: m.role,
+    archivedAt: m.workspace_archived_at,
   }));
 
   // Only an explicit choice is state. Everything else is derived, so a

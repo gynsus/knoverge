@@ -71,6 +71,7 @@ export type {
   PolicyRuleRepository,
 } from './authorization/repository.ts';
 export {
+  ARCHIVED_REASON,
   AuthorizationService,
   type ActorStanding,
   type AuthorizationDecision,

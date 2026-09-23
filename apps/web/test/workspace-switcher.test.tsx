@@ -69,12 +69,14 @@ const MEMBERSHIP = {
     workspace_id: FIRST,
     workspace_slug: 'personal',
     workspace_name: 'Personal',
+    workspace_archived_at: null,
     role: 'owner',
   },
   second: {
     workspace_id: SECOND,
     workspace_slug: 'pixel-brisbane',
     workspace_name: 'Pixel Brisbane',
+    workspace_archived_at: null,
     role: 'reviewer',
   },
 };
@@ -91,6 +93,7 @@ function workspaceOf(id: string) {
         description: null,
         default_language: 'en',
         created_at: '2026-09-19T00:00:00.000Z',
+        archived_at: null,
         role: 'reviewer',
       }
     : {
@@ -100,6 +103,7 @@ function workspaceOf(id: string) {
         description: null,
         default_language: 'en',
         created_at: '2026-09-19T00:00:00.000Z',
+        archived_at: null,
         role: 'owner',
       };
 }
@@ -244,5 +248,22 @@ describe('the workspace switcher', () => {
         screen.getByRole('button', { name: /Current workspace: Pixel Brisbane/ }),
       ).toBeVisible(),
     );
+  });
+
+  it('marks an archived workspace and puts it last', async () => {
+    // Kept in the list rather than hidden: somebody has to be able to get
+    // back into it to bring it back, and a workspace that vanished from the
+    // switcher would read as deleted.
+    const archived = { ...MEMBERSHIP.first, workspace_archived_at: '2026-09-20T00:00:00.000Z' };
+    mockApi(signedIn([archived, MEMBERSHIP.second]));
+    renderApp('/');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /Current workspace: Personal/ }));
+    const items = await screen.findAllByRole('menuitemradio');
+    expect(items.map((i) => i.textContent)).toEqual([
+      'Pixel Brisbanepixel-brisbane',
+      'Personalpersonal · archived',
+    ]);
   });
 });

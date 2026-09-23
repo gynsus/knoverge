@@ -47,6 +47,7 @@ async function meResponse(services: Services, auth: HumanAuth) {
     workspace_id: m.workspaceId,
     workspace_slug: m.workspaceSlug,
     workspace_name: m.workspaceName,
+    workspace_archived_at: m.workspaceArchivedAt?.toISOString() ?? null,
     role: m.role,
   }));
   return {

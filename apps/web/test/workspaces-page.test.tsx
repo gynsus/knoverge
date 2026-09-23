@@ -63,11 +63,18 @@ const SESSION = {
   expires_at: '2026-10-19T00:00:00.000Z',
 };
 const MEMBERSHIPS = [
-  { workspace_id: FIRST, workspace_slug: 'personal', workspace_name: 'Personal', role: 'owner' },
+  {
+    workspace_id: FIRST,
+    workspace_slug: 'personal',
+    workspace_name: 'Personal',
+    workspace_archived_at: null,
+    role: 'owner',
+  },
   {
     workspace_id: SECOND,
     workspace_slug: 'pixel-brisbane',
     workspace_name: 'Pixel Brisbane',
+    workspace_archived_at: null,
     role: 'reviewer',
   },
 ];
@@ -81,6 +88,7 @@ const LISTED = {
       description: 'Everything I want my agents to remember.',
       default_language: 'en',
       created_at: '2026-09-19T00:00:00.000Z',
+      archived_at: null,
       role: 'owner',
       item_count: 186,
       agent_count: 2,
@@ -94,6 +102,7 @@ const LISTED = {
       description: null,
       default_language: 'en',
       created_at: '2026-09-19T00:00:00.000Z',
+      archived_at: null,
       role: 'reviewer',
       item_count: 428,
       agent_count: 3,
@@ -119,6 +128,7 @@ function signedIn(permissions = OWNER_PERMISSIONS): Record<string, Handler> {
           description: null,
           default_language: 'en',
           created_at: '2026-09-19T00:00:00.000Z',
+          archived_at: null,
           role: 'owner',
         },
         permissions,
@@ -316,5 +326,113 @@ describe('the workspaces page', () => {
     expect(
       await screen.findByRole('heading', { level: 2, name: 'Workspaces' }),
     ).toBeInTheDocument();
+  });
+
+  /**
+   * An archived workspace is one that is kept and no longer written to.
+   *
+   * It stays in the list rather than disappearing — somebody who cannot find
+   * the one they archived would reasonably conclude it was deleted — but it
+   * goes last, it says what it is, and it can be brought back.
+   */
+  describe('an archived workspace', () => {
+    const ARCHIVED = {
+      workspaces: [
+        { ...LISTED.workspaces[0]!, archived_at: '2026-09-20T00:00:00.000Z' },
+        LISTED.workspaces[1]!,
+      ],
+    };
+
+    it('is marked, sorts last and can be narrowed to', async () => {
+      mockApi({ ...signedIn(), 'GET /v1/workspaces.list': () => json(ARCHIVED) });
+      renderApp('/workspaces');
+      const user = userEvent.setup();
+
+      await screen.findByRole('heading', { name: 'Pixel Brisbane' });
+      const personal = cardFor('Personal');
+      expect(within(personal).getByText('Archived')).toBeInTheDocument();
+      expect(within(cardFor('Pixel Brisbane')).queryByText('Archived')).not.toBeInTheDocument();
+      // Last whatever the sort says: it is not what somebody scanning the
+      // list is looking for. "Personal" sorts first by activity otherwise.
+      expect(
+        screen.getAllByRole('button', { name: /^What .+ is$/ }).map((b) => b.textContent),
+      ).toEqual(['Pixel Brisbane', 'Personal']);
+
+      await user.selectOptions(screen.getByLabelText('Filter by state'), 'archived');
+      expect(await screen.findByText('1 workspace')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Pixel Brisbane' })).not.toBeInTheDocument();
+
+      await user.selectOptions(screen.getByLabelText('Filter by state'), 'active');
+      expect(await screen.findByText('1 workspace')).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Personal' })).not.toBeInTheDocument();
+    });
+
+    it('says what archiving does before it happens, and names the workspace it acts on', async () => {
+      // An owner of both, so the control is offered for the workspace the
+      // interface is not currently in — the case the header has to get right.
+      const OWNS_BOTH = {
+        workspaces: LISTED.workspaces.map((w) => ({
+          ...w,
+          permissions: [...w.permissions, 'workspace.admin'],
+        })),
+      };
+      const calls = mockApi({
+        ...signedIn(),
+        'GET /v1/workspaces.list': () => json(OWNS_BOTH),
+        'POST /v1/admin/workspace.archive': () => json({ ok: true }),
+      });
+      renderApp('/workspaces');
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole('button', { name: 'What Pixel Brisbane is' }));
+      const panel = await screen.findByRole('dialog');
+      expect(within(panel).getByText(/stops accepting changes/)).toBeInTheDocument();
+
+      // One click asks, the second one does it.
+      await user.click(within(panel).getByRole('button', { name: 'Archive' }));
+      expect(calls.some((c) => c.url === '/v1/admin/workspace.archive')).toBe(false);
+      await user.click(within(panel).getByRole('button', { name: 'Archive it' }));
+
+      await waitFor(() =>
+        expect(calls.find((c) => c.url === '/v1/admin/workspace.archive')).toMatchObject({
+          body: { archived: true },
+          workspace: SECOND,
+        }),
+      );
+    });
+
+    it('offers the way back', async () => {
+      const calls = mockApi({
+        ...signedIn(),
+        'GET /v1/workspaces.list': () => json(ARCHIVED),
+        'POST /v1/admin/workspace.archive': () => json({ ok: true }),
+      });
+      renderApp('/workspaces');
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByRole('button', { name: 'What Personal is' }));
+      const panel = await screen.findByRole('dialog');
+      expect(within(panel).getByText(/accepts no changes/)).toBeInTheDocument();
+      await user.click(within(panel).getByRole('button', { name: 'Bring it back' }));
+
+      await waitFor(() =>
+        expect(calls.find((c) => c.url === '/v1/admin/workspace.archive')).toMatchObject({
+          body: { archived: false },
+          workspace: FIRST,
+        }),
+      );
+    });
+
+    it('is not offered to somebody who does not administer it', async () => {
+      mockApi(signedIn());
+      renderApp('/workspaces');
+      const user = userEvent.setup();
+
+      // A reviewer in Pixel Brisbane: the server's answer for that workspace
+      // carries no workspace.admin, so the control is not there to be clicked.
+      await user.click(await screen.findByRole('button', { name: 'What Pixel Brisbane is' }));
+      const panel = await screen.findByRole('dialog');
+      expect(within(panel).queryByRole('button', { name: 'Archive' })).not.toBeInTheDocument();
+    });
   });
 });

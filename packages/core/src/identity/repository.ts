@@ -101,6 +101,8 @@ export interface MembershipRecord {
 export interface MembershipWithWorkspace extends MembershipRecord {
   workspaceSlug: string;
   workspaceName: string;
+  /** Set while that workspace is archived, so a switcher can say so. */
+  workspaceArchivedAt: Date | null;
 }
 
 export interface MemberWithUser extends MembershipRecord {

@@ -70,6 +70,7 @@ const ME = {
       workspace_id: 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
       workspace_slug: 'personal',
       workspace_name: 'Personal',
+      workspace_archived_at: null,
       role: 'owner',
     },
   ],
@@ -145,6 +146,7 @@ const SIGNED_IN_WORKSPACE = {
   description: null,
   default_language: 'en',
   created_at: '2026-09-19T00:00:00.000Z',
+  archived_at: null,
   role: 'owner',
 };
 
@@ -395,6 +397,7 @@ describe('workspace page', () => {
       actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
       email: 'owner@example.com',
       display_name: 'Owner',
+      archived_at: null,
       role: 'owner',
       status: 'active',
       joined_at: '2026-09-19T00:00:00.000Z',
@@ -529,6 +532,7 @@ describe('choosing a workspace', () => {
     workspace_id: 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1T9',
     workspace_slug: 'team',
     workspace_name: 'Team',
+    workspace_archived_at: null,
     role: 'admin',
   };
   const twoWorkspaces = { ...ME, memberships: [...ME.memberships, SECOND] };

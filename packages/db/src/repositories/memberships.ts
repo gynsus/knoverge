@@ -35,7 +35,12 @@ export function createMembershipRepository(db: Database): MembershipRepository {
     },
     async listForUser(userId: UserId): Promise<MembershipWithWorkspace[]> {
       const rows = await db
-        .select({ membership: workspaceMemberships, slug: workspaces.slug, name: workspaces.name })
+        .select({
+          membership: workspaceMemberships,
+          slug: workspaces.slug,
+          name: workspaces.name,
+          archivedAt: workspaces.archivedAt,
+        })
         .from(workspaceMemberships)
         .innerJoin(workspaces, eq(workspaces.id, workspaceMemberships.workspaceId))
         .where(eq(workspaceMemberships.userId, userId))
@@ -44,6 +49,7 @@ export function createMembershipRepository(db: Database): MembershipRepository {
         ...toRecord(r.membership),
         workspaceSlug: r.slug,
         workspaceName: r.name,
+        workspaceArchivedAt: r.archivedAt,
       }));
     },
     async updateRole(

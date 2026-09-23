@@ -76,9 +76,14 @@ export function workspaceCommand(): Command {
           name: ws.name,
           description: ws.description,
           default_language: ws.defaultLanguage,
+          archived_at: ws.archivedAt?.toISOString() ?? null,
         }));
         emit(opts.json ?? false, { workspaces }, () =>
-          workspaces.map((ws) => [ws.id, field(ws.slug), field(ws.name)].join('\t')),
+          workspaces.map((ws) =>
+            [ws.id, field(ws.slug), field(ws.name), ws.archived_at ? 'archived' : 'active'].join(
+              '\t',
+            ),
+          ),
         );
       });
     });

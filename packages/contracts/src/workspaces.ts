@@ -13,6 +13,13 @@ export const WorkspaceSummary = z.object({
   description: z.string().nullable(),
   default_language: LanguageTag,
   created_at: z.iso.datetime(),
+  /**
+   * Set while the workspace is archived: kept and readable, closed to changes.
+   *
+   * A date rather than a flag, because "since when" is the first thing asked
+   * of a workspace nobody has written to in a while.
+   */
+  archived_at: z.iso.datetime().nullable(),
   /** The caller's role, when the caller is a person. An agent has none. */
   role: MembershipRole.nullable(),
 });
@@ -71,6 +78,8 @@ export const WorkspaceListEntry = z.object({
   description: z.string().nullable(),
   default_language: LanguageTag,
   created_at: z.iso.datetime(),
+  /** Set while the workspace is archived: kept and readable, closed to changes. */
+  archived_at: z.iso.datetime().nullable(),
   /** The caller's role in this workspace. Never null here: it is theirs. */
   role: MembershipRole,
   item_count: z.number().int().nonnegative(),
@@ -118,6 +127,18 @@ export const UpdateWorkspaceRequest = z.object({
   default_language: LanguageTag.optional(),
 });
 export type UpdateWorkspaceRequest = z.infer<typeof UpdateWorkspaceRequest>;
+
+/**
+ * Archives a workspace, or brings it back.
+ *
+ * An archived workspace keeps everything and accepts nothing: reading, search
+ * and history work as before, and every write is refused, whoever asks. It is
+ * reversible, so archiving the wrong one costs a second call and nothing else.
+ */
+export const ArchiveWorkspaceRequest = z.object({
+  archived: z.boolean(),
+});
+export type ArchiveWorkspaceRequest = z.infer<typeof ArchiveWorkspaceRequest>;
 
 export const MemberSummary = z.object({
   user_id: UserId,
@@ -192,6 +213,14 @@ export const WorkspaceManifest = z.object({
     id: WorkspaceId,
     name: z.string(),
     default_language: z.string(),
+    /**
+     * True while the workspace accepts no changes.
+     *
+     * The capabilities below already say so one by one; this says why, so a
+     * client can report "the workspace is archived" instead of listing four
+     * permissions it does not have.
+     */
+    archived: z.boolean(),
   }),
   taxonomy_version: z.number().int().nonnegative(),
   /** Positions in the one per-workspace ledger sequence; the names say why. */

@@ -52,6 +52,14 @@ export function WorkspaceSwitcher({ workspaces }: { workspaces: WorkspaceContext
     workspaces.available.find((w) => w.id === workspaces.selectedId) ?? workspaces.available[0];
   if (!current) return null;
 
+  // An archived workspace stays in the list — leaving it out would look like
+  // it had been deleted, and somebody has to be able to get back into it to
+  // bring it back — but it goes last, marked, because it is not where work
+  // happens any more.
+  const listed = [...workspaces.available].sort(
+    (a, b) => Number(a.archivedAt !== null) - Number(b.archivedAt !== null),
+  );
+
   // The server accepts a creator who administers any workspace; this asks
   // about the current one, which is the only one the interface has an answer
   // for. The effect is conservative: never offered where it would be refused.
@@ -98,11 +106,15 @@ export function WorkspaceSwitcher({ workspaces }: { workspaces: WorkspaceContext
                 setOpenMobile(false);
               }}
             >
-              {workspaces.available.map((w) => (
+              {listed.map((w) => (
                 <DropdownMenuRadioItem key={w.id} value={w.id}>
                   <span className="grid min-w-0 leading-tight">
                     <span className="truncate">{w.name}</span>
-                    <span className="truncate text-xs text-muted-foreground">{w.slug}</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {w.archivedAt !== null
+                        ? t('workspaces.archived_slug', { slug: w.slug })
+                        : w.slug}
+                    </span>
                   </span>
                 </DropdownMenuRadioItem>
               ))}

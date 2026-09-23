@@ -1,5 +1,15 @@
 import type { WorkspaceListEntry } from '@knoverge/contracts';
-import { Bot, Check, Copy, Database, LogIn, Pencil, Users } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  Bot,
+  Check,
+  Copy,
+  Database,
+  LogIn,
+  Pencil,
+  Users,
+} from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -16,6 +26,10 @@ export interface WorkspaceDetailsProps {
   onOpen: () => void;
   onEdit: () => void;
   onMembers: () => void;
+  /** Archives this workspace, or brings it back. */
+  onArchive: (archived: boolean) => void;
+  /** True while that call is in flight, so the control cannot be sent twice. */
+  archiving: boolean;
   onNotice: (message: string, tone: 'status' | 'error') => void;
 }
 
@@ -33,10 +47,16 @@ export function WorkspaceDetails({
   onOpen,
   onEdit,
   onMembers,
+  onArchive,
+  archiving,
   onNotice,
 }: WorkspaceDetailsProps) {
   const { t, i18n } = useTranslation();
   const [copied, setCopied] = useState(false);
+  // Archiving closes a workspace to every writer at once, so the consequence
+  // is on the screen before the click rather than in a toast after it.
+  const [confirming, setConfirming] = useState(false);
+  const archived = workspace.archived_at !== null;
 
   const copySlug = async () => {
     const ok = await copyToClipboard(workspace.slug);
@@ -73,6 +93,11 @@ export function WorkspaceDetails({
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {current && <Badge>{t('workspaces.current')}</Badge>}
+          {archived && (
+            <Badge variant="outline" className="text-muted-foreground">
+              {t('workspaces.archived')}
+            </Badge>
+          )}
           <Badge variant="outline">{t(`roles.${workspace.role}`)}</Badge>
         </div>
       </div>
@@ -97,6 +122,72 @@ export function WorkspaceDetails({
           </Button>
         )}
       </div>
+
+      {canAdminister && (
+        <>
+          <Separator />
+          <section className="grid gap-2">
+            <h4 className="text-sm font-medium">
+              {archived ? t('workspaces.archived_title') : t('workspaces.archive_title')}
+            </h4>
+            <p className="text-sm text-muted-foreground">
+              {workspace.archived_at !== null
+                ? t('workspaces.archived_state', {
+                    when: relativeTime(workspace.archived_at, i18n.language),
+                  })
+                : t('workspaces.archive_hint')}
+            </p>
+            {archived ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={archiving}
+                onClick={() => onArchive(false)}
+                className="justify-self-start"
+              >
+                <ArchiveRestore aria-hidden="true" className="size-4" />
+                {t('workspaces.restore')}
+              </Button>
+            ) : confirming ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="sm"
+                  disabled={archiving}
+                  onClick={() => {
+                    setConfirming(false);
+                    onArchive(true);
+                  }}
+                >
+                  <Archive aria-hidden="true" className="size-4" />
+                  {t('workspaces.archive_confirm')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirming(false)}
+                >
+                  {t('common.cancel')}
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirming(true)}
+                className="justify-self-start"
+              >
+                <Archive aria-hidden="true" className="size-4" />
+                {t('workspaces.archive')}
+              </Button>
+            )}
+          </section>
+        </>
+      )}
 
       <Separator />
 

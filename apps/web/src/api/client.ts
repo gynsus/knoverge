@@ -34,8 +34,15 @@ export function currentWorkspace(): string | undefined {
   return workspaceId;
 }
 
-function scopeHeaders(): Record<string, string> {
-  return workspaceId ? { 'x-knoverge-workspace': workspaceId } : {};
+/**
+ * `override` is for an action taken on a workspace other than the one being
+ * looked at — archiving one from the list, for instance. Choosing it first and
+ * posting straight after would send the old header: the choice reaches the
+ * client on the next render, and the request does not wait for one.
+ */
+function scopeHeaders(override?: string): Record<string, string> {
+  const id = override ?? workspaceId;
+  return id ? { 'x-knoverge-workspace': id } : {};
 }
 
 async function fetchCsrfToken(): Promise<string> {
@@ -77,11 +84,11 @@ export async function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
  * one and retries exactly once; a token fetched inside this call is never
  * retried, so a genuine FORBIDDEN surfaces immediately.
  */
-export async function apiPost<T>(url: string, body: unknown): Promise<T> {
+export async function apiPost<T>(url: string, body: unknown, workspace?: string): Promise<T> {
   const cached = csrfToken;
-  const res = await postOnce(url, body, cached ?? (await fetchCsrfToken()));
+  const res = await postOnce(url, body, cached ?? (await fetchCsrfToken()), workspace);
   if (res.status === 403 && cached !== undefined) {
-    const retried = await postOnce(url, body, await fetchCsrfToken());
+    const retried = await postOnce(url, body, await fetchCsrfToken(), workspace);
     if (!retried.ok) throw await parseError(retried);
     return (await retried.json()) as T;
   }
@@ -89,7 +96,12 @@ export async function apiPost<T>(url: string, body: unknown): Promise<T> {
   return (await res.json()) as T;
 }
 
-function postOnce(url: string, body: unknown, token: string): Promise<Response> {
+function postOnce(
+  url: string,
+  body: unknown,
+  token: string,
+  workspace?: string,
+): Promise<Response> {
   return fetch(url, {
     method: 'POST',
     credentials: 'same-origin',
@@ -97,7 +109,7 @@ function postOnce(url: string, body: unknown, token: string): Promise<Response> 
       accept: 'application/json',
       'content-type': 'application/json',
       'x-csrf-token': token,
-      ...scopeHeaders(),
+      ...scopeHeaders(workspace),
     },
     body: JSON.stringify(body ?? {}),
   });

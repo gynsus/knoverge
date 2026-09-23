@@ -75,6 +75,7 @@ export async function workspaceManifest(
       id: workspace.id,
       name: workspace.name,
       default_language: workspace.defaultLanguage,
+      archived: workspace.archivedAt !== null,
     },
     taxonomy_version: await services.taxonomy.currentVersion(workspaceId),
     change_sequence: head,

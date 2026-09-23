@@ -104,6 +104,7 @@ export function createServices() {
         grants: repositories.grants,
         rules: repositories.policyRules,
         categories: repositories.categories,
+        workspaces: repositories.workspaces,
         ledger: ledger(),
       }),
   );
