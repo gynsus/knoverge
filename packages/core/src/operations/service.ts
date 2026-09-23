@@ -141,8 +141,9 @@ export class CrossStoreWriter {
    * is only recorded when PostgreSQL commits. Stopping is the only safe answer:
    * the two stores disagree, and this process cannot tell which is right.
    *
-   * Startup recovery resolves these, so the ordinary case is that a workspace
-   * is never seen in this state at all.
+   * Recovery resolves these — at startup, and on demand through
+   * `knoverge db recover` — so the ordinary case is that a workspace is never
+   * seen in this state at all.
    */
   private async assertNothingUnfinished(workspaceId: WorkspaceId): Promise<void> {
     const unfinished = await this.o.operations.listUnfinished(workspaceId, 1);
@@ -150,7 +151,7 @@ export class CrossStoreWriter {
     if (!blocking) return;
     throw new DomainError(
       'INTERNAL_ERROR',
-      'an earlier change to this workspace did not finish, so the repository and the database may disagree; run the server once to let it recover, or ask an operator to look at the operation named here',
+      'an earlier change to this workspace did not finish, so the repository and the database may disagree; an operator can resolve it with `knoverge db recover`, which the server also does at startup',
       { objectIds: { workspace_id: workspaceId, operation: blocking.id, state: blocking.state } },
     );
   }

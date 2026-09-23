@@ -14,7 +14,7 @@ import { workspaceCommand } from '../src/commands/workspace.ts';
 const EXPECTED: Record<string, string[]> = {
   agent: ['create', 'list', 'disable', 'token'],
   bootstrap: [],
-  db: ['migrate', 'prune', 'reindex', 'status'],
+  db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
   mcp: ['check', 'stdio'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
@@ -93,6 +93,7 @@ describe('output a script can read', () => {
     ['workspace', 'list'],
     ['ledger', 'verify'],
     ['permissions', 'list'],
+    ['db', 'recover'],
   ] as const;
 
   it('offers --json wherever a command prints a list', () => {

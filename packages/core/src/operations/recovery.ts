@@ -34,8 +34,9 @@ export interface RecoveryReport {
  * Finishes or abandons writes that were interrupted between Git and PostgreSQL
  * (ARCHITECTURE.md section 4).
  *
- * Runs at startup and from the integrity checker, holding the workspace write
- * lock so it cannot race a live write on another process. The rules are the
+ * Runs at startup, from `knoverge db recover`, and later from the integrity
+ * checker, holding the workspace write lock so it cannot race a live write on
+ * another process. The rules are the
  * ones the architecture states:
  *
  * - pending with no commit naming it: the write never happened, mark failed;

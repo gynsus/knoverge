@@ -263,6 +263,46 @@ describe('recovery', () => {
     );
   });
 
+  it('opens a workspace that a write which reached Git had closed', async () => {
+    // The failure an operator actually meets: something went wrong between the
+    // commit and the insert, and from then on every write to that workspace is
+    // refused. Until `db recover` existed the only remedy was restarting the
+    // server, which means taking the installation down to open one workspace.
+    await expect(
+      writer.run(actor, {
+        type: 'taxonomy',
+        objectIds: { category: 'cat_blocked' },
+        commit: async () => ({ commitHash: 'f'.repeat(40) }),
+        record: async () => {
+          throw new Error('the database side dies here');
+        },
+      }),
+    ).rejects.toThrow('the database side dies here');
+
+    const blocked = await repositories.operations.listUnfinished(workspaceId);
+    expect(blocked).toHaveLength(1);
+    expect(blocked[0]).toMatchObject({ state: 'git_committed' });
+    await expect(
+      writer.run(actor, {
+        type: 'taxonomy',
+        objectIds: {},
+        commit: async () => ({ commitHash: '1'.repeat(40) }),
+        record: async () => undefined,
+      }),
+    ).rejects.toThrow(/did not finish/);
+
+    const report = await recovery({ complete: async () => true }).recover(workspaceId);
+    expect(report.recovered).toEqual([blocked[0]!.id]);
+    await expect(
+      writer.run(actor, {
+        type: 'taxonomy',
+        objectIds: {},
+        commit: async () => ({ commitHash: '2'.repeat(40) }),
+        record: async () => undefined,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('abandons a pending write when no commit names it', async () => {
     // A process that died before committing leaves this behind.
     const now = new Date();

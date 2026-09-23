@@ -231,6 +231,19 @@ docker compose exec knoverge knoverge db prune
 
 Session rows outlive the session by thirty days, so the settings page can still show a person where they were recently signed in.
 
+### A workspace that refuses to be written to
+
+A write spans Git and PostgreSQL and cannot be one transaction, so it is done in a fixed order under a workspace lock. A process that stops in the middle leaves an unfinished operation behind, and while one is there the workspace refuses every write: the repository holds a change the database does not, and writing on top of it would re-render the file from the database and silently delete the committed change.
+
+The server resolves these at startup. When one appears while it is running — the API answers `INTERNAL_ERROR` with `an earlier change to this workspace did not finish` and names the operation — an operator can resolve it without a restart:
+
+```bash
+docker compose exec knoverge knoverge db recover
+docker compose exec knoverge knoverge db recover --workspace personal
+```
+
+It takes the same workspace lock the server's writers take, so it is safe against a live installation: it waits for whatever is writing. Each workspace is reported as examined, recovered, abandoned and unresolved. An operation that reached Git is completed from the commit; one that never committed is abandoned. Anything left **unresolved** is the case the architecture calls unrepairable — a revision with no commit, or a commit whose file the repository no longer has — and the command exits non-zero so a script notices. Those need the backup.
+
 ### Permission grants from the command line
 
 `knoverge permissions list`, `grant` and `revoke` administer grants as the workspace system actor. They exist because a grant can restrict the people who administer grants, and a restriction is deliberately not lifted by the person it restricts:

@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 
-import { withServices } from '../run.ts';
+import { emit, withServices } from '../run.ts';
+import { resolveWorkspace } from '../workspace-actor.ts';
 
 import {
   createDatabase,
@@ -66,6 +67,50 @@ export function dbCommand(): Command {
             `${removed.sessions} session(s) and ${removed.operations} decided operation(s); ` +
             `emptied the text of ${removed.redactedProposals} resolved proposal(s)`,
         );
+      });
+    });
+
+  db.command('recover')
+    .description('Finish or abandon writes an interrupted process left behind')
+    .option('--workspace <slug|id>', 'only this workspace; the default is every one')
+    .option('--json', 'print the result as JSON')
+    .action(async (opts: { workspace?: string; json?: boolean }) => {
+      await withServices(async (services) => {
+        // The server does this at startup, which until now was the only way to
+        // do it: a write that reached Git and no further leaves its workspace
+        // refusing every write, and an operator whose only remedy is a restart
+        // has to take the installation down to fix one workspace.
+        let reports;
+        if (opts.workspace === undefined) {
+          reports = await services.recovery.recoverAll();
+        } else {
+          const workspace = await resolveWorkspace(services, opts.workspace);
+          reports = { [workspace.id]: await services.recovery.recover(workspace.id) };
+        }
+
+        const slugs = new Map(
+          (await services.repositories.workspaces.list()).map((w) => [w.id as string, w.slug]),
+        );
+        const unresolved = Object.values(reports).flatMap((r) => r.unresolved);
+        emit(opts.json ?? false, { workspaces: reports }, () => {
+          const entries = Object.entries(reports);
+          if (entries.length === 0) return ['nothing was left unfinished'];
+          return entries.map(([workspaceId, report]) =>
+            [
+              slugs.get(workspaceId) ?? workspaceId,
+              `examined ${report.examined}`,
+              `recovered ${report.recovered.length}`,
+              `abandoned ${report.failed.length}`,
+              `unresolved ${report.unresolved.length}`,
+            ].join('\t'),
+          );
+        });
+        // An operator has to look at these, and a script has to be able to
+        // notice that without reading the words.
+        if (unresolved.length > 0) {
+          console.error(`unresolved operation(s): ${unresolved.join(', ')}`);
+          process.exitCode = 1;
+        }
       });
     });
 
