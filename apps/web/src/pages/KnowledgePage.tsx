@@ -1,4 +1,4 @@
-import type { ActorSummary, ItemType, KnowledgeItemDetail, ReviewState } from '@knoverge/contracts';
+import type { ItemType, KnowledgeItemDetail, ReviewState } from '@knoverge/contracts';
 import { ItemType as ItemTypes, ReviewState as ReviewStates } from '@knoverge/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -73,7 +73,6 @@ function ItemEditor({
   mayWrite,
   onChanged,
   onCancel,
-  actors,
 }: {
   item: KnowledgeItemDetail;
   /** Whether the body is only part of what the item holds. */
@@ -82,13 +81,11 @@ function ItemEditor({
   onChanged: () => Promise<void>;
   /** Leaves edit mode. Asks first when there is unsaved work. */
   onCancel: (dirty: boolean) => void;
-  actors: readonly ActorSummary[];
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(() => draftOf(item));
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
-  void actors;
 
   const initial = draftOf(item);
   const dirty =
@@ -557,7 +554,6 @@ export function KnowledgePage() {
                 // the cost of being wrong about that is somebody's document.
                 truncated={selected.data.truncated}
                 mayWrite={mayWrite}
-                actors={actors.data?.actors ?? []}
                 onChanged={async () => {
                   setEditing(false);
                   await refresh();
