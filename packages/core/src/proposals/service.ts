@@ -208,6 +208,18 @@ interface ProposedCreatePayload {
   tags: string[];
   sources: FrontmatterSource[];
   relations: FrontmatterRelation[];
+  /**
+   * What the source system calls this, when the proposer said.
+   *
+   * Everything a proposal carries has to survive review, or a write that
+   * policy let through and a write a reviewer approved produce different
+   * items. This one went missing and took the whole external-identity half
+   * of reconciliation with it: an item recorded through review had no key to
+   * be found by again.
+   */
+  external?: { source_system: string; external_key: string } | undefined;
+  /** The file name the proposer asked for, when it asked for one. */
+  slug?: string | undefined;
 }
 
 /**
@@ -297,6 +309,8 @@ export class ProposalService {
         tags: [...(input.tags ?? [])],
         sources: [...(input.sources ?? [])],
         relations: [...(input.relations ?? [])],
+        ...(input.external ? { external: input.external } : {}),
+        ...(input.slug ? { slug: input.slug } : {}),
       },
       targetItemId: null,
       baseRevisionId: null,
@@ -417,6 +431,8 @@ export class ProposalService {
               tags: [...(input.newItem.tags ?? [])],
               sources: [...(input.newItem.sources ?? [])],
               relations: [...(input.newItem.relations ?? [])],
+              ...(input.newItem.external ? { external: input.newItem.external } : {}),
+              ...(input.newItem.slug ? { slug: input.newItem.slug } : {}),
             },
           }
         : {}),
@@ -704,6 +720,8 @@ export class ProposalService {
           tags: p.tags,
           sources: p.sources,
           relations: p.relations,
+          ...(p.external ? { external: p.external } : {}),
+          ...(p.slug ? { slug: p.slug } : {}),
           proposalId: proposal.id,
           review,
         }),
@@ -1027,6 +1045,8 @@ export class ProposalService {
               tags: p.newItem.tags,
               sources: p.newItem.sources,
               relations: p.newItem.relations,
+              ...(p.newItem.external ? { external: p.newItem.external } : {}),
+              ...(p.newItem.slug ? { slug: p.newItem.slug } : {}),
             },
           }
         : {}),
