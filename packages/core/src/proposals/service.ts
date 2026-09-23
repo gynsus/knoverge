@@ -19,6 +19,7 @@ import type { ActorStanding, AuthorizationService } from '../authorization/servi
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
 import type { DuplicateMatcher } from '../knowledge/duplicates.ts';
+import type { KnowledgeRepository } from '../knowledge/repository.ts';
 import type {
   CreateItemInput,
   DeleteItemInput,
@@ -39,6 +40,8 @@ export interface ProposalServiceOptions {
   uow: UnitOfWork;
   proposals: ProposalRepository;
   knowledge: KnowledgeService;
+  /** Read only, to ask which categories an item is filed under. */
+  knowledgeIndex: Pick<KnowledgeRepository, 'categoriesOf'>;
   /** Category paths become ids before policy sees them (rule 13). */
   categories: CategoryRepository;
   authorization: AuthorizationService;
@@ -287,7 +290,7 @@ export class ProposalService {
     // Before anything is recorded, and before policy's answer matters: a
     // newly connected agent must not fill the workspace with what it already
     // holds, whether the write would have waited for review or not.
-    await this.o.duplicates.assertNotDuplicate({
+    const hidden = await this.o.duplicates.screen({
       workspaceId: actor.workspaceId,
       title: input.title,
       body: input.body,
@@ -295,11 +298,16 @@ export class ProposalService {
       categoryIds: categoryIds as CategoryId[],
       external: input.external,
       acknowledged: input.acknowledgedDuplicateIds,
+      readable: (itemIds) => this.readable(actor, standing, itemIds),
     });
 
     return this.record(actor, {
       proposalType: 'knowledge_create',
-      decision,
+      // Something the proposer cannot see may already be this, and they can
+      // neither read it nor name it to rule it out. A person who can see
+      // both decides instead, so a hidden match takes the direct route away
+      // (ADR 0017).
+      decision: hidden.length > 0 ? { ...decision, effect: 'require_review' } : decision,
       payload: {
         title: input.title,
         body: input.body,
@@ -908,6 +916,34 @@ export class ProposalService {
       });
     });
     return { ...proposal, ...patch } as ProposalRecord;
+  }
+
+  /**
+   * Which of these items this actor may read.
+   *
+   * The same question the rest of the interface asks, put to the same
+   * service: a duplicate check must not become a way to learn the title and
+   * the path of knowledge somebody has no permission to read.
+   */
+  private async readable(
+    actor: ActorContext,
+    standing: ActorStanding,
+    itemIds: readonly KnowledgeItemId[],
+  ): Promise<Set<string>> {
+    if (itemIds.length === 0) return new Set();
+    const rows = await this.o.knowledgeIndex.categoriesOf(actor.workspaceId, itemIds);
+    const byItem = new Map<string, string[]>();
+    for (const row of rows) {
+      byItem.set(row.knowledgeItemId, [...(byItem.get(row.knowledgeItemId) ?? []), row.categoryId]);
+    }
+    const allowed = await this.o.authorization.filter(
+      actor,
+      standing,
+      'knowledge.read',
+      [...itemIds],
+      (itemId: KnowledgeItemId) => ({ categoryIds: byItem.get(itemId) ?? [] }),
+    );
+    return new Set(allowed);
   }
 
   /** A proposal that still has a decision left in it. */

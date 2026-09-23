@@ -163,6 +163,24 @@ Renaming, moving or merging a category therefore never changes who can access it
 
 Selectors apply to reads as well. The taxonomy listing is filtered to readable branches today; search, index, briefing, changes and events are filtered the same way as they arrive.
 
+## 8a. A refusal must not describe what it refused
+
+Anything a caller is told about knowledge it may not read is a leak, including
+a refusal. The duplicate check found candidates by content hash and by title
+similarity and answered with their ids, titles and file paths, without asking
+whether the proposer could read them; trigram similarity fires at 0.6, so a
+proposer could map a closed branch by guessing titles and reading the answers.
+
+A match outside the proposer's scope is now not raised at all. It sends the
+write to review instead, so the workspace is still protected from a duplicate
+and the proposer learns only that its write was queued — which policy does for
+its own reasons. ADR 0017 has the reasoning, including why telling the proposer
+even that something exists was rejected.
+
+The same rule governs reconciliation: `sync_submit_inventory` classifies a
+candidate as though nothing matched when the only match is one the agent cannot
+read.
+
 ## 9. Approval policy
 
 The policy engine decides, for an action the actor is permitted to attempt:

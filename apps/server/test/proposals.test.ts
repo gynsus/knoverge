@@ -1182,3 +1182,84 @@ describe('the tool routes', () => {
     expect(res.statusCode, res.body).toBe(403);
   });
 });
+
+describe('a duplicate the proposer cannot see', () => {
+  it('is not named, and takes the direct route away instead', async () => {
+    // The matcher answered with the id, the title and the path of whatever it
+    // found, without asking whether the proposer may read it. Trigram
+    // similarity fires at 0.6, so a proposer could map a closed branch by
+    // guessing titles and reading the refusals (ADR 0017).
+    const open = await admin.post('/v1/admin/taxonomy.create', { name: 'Open branch' });
+    expect(open.statusCode, open.body).toBe(200);
+    const closed = await admin.post('/v1/admin/taxonomy.create', { name: 'Closed branch' });
+    expect(closed.statusCode, closed.body).toBe(200);
+    const closedItem = await admin.post('/v1/admin/knowledge.create', {
+      title: 'The quarterly revenue forecast method',
+      body: 'Recorded where most people cannot read it.\n',
+      type: 'decision',
+      categories: ['closed-branch'],
+    });
+    expect(closedItem.statusCode, closedItem.body).toBe(200);
+
+    const created = await admin.post('/v1/admin/agents.create', {
+      name: 'Scoped proposer',
+      trust_tier: 'trusted',
+    });
+    const agent = (created.json() as { agent: { id: string; actor_id: string } }).agent;
+    const token = (
+      (await admin.post('/v1/admin/agents.credentials.issue', { agent_id: agent.id })).json() as {
+        token: string;
+      }
+    ).token;
+
+    // It may not read the closed branch, and a rule would otherwise let it
+    // write without review — so a direct write is what we should see when
+    // nothing is hidden, and review when something is.
+    expect(
+      (
+        await admin.post('/v1/admin/permissions.grant', {
+          actor_id: agent.actor_id,
+          action: 'knowledge.read',
+          effect: 'deny',
+          scope: { categories: [{ category_path: 'closed-branch' }] },
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (
+        await admin.post('/v1/admin/policy.rules.upsert', {
+          priority: 10,
+          subject: { actor_id: agent.actor_id },
+          action: 'knowledge.create',
+          effect: 'allow_direct',
+          enabled: true,
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const propose = (title: string) =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/knowledge_propose_create',
+        payload: {
+          title,
+          body: 'Something the agent believes.\n',
+          type: 'decision',
+          categories: ['open-branch'],
+        },
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+    // Nothing resembles this, so the rule applies and the write lands.
+    const clear = await propose('How the office coffee machine is descaled');
+    expect(clear.statusCode, clear.body).toBe(200);
+
+    // This one reads like the item in the closed branch. The proposer is told
+    // nothing about it — not that it exists, not its title, not its path —
+    // and the write goes to review instead of landing.
+    const shadowed = await propose('The quarterly revenue forecast method');
+    expect(shadowed.statusCode, shadowed.body).toBe(202);
+    expect(shadowed.body).not.toContain('closed-branch');
+    expect(shadowed.body).not.toContain('Recorded where most people');
+  });
+});

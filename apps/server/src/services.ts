@@ -217,6 +217,7 @@ export function createServices(config: ServicesConfig) {
     uow,
     proposals: repositories.proposals,
     knowledge,
+    knowledgeIndex: repositories.knowledge,
     categories: repositories.categories,
     authorization,
     duplicates: new DuplicateMatcher({ items: repositories.knowledge, contentHash }),
