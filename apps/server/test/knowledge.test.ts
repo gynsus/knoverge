@@ -996,3 +996,131 @@ describe('a title longer than a category slug', () => {
     expect(proposed.statusCode, proposed.body).toBe(200);
   });
 });
+
+/**
+ * Two writers reaching the same item at the same moment.
+ *
+ * Rule 6 is about what the caller read, and what the caller read is only worth
+ * checking against state nobody else can be changing. The check used to run
+ * before the workspace lock was taken, so both writers passed it, both were let
+ * through, and the second rendered its file from a revision that no longer
+ * existed: a commit landed in Git, the insert failed on the revision number
+ * already taken, and the workspace was left holding an unfinished operation
+ * that refused every write until an operator resolved it.
+ *
+ * Each of these asserts the same two things: exactly one writer wins, and the
+ * workspace is still writable afterwards.
+ */
+describe('two writers at once', () => {
+  const anItem = async (title: string) => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: 'What both writers read.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  };
+
+  /** The workspace accepts writes, which an unfinished operation would refuse. */
+  const stillWritable = async (title: string) => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: 'Written after the race.',
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  };
+
+  it('lets one update through and answers the other with a conflict', async () => {
+    const item = await anItem('Two updates');
+    const base = {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+    };
+    const [a, b] = await Promise.all([
+      admin.post('/v1/admin/knowledge.update', { ...base, body: 'Edit A.' }),
+      admin.post('/v1/admin/knowledge.update', { ...base, body: 'Edit B.' }),
+    ]);
+
+    const codes = [a.statusCode, b.statusCode].sort();
+    expect(codes, `${a.body}\n${b.body}`).toEqual([200, 409]);
+    const loser = a.statusCode === 409 ? a : b;
+    expect(loser.json().code).toBe('REVISION_CONFLICT');
+    // The loser is told what to re-read, which is what makes a retry possible.
+    expect(loser.json().object_ids.current_revision_id).not.toBe(item.current_revision_id);
+
+    // The winner's text is what is there, not the loser's written over it.
+    const after = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${item.id}`)).json(),
+    ).item;
+    expect(after.revision_number).toBe(2);
+    await stillWritable('After two updates');
+  });
+
+  it('deletes an item once, however many callers ask', async () => {
+    const item = await anItem('Two deletes');
+    const base = {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+    };
+    const [a, b] = await Promise.all([
+      admin.post('/v1/admin/knowledge.delete', base),
+      admin.post('/v1/admin/knowledge.delete', base),
+    ]);
+
+    // The loser reads the item after the first delete took it out of the
+    // index, so it is told the item is gone — the same answer a second delete
+    // has always given — rather than committing a second removal over it.
+    expect([a.statusCode, b.statusCode].sort(), `${a.body}\n${b.body}`).toEqual([200, 404]);
+    await stillWritable('After two deletes');
+  });
+
+  it('lets one supersession through and answers the other with a conflict', async () => {
+    const item = await anItem('Two supersessions');
+    const base = {
+      old_item_id: item.id,
+      old_base_revision_id: item.current_revision_id,
+      old_base_content_hash: item.content_hash,
+    };
+    const [a, b] = await Promise.all([
+      admin.post('/v1/admin/knowledge.supersede', {
+        ...base,
+        new_item: { title: 'Replacement A', body: 'Took over.', type: 'fact' },
+      }),
+      admin.post('/v1/admin/knowledge.supersede', {
+        ...base,
+        new_item: { title: 'Replacement B', body: 'Took over.', type: 'fact' },
+      }),
+    ]);
+
+    expect([a.statusCode, b.statusCode].sort(), `${a.body}\n${b.body}`).toEqual([200, 409]);
+    // One replacement exists, not two: the loser wrote nothing at all.
+    const list = KnowledgeListResponse.parse((await admin.get('/v1/knowledge.list')).json());
+    const replacements = list.items.filter((i) => i.title.startsWith('Replacement '));
+    expect(replacements).toHaveLength(1);
+    await stillWritable('After two supersessions');
+  });
+
+  it('restores an item once, however many callers ask', async () => {
+    const item = await anItem('Two restores');
+    const deleted = await admin.post('/v1/admin/knowledge.delete', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+
+    const [a, b] = await Promise.all([
+      admin.post('/v1/admin/knowledge.restore', { item_id: item.id }),
+      admin.post('/v1/admin/knowledge.restore', { item_id: item.id }),
+    ]);
+
+    // The second reads the item after the first put it back, so it is told the
+    // item is not deleted rather than writing a second restore over the first.
+    expect([a.statusCode, b.statusCode].sort(), `${a.body}\n${b.body}`).toEqual([200, 400]);
+    await stillWritable('After two restores');
+  });
+});

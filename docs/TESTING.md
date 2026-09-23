@@ -27,6 +27,15 @@ Scenario:
 4. operation must fail with `REVISION_CONFLICT`;
 5. revision 4 must remain unchanged.
 
+Sequentially is the easy half, and it is not the half that breaks. The check has
+to be made against state nobody else can be changing, so each write path also
+needs the concurrent case: two callers reading the same revision and writing at
+the same moment, asserted as exactly one winner **and** a workspace that still
+accepts writes afterwards. The second assertion is the one that matters — a
+check made outside the workspace lock lets both callers through, and the loser
+leaves behind a Git commit PostgreSQL never recorded, which blocks the workspace
+until an operator resolves it. Sequential tests cannot see any of that.
+
 ### Idempotent proposal creation
 
 Retrying the same idempotency key with the same payload returns the original result.
