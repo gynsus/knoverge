@@ -48,6 +48,18 @@ export interface DuplicateQuery {
   acknowledged?: readonly string[] | undefined;
   /** Whether a close title counts. False on the second look; see below. */
   lexical?: boolean | undefined;
+  /**
+   * Which of these items the caller may read.
+   *
+   * A match outside the caller's scope is not a match it hears about: naming
+   * one would tell an agent the title and the file path of knowledge it has
+   * no permission to read, and a proposer could map a closed branch by
+   * guessing titles and reading the refusals (ADR 0017).
+   *
+   * Absent means every match is visible, which is right for a check run on
+   * behalf of somebody whose scope has already been applied.
+   */
+  readable?: ((itemIds: readonly KnowledgeItemId[]) => Promise<Set<string>>) | undefined;
 }
 
 export interface DuplicateMatcherOptions {
@@ -80,15 +92,21 @@ export class DuplicateMatcher {
   }
 
   /**
-   * Throws when the workspace probably already holds this.
+   * Throws when the workspace probably already holds this, and answers with
+   * what it may hold that the caller cannot see.
    *
    * `DUPLICATE_EXTERNAL_KEY` is final and cannot be acknowledged: two records
    * under one external identity are the same record by definition, and the
    * caller wants an update rather than a second item. `DUPLICATE_SUSPECTED`
    * is a question, and acknowledging it is the answer.
+   *
+   * Neither is raised for a match the caller cannot read. Acknowledging one
+   * means naming it, and an id nobody may see is an id nobody can name, so
+   * raising it would leave a proposer permanently stuck with no recourse.
+   * They come back instead, and the caller sends the write to review.
    */
-  async assertNotDuplicate(query: DuplicateQuery): Promise<void> {
-    await this.check(query, { lexical: true });
+  async screen(query: DuplicateQuery): Promise<DuplicateCandidate[]> {
+    return this.check(query, { lexical: true });
   }
 
   /**
@@ -106,7 +124,14 @@ export class DuplicateMatcher {
     await this.check(query, { lexical: false });
   }
 
-  private async check(query: DuplicateQuery, options: { lexical: boolean }): Promise<void> {
+  private async check(
+    query: DuplicateQuery,
+    options: { lexical: boolean },
+  ): Promise<DuplicateCandidate[]> {
+    const hidden: DuplicateCandidate[] = [];
+    const visible = async (ids: readonly KnowledgeItemId[]): Promise<Set<string>> =>
+      query.readable ? await query.readable(ids) : new Set(ids);
+
     if (query.external) {
       const existing = await this.o.items.findByExternal(
         query.workspaceId,
@@ -114,21 +139,39 @@ export class DuplicateMatcher {
         query.external.external_key,
       );
       if (existing) {
-        throw new DomainError(
-          'DUPLICATE_EXTERNAL_KEY',
-          `${query.external.source_system} ${query.external.external_key} is already recorded; update that item instead of recording it twice`,
-          { objectIds: { knowledge_item: existing.id } },
-        );
+        if ((await visible([existing.id])).has(existing.id)) {
+          throw new DomainError(
+            'DUPLICATE_EXTERNAL_KEY',
+            `${query.external.source_system} ${query.external.external_key} is already recorded; update that item instead of recording it twice`,
+            { objectIds: { knowledge_item: existing.id } },
+          );
+        }
+        // The key is taken by something the caller may not read. Saying so
+        // would name it; refusing without saying so would be a refusal they
+        // could never satisfy.
+        hidden.push({
+          itemId: existing.id,
+          title: existing.slug,
+          markdownPath: existing.markdownPath,
+          reason: 'exact',
+          score: null,
+        });
       }
     }
 
-    const candidates = await this.candidates({ ...query, lexical: options.lexical });
+    const found = await this.candidates({ ...query, lexical: options.lexical });
+    const allowed = await visible(found.map((c) => c.itemId));
+    const candidates = found.filter((c) => {
+      if (allowed.has(c.itemId)) return true;
+      hidden.push(c);
+      return false;
+    });
     const acknowledged = new Set(query.acknowledged ?? []);
     // An exact match cannot be acknowledged away. Saying "this is not a
     // duplicate" about the same text in the same place is not a judgement
     // anybody should be able to make; the caller wants to change that item.
     const unseen = candidates.filter((c) => c.reason === 'exact' || !acknowledged.has(c.itemId));
-    if (unseen.length === 0) return;
+    if (unseen.length === 0) return hidden;
 
     const exact = unseen.find((c) => c.reason === 'exact');
     throw new DomainError(
