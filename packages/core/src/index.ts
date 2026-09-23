@@ -209,6 +209,7 @@ export {
   OPERATION_RETENTION_MS,
   PROPOSAL_PAYLOAD_RETENTION_MS,
   SESSION_RETENTION_MS,
+  SYNC_CANDIDATE_RETENTION_MS,
   type MaintenanceOptions,
   type MaintenanceResult,
 } from './maintenance/service.ts';

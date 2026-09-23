@@ -1,11 +1,12 @@
 import type { ActorId, WorkspaceId } from '@knoverge/contracts';
 
-import type { OperationRepository, ProposalRepository } from '../src/index.ts';
+import type { OperationRepository, ProposalRepository, SyncRepository } from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
   OPERATION_RETENTION_MS,
   PROPOSAL_PAYLOAD_RETENTION_MS,
+  SYNC_CANDIDATE_RETENTION_MS,
   IdempotencyService,
   MaintenanceService,
   SESSION_RETENTION_MS,
@@ -170,6 +171,7 @@ describe('MaintenanceService', () => {
     const removedBefore: Date[] = [];
     const decidedBefore: Date[] = [];
     const redactedBefore: Date[] = [];
+    const candidatesBefore: Date[] = [];
     const service = new MaintenanceService({
       uow,
       sessions: {
@@ -195,6 +197,12 @@ describe('MaintenanceService', () => {
           return 2;
         },
       } as unknown as ProposalRepository,
+      sync: {
+        deleteCandidatesCompletedBefore: async (_tx: unknown, before: Date) => {
+          candidatesBefore.push(before);
+          return 11;
+        },
+      } as unknown as SyncRepository,
       idempotency: { purgeExpired: async () => 7 } as unknown as IdempotencyService,
       clock: { now: () => NOW },
     });
@@ -204,6 +212,7 @@ describe('MaintenanceService', () => {
       sessions: 3,
       operations: 5,
       redactedProposals: 2,
+      syncCandidates: 11,
     });
     // A session row outlives the session itself, so the settings page can still
     // show where somebody was recently signed in.
@@ -214,5 +223,9 @@ describe('MaintenanceService', () => {
     // The row survives; only the proposed text inside it is emptied, and the
     // decision has to be old before that happens.
     expect(NOW.getTime() - redactedBefore[0]!.getTime()).toBe(PROPOSAL_PAYLOAD_RETENTION_MS);
+    // A candidate is one agent's note about its own material, not part of
+    // anybody's review trail, so it is removed rather than emptied — and what
+    // the pass found survives in the session's stats.
+    expect(NOW.getTime() - candidatesBefore[0]!.getTime()).toBe(SYNC_CANDIDATE_RETENTION_MS);
   });
 });

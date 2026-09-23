@@ -659,6 +659,13 @@ failed
 expired
 ```
 
+Retention: the candidates of a pass finished more than ninety days ago are
+removed, and the session row stays. Its `stats_json` was written when it
+completed, so the run is still readable as a run; what goes is the
+per-candidate detail, which is where an agent's own description of its own
+material lives and which nothing reads once the pass is over. The same ninety
+days a resolved proposal's text gets, because it is the same kind of content.
+
 ## 26. Sync candidate
 
 ```text

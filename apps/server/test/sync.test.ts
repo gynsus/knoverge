@@ -490,3 +490,31 @@ describe('reading a run as a person', () => {
     expect(ProposalsResponse.parse(empty.json()).proposals).toHaveLength(0);
   });
 });
+
+describe('what a finished pass leaves behind', () => {
+  it('answers from the stats it recorded, not from candidates that may be gone', async () => {
+    const session = await beginSession('claude-code', 'retention');
+    await agent('/v1/sync_submit_inventory', {
+      sync_session_id: session.sync_session_id,
+      candidates: [
+        { client_candidate_id: 'r-1', title: 'One thing', type: 'fact' },
+        { client_candidate_id: 'r-2', title: 'Another thing', type: 'fact' },
+      ],
+    });
+    await agent('/v1/sync_complete', { sync_session_id: session.sync_session_id });
+
+    // The candidates are one agent's notes about its own material and are
+    // pruned; what the pass found has to survive them.
+    const removed = await services.uow.run((tx) =>
+      services.repositories.sync.deleteCandidatesCompletedBefore(tx, new Date(Date.now() + 1000)),
+    );
+    expect(removed).toBeGreaterThanOrEqual(2);
+
+    const runs = SyncRunsResponse.parse(
+      (await admin.request({ method: 'GET', url: '/v1/admin/sync.list' })).json(),
+    ).runs;
+    const run = runs.find((r) => r.sync_session_id === session.sync_session_id);
+    expect(run?.candidate_count).toBe(2);
+    expect(run?.counts.new_candidate).toBe(2);
+  });
+});

@@ -1,6 +1,7 @@
 import type { SessionRepository } from '../identity/repository.ts';
 import type { OperationRepository } from '../operations/repository.ts';
 import type { ProposalRepository } from '../proposals/repository.ts';
+import type { SyncRepository } from '../sync/repository.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { UnitOfWork } from '../ports/unit-of-work.ts';
@@ -32,16 +33,30 @@ export const OPERATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
  */
 export const PROPOSAL_PAYLOAD_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 
+/**
+ * How long the candidates of a finished reconciliation pass are kept.
+ *
+ * An agent syncing daily with a thousand candidates leaves three hundred
+ * thousand rows a year, each carrying up to a thousand characters of its own
+ * description of its own material. Nothing reads them once the pass is over:
+ * what it found is in the session's stats and what it proposed is in the
+ * proposals. The same ninety days the proposed text gets, for the same
+ * reason — it is the same kind of content.
+ */
+export const SYNC_CANDIDATE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+
 export interface MaintenanceOptions {
   uow: UnitOfWork;
   sessions: SessionRepository;
   operations: OperationRepository;
   proposals: ProposalRepository;
+  sync: SyncRepository;
   idempotency: IdempotencyService;
   clock?: Clock;
   sessionRetentionMs?: number;
   operationRetentionMs?: number;
   proposalPayloadRetentionMs?: number;
+  syncCandidateRetentionMs?: number;
 }
 
 export interface MaintenanceResult {
@@ -50,6 +65,8 @@ export interface MaintenanceResult {
   operations: number;
   /** Resolved proposals whose text was emptied, not rows removed. */
   redactedProposals: number;
+  /** Candidates of finished passes removed; the passes themselves stay. */
+  syncCandidates: number;
 }
 
 /**
@@ -68,6 +85,7 @@ export class MaintenanceService {
   private readonly retentionMs: number;
   private readonly operationRetentionMs: number;
   private readonly proposalPayloadRetentionMs: number;
+  private readonly syncCandidateRetentionMs: number;
 
   constructor(options: MaintenanceOptions) {
     this.o = options;
@@ -76,6 +94,7 @@ export class MaintenanceService {
     this.operationRetentionMs = options.operationRetentionMs ?? OPERATION_RETENTION_MS;
     this.proposalPayloadRetentionMs =
       options.proposalPayloadRetentionMs ?? PROPOSAL_PAYLOAD_RETENTION_MS;
+    this.syncCandidateRetentionMs = options.syncCandidateRetentionMs ?? SYNC_CANDIDATE_RETENTION_MS;
   }
 
   async prune(): Promise<MaintenanceResult> {
@@ -100,6 +119,15 @@ export class MaintenanceService {
         new Date(now.getTime() - this.proposalPayloadRetentionMs),
       ),
     );
-    return { idempotencyRecords, sessions, operations, redactedProposals };
+    // Removed, not emptied: a candidate is one agent's note about its own
+    // material, not part of anybody's review trail. What the pass found
+    // survives in the session's stats.
+    const syncCandidates = await this.o.uow.run((tx) =>
+      this.o.sync.deleteCandidatesCompletedBefore(
+        tx,
+        new Date(now.getTime() - this.syncCandidateRetentionMs),
+      ),
+    );
+    return { idempotencyRecords, sessions, operations, redactedProposals, syncCandidates };
   }
 }

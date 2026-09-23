@@ -6,7 +6,7 @@ import type {
   SyncSessionRecord,
   Tx,
 } from '@knoverge/core';
-import { and, asc, desc, eq, gt, inArray, isNotNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { agentSyncState, syncCandidates, syncSessions } from '../schema/sync.ts';
@@ -192,6 +192,23 @@ export function createSyncRepository(db: Database): SyncRepository {
         counts.set(row.sessionId, entry);
       }
       return counts;
+    },
+    async deleteCandidatesCompletedBefore(tx: Tx, before: Date) {
+      const rows = await asTx(tx)
+        .delete(syncCandidates)
+        .where(
+          inArray(
+            syncCandidates.syncSessionId,
+            asTx(tx)
+              .select({ id: syncSessions.id })
+              .from(syncSessions)
+              .where(
+                and(eq(syncSessions.state, 'completed'), lt(syncSessions.completedAt, before)),
+              ),
+          ),
+        )
+        .returning({ id: syncCandidates.id });
+      return rows.length;
     },
     async findState(workspaceId, agentId, source) {
       const rows = await db

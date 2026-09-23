@@ -135,6 +135,7 @@ export function createServices(config: ServicesConfig) {
     sessions: repositories.sessions,
     operations: repositories.operations,
     proposals: repositories.proposals,
+    sync: repositories.sync,
     idempotency,
   });
   const git = createGitStore({ dataDir: config.dataDir });
