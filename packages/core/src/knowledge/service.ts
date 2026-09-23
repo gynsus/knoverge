@@ -429,6 +429,40 @@ export class KnowledgeService {
   }
 
   /**
+   * The item as it is now, refused unless it is the revision the caller read.
+   *
+   * Rule 6, and the reason this takes a method of its own: it has to be called
+   * from inside the commit step, which runs under the workspace lock. Asked
+   * before the lock, the answer is a snapshot two writers can both pass — and
+   * the later one then renders its file from a revision that is no longer
+   * there, taking a revision number that is already taken. The commit lands in
+   * Git, the insert fails, and the workspace is left holding an unfinished
+   * operation that refuses every write until an operator resolves it.
+   */
+  private async currentFor(
+    actor: ActorContext,
+    itemId: KnowledgeItemId,
+    baseRevisionId: RevisionId,
+    baseContentHash: string,
+    message: string,
+  ): Promise<ItemResult> {
+    const current = await this.get(actor, itemId);
+    if (
+      current.revision.id !== baseRevisionId ||
+      current.revision.contentHash !== baseContentHash
+    ) {
+      throw new DomainError('REVISION_CONFLICT', message, {
+        objectIds: {
+          knowledge_item: itemId,
+          current_revision_id: current.revision.id,
+          current_content_hash: current.revision.contentHash,
+        },
+      });
+    }
+    return current;
+  }
+
+  /**
    * Changes an item: a new revision and a new commit, always.
    *
    * The caller says which revision and which content it read, and a mismatch
@@ -440,38 +474,33 @@ export class KnowledgeService {
    * item the repository has twice.
    */
   async update(actor: ActorContext, input: UpdateItemInput): Promise<ItemResult> {
-    const current = await this.get(actor, input.itemId);
-    if (
-      current.revision.id !== input.baseRevisionId ||
-      current.revision.contentHash !== input.baseContentHash
-    ) {
-      throw new DomainError(
-        'REVISION_CONFLICT',
-        'the item changed since you read it; re-read it and apply your change to the current revision',
-        {
-          objectIds: {
-            knowledge_item: input.itemId,
-            current_revision_id: current.revision.id,
-            current_content_hash: current.revision.contentHash,
-          },
-        },
-      );
-    }
-
-    const title = (input.title ?? current.revision.title).trim();
-    if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
-    const body = (input.body ?? current.body).trim();
-    if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
-    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
-      throw new DomainError('VALIDATION_ERROR', `the body may not exceed ${MAX_BODY_BYTES} bytes`);
-    }
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
+    // Read inside the commit step, which holds the workspace lock, and used by
+    // the record step afterwards. See currentFor().
+    let current: ItemResult | undefined;
 
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'update',
       objectIds: { knowledge_item: input.itemId },
       commit: async (operation) => {
+        current = await this.currentFor(
+          actor,
+          input.itemId,
+          input.baseRevisionId,
+          input.baseContentHash,
+          'the item changed since you read it; re-read it and apply your change to the current revision',
+        );
+        const title = (input.title ?? current.revision.title).trim();
+        if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
+        const body = (input.body ?? current.body).trim();
+        if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
+        if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+          throw new DomainError(
+            'VALIDATION_ERROR',
+            `the body may not exceed ${MAX_BODY_BYTES} bytes`,
+          );
+        }
         const author = await this.authorOf(actor);
         const now = this.clock.now();
         await this.assertRepositoryIsOurs(actor.workspaceId);
@@ -542,13 +571,16 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: input.itemId, path: markdownPath } };
       },
       record: async (tx, operation) => {
-        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the change was never planned');
+        if (!planned || !current) {
+          throw new DomainError('INTERNAL_ERROR', 'the change was never planned');
+        }
         const p = planned;
+        const was = current.revision;
         const revision = this.revisionOf(
           actor,
           input.itemId,
           revisionId,
-          current.revision.revisionNumber + 1,
+          was.revisionNumber + 1,
           p,
           operation.id,
         );
@@ -602,8 +634,8 @@ export class KnowledgeService {
           categoryIds: [...new Set([...before, ...p.chosen.map((c) => c.id)])],
           metadata: {
             revision: revisionId,
-            before_revision: current.revision.id,
-            before_hash: current.revision.contentHash,
+            before_revision: was.id,
+            before_hash: was.contentHash,
             content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
@@ -631,24 +663,20 @@ export class KnowledgeService {
    * history, and a restore is a commit rather than an archaeology exercise.
    */
   async delete(actor: ActorContext, input: DeleteItemInput): Promise<ItemResult> {
-    const current = await this.get(actor, input.itemId);
-    if (
-      current.revision.id !== input.baseRevisionId ||
-      current.revision.contentHash !== input.baseContentHash
-    ) {
-      throw new DomainError(
-        'REVISION_CONFLICT',
-        'the item changed since you read it; re-read it before deleting',
-        {
-          objectIds: {
-            knowledge_item: input.itemId,
-            current_revision_id: current.revision.id,
-            current_content_hash: current.revision.contentHash,
-          },
-        },
-      );
-    }
-    return this.retire(actor, current, 'delete', input.proposalId);
+    return this.retire(
+      actor,
+      input.itemId,
+      () =>
+        this.currentFor(
+          actor,
+          input.itemId,
+          input.baseRevisionId,
+          input.baseContentHash,
+          'the item changed since you read it; re-read it before deleting',
+        ),
+      'delete',
+      input.proposalId,
+    );
   }
 
   /**
@@ -665,89 +693,78 @@ export class KnowledgeService {
    * old file carries `superseded_by`. ADR 0015 records why.
    */
   async supersede(actor: ActorContext, input: SupersedeInput): Promise<SupersedeResult> {
-    const old = await this.get(actor, input.oldItemId);
-    if (
-      old.revision.id !== input.oldBaseRevisionId ||
-      old.revision.contentHash !== input.oldBaseContentHash
-    ) {
-      throw new DomainError(
-        'REVISION_CONFLICT',
-        'the item changed since you read it; re-read it before superseding it',
-        {
-          objectIds: {
-            knowledge_item: input.oldItemId,
-            current_revision_id: old.revision.id,
-            current_content_hash: old.revision.contentHash,
-          },
-        },
-      );
-    }
-    if (old.item.status !== 'active') {
-      throw new DomainError(
-        'VALIDATION_ERROR',
-        `an item that is ${old.item.status} cannot be superseded`,
-        { objectIds: { knowledge_item: input.oldItemId } },
-      );
-    }
-
+    // Shape, not state: these two read nothing, so they answer before the
+    // workspace lock is worth taking.
     if ((input.newItem === undefined) === (input.existingItem === undefined)) {
       throw new DomainError(
         'VALIDATION_ERROR',
         'a supersession names either a new item to write or an item that already exists, not both and not neither',
       );
     }
-
-    // The replacement, when it is something the workspace already holds. It
-    // gets a revision of its own, so rule 6 applies to it too.
-    let replacement: ItemResult | null = null;
-    if (input.existingItem) {
-      if (input.existingItem.itemId === input.oldItemId) {
-        throw new DomainError('VALIDATION_ERROR', 'an item cannot supersede itself');
-      }
-      replacement = await this.get(actor, input.existingItem.itemId);
-      if (
-        replacement.revision.id !== input.existingItem.baseRevisionId ||
-        replacement.revision.contentHash !== input.existingItem.baseContentHash
-      ) {
-        throw new DomainError(
-          'REVISION_CONFLICT',
-          'the replacing item changed since you read it; re-read it before superseding with it',
-          {
-            objectIds: {
-              knowledge_item: replacement.item.id,
-              current_revision_id: replacement.revision.id,
-              current_content_hash: replacement.revision.contentHash,
-            },
-          },
-        );
-      }
-      if (replacement.item.status !== 'active') {
-        throw new DomainError(
-          'VALIDATION_ERROR',
-          `an item that is ${replacement.item.status} cannot supersede another`,
-          { objectIds: { knowledge_item: replacement.item.id } },
-        );
-      }
+    if (input.existingItem && input.existingItem.itemId === input.oldItemId) {
+      throw new DomainError('VALIDATION_ERROR', 'an item cannot supersede itself');
     }
 
-    const body = (input.newItem?.body ?? replacement!.body).trim();
-    if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
-    if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
-      throw new DomainError('VALIDATION_ERROR', `the body may not exceed ${MAX_BODY_BYTES} bytes`);
-    }
-    const title = (input.newItem?.title ?? replacement!.revision.title).trim();
-    if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
-
-    const newItemId = replacement?.item.id ?? (newId('kn') as KnowledgeItemId);
+    // Known without reading anything: a supersession either names the item
+    // that takes over or writes a new one.
+    const newItemId = input.existingItem?.itemId ?? (newId('kn') as KnowledgeItemId);
     const newRevisionId = newId('rev') as RevisionId;
     const oldRevisionId = newId('rev') as RevisionId;
     let plannedNew: PlannedItem | undefined;
     let plannedOld: PlannedUpdate | undefined;
+    // Both read inside the commit step, under the workspace lock, and used by
+    // the record step afterwards. See currentFor().
+    let superseded: ItemResult | undefined;
+    // The replacement, when it is something the workspace already holds. It
+    // gets a revision of its own, so rule 6 applies to it too.
+    let replacement: ItemResult | null = null;
 
     return this.o.crossStore.run<SupersedeResult>(actor, {
       type: 'supersede',
       objectIds: { knowledge_item: newItemId, superseded_item: input.oldItemId },
       commit: async (operation) => {
+        const old = (superseded = await this.currentFor(
+          actor,
+          input.oldItemId,
+          input.oldBaseRevisionId,
+          input.oldBaseContentHash,
+          'the item changed since you read it; re-read it before superseding it',
+        ));
+        if (old.item.status !== 'active') {
+          throw new DomainError(
+            'VALIDATION_ERROR',
+            `an item that is ${old.item.status} cannot be superseded`,
+            { objectIds: { knowledge_item: input.oldItemId } },
+          );
+        }
+        if (input.existingItem) {
+          replacement = await this.currentFor(
+            actor,
+            input.existingItem.itemId,
+            input.existingItem.baseRevisionId,
+            input.existingItem.baseContentHash,
+            'the replacing item changed since you read it; re-read it before superseding with it',
+          );
+          if (replacement.item.status !== 'active') {
+            throw new DomainError(
+              'VALIDATION_ERROR',
+              `an item that is ${replacement.item.status} cannot supersede another`,
+              { objectIds: { knowledge_item: replacement.item.id } },
+            );
+          }
+        }
+
+        const body = (input.newItem?.body ?? replacement!.body).trim();
+        if (body === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a body');
+        if (Buffer.byteLength(body, 'utf8') > MAX_BODY_BYTES) {
+          throw new DomainError(
+            'VALIDATION_ERROR',
+            `the body may not exceed ${MAX_BODY_BYTES} bytes`,
+          );
+        }
+        const title = (input.newItem?.title ?? replacement!.revision.title).trim();
+        if (title === '') throw new DomainError('VALIDATION_ERROR', 'an item needs a title');
+
         const workspace = await this.o.workspaces.findById(actor.workspaceId);
         if (!workspace) throw new DomainError('NOT_FOUND', 'workspace not found');
         const author = await this.authorOf(actor);
@@ -902,11 +919,12 @@ export class KnowledgeService {
         };
       },
       record: async (tx, operation) => {
-        if (!plannedNew || !plannedOld) {
+        if (!plannedNew || !plannedOld || !superseded) {
           throw new DomainError('INTERNAL_ERROR', 'the supersession was never planned');
         }
         const pNew = plannedNew;
         const pOld = plannedOld;
+        const old = superseded;
 
         const newRevision = this.revisionOf(
           actor,
@@ -1066,42 +1084,47 @@ export class KnowledgeService {
 
   /** Brings back an item a delete removed, at the content it had. */
   async restore(actor: ActorContext, itemId: KnowledgeItemId): Promise<ItemResult> {
-    const item = await this.o.items.findById(actor.workspaceId, itemId);
-    if (!item) {
-      throw new DomainError('NOT_FOUND', 'knowledge item not found', {
-        objectIds: { knowledge_item: itemId },
-      });
-    }
-    if (item.status !== 'deleted') {
-      throw new DomainError('VALIDATION_ERROR', 'this item is not deleted');
-    }
-    const revision = item.currentRevisionId
-      ? await this.o.revisions.findById(actor.workspaceId, item.currentRevisionId)
-      : null;
-    if (!revision) {
-      throw new DomainError('INTERNAL_ERROR', 'the item has no current revision');
-    }
-    // The delete revision recorded the commit the file was removed in, so the
-    // content is in that commit's parent — which is where the previous
-    // revision's own commit is. Reading it is how a restore restores.
-    const previous = (await this.o.revisions.listForItem(itemId, 2))[1];
-    if (!previous) {
-      throw new DomainError('INTERNAL_ERROR', 'nothing to restore this item from');
-    }
-    const file = await this.o.git.readAt(
-      actor.workspaceId,
-      previous.gitCommitHash,
-      previous.markdownPath,
-    );
-    if (file === null) {
-      throw new DomainError(
-        'INTERNAL_ERROR',
-        'the commit this item was last written in no longer has its file',
-        { objectIds: { knowledge_item: itemId, commit: previous.gitCommitHash } },
+    // Every read is inside the loader, which the commit step calls under the
+    // workspace lock: two restores of the same item that both read "deleted"
+    // would both claim the next revision number, and the second would land a
+    // commit PostgreSQL then refuses. See currentFor().
+    return this.reinstate(actor, itemId, async () => {
+      const item = await this.o.items.findById(actor.workspaceId, itemId);
+      if (!item) {
+        throw new DomainError('NOT_FOUND', 'knowledge item not found', {
+          objectIds: { knowledge_item: itemId },
+        });
+      }
+      if (item.status !== 'deleted') {
+        throw new DomainError('VALIDATION_ERROR', 'this item is not deleted');
+      }
+      const deleteRevision = item.currentRevisionId
+        ? await this.o.revisions.findById(actor.workspaceId, item.currentRevisionId)
+        : null;
+      if (!deleteRevision) {
+        throw new DomainError('INTERNAL_ERROR', 'the item has no current revision');
+      }
+      // The delete revision recorded the commit the file was removed in, so the
+      // content is in that commit's parent — which is where the previous
+      // revision's own commit is. Reading it is how a restore restores.
+      const previous = (await this.o.revisions.listForItem(itemId, 2))[1];
+      if (!previous) {
+        throw new DomainError('INTERNAL_ERROR', 'nothing to restore this item from');
+      }
+      const file = await this.o.git.readAt(
+        actor.workspaceId,
+        previous.gitCommitHash,
+        previous.markdownPath,
       );
-    }
-    const parsed = this.o.parseItem(file);
-    return this.reinstate(actor, item, revision, previous, parsed.body);
+      if (file === null) {
+        throw new DomainError(
+          'INTERNAL_ERROR',
+          'the commit this item was last written in no longer has its file',
+          { objectIds: { knowledge_item: itemId, commit: previous.gitCommitHash } },
+        );
+      }
+      return { item, deleteRevision, previous, body: this.o.parseItem(file).body };
+    });
   }
 
   /** One item with its body, read from the file that is canonical. */
@@ -1240,29 +1263,32 @@ export class KnowledgeService {
   /** The commit and the rows that take an item out of the working tree. */
   private async retire(
     actor: ActorContext,
-    current: ItemResult,
+    itemId: KnowledgeItemId,
+    /** Reads and checks the item under the lock, never before it. */
+    load: () => Promise<ItemResult>,
     kind: 'delete',
     proposalId?: ProposalId | undefined,
   ): Promise<ItemResult> {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
-    const itemId = current.item.id;
+    let current: ItemResult | undefined;
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'delete',
       objectIds: { knowledge_item: itemId },
       commit: async (operation) => {
+        const item = (current = await load());
         const author = await this.authorOf(actor);
         const now = this.clock.now();
         await this.assertRepositoryIsOurs(actor.workspaceId);
         const frontmatter: Frontmatter = {
-          ...current.revision.frontmatter,
+          ...item.revision.frontmatter,
           status: 'deleted',
           updated_at: now.toISOString(),
         } as Frontmatter;
-        await this.o.git.remove(actor.workspaceId, [current.item.markdownPath]);
+        await this.o.git.remove(actor.workspaceId, [item.item.markdownPath]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [current.item.markdownPath],
-          subject: `delete(${frontmatter.type}): ${current.revision.title}`,
+          paths: [item.item.markdownPath],
+          subject: `delete(${frontmatter.type}): ${item.revision.title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
             ['Knoverge-Workspace', actor.workspaceId],
@@ -1279,12 +1305,12 @@ export class KnowledgeService {
         }
         planned = {
           frontmatter,
-          body: current.body,
-          markdownPath: current.item.markdownPath,
+          body: item.body,
+          markdownPath: item.item.markdownPath,
           chosen: [],
           // The file is gone, so the frontmatter hash is taken from what the
           // delete revision records rather than from a file on disk.
-          rendered: this.o.renderItem({ frontmatter, body: current.body }),
+          rendered: this.o.renderItem({ frontmatter, body: item.body }),
           now,
           commitHash,
           kind,
@@ -1292,13 +1318,16 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: itemId } };
       },
       record: async (tx, operation) => {
-        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the delete was never planned');
+        if (!planned || !current) {
+          throw new DomainError('INTERNAL_ERROR', 'the delete was never planned');
+        }
         const p = planned;
+        const item = current;
         const revision = this.revisionOf(
           actor,
           itemId,
           revisionId,
-          current.revision.revisionNumber + 1,
+          item.revision.revisionNumber + 1,
           p,
           operation.id,
         );
@@ -1321,7 +1350,7 @@ export class KnowledgeService {
           categoryIds: gone,
           metadata: {
             revision: revisionId,
-            before_revision: current.revision.id,
+            before_revision: item.revision.id,
             content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
@@ -1329,7 +1358,7 @@ export class KnowledgeService {
             categories_after: [],
           },
         });
-        return { ...current, revision, item: { ...current.item, status: 'deleted' } };
+        return { ...item, revision, item: { ...item.item, status: 'deleted' } };
       },
     });
   }
@@ -1337,17 +1366,18 @@ export class KnowledgeService {
   /** The commit and the rows that put a deleted item back. */
   private async reinstate(
     actor: ActorContext,
-    item: KnowledgeItemRecord,
-    deleteRevision: RevisionRecord,
-    previous: RevisionRecord,
-    body: string,
+    itemId: KnowledgeItemId,
+    /** Reads and checks the item under the lock, never before it. */
+    load: () => Promise<RestoreSource>,
   ): Promise<ItemResult> {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
+    let source: RestoreSource | undefined;
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'restore',
-      objectIds: { knowledge_item: item.id },
+      objectIds: { knowledge_item: itemId },
       commit: async (operation) => {
+        const { item, previous, body } = (source = await load());
         const author = await this.authorOf(actor);
         const now = this.clock.now();
         await this.assertRepositoryIsOurs(actor.workspaceId);
@@ -1393,8 +1423,11 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: item.id } };
       },
       record: async (tx, operation) => {
-        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the restore was never planned');
+        if (!planned || !source) {
+          throw new DomainError('INTERNAL_ERROR', 'the restore was never planned');
+        }
         const p = planned;
+        const { item, deleteRevision, previous } = source;
         const revision = this.revisionOf(
           actor,
           item.id,
@@ -1769,6 +1802,16 @@ export class KnowledgeService {
       email: `${actor.actorId}@knoverge.local`,
     };
   }
+}
+
+/** What a restore needs, read under the lock rather than before it. */
+interface RestoreSource {
+  item: KnowledgeItemRecord;
+  /** The revision that removed the file; the new one follows it. */
+  deleteRevision: RevisionRecord;
+  /** The revision before that, whose commit still holds the text. */
+  previous: RevisionRecord;
+  body: string;
 }
 
 interface PlannedUpdate {

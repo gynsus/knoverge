@@ -151,7 +151,7 @@ Use a controlled write workflow.
 
 ### Commit flow
 
-1. validate domain command;
+1. validate the shape of the command, as far as that needs no state;
 2. acquire workspace write lock;
 3. write `Operation` row in PostgreSQL with state `pending`;
 4. render canonical Markdown (and `taxonomy.yaml` if the taxonomy changed);
@@ -160,6 +160,17 @@ Use a controlled write workflow.
 7. in one PostgreSQL transaction: write revision metadata, update item, append event, mark `Operation` as `db_committed`;
 8. enqueue projection jobs (search index, embeddings, stale summaries);
 9. release lock.
+
+Everything that depends on what the workspace currently holds is read and
+checked **inside** the lock, in step 4 — which item the caller is changing, the
+revision it read, whether a slug is taken, whether a category is still there.
+Read before the lock, the answer is a snapshot two writers can both pass: the
+second then renders its file from a revision that is no longer current, claims a
+revision number that is already taken, and lands a commit PostgreSQL refuses.
+That leaves the workspace holding an unfinished operation and refusing every
+write, which is the expensive way to discover that rule 6 was checked against
+stale state. The conflict belongs in step 4, where it costs the caller a
+`REVISION_CONFLICT` and the workspace nothing.
 
 If the process crashes between Git and PostgreSQL steps, recovery logic must detect incomplete operations.
 
