@@ -1,6 +1,6 @@
 import type { ProposalDetail, ProposalSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 
@@ -9,7 +9,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { ACTORS_KEY } from '@/lib/query-keys';
 import { adminApi } from '../api/admin.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 
@@ -168,7 +176,7 @@ function ProposalReview({
   });
 
   return (
-    <Card role="region" aria-labelledby="review-detail-title" className="grid gap-3 p-4 sm:p-6">
+    <div role="region" aria-labelledby="review-detail-title" className="grid gap-3 p-4 sm:p-6">
       <CardTitle id="review-detail-title" tabIndex={-1} ref={heading}>
         {proposal.title ?? t(`review.types.${proposal.proposal_type}`)}
       </CardTitle>
@@ -245,7 +253,7 @@ function ProposalReview({
           {t('common.close')}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -259,9 +267,18 @@ function ProposalReview({
 export function ReviewPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
   const lastTrigger = useRef<HTMLElement | null>(null);
+  // In the address, like every other object this interface opens, so a
+  // reviewer can send somebody the proposal rather than the queue it is in.
+  const selectedId = params.get('proposal');
+
+  const select = (id: string | null) => {
+    const next = new URLSearchParams(params);
+    if (id === null) next.delete('proposal');
+    else next.set('proposal', id);
+    setParams(next, { replace: true });
+  };
 
   // A run's proposals were judged by one agent against one body of material,
   // so reading them together is how that judgement gets checked. The
@@ -277,9 +294,19 @@ export function ReviewPage() {
     queryFn: ({ signal }) => adminApi.proposals.get(selectedId as string, signal),
     enabled: selectedId !== null,
   });
+  // Who proposed each one. A queue of ninety from one import is unreadable
+  // without it, and the ids the proposals carry are not names.
+  const actors = useQuery({
+    queryKey: ACTORS_KEY,
+    queryFn: ({ signal }) => adminApi.workspace.actors(signal),
+  });
+  const nameOf = useMemo(
+    () => new Map((actors.data?.actors ?? []).map((a) => [a.id as string, a.display_name])),
+    [actors.data],
+  );
 
   const resolved = async () => {
-    setSelectedId(null);
+    select(null);
     await client.invalidateQueries({ queryKey: ['proposals'] });
     await client.invalidateQueries({ queryKey: ['knowledge'] });
     lastTrigger.current?.focus();
@@ -315,12 +342,17 @@ export function ReviewPage() {
                 className="h-auto p-0 text-left"
                 onClick={(event) => {
                   lastTrigger.current = event.currentTarget;
-                  setSelectedId(entry.id);
+                  select(entry.id);
                 }}
               >
                 {entry.title ?? t(`review.types.${entry.proposal_type}`)}
               </Button>
               <Badge>{t(`review.types.${entry.proposal_type}`)}</Badge>
+              <small className="text-muted-foreground">
+                {t('review.proposed_by', {
+                  name: nameOf.get(entry.proposed_by_actor_id) ?? entry.proposed_by_actor_id,
+                })}
+              </small>
               {entry.reason && <small className="text-muted-foreground">{entry.reason}</small>}
               <small className="text-muted-foreground">
                 {new Date(entry.created_at).toLocaleString()}
@@ -330,18 +362,33 @@ export function ReviewPage() {
         </ul>
       </Card>
 
-      <ErrorNotice error={selected.error} />
-      {selected.data && (
-        <ProposalReview
-          key={selected.data.proposal.id}
-          proposal={selected.data.proposal}
-          onResolved={resolved}
-          onClose={() => {
-            setSelectedId(null);
-            lastTrigger.current?.focus();
-          }}
-        />
-      )}
+      <Sheet
+        open={selectedId !== null}
+        onOpenChange={(open) => {
+          if (open) return;
+          select(null);
+          lastTrigger.current?.focus();
+        }}
+      >
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-2xl">
+          <SheetHeader>
+            <SheetTitle>{selected.data?.proposal.title ?? t('review.title')}</SheetTitle>
+            <SheetDescription className="sr-only">{t('review.intro')}</SheetDescription>
+          </SheetHeader>
+          <ErrorNotice error={selected.error} />
+          {selected.data && (
+            <ProposalReview
+              key={selected.data.proposal.id}
+              proposal={selected.data.proposal}
+              onResolved={resolved}
+              onClose={() => {
+                select(null);
+                lastTrigger.current?.focus();
+              }}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

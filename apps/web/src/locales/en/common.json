@@ -243,6 +243,7 @@
     "no_content": "This proposal carries no text of its own.",
     "note": "Note",
     "note_hint": "Why you decided as you did. Kept with the proposal.",
+    "proposed_by": "Proposed by {{name}}",
     "reason": "Why it was proposed",
     "reject": "Reject",
     "show_all": "Show everything pending",
