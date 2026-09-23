@@ -7,7 +7,6 @@ import { HomePage } from './pages/HomePage.tsx';
 import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
-import { NewWorkspacePage } from './pages/NewWorkspacePage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
@@ -33,13 +32,20 @@ export function App() {
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/workspaces" element={<WorkspacesPage />} />
-          <Route path="/workspaces/new" element={<NewWorkspacePage />} />
-          <Route path="/workspaces/settings" element={<WorkspacePage />} />
+          <Route path="/workspaces/members" element={<WorkspacePage />} />
+          {/* Creating and editing a workspace are drawers on the list now, so
+              the addresses that used to be pages carry the same request as a
+              query the list reads. A bookmark still lands where it meant to. */}
+          <Route path="/workspaces/new" element={<Navigate to="/workspaces?new" replace />} />
+          <Route
+            path="/workspaces/settings"
+            element={<Navigate to="/workspaces/members" replace />}
+          />
           {/* The section was singular until it listed more than one thing.
               Somebody's open tab or bookmark should not become a blank page
               over a rename. */}
           <Route path="/workspace" element={<Navigate to="/workspaces" replace />} />
-          <Route path="/workspace/new" element={<Navigate to="/workspaces/new" replace />} />
+          <Route path="/workspace/new" element={<Navigate to="/workspaces?new" replace />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

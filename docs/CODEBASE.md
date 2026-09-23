@@ -91,6 +91,9 @@ Shared fixtures live next to the tests that use them until two packages need the
 
 Schema changes are made in `packages/db/src/schema`, then `pnpm --filter @knoverge/db migrations:generate --name <topic>`. Database-level guarantees that Drizzle does not model (triggers, functions, extensions) are appended to the generated SQL after a `--> statement-breakpoint` line and reviewed like code. Policy: `WORKFLOW.md` section 9.
 
+The rules a new screen follows — what belongs in a drawer, why a dialog is
+never hidden with a class, where permissions come from — are in `WEB_UI.md`.
+
 ## Choosing a workspace in the browser
 
 A person can belong to several workspaces, and the server refuses a request

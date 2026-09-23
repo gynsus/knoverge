@@ -418,27 +418,28 @@ describe('workspace page', () => {
     expect(() => MembersResponse.parse({ members: MEMBERS })).not.toThrow();
   });
 
-  it('shows settings and members, and updates the workspace', async () => {
-    const calls = mockApi({
+  it('lists the members of the workspace somebody is in', async () => {
+    mockApi({
       ...SIGNED_IN,
       'GET /v1/workspace.get': () => json({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
       'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
-      'POST /v1/admin/workspace.update': () => json({ ok: true }),
+    });
+    renderApp('/workspaces/members');
+    expect(await screen.findByText('owner@example.com')).toBeInTheDocument();
+    // The workspace's own settings are not here. They are edited in the
+    // drawer on the list, where every workspace is, rather than on a page
+    // that could only ever change the one somebody happened to be in.
+    expect(screen.queryByLabelText('Default content language')).not.toBeInTheDocument();
+  });
+
+  it('sends somebody to the members page from the address that used to be settings', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/workspace.get': () => json({ workspace: WORKSPACE, permissions: OWNER_PERMISSIONS }),
+      'GET /v1/admin/members.list': () => json({ members: MEMBERS }),
     });
     renderApp('/workspaces/settings');
-    expect(await screen.findByDisplayValue('Personal')).toBeInTheDocument();
-    expect(screen.getByText('owner@example.com')).toBeInTheDocument();
-
-    const user = userEvent.setup();
-    await user.clear(screen.getByLabelText('Name'));
-    await user.type(screen.getByLabelText('Name'), 'Personal Knowledge');
-    await user.selectOptions(screen.getByLabelText('Default content language'), 'ru');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('Workspace updated');
-    expect(calls.find((c) => c.url === '/v1/admin/workspace.update')?.body).toMatchObject({
-      name: 'Personal Knowledge',
-      default_language: 'ru',
-    });
+    expect(await screen.findByRole('heading', { level: 2, name: 'Members' })).toBeInTheDocument();
   });
 
   it('adds a member with an initial password', async () => {
@@ -509,10 +510,14 @@ describe('workspace page', () => {
       'GET /v1/workspace.get': () =>
         json({ workspace: { ...WORKSPACE, role: 'reviewer' }, permissions: REVIEWER_PERMISSIONS }),
     });
-    renderApp('/workspaces/settings');
-    expect(await screen.findByDisplayValue('Personal')).toBeDisabled();
-    expect(screen.queryByText('Members')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    renderApp('/workspaces/members');
+    // It says why rather than showing an empty page: the server refuses
+    // members.list without workspace.admin, so there is nothing to show and
+    // somebody is owed a reason.
+    expect(
+      await screen.findByText('Membership is managed by the workspace owner.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add member' })).not.toBeInTheDocument();
   });
 });
 
@@ -955,8 +960,8 @@ describe('a form leaves room around its button', () => {
     // The forms written by hand had a gap and the ones migrated mechanically
     // did not, so a button sat against the field above it.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/members.list': () => json({ members: [] }) });
-    renderApp('/workspaces/settings');
-    const submit = await screen.findByRole('button', { name: 'Save' });
+    renderApp('/workspaces/members');
+    const submit = await screen.findByRole('button', { name: 'Add member' });
     const form = submit.closest('form');
     expect(form?.className).toContain('gap-4');
     // And it is not stretched across the card by the grid it sits in.

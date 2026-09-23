@@ -1,9 +1,9 @@
 import type { MembershipRole, WorkspaceListEntry } from '@knoverge/contracts';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Clock3, Database, MoreHorizontal, Plus, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,9 +17,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { Toast } from '@/components/ui/toast';
 import { relativeTime } from '@/lib/relative-time';
+import { draftOf, emptyWorkspaceDraft, type WorkspaceDraft } from '@/lib/workspace-draft';
 import { adminApi } from '../api/admin.ts';
-import { useWorkspaceContext } from '../auth/use-workspace.ts';
+import { useAuth } from '../auth/use-auth.ts';
+import { WORKSPACE_KEY, useWorkspaceContext } from '../auth/use-workspace.ts';
+import { WorkspaceDetails } from '../components/workspaces/WorkspaceDetails.tsx';
+import { WorkspaceSheet } from '../components/workspaces/WorkspaceSheet.tsx';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 
 const WORKSPACES_KEY = ['workspaces-list'] as const;
@@ -43,6 +55,15 @@ type Sort = 'activity' | 'name' | 'items';
 export function WorkspacesPage() {
   const { t, i18n } = useTranslation();
   const workspaces = useWorkspaceContext();
+  const client = useQueryClient();
+  const navigate = useNavigate();
+  const auth = useAuth();
+  // The two forms are in the address, so the switcher can link straight to
+  // them and a reload does not lose which one was open. Which workspace is
+  // being looked at is not: it is a glance, not a place.
+  const [params, setParams] = useSearchParams();
+  const [inspecting, setInspecting] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ message: string; tone: 'status' | 'error' } | null>(null);
   const [query, setQuery] = useState('');
   const [role, setRole] = useState<'all' | MembershipRole>('all');
   const [sort, setSort] = useState<Sort>('activity');
@@ -51,10 +72,69 @@ export function WorkspacesPage() {
     queryKey: WORKSPACES_KEY,
     queryFn: ({ signal }) => adminApi.workspace.list(signal),
   });
+  const all = useMemo(() => list.data?.workspaces ?? [], [list.data]);
+
+  /**
+   * Moving into a workspace is what makes every later request name it.
+   * Navigating without it would show one workspace's rows under another's
+   * name, and post ids from one with the other's header.
+   */
+  const go = (id: string, to: string) => {
+    if (id !== workspaces.selectedId) workspaces.select(id);
+    void navigate(to);
+  };
+
+  const inspected = all.find((w) => w.id === inspecting) ?? null;
+  const editingId = params.get('edit');
+  const editing = all.find((w) => w.id === editingId) ?? null;
+  const creating = params.has('new');
+
+  const closeForm = () => {
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    next.delete('edit');
+    setParams(next, { replace: true });
+  };
+
+  const create = useMutation({
+    mutationFn: (draft: WorkspaceDraft) =>
+      adminApi.workspace.create({
+        slug: draft.slug,
+        name: draft.name,
+        default_language: draft.language,
+        ...(draft.description ? { description: draft.description } : {}),
+      }),
+    onSuccess: async (result) => {
+      // The session has to see the membership before the choice can name it.
+      await auth.refresh();
+      workspaces.select(result.workspace.id);
+      closeForm();
+      setNotice({
+        message: t('workspaces.created', { name: result.workspace.name }),
+        tone: 'status',
+      });
+      void navigate('/', { replace: true });
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: (draft: WorkspaceDraft) =>
+      adminApi.workspace.update({
+        name: draft.name,
+        description: draft.description || null,
+        default_language: draft.language,
+      }),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: WORKSPACES_KEY });
+      await client.invalidateQueries({ queryKey: WORKSPACE_KEY });
+      closeForm();
+      setNotice({ message: t('workspaces.saved'), tone: 'status' });
+    },
+  });
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const matches = (list.data?.workspaces ?? []).filter(
+    const matches = all.filter(
       (w) =>
         (needle === '' ||
           w.name.toLowerCase().includes(needle) ||
@@ -69,7 +149,7 @@ export function WorkspacesPage() {
       if (sort === 'items') return b.item_count - a.item_count;
       return byActivity(b) - byActivity(a);
     });
-  }, [list.data, query, role, sort, i18n.language]);
+  }, [all, query, role, sort, i18n.language]);
 
   const filtered = query !== '' || role !== 'all';
   const reset = () => {
@@ -89,7 +169,7 @@ export function WorkspacesPage() {
         </div>
         {canCreate && (
           <Button asChild className="shrink-0">
-            <Link to="/workspaces/new">
+            <Link to="/workspaces?new">
               <Plus className="size-4" aria-hidden="true" />
               {t('workspace.create')}
             </Link>
@@ -177,7 +257,8 @@ export function WorkspacesPage() {
                   <WorkspaceCard
                     workspace={workspace}
                     current={workspace.id === workspaces.selectedId}
-                    onSelect={workspaces.select}
+                    onInspect={() => setInspecting(workspace.id)}
+                    onGo={(to) => go(workspace.id, to)}
                   />
                 </li>
               ))}
@@ -187,6 +268,52 @@ export function WorkspacesPage() {
           )}
         </>
       )}
+
+      <Sheet open={inspected !== null} onOpenChange={(open) => !open && setInspecting(null)}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{inspected?.name ?? t('workspaces.title')}</SheetTitle>
+            <SheetDescription className="sr-only">{t('workspaces.intro')}</SheetDescription>
+          </SheetHeader>
+          {inspected && (
+            <WorkspaceDetails
+              workspace={inspected}
+              current={inspected.id === workspaces.selectedId}
+              // Settings are the workspace's own, so they are asked for in
+              // the workspace: editing another one moves into it first.
+              canAdminister={
+                inspected.id === workspaces.selectedId
+                  ? workspaces.can('workspace.admin')
+                  : inspected.role === 'owner'
+              }
+              onOpen={() => go(inspected.id, '/')}
+              onEdit={() => {
+                if (inspected.id !== workspaces.selectedId) workspaces.select(inspected.id);
+                setInspecting(null);
+                setParams({ edit: inspected.id }, { replace: true });
+              }}
+              onMembers={() => go(inspected.id, '/workspaces/members')}
+              onNotice={(message, tone) => setNotice({ message, tone })}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
+
+      <WorkspaceSheet
+        open={creating || editing !== null}
+        onOpenChange={(open) => !open && closeForm()}
+        editing={editing}
+        initial={editing ? draftOf(editing) : emptyWorkspaceDraft}
+        onSubmit={(draft) => (editing ? save.mutate(draft) : create.mutate(draft))}
+        busy={create.isPending || save.isPending}
+        error={editing ? save.error : create.error}
+      />
+
+      <Toast
+        message={notice?.message ?? null}
+        tone={notice?.tone ?? 'status'}
+        onDismiss={() => setNotice(null)}
+      />
     </div>
   );
 }
@@ -194,20 +321,17 @@ export function WorkspacesPage() {
 function WorkspaceCard({
   workspace,
   current,
-  onSelect,
+  onInspect,
+  onGo,
 }: {
   workspace: WorkspaceListEntry;
   current: boolean;
-  onSelect: (id: string) => void;
+  /** Opens the panel that says what this workspace is. */
+  onInspect: () => void;
+  /** Moves into the workspace and goes somewhere in it. */
+  onGo: (to: string) => void;
 }) {
   const { t, i18n } = useTranslation();
-  const navigate = useNavigate();
-
-  /** Moving into a workspace is what makes every later request name it. */
-  const go = (to: string) => {
-    if (!current) onSelect(workspace.id);
-    void navigate(to);
-  };
 
   return (
     <Card className="group relative grid grid-rows-[auto_1fr] transition-colors focus-within:ring-2 focus-within:ring-ring hover:border-foreground/20">
@@ -218,9 +342,14 @@ function WorkspaceCard({
               {/* One real link, stretched over the card. A div with onClick
                   looks the same to a pointer and does not exist to a keyboard
                   or a screen reader. */}
+              {/* Opens the panel rather than the workspace. Somebody
+                  scanning a list is deciding which one they want, and being
+                  moved into one because they looked at it is a surprise; the
+                  menu and the panel both offer the move. */}
               <button
                 type="button"
-                onClick={() => go('/')}
+                onClick={onInspect}
+                aria-label={t('workspaces.inspect', { name: workspace.name })}
                 className="text-left after:absolute after:inset-0 after:content-[''] focus-visible:outline-none"
               >
                 {workspace.name}
@@ -243,10 +372,11 @@ function WorkspaceCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => go('/')}>{t('workspaces.open')}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onGo('/')}>{t('workspaces.open')}</DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => go('/workspaces/settings')}>
-                {t('workspaces.settings')}
+              <DropdownMenuItem onSelect={onInspect}>{t('workspaces.details')}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onGo('/workspaces/members')}>
+                {t('workspace.members')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -316,7 +446,7 @@ function EmptyState({
       ) : (
         canCreate && (
           <Button asChild>
-            <Link to="/workspaces/new">
+            <Link to="/workspaces?new">
               <Plus className="size-4" aria-hidden="true" />
               {t('workspace.create')}
             </Link>
