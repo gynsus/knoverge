@@ -284,6 +284,19 @@ reporting the frozen actions, which is what the interface builds its controls
 from. Asking for the state the workspace is already in changes nothing and
 records nothing. See ADR 0018.
 
+### Browsing the knowledge
+
+`GET /v1/knowledge.list` pages in creation order and narrows on the server:
+`category_path` (the whole branch, resolved to ids at the boundary per rule
+13), repeatable `types` and `review_states`, and `status`. A path that names no
+category is `NOT_FOUND` rather than an empty page — silence and "there is
+nothing there" are different answers.
+
+There is deliberately no sort parameter. The cursor is the item id, which sorts
+in creation order; ordering by anything else needs a different cursor, and a
+page taken in one order and then sorted in another answers with the wrong
+items. Ranking is what `knowledge_search` is for.
+
 ## 7. Web-only read endpoints
 
 None so far. The web interface reads the same routes agents do. If it ever needs a list view that no agent wants, it will live under `/v1/ui/*` and will not be part of the contract stability promise.

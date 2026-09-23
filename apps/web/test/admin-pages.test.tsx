@@ -1117,6 +1117,86 @@ describe('knowledge page', () => {
       }),
   };
 
+  it('shows what a reader needs and not the file path', async () => {
+    // The path was the widest thing in every row and the least useful: at
+    // seventy items it was most of what the eye had to skip past.
+    mockApi(ROUTES);
+    renderApp('/knowledge');
+
+    const title = await screen.findByRole('button', { name: ITEM.title });
+    expect(screen.queryByText(ITEM.markdown_path)).toBeNull();
+    // What replaced it: where it sits, whether it was checked, whether it
+    // rests on anything, and when it last moved.
+    const row = within(title.closest('li') as HTMLElement);
+    expect(row.getByText('architecture')).toBeInTheDocument();
+    expect(row.getByText('Reviewed by a person')).toBeInTheDocument();
+    expect(row.getByText('No sources')).toBeInTheDocument();
+  });
+
+  it('narrows on the server, from an address somebody can be sent', async () => {
+    const calls = mockApi(ROUTES);
+    renderApp('/knowledge?category=architecture&type=decision&state=unreviewed');
+
+    // Narrowing in the browser would filter the page that happens to be
+    // loaded, which answers a different question than the one asked.
+    await waitFor(() => expect(calls.some((c) => c.url.includes('category_path'))).toBe(true));
+    const url = calls.find((c) => c.url.includes('category_path'))!.url;
+    expect(url).toContain('category_path=architecture');
+    expect(url).toContain('types=decision');
+    expect(url).toContain('review_states=unreviewed');
+  });
+
+  it('asks search when there is a query, and browse when there is not', async () => {
+    const calls = mockApi({
+      ...ROUTES,
+      'POST /v1/knowledge_search': () =>
+        json({
+          results: [
+            {
+              item_id: ITEM.id,
+              title: ITEM.title,
+              type: ITEM.type,
+              status: 'active',
+              language: 'en',
+              review_state: ITEM.review_state,
+              evidence_state: ITEM.evidence_state,
+              disputed: false,
+              category_paths: ITEM.categories,
+              revision_id: ITEM.current_revision_id,
+              content_hash: DETAIL.content_hash,
+              updated_at: ITEM.updated_at,
+              score: 1,
+              score_components: { title: 1, lexical: 1 },
+              snippet: 'Passwordless login',
+            },
+          ],
+        }),
+    });
+    renderApp('/knowledge?q=passwordless');
+
+    await waitFor(() => expect(calls.some((c) => c.url === '/v1/knowledge_search')).toBe(true));
+    expect(calls.find((c) => c.url === '/v1/knowledge_search')?.body).toMatchObject({
+      query: 'passwordless',
+    });
+    // A ranked answer replaces the browse list rather than being merged into
+    // it: the two are ordered by different things.
+    expect(calls.some((c) => c.url.startsWith('/v1/knowledge.list'))).toBe(false);
+    expect(await screen.findByRole('button', { name: ITEM.title })).toBeInTheDocument();
+  });
+
+  it('says nothing matches rather than showing an empty list', async () => {
+    mockApi({
+      ...ROUTES,
+      'GET /v1/knowledge.list?category_path=architecture': () =>
+        json({ items: [], next_cursor: null }),
+    });
+    renderApp('/knowledge?category=architecture');
+    expect(await screen.findByText('Nothing matches')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getAllByRole('button', { name: 'Clear filters' })[0]!);
+    expect(await screen.findByRole('button', { name: ITEM.title })).toBeInTheDocument();
+  });
+
   it('opens an item and sends the revision it was based on', async () => {
     const calls = mockApi({
       ...ROUTES,

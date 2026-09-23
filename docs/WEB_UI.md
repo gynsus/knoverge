@@ -45,6 +45,16 @@ glance. A proposal under review is not: it is work, somebody may have to be
 sent it, and it opens from `?proposal=<id>`. When in doubt, ask whether you
 would ever paste the link.
 
+## 2a. A list that outgrows one screen narrows on the server
+
+A filter applied in the browser filters the page that happens to be loaded,
+which answers a different question than the one asked — and answers it
+differently depending on how far somebody scrolled. Narrowing belongs where the
+paging does.
+
+The filters go in the address for the same reason drawers do: "the unreviewed
+decisions in architecture" is a place, and somebody may need to be sent it.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

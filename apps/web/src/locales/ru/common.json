@@ -93,18 +93,36 @@
   "knowledge": {
     "add": "Добавить запись",
     "add_intro": "Один элемент — одно утверждение. Целый файл заметок это документ, а не факт.",
+    "all_categories": "Все категории",
+    "all_states": "Любое состояние",
+    "all_types": "Все типы",
     "body": "Текст",
     "body_hint": "Markdown. Это и есть знание.",
     "categories": "Категории",
     "categories_hint": "Пути через запятую. Первый определяет, где лежит файл.",
     "confirm_delete": "Убрать из указателя? История сохранится.",
+    "count_few": "{{count}} записи",
+    "count_many": "{{count}} записей",
+    "count_one": "{{count}} запись",
+    "count_other": "{{count}} записи",
     "delete": "Удалить",
+    "disputed": "Спорное",
     "empty": "Пока ничего нет.",
+    "empty_filtered": "Ничего не найдено",
+    "empty_filtered_hint": "Измените запрос или сбросьте фильтры.",
+    "empty_hint": "Добавьте первую запись или подключите агента, который сможет их предлагать.",
     "evidence": {
       "none": "Без источников",
       "source_backed": "Есть источник",
       "corroborated": "Подтверждено"
     },
+    "filter_category": "Фильтр по категории",
+    "filter_state": "Фильтр по состоянию",
+    "filter_type": "Фильтр по типу",
+    "found_few": "{{count}} совпадения",
+    "found_many": "{{count}} совпадений",
+    "found_one": "{{count}} совпадение",
+    "found_other": "{{count}} совпадения",
     "history": "История",
     "intro": "Что знает это рабочее пространство. Каждое изменение — ревизия и коммит.",
     "item_title": "Заголовок",
@@ -119,6 +137,7 @@
       "superseded_by": "заменена",
       "import": "импортирована"
     },
+    "reset_filters": "Сбросить фильтры",
     "restore": "Восстановить",
     "review": {
       "unreviewed": "Без проверки",
@@ -127,6 +146,12 @@
     },
     "revision": "ревизия {{number}}",
     "save": "Сохранить",
+    "search": "Поиск по знаниям",
+    "search_clear": "Очистить поиск",
+    "sourced": "Есть источники",
+    "state_agent_reviewed": "Проверено агентом",
+    "state_human_reviewed": "Проверено человеком",
+    "state_unreviewed": "Не проверено",
     "statuses": {
       "draft": "Черновик",
       "active": "Активна",
@@ -150,7 +175,10 @@
       "document": "Документ",
       "insight": "Вывод",
       "summary": "Сводка"
-    }
+    },
+    "uncategorised": "Без категории",
+    "unsourced": "Без источников",
+    "updated_when": "Обновлено {{when}}"
   },
   "language": {
     "label": "Язык",

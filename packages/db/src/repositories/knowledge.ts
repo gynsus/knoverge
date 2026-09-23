@@ -110,6 +110,9 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       const where = [eq(knowledgeItems.workspaceId, workspaceId)];
       if (options.status) where.push(eq(knowledgeItems.status, options.status));
       if (options.types?.length) where.push(inArray(knowledgeItems.type, [...options.types]));
+      if (options.reviewStates?.length) {
+        where.push(inArray(knowledgeItems.reviewState, [...options.reviewStates]));
+      }
       if (options.disputed !== undefined) {
         where.push(eq(knowledgeItems.disputed, options.disputed));
       }
@@ -380,6 +383,19 @@ export function createRevisionRepository(db: Database): RevisionRepository {
         .where(and(eq(knowledgeRevisions.workspaceId, workspaceId), eq(knowledgeRevisions.id, id)))
         .limit(1);
       return rows[0] ? toRevision(rows[0]) : null;
+    },
+    async findManyByIds(workspaceId, ids) {
+      if (ids.length === 0) return [];
+      const rows = await db
+        .select()
+        .from(knowledgeRevisions)
+        .where(
+          and(
+            eq(knowledgeRevisions.workspaceId, workspaceId),
+            inArray(knowledgeRevisions.id, [...ids]),
+          ),
+        );
+      return rows.map(toRevision);
     },
     async listForItem(itemId, limit = 50) {
       const rows = await db

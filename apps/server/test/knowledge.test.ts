@@ -256,6 +256,81 @@ describe('creating a knowledge item', () => {
  * The rule used to be a slug, so a Russian item could not carry Russian tags
  * in a product whose knowledge is explicitly in any language.
  */
+/**
+ * Browsing, as opposed to searching.
+ *
+ * The list is how somebody sees what is there. At seventy items it was a wall
+ * of rows with no way to narrow it, which is the state the seeding trial found
+ * it in; filtering has to happen on the server, because a page is a page and
+ * narrowing only what happens to be loaded answers the wrong question.
+ */
+describe('narrowing the list', () => {
+  beforeAll(async () => {
+    expect((await admin.post('/v1/admin/taxonomy.create', { name: 'Browsing' })).statusCode).toBe(
+      200,
+    );
+    expect(
+      (
+        await admin.post('/v1/admin/taxonomy.create', {
+          name: 'Deeper',
+          parent_path: 'browsing',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const one = await admin.post('/v1/admin/knowledge.create', {
+      title: 'A decision in the branch',
+      body: 'Body.\n',
+      type: 'decision',
+      categories: ['browsing'],
+    });
+    expect(one.statusCode, one.body).toBe(200);
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'A fact further down',
+          body: 'Body.\n',
+          type: 'fact',
+          categories: ['browsing/deeper'],
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  const list = async (query: string) => {
+    const res = await admin.get(`/v1/knowledge.list?${query}`);
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeListResponse.parse(res.json()).items;
+  };
+
+  it('covers the branch when given a category, not just its root', async () => {
+    const items = await list('category_path=browsing&limit=200');
+    const titles = items.map((i) => i.title).sort();
+    expect(titles).toEqual(['A decision in the branch', 'A fact further down']);
+
+    // And the leaf on its own is the leaf.
+    expect((await list('category_path=browsing%2Fdeeper&limit=200')).map((i) => i.title)).toEqual([
+      'A fact further down',
+    ]);
+  });
+
+  it('narrows by type and by review state', async () => {
+    const decisions = await list('category_path=browsing&types=decision&limit=200');
+    expect(decisions.map((i) => i.title)).toEqual(['A decision in the branch']);
+
+    // A person wrote both, so both are reviewed; nothing is unreviewed here.
+    expect(await list('category_path=browsing&review_states=unreviewed&limit=200')).toEqual([]);
+    expect(
+      (await list('category_path=browsing&review_states=human_reviewed&limit=200')).length,
+    ).toBe(2);
+  });
+
+  it('says so when the category does not exist, rather than answering empty', async () => {
+    const res = await admin.get('/v1/knowledge.list?category_path=no-such-branch');
+    expect(res.statusCode).toBe(404);
+    expect(res.json().code).toBe('NOT_FOUND');
+  });
+});
+
 describe('tags in any language', () => {
   it('keeps what was written, and treats two spellings as one tag', async () => {
     const first = await admin.post('/v1/admin/knowledge.create', {

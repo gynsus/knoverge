@@ -1267,12 +1267,15 @@ export class KnowledgeService {
   async list(actor: ActorContext, options: ListItemsOptions = {}): Promise<ItemSummary[]> {
     const items = await this.o.items.list(actor.workspaceId, options);
     const { categories, tags } = await this.decorate(actor.workspaceId, items);
+    // One query for the page's titles, not one per item: a list of fifty was
+    // fifty round trips to draw one screen.
     const revisionIds = items.map((i) => i.currentRevisionId).filter((id) => id !== null);
-    const titles = new Map<string, string>();
-    for (const id of revisionIds) {
-      const revision = await this.o.revisions.findById(actor.workspaceId, id);
-      if (revision) titles.set(revision.id, revision.title);
-    }
+    const titles = new Map<string, string>(
+      (await this.o.revisions.findManyByIds(actor.workspaceId, revisionIds)).map((r) => [
+        r.id,
+        r.title,
+      ]),
+    );
     return items.map((item) => ({
       item,
       title: item.currentRevisionId ? (titles.get(item.currentRevisionId) ?? '') : '',
