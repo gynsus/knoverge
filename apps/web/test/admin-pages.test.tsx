@@ -1222,6 +1222,36 @@ const ITEM = {
 };
 
 describe('review inbox', () => {
+  it('opens the proposal in a drawer, from an address somebody can be sent', async () => {
+    // Rule 1 of the interface contract: a list is a place, an object opens
+    // over it. This screen used to render the proposal as a card below the
+    // queue, with the selection in local state, so a reviewer could not send
+    // anybody the proposal — only the queue it was somewhere in.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({ proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } } }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+    });
+    renderApp(`/review?proposal=${PROPOSAL.id}`);
+
+    // Arrived open, because the address said so.
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByRole('region', { name: 'Release cadence' })).toBeVisible();
+  });
+
+  it('says who proposed each one, by name rather than by id', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+    });
+    renderApp('/review');
+    // A queue of ninety from one import is unreadable without it.
+    expect(await screen.findByText('Proposed by Owner')).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(PROPOSAL.proposed_by_actor_id))).toBeNull();
+  });
+
   it('shows what a proposal would change, and approves it', async () => {
     const calls = mockApi({
       ...SIGNED_IN,

@@ -39,6 +39,12 @@ Which object is merely being *looked at* is local state. It is a glance, not a
 place, and putting it in the address means a back button that walks through
 every card somebody opened.
 
+The line between the two is whether somebody else may need to arrive at the
+same thing. Looking at a workspace card to decide which workspace you want is a
+glance. A proposal under review is not: it is work, somebody may have to be
+sent it, and it opens from `?proposal=<id>`. When in doubt, ask whether you
+would ever paste the link.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a
