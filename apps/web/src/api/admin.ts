@@ -136,11 +136,20 @@ export const adminApi = {
       apiPost<KnowledgeResponse>('/v1/admin/knowledge.restore', { item_id: itemId }),
   },
   proposals: {
-    list: (status: string | undefined, signal?: AbortSignal) =>
-      apiGet<ProposalsResponse>(
-        status ? `/v1/proposal.list?status=${encodeURIComponent(status)}` : '/v1/proposal.list',
+    list: (
+      status: string | undefined,
+      options: { syncSessionId?: string } = {},
+      signal?: AbortSignal,
+    ) => {
+      const query = new URLSearchParams();
+      if (status) query.set('status', status);
+      if (options.syncSessionId) query.set('sync_session_id', options.syncSessionId);
+      const search = query.toString();
+      return apiGet<ProposalsResponse>(
+        search ? `/v1/proposal.list?${search}` : '/v1/proposal.list',
         signal,
-      ),
+      );
+    },
     get: (proposalId: string, signal?: AbortSignal) =>
       apiGet<ProposalResponse>(
         `/v1/proposal.get?proposal_id=${encodeURIComponent(proposalId)}`,

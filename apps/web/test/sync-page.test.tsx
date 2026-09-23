@@ -171,3 +171,35 @@ describe('the reconciliation page', () => {
     expect(await screen.findByText('No reconciliation yet')).toBeInTheDocument();
   });
 });
+
+describe('the link from a run to its proposals', () => {
+  it('asks the server for that run, not for everything pending', async () => {
+    const asked: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url =
+          typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+        asked.push(url);
+        const routes: Record<string, Handler> = {
+          ...SIGNED_IN,
+          'GET /v1/admin/sync.list': () => json(RUNS),
+          [`GET /v1/proposal.list?status=pending&sync_session_id=${RUNS.runs[0]!.sync_session_id}`]:
+            () => json({ proposals: [] }),
+        };
+        const handler = routes[`${init?.method ?? 'GET'} ${url}`];
+        return handler
+          ? handler()
+          : json({ code: 'NOT_FOUND', message: url, retryable: false }, 404);
+      }),
+    );
+
+    // A link that carries a filter the page ignores is a link that lies, so
+    // the address is what the request is built from.
+    renderApp(`/review?sync_session_id=${RUNS.runs[0]!.sync_session_id}`);
+    await screen.findByText('From one reconciliation run');
+    expect(
+      asked.some((url) => url.includes(`sync_session_id=${RUNS.runs[0]!.sync_session_id}`)),
+    ).toBe(true);
+  });
+});

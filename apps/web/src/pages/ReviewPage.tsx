@@ -2,6 +2,7 @@ import type { ProposalDetail, ProposalSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -259,11 +260,17 @@ export function ReviewPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
   const lastTrigger = useRef<HTMLElement | null>(null);
 
+  // A run's proposals were judged by one agent against one body of material,
+  // so reading them together is how that judgement gets checked. The
+  // reconciliation page links straight here with the run in the address.
+  const runId = params.get('sync_session_id');
   const inbox = useQuery({
-    queryKey: INBOX_KEY,
-    queryFn: ({ signal }) => adminApi.proposals.list('pending', signal),
+    queryKey: [...INBOX_KEY, runId ?? 'all'],
+    queryFn: ({ signal }) =>
+      adminApi.proposals.list('pending', runId ? { syncSessionId: runId } : {}, signal),
   });
   const selected = useQuery({
     queryKey: [...INBOX_KEY, selectedId],
@@ -283,6 +290,19 @@ export function ReviewPage() {
       <Card aria-labelledby="review-title" className="grid gap-3 p-4 sm:p-6">
         <CardTitle id="review-title">{t('review.title')}</CardTitle>
         <p>{t('review.intro')}</p>
+        {runId && (
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            <Badge variant="outline">{t('review.from_run')}</Badge>
+            <Button
+              type="button"
+              variant="link"
+              className="h-auto p-0"
+              onClick={() => setParams({}, { replace: true })}
+            >
+              {t('review.show_all')}
+            </Button>
+          </p>
+        )}
         {inbox.isPending && <p role="status">{t('common.loading')}</p>}
         <ErrorNotice error={inbox.error} />
         {inbox.data?.proposals.length === 0 && <p>{t('review.empty')}</p>}
