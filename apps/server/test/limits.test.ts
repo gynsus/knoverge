@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { TERMS_VERSION } from '@knoverge/contracts';
+import { TERMS_VERSION, WorkspaceManifest } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -12,7 +12,13 @@ import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
-import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES } from '../src/plugins/agent-limits.ts';
+import {
+  DEFAULT_AGENT_LIMITS,
+  MAX_TOOL_BODY_BYTES,
+  rateLimitsFor,
+} from '../src/plugins/agent-limits.ts';
+
+const AGENT_LIMITS = rateLimitsFor(DEFAULT_AGENT_LIMITS);
 import { createServices, type Services } from '../src/services.ts';
 
 const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
@@ -110,6 +116,25 @@ afterAll(async () => {
 });
 
 describe('what an agent may ask for', () => {
+  it('tells a client what it may spend, so it need not learn by being refused', async () => {
+    // A bulk import that discovers the budget through 429 has already wasted
+    // the request that taught it, and an operator may have changed these.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/workspace_manifest',
+      headers: { authorization: `Bearer ${token}` },
+      payload: {},
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const manifest = WorkspaceManifest.parse(res.json());
+    expect(manifest.limits).toEqual({
+      reads_per_minute: DEFAULT_AGENT_LIMITS.readsPerMinute,
+      writes_per_minute: DEFAULT_AGENT_LIMITS.writesPerMinute,
+      concurrent_requests: DEFAULT_AGENT_LIMITS.concurrent,
+      max_request_bytes: MAX_TOOL_BODY_BYTES,
+    });
+  });
+
   it('gives a write a smaller budget than a read', () => {
     // The plan asks for separate buckets. A write takes the workspace lock,
     // makes a commit and appends to the ledger; a read does none of those.

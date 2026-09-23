@@ -108,6 +108,9 @@ KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
+KNOVERGE_AGENT_READS_PER_MINUTE   600 by default, per credential
+KNOVERGE_AGENT_WRITES_PER_MINUTE  60 by default, per credential
+KNOVERGE_AGENT_CONCURRENCY        8 by default; requests one credential may have in flight
 NODE_ENV                      development | test | production
 
 Not read yet. The features they configure do not exist, and the configuration
@@ -230,6 +233,24 @@ docker compose exec knoverge knoverge db prune
 ```
 
 Session rows outlive the session by thirty days, so the settings page can still show a person where they were recently signed in.
+
+### Agent budgets
+
+One credential may make 600 reads and 60 writes a minute and hold 8 requests in
+flight. A write takes the workspace lock, makes a Git commit and appends to the
+ledger, which is why it is the smaller number.
+
+Sixty writes a minute is right for an agent recording what it learns and wrong
+for one loading a workspace from somewhere else, so the three are configurable.
+Raise them for the duration of an import and put them back:
+
+```bash
+KNOVERGE_AGENT_WRITES_PER_MINUTE=600
+```
+
+Whatever they are set to, `workspace_manifest` reports them under `limits`, so
+a well-behaved client paces itself instead of discovering the budget by being
+refused. Exceeding one is still answered `RATE_LIMITED`, which is retryable.
 
 ### A workspace that refuses to be written to
 

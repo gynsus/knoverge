@@ -242,5 +242,21 @@ export const WorkspaceManifest = z.object({
     categories: z.number().int().nonnegative(),
     pending_proposals: z.number().int().nonnegative(),
   }),
+  /**
+   * What one credential may spend here, so a client can pace itself.
+   *
+   * A bulk import that learns the budget by being refused has already wasted
+   * the request that taught it, and an operator may have raised or lowered
+   * these. `RATE_LIMITED` remains the answer when they are exceeded; this is
+   * how a well-behaved client avoids asking.
+   */
+  limits: z.object({
+    reads_per_minute: z.number().int().positive(),
+    writes_per_minute: z.number().int().positive(),
+    /** Requests one credential may have in flight at once. */
+    concurrent_requests: z.number().int().positive(),
+    /** The largest body a tool call may carry. */
+    max_request_bytes: z.number().int().positive(),
+  }),
 });
 export type WorkspaceManifest = z.infer<typeof WorkspaceManifest>;

@@ -1,6 +1,13 @@
 import { DomainError } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest, onRequestHookHandler } from 'fastify';
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    /** What one agent credential may spend here; the manifest reports it. */
+    agentBudgets: AgentBudgets;
+  }
+}
+
 /**
  * How many requests one credential may have in flight at once.
  *
@@ -13,7 +20,7 @@ import type { FastifyInstance, FastifyRequest, onRequestHookHandler } from 'fast
  * enough that one misbehaving client cannot take the server down for the
  * others.
  */
-export const MAX_CONCURRENT_PER_CREDENTIAL = 8;
+export const DEFAULT_CONCURRENT_PER_CREDENTIAL = 8;
 
 /** What a tool call may carry. The global body limit is the ceiling above it. */
 export const MAX_TOOL_BODY_BYTES = 512 * 1024;
@@ -26,10 +33,34 @@ export const MAX_TOOL_BODY_BYTES = 512 * 1024;
  * agent making hundreds a minute is either broken or hostile. The plan asks
  * for separate buckets, and these are the two that exist to separate.
  */
-export const AGENT_LIMITS = {
-  read: { max: 600, timeWindow: '1 minute' },
-  write: { max: 60, timeWindow: '1 minute' },
+export const DEFAULT_AGENT_LIMITS = {
+  readsPerMinute: 600,
+  writesPerMinute: 60,
+  concurrent: DEFAULT_CONCURRENT_PER_CREDENTIAL,
 } as const;
+
+/**
+ * The budgets in force, which an operator may raise.
+ *
+ * They were constants until a bulk import met them: sixty writes a minute is
+ * right for an agent recording what it learns and wrong for one loading a
+ * workspace from somewhere else, and an operator who has to edit the source to
+ * tell the two apart does not have a budget, they have a wall. The manifest
+ * reports them, so a client can pace itself rather than discover them by 429.
+ */
+export interface AgentBudgets {
+  readsPerMinute: number;
+  writesPerMinute: number;
+  concurrent: number;
+}
+
+/** The plugin's own shape, per class. */
+export function rateLimitsFor(budgets: AgentBudgets) {
+  return {
+    read: { max: budgets.readsPerMinute, timeWindow: '1 minute' },
+    write: { max: budgets.writesPerMinute, timeWindow: '1 minute' },
+  } as const;
+}
 
 /** In-flight requests, by credential. Per process, which is where they run. */
 const inFlight = new Map<string, number>();
@@ -49,15 +80,15 @@ function keyFor(request: FastifyRequest): string {
  * slow down for it, and the browser routes are not what a runaway client
  * hammers.
  */
-export function limitConcurrency(app: FastifyInstance): onRequestHookHandler {
+export function limitConcurrency(app: FastifyInstance, most: number): onRequestHookHandler {
   return function concurrency(request, reply, done) {
     const key = keyFor(request);
     const running = inFlight.get(key) ?? 0;
-    if (running >= MAX_CONCURRENT_PER_CREDENTIAL) {
+    if (running >= most) {
       done(
         new DomainError(
           'RATE_LIMITED',
-          `too many requests in flight for this credential; at most ${MAX_CONCURRENT_PER_CREDENTIAL} at once`,
+          `too many requests in flight for this credential; at most ${most} at once`,
           { retryable: true },
         ),
       );

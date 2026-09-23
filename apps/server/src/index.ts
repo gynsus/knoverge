@@ -71,6 +71,7 @@ async function main(): Promise<void> {
     version: pkg.version,
     loggerInstance: logger,
     trustProxy: config.trustProxy,
+    agentBudgets: config.agentBudgets,
     ...(config.webDist ? { webDist: config.webDist } : {}),
     services,
     security: { sessionSecret: config.sessionSecret, cookieSecure: config.cookieSecure },

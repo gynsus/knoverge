@@ -2,7 +2,12 @@ import { TOOLS, type ToolName } from '@knoverge/contracts';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
-import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES, limitConcurrency } from '../plugins/agent-limits.ts';
+import {
+  MAX_TOOL_BODY_BYTES,
+  limitConcurrency,
+  rateLimitsFor,
+  type AgentBudgets,
+} from '../plugins/agent-limits.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import { activityDigest, knowledgeBriefing } from './briefing.ts';
 import { knowledgeChanges } from './changes.ts';
@@ -103,7 +108,12 @@ function stillPending(output: unknown): boolean {
  * MCP and another over HTTP. A read that a browser also uses keeps its `GET`
  * alongside this, over the same handler (ADR 0011).
  */
-export function registerToolRoutes(app: FastifyInstance, services: Services): void {
+export function registerToolRoutes(
+  app: FastifyInstance,
+  services: Services,
+  budgets: AgentBudgets,
+): void {
+  const limits = rateLimitsFor(budgets);
   const r = app.withTypeProvider<ZodTypeProvider>();
   for (const tool of TOOLS) {
     const handler = HANDLERS[tool.name];
@@ -113,12 +123,12 @@ export function registerToolRoutes(app: FastifyInstance, services: Services): vo
         // A tool call from a browser session still needs the token; one with a
         // bearer credential does not, because there is no cookie to ride on.
         onRequest: tool.readOnly
-          ? [limitConcurrency(app)]
-          : [csrfUnlessBearer(app), limitConcurrency(app)],
+          ? [limitConcurrency(app, budgets.concurrent)]
+          : [csrfUnlessBearer(app), limitConcurrency(app, budgets.concurrent)],
         // A write takes the workspace lock, makes a commit and appends to the
         // ledger; a read does none of those. One budget for both would be set
         // for the cheap one and leave the expensive one unprotected.
-        config: { rateLimit: tool.readOnly ? AGENT_LIMITS.read : AGENT_LIMITS.write },
+        config: { rateLimit: tool.readOnly ? limits.read : limits.write },
         bodyLimit: MAX_TOOL_BODY_BYTES,
         schema: {
           operationId: tool.name,

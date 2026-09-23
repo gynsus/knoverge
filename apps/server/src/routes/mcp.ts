@@ -7,7 +7,12 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 import { resolveWorkspaceActor } from '../plugins/actor-context.ts';
-import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES, limitConcurrency } from '../plugins/agent-limits.ts';
+import {
+  MAX_TOOL_BODY_BYTES,
+  limitConcurrency,
+  rateLimitsFor,
+  type AgentBudgets,
+} from '../plugins/agent-limits.ts';
 import type { CallMeta } from '../plugins/actor-decorators.ts';
 import type { Services } from '../services.ts';
 import { handlerFor } from './tools.ts';
@@ -113,16 +118,21 @@ function serverFor(services: Services, request: FastifyRequest, version: string)
  * its own credential, so there is nothing for a session to remember, and a
  * deployment can run several containers without sticky routing.
  */
-export function registerMcpRoutes(app: FastifyInstance, services: Services, version: string): void {
+export function registerMcpRoutes(
+  app: FastifyInstance,
+  services: Services,
+  version: string,
+  budgets: AgentBudgets,
+): void {
   app.post(
     '/mcp',
     {
       schema: { hide: true },
-      onRequest: limitConcurrency(app),
+      onRequest: limitConcurrency(app, budgets.concurrent),
       // Every tool arrives through this one route, so it takes the stricter
       // of the two budgets: a client that only reads is inside it, and one
       // that writes at speed is what the budget is for.
-      config: { rateLimit: AGENT_LIMITS.write },
+      config: { rateLimit: rateLimitsFor(budgets).write },
       bodyLimit: MAX_TOOL_BODY_BYTES,
     },
     async (request, reply) => {

@@ -10,6 +10,7 @@ import { DomainError } from '@knoverge/core';
 import type { FastifyRequest } from 'fastify';
 
 import { requireListPermission, resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import { MAX_TOOL_BODY_BYTES } from '../plugins/agent-limits.ts';
 import type { Services } from '../services.ts';
 
 /**
@@ -39,6 +40,7 @@ export async function workspaceManifest(
   request: FastifyRequest,
   _input: WorkspaceManifestInput,
 ): Promise<WorkspaceManifest> {
+  const budgets = request.server.agentBudgets;
   const actor = await resolveWorkspaceActor(services, request);
   const workspaceId = actor.context.workspaceId;
   const workspace = await services.repositories.workspaces.findById(workspaceId);
@@ -95,6 +97,12 @@ export async function workspaceManifest(
       items: await services.repositories.knowledge.countFor(workspaceId),
       categories: categories.length,
       pending_proposals: pending.length,
+    },
+    limits: {
+      reads_per_minute: budgets.readsPerMinute,
+      writes_per_minute: budgets.writesPerMinute,
+      concurrent_requests: budgets.concurrent,
+      max_request_bytes: MAX_TOOL_BODY_BYTES,
     },
   } as WorkspaceManifest;
 }
