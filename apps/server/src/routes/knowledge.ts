@@ -18,6 +18,7 @@ import {
   type RevisionSummary,
 } from '@knoverge/contracts';
 import type {
+  CategoryId,
   KnowledgeGetInput,
   KnowledgeSearchInput,
   KnowledgeSearchResponse,
@@ -290,12 +291,37 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.read');
       const query = request.query;
+      const workspaceId = actor.context.workspaceId;
+      // A path at the boundary, ids underneath (rule 13), and the whole branch:
+      // browsing `architecture` means the architecture, not the few items filed
+      // at its root.
+      let categoryIds: CategoryId[] | undefined;
+      if (query.category_path !== undefined) {
+        const category = await services.repositories.categories.findByPath(
+          workspaceId,
+          query.category_path,
+        );
+        if (!category) {
+          throw new DomainError('NOT_FOUND', `no category at ${query.category_path}`, {
+            objectIds: { path: query.category_path },
+          });
+        }
+        const subtree = await services.repositories.categories.listSubtree(
+          workspaceId,
+          category.path,
+        );
+        categoryIds = subtree.map((c) => c.id);
+      }
       // One more than asked for, so the cursor is null exactly when there is
       // nothing after this page. Answering null while more exists is how a
       // list tells somebody their workspace is smaller than it is.
       const items = await services.knowledge.list(actor.context, {
         limit: query.limit + 1,
         ...(query.cursor ? { after: query.cursor } : {}),
+        ...(categoryIds ? { categoryIds } : {}),
+        ...(query.types.length > 0 ? { types: query.types } : {}),
+        ...(query.review_states.length > 0 ? { reviewStates: query.review_states } : {}),
+        ...(query.status ? { status: query.status } : {}),
       });
       const page = items.slice(0, query.limit);
       return {

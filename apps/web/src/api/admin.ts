@@ -17,6 +17,8 @@ import type {
   IssueCredentialResponse,
   KnowledgeDiffResponse,
   KnowledgeListResponse,
+  KnowledgeSearchInput,
+  KnowledgeSearchResponse,
   KnowledgeResponse,
   MergeCategoryRequest,
   MoveCategoryRequest,
@@ -113,11 +115,31 @@ export const adminApi = {
       apiPost<OkResponse>('/v1/admin/members.remove', { user_id: userId }),
   },
   knowledge: {
-    list: (cursor: string | undefined, signal?: AbortSignal) =>
-      apiGet<KnowledgeListResponse>(
-        cursor ? `/v1/knowledge.list?cursor=${encodeURIComponent(cursor)}` : '/v1/knowledge.list',
-        signal,
-      ),
+    /**
+     * Browsing: a page in creation order, narrowed on the server.
+     *
+     * Narrowing here rather than in the browser because the list is paged, and
+     * filtering what happens to be loaded answers a question nobody asked.
+     */
+    list: (
+      filters: {
+        cursor?: string | undefined;
+        category?: string | undefined;
+        type?: string | undefined;
+        reviewState?: string | undefined;
+      },
+      signal?: AbortSignal,
+    ) => {
+      const query = new URLSearchParams();
+      if (filters.cursor) query.set('cursor', filters.cursor);
+      if (filters.category) query.set('category_path', filters.category);
+      if (filters.type) query.set('types', filters.type);
+      if (filters.reviewState) query.set('review_states', filters.reviewState);
+      const suffix = query.size > 0 ? `?${query.toString()}` : '';
+      return apiGet<KnowledgeListResponse>(`/v1/knowledge.list${suffix}`, signal);
+    },
+    search: (body: KnowledgeSearchInput) =>
+      apiPost<KnowledgeSearchResponse>('/v1/knowledge_search', body),
     get: (itemId: string, signal?: AbortSignal) =>
       apiGet<KnowledgeResponse>(`/v1/knowledge.get?item_id=${encodeURIComponent(itemId)}`, signal),
     revisions: (itemId: string, signal?: AbortSignal) =>

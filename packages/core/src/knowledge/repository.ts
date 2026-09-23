@@ -78,6 +78,8 @@ export interface ListItemsOptions {
   includeDescendants?: boolean;
   status?: ItemStatus;
   types?: readonly ItemType[];
+  /** Only items in these review states, for the queue of what nobody checked. */
+  reviewStates?: readonly ReviewState[];
   /** Only items the workspace marks as contested. */
   disputed?: boolean;
   updatedAfter?: Date;
@@ -217,6 +219,13 @@ export interface DuplicateRow {
 export interface RevisionRepository {
   insert(tx: Tx, revision: RevisionRecord): Promise<void>;
   findById(workspaceId: WorkspaceId, id: RevisionId, tx?: Tx): Promise<RevisionRecord | null>;
+  /**
+   * Several revisions at once, for a page of items.
+   *
+   * A list of fifty items needs fifty titles, and asking for them one at a
+   * time is fifty round trips to draw one screen.
+   */
+  findManyByIds(workspaceId: WorkspaceId, ids: readonly RevisionId[]): Promise<RevisionRecord[]>;
   /** Newest first. */
   listForItem(itemId: KnowledgeItemId, limit?: number): Promise<RevisionRecord[]>;
   /**

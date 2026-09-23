@@ -93,18 +93,32 @@
   "knowledge": {
     "add": "Add an item",
     "add_intro": "One item holds one assertion. A whole notes file is a document, not a fact.",
+    "all_categories": "Every category",
+    "all_states": "Any state",
+    "all_types": "Every type",
     "body": "Text",
     "body_hint": "Markdown. This is the knowledge itself.",
     "categories": "Categories",
     "categories_hint": "Slug paths, comma separated. The first decides where the file lives.",
     "confirm_delete": "Remove this from the index? The history keeps it.",
+    "count_one": "{{count}} item",
+    "count_other": "{{count}} items",
     "delete": "Delete",
+    "disputed": "Disputed",
     "empty": "Nothing here yet.",
+    "empty_filtered": "Nothing matches",
+    "empty_filtered_hint": "Try a different search, or clear the filters.",
+    "empty_hint": "Add the first item, or connect an agent that can propose them.",
     "evidence": {
       "none": "No sources",
       "source_backed": "Source-backed",
       "corroborated": "Corroborated"
     },
+    "filter_category": "Filter by category",
+    "filter_state": "Filter by state",
+    "filter_type": "Filter by type",
+    "found_one": "{{count}} match",
+    "found_other": "{{count}} matches",
     "history": "History",
     "intro": "What this workspace knows. Every change is a revision and a commit.",
     "item_title": "Title",
@@ -119,6 +133,7 @@
       "superseded_by": "superseded by",
       "import": "imported"
     },
+    "reset_filters": "Clear filters",
     "restore": "Restore",
     "review": {
       "unreviewed": "Unreviewed",
@@ -127,6 +142,12 @@
     },
     "revision": "revision {{number}}",
     "save": "Save",
+    "search": "Search knowledge",
+    "search_clear": "Clear the search",
+    "sourced": "Has sources",
+    "state_agent_reviewed": "Reviewed by an agent",
+    "state_human_reviewed": "Reviewed by a person",
+    "state_unreviewed": "Not reviewed",
     "statuses": {
       "draft": "Draft",
       "active": "Active",
@@ -150,7 +171,10 @@
       "document": "Document",
       "insight": "Insight",
       "summary": "Summary"
-    }
+    },
+    "uncategorised": "Uncategorised",
+    "unsourced": "No sources",
+    "updated_when": "Updated {{when}}"
   },
   "language": {
     "label": "Language",

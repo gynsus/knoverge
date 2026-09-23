@@ -494,10 +494,34 @@ export type KnowledgeResponse = z.infer<typeof KnowledgeResponse>;
  * listing at scale is `knowledge_index`; this is what a page of the web
  * interface asks for.
  */
+/**
+ * Browsing the workspace, as opposed to searching it.
+ *
+ * The filters are the ones somebody reaches for when they are looking at what
+ * is there rather than for a particular thing: the branch, the kind, whether
+ * it has been checked. A query is `knowledge_search`, which ranks; this
+ * pages, in creation order, and the cursor depends on that order.
+ *
+ * `category_path` is a path at the boundary and an id underneath (rule 13),
+ * and it covers the branch: browsing `architecture` means the architecture, not
+ * the handful of items filed at its root.
+ */
 export const KnowledgeListQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   /** The id the previous page ended at; ids sort in creation order. */
   cursor: KnowledgeItemId.optional(),
+  category_path: CategoryPath.optional(),
+  /** Repeatable: `?types=fact&types=decision`. */
+  types: z
+    .union([ItemType, z.array(ItemType)])
+    .optional()
+    .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
+  review_states: z
+    .union([ReviewState, z.array(ReviewState)])
+    .optional()
+    .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
+  /** Active by default: what the workspace currently asserts. */
+  status: ItemStatus.optional(),
 });
 export type KnowledgeListQuery = z.infer<typeof KnowledgeListQuery>;
 
