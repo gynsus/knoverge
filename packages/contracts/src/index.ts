@@ -8,6 +8,7 @@ export * from './knowledge.ts';
 export * from './ids.ts';
 export * from './policy.ts';
 export * from './proposals.ts';
+export * from './sync.ts';
 export * from './taxonomy.ts';
 export * from './tools.ts';
 export * from './workspaces.ts';

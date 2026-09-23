@@ -15,6 +15,7 @@ import { createKnowledgeRepository, createRevisionRepository } from './knowledge
 import { createRelationRepository, createSourceRepository } from './sources.ts';
 import { createProposalRepository } from './proposals.ts';
 import { createSearchRepository } from './search.ts';
+import { createSyncRepository } from './sync.ts';
 import { createOperationRepository } from './operations.ts';
 import { createActorRepository, createWorkspaceRepository } from './workspaces.ts';
 
@@ -39,6 +40,7 @@ export function createRepositories(db: Database) {
     relations: createRelationRepository(db),
     proposals: createProposalRepository(db),
     search: createSearchRepository(db),
+    sync: createSyncRepository(db),
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
     memberships: createMembershipRepository(db),

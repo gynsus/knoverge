@@ -126,7 +126,10 @@ POST /v1/<tool_name>                        every MCP tool, generated from the c
                                             knowledge_propose_supersede, proposal_list,
                                             proposal_get, proposal_approve, proposal_reject,
                                             proposal_withdraw, knowledge_changes,
-                                            events_list, activity_digest.
+                                            events_list, activity_digest,
+                                            sync_begin, sync_submit_inventory,
+                                            sync_get_matches, sync_status,
+                                            sync_complete.
                                             202 while a proposal
                                             is pending,
                                             200 once it is decided.
@@ -196,6 +199,29 @@ with one the survivor already has. The commit carries `Knoverge-Category-Into`
 so that a merge interrupted between Git and PostgreSQL is replayed rather than
 leaving the workspace closed to writes: the taxonomy file says a category was
 merged and cannot say into what.
+
+### Reconciliation
+
+The five `sync_*` tools are the session an agent reconciles in
+(`AGENT_ONBOARDING_AND_RECONCILIATION.md`). They are tools like any other, so
+they answer at `POST /v1/sync_begin` and over MCP from one definition.
+
+A session belongs to an **agent and a source**, never to a person: the
+checkpoint it writes says where that agent got to with that body of material,
+and one agent may carry several. `knowledge.read` is the whole permission —
+reconciliation only ever tells a caller about knowledge it could have read
+anyway, and a match outside its scope is not a match it hears about, so the
+protocol cannot be used to enumerate restricted categories.
+
+`sync_submit_inventory` answers synchronously with what is deterministic:
+external identity, then the content hash, then which side is newer where the
+lineage is known. Anything else comes back `provisional`, because telling an
+agent that nothing matches before anything has looked is worse than telling it
+nothing yet. The lexical pass that settles them is a background job.
+
+The checkpoint records where the change feed stood when the session **opened**,
+not when it completed: anything committed while the agent was working is a
+change it has not seen, and resuming after it would skip exactly that.
 
 ### Listing workspaces
 

@@ -171,6 +171,18 @@ export {
   type TaxonomyServiceOptions,
   type UpdateCategoryInput,
 } from './taxonomy/service.ts';
+export type {
+  AgentSyncStateRecord,
+  SyncCandidateRecord,
+  SyncRepository,
+  SyncSessionRecord,
+} from './sync/repository.ts';
+export {
+  SESSION_LIFETIME_MS as SYNC_SESSION_LIFETIME_MS,
+  SyncService,
+  type Decision as SyncDecision,
+  type SyncServiceOptions,
+} from './sync/service.ts';
 export type { Tx, UnitOfWork } from './ports/unit-of-work.ts';
 export type {
   ActorRecord,

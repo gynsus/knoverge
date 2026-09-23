@@ -37,6 +37,17 @@ import {
   WithdrawProposalRequest,
 } from './proposals.ts';
 import {
+  SyncBeginInput,
+  SyncBeginResult,
+  SyncCompleteInput,
+  SyncCompleteResult,
+  SyncGetMatchesInput,
+  SyncMatchesResult,
+  SyncStatusInput,
+  SyncStatusResult,
+  SyncSubmitInventoryInput,
+} from './sync.ts';
+import {
   TaxonomyListInput,
   TaxonomyListResponse,
   TaxonomyProposeInput,
@@ -73,6 +84,11 @@ export const ToolName = z.enum([
   'knowledge_changes',
   'events_list',
   'activity_digest',
+  'sync_begin',
+  'sync_submit_inventory',
+  'sync_get_matches',
+  'sync_status',
+  'sync_complete',
 ]);
 export type ToolName = z.infer<typeof ToolName>;
 
@@ -265,6 +281,46 @@ export const TOOLS: readonly ToolContract[] = [
     input: ActivityDigestInput,
     output: ActivityDigestResponse,
     readOnly: true,
+  },
+  {
+    name: 'sync_begin',
+    description:
+      'Opens a reconciliation pass and tells you where you left off. Call it before recording anything you already hold: it answers with the taxonomy version, the change cursor, and the checkpoint from your last completed pass, so a second run sends only what moved.',
+    input: SyncBeginInput,
+    output: SyncBeginResult,
+    readOnly: false,
+  },
+  {
+    name: 'sync_submit_inventory',
+    description:
+      'Offers a batch of what you believe you know — titles, types, hashes, a short abstract, never the material — and answers what the workspace already holds. Resubmitting the same client_candidate_id updates rather than duplicating.',
+    input: SyncSubmitInventoryInput,
+    output: SyncMatchesResult,
+    readOnly: false,
+  },
+  {
+    name: 'sync_get_matches',
+    description:
+      'The classifications for a session, paged. Poll until pending_count is zero: a provisional answer means the similarity pass has not run, not that nothing matches.',
+    input: SyncGetMatchesInput,
+    output: SyncMatchesResult,
+    readOnly: true,
+  },
+  {
+    name: 'sync_status',
+    description:
+      'Where a session stands: its state, how many candidates fell into each classification, how many are still provisional, and when it expires.',
+    input: SyncStatusInput,
+    output: SyncStatusResult,
+    readOnly: true,
+  },
+  {
+    name: 'sync_complete',
+    description:
+      'Writes the checkpoint for this source, so your next pass starts from the change cursor this one opened at rather than from the beginning.',
+    input: SyncCompleteInput,
+    output: SyncCompleteResult,
+    readOnly: false,
   },
 ];
 
