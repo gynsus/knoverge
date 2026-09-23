@@ -23,11 +23,9 @@ these screens used to do.
 What stays on a page: a list, a table, and anything a person scans rather than
 fills in. Members are a page for that reason, not a drawer.
 
-**Where this stands.** Taxonomy and workspaces are built this way. Agents,
-policy and knowledge are not yet: each is still a list card, a detail card
-below it and a permanent create form, which is the shape both converted screens
-had. The rule is what a new screen follows and what those three are owed, not a
-description of all seven.
+**Where this stands.** Every screen is built this way now: taxonomy,
+workspaces, agents, policy, knowledge and reconciliation. The list keeps the
+page; the thing in it opens over the page.
 
 ## 2. A drawer somebody may want to link to lives in the address
 

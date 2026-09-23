@@ -2,14 +2,23 @@ import type { ItemType, KnowledgeItemDetail } from '@knoverge/contracts';
 import { ItemType as ItemTypes } from '@knoverge/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardTitle } from '@/components/ui/card';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
 import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
@@ -110,14 +119,11 @@ function ItemEditor({
     onSuccess: onChanged,
   });
 
-  // A named region, because the editor and the form for a new item carry the
-  // same field labels: without one, "Text" appears twice on the page with
-  // nothing to tell the two apart.
+  // The drawer is its own region, so the editor and the form for a new item
+  // no longer share a page and "Text" no longer appears twice with nothing to
+  // tell the two apart.
   return (
-    <Card role="region" aria-labelledby="knowledge-detail-title" className="grid gap-3 p-4 sm:p-6">
-      <CardTitle id="knowledge-detail-title" tabIndex={-1} ref={heading}>
-        {item.title}
-      </CardTitle>
+    <div className="grid content-start gap-3 p-4 sm:p-6">
       <p className="flex flex-wrap items-center gap-2 text-sm">
         <Badge>{t(`knowledge.review.${item.review_state}`)}</Badge>
         <Badge>{t(`knowledge.evidence.${item.evidence_state}`)}</Badge>
@@ -214,7 +220,7 @@ function ItemEditor({
           </li>
         ))}
       </ul>
-    </Card>
+    </div>
   );
 }
 
@@ -231,6 +237,7 @@ export function KnowledgePage() {
   const workspaces = useWorkspaceContext();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [fresh, setFresh] = useState<Draft>(emptyDraft);
+  const [params, setParams] = useSearchParams();
   const lastTrigger = useRef<HTMLElement | null>(null);
 
   // Paged, because a knowledge base outgrows one page and a list that stops
@@ -271,6 +278,7 @@ export function KnowledgePage() {
       }),
     onSuccess: async () => {
       setFresh(emptyDraft);
+      closeForm();
       await refresh();
     },
   });
@@ -280,14 +288,36 @@ export function KnowledgePage() {
     create.mutate();
   };
 
+  const creating = params.has('new');
+  const closeForm = () => {
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true });
+  };
+
   return (
-    <>
-      <Card aria-labelledby="knowledge-title" className="grid gap-3 p-4 sm:p-6">
-        <CardTitle id="knowledge-title">{t('knowledge.title')}</CardTitle>
-        <p>{t('knowledge.intro')}</p>
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-1.5">
+          <h2 className="text-2xl font-semibold tracking-tight">{t('knowledge.title')}</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">{t('knowledge.intro')}</p>
+        </div>
+        {mayWrite && (
+          <Button type="button" className="shrink-0" onClick={() => setParams({ new: '' })}>
+            <Plus aria-hidden="true" className="size-4" />
+            {t('knowledge.add')}
+          </Button>
+        )}
+      </div>
+
+      <>
         {items.isPending && <p role="status">{t('common.loading')}</p>}
         <ErrorNotice error={items.error} />
-        {items.data && listed.length === 0 && <p>{t('knowledge.empty')}</p>}
+        {items.data && listed.length === 0 && (
+          <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            {t('knowledge.empty')}
+          </div>
+        )}
         <ul className="grid gap-1">
           {listed.map((entry) => (
             <li key={entry.id} className="flex flex-wrap items-baseline gap-2">
@@ -321,27 +351,43 @@ export function KnowledgePage() {
             {items.isFetchingNextPage ? t('common.working') : t('common.load_more')}
           </Button>
         )}
-      </Card>
+      </>
 
-      <ErrorNotice error={selected.error} />
-      {selected.data && (
-        <ItemEditor
-          key={selected.data.item.id}
-          item={selected.data.item}
-          // Saving a slice would write it over the rest. The browser asks for
-          // the whole body, so this never fires; it is here because the cost
-          // of being wrong about that is somebody's document.
-          truncated={selected.data.truncated}
-          mayWrite={mayWrite}
-          onChanged={refresh}
-          onClose={close}
-        />
-      )}
+      <Sheet open={selectedId !== null} onOpenChange={(open) => !open && close()}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>{selected.data?.item.title ?? t('knowledge.title')}</SheetTitle>
+            <SheetDescription className="sr-only">{t('knowledge.intro')}</SheetDescription>
+          </SheetHeader>
+          <ErrorNotice error={selected.error} />
+          {selected.isPending && selectedId !== null && (
+            <p role="status" className="p-4">
+              {t('common.loading')}
+            </p>
+          )}
+          {selected.data && (
+            <ItemEditor
+              key={selected.data.item.id}
+              item={selected.data.item}
+              // Saving a slice would write it over the rest. The browser asks
+              // for the whole body, so this never fires; it is here because
+              // the cost of being wrong about that is somebody's document.
+              truncated={selected.data.truncated}
+              mayWrite={mayWrite}
+              onChanged={refresh}
+              onClose={close}
+            />
+          )}
+        </SheetContent>
+      </Sheet>
 
-      {mayWrite && (
-        <Card role="region" aria-labelledby="knowledge-new-title" className="grid gap-3 p-4 sm:p-6">
-          <CardTitle id="knowledge-new-title">{t('knowledge.add')}</CardTitle>
-          <form onSubmit={submitNew} className="grid gap-4">
+      <Sheet open={creating} onOpenChange={(open) => !open && closeForm()}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>{t('knowledge.add')}</SheetTitle>
+            <SheetDescription>{t('knowledge.add_intro')}</SheetDescription>
+          </SheetHeader>
+          <form onSubmit={submitNew} className="grid gap-4 p-4">
             <FieldSet disabled={create.isPending}>
               <Field label={t('knowledge.item_title')}>
                 <Input
@@ -379,12 +425,17 @@ export function KnowledgePage() {
               </Field>
             </FieldSet>
             <ErrorNotice error={create.error} />
-            <Button type="submit" disabled={create.isPending} className="justify-self-start">
-              {create.isPending ? t('common.working') : t('knowledge.add')}
-            </Button>
+            <SheetFooter className="px-0">
+              <Button type="button" variant="outline" onClick={closeForm}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={create.isPending || fresh.title.trim() === ''}>
+                {create.isPending ? t('common.working') : t('knowledge.add')}
+              </Button>
+            </SheetFooter>
           </form>
-        </Card>
-      )}
-    </>
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }

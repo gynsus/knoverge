@@ -10,12 +10,21 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { Label } from 'radix-ui';
+import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useSearchParams } from 'react-router';
 
 import { adminApi } from '../api/admin.ts';
 import { Button } from '@/components/ui/button';
-import { Card, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -57,13 +66,13 @@ export function PolicyPage() {
     queryKey: RULES_KEY,
     queryFn: ({ signal }) => adminApi.policy.rules(signal),
   });
+  const [params, setParams] = useSearchParams();
   const refresh = () => client.invalidateQueries({ queryKey: RULES_KEY });
 
   const remove = useMutation({
     mutationFn: (ruleId: string) => adminApi.policy.deleteRule(ruleId),
     onSuccess: refresh,
   });
-  const [editing, setEditing] = useState<PolicyRuleSummary | null>(null);
 
   /** Reads a subject the way a person describes it, not the way it is stored. */
   const describeSubject = (subject: PolicySubject): string => {
@@ -78,14 +87,37 @@ export function PolicyPage() {
     return t('policy.subject_is', { kind: t(`policy.subject_kinds.${kind}`), value: readable });
   };
 
+  const editingId = params.get('edit');
+  const editing = rules.data?.rules.find((r) => r.id === editingId) ?? null;
+  const creating = params.has('new');
+  const closeForm = () => {
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    next.delete('edit');
+    setParams(next, { replace: true });
+  };
+
   return (
-    <>
-      <Card aria-labelledby="policy-title" className="grid gap-3 p-4 sm:p-6">
-        <CardTitle id="policy-title">{t('policy.title')}</CardTitle>
-        <p>{t('policy.intro')}</p>
-        {rules.isPending && <p role="status">{t('common.loading')}</p>}
-        {rules.isError && <ErrorNotice error={rules.error} />}
-        {rules.data?.rules.length === 0 && <p>{t('policy.empty')}</p>}
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-1.5">
+          <h2 className="text-2xl font-semibold tracking-tight">{t('policy.title')}</h2>
+          <p className="max-w-2xl text-sm text-muted-foreground">{t('policy.intro')}</p>
+        </div>
+        <Button type="button" className="shrink-0" onClick={() => setParams({ new: '' })}>
+          <Plus aria-hidden="true" className="size-4" />
+          {t('policy.new_rule')}
+        </Button>
+      </div>
+
+      <ErrorNotice error={rules.isError ? rules.error : undefined} />
+      {rules.isPending && <p role="status">{t('common.loading')}</p>}
+      {rules.data?.rules.length === 0 && (
+        <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          {t('policy.empty')}
+        </div>
+      )}
+      <>
         {rules.data && rules.data.rules.length > 0 && (
           <Table>
             <TableHeader>
@@ -113,7 +145,7 @@ export function PolicyPage() {
                   </TableCell>
                   <TableCell label={t('common.actions')}>
                     <TableActions>
-                      <Button type="button" onClick={() => setEditing(rule)}>
+                      <Button type="button" onClick={() => setParams({ edit: rule.id })}>
                         {t('policy.edit')}
                       </Button>
                       <Button
@@ -132,18 +164,26 @@ export function PolicyPage() {
           </Table>
         )}
         <ErrorNotice error={remove.error} />
-      </Card>
+      </>
 
-      <RuleForm
-        key={editing?.id ?? 'new'}
-        rule={editing}
-        onDone={async () => {
-          setEditing(null);
-          await refresh();
-        }}
-        onCancel={() => setEditing(null)}
-      />
-    </>
+      <Sheet open={creating || editing !== null} onOpenChange={(open) => !open && closeForm()}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-lg">
+          <SheetHeader>
+            <SheetTitle>{editing ? t('policy.edit_rule') : t('policy.new_rule')}</SheetTitle>
+            <SheetDescription>{t('policy.form_intro')}</SheetDescription>
+          </SheetHeader>
+          <RuleForm
+            key={editing?.id ?? 'new'}
+            rule={editing}
+            onDone={async () => {
+              closeForm();
+              await refresh();
+            }}
+            onCancel={closeForm}
+          />
+        </SheetContent>
+      </Sheet>
+    </div>
   );
 }
 
@@ -192,100 +232,90 @@ function RuleForm({
         : null;
 
   return (
-    <Card aria-labelledby="rule-form-title" className="grid gap-3 p-4 sm:p-6">
-      <CardTitle id="rule-form-title">
-        {rule ? t('policy.edit_rule') : t('policy.new_rule')}
-      </CardTitle>
-      <p>{t('policy.form_intro')}</p>
-      <form onSubmit={submit} className="grid gap-4">
-        <FieldSet disabled={save.isPending}>
-          <Field label={t('policy.priority')} hint={t('policy.priority_hint')}>
-            <Input
-              type="number"
-              min={0}
-              max={10000}
-              value={priority}
-              onChange={(e) => setPriority(e.target.value)}
-              required
-            />
-          </Field>
-          <Field label={t('policy.subject_kind')}>
-            <Select
-              value={kind}
-              onChange={(e) => {
-                const next = e.target.value as SubjectKind;
-                setKind(next);
-                setValue(next === 'trust_tier' ? 'trusted' : next === 'actor_type' ? 'agent' : '');
-              }}
-            >
-              {(['trust_tier', 'actor_type', 'actor_id'] as const).map((k) => (
-                <option key={k} value={k}>
-                  {t(`policy.subject_kinds.${k}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {/* The value's label is the kind, so the two fields do not both
-              read "Applies to". */}
-          <Field
-            label={t(`policy.subject_kinds.${kind}`)}
-            {...(kind === 'actor_id' ? { hint: t('policy.actor_id_hint') } : {})}
+    <form onSubmit={submit} className="grid gap-4 p-4">
+      <FieldSet disabled={save.isPending}>
+        <Field label={t('policy.priority')} hint={t('policy.priority_hint')}>
+          <Input
+            type="number"
+            min={0}
+            max={10000}
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label={t('policy.subject_kind')}>
+          <Select
+            value={kind}
+            onChange={(e) => {
+              const next = e.target.value as SubjectKind;
+              setKind(next);
+              setValue(next === 'trust_tier' ? 'trusted' : next === 'actor_type' ? 'agent' : '');
+            }}
           >
-            {values ? (
-              <Select value={value} onChange={(e) => setValue(e.target.value)}>
-                {values.map((v) => (
-                  <option key={v.value} value={v.value}>
-                    {v.label}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <Input value={value} onChange={(e) => setValue(e.target.value)} required />
-            )}
-          </Field>
-          <Field label={t('policy.action')}>
-            <Select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
-              {PolicyActionName.options.map((a) => (
-                <option key={a} value={a}>
-                  {a}
+            {(['trust_tier', 'actor_type', 'actor_id'] as const).map((k) => (
+              <option key={k} value={k}>
+                {t(`policy.subject_kinds.${k}`)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {/* The value's label is the kind, so the two fields do not both
+              read "Applies to". */}
+        <Field
+          label={t(`policy.subject_kinds.${kind}`)}
+          {...(kind === 'actor_id' ? { hint: t('policy.actor_id_hint') } : {})}
+        >
+          {values ? (
+            <Select value={value} onChange={(e) => setValue(e.target.value)}>
+              {values.map((v) => (
+                <option key={v.value} value={v.value}>
+                  {v.label}
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label={t('policy.effect')} hint={t(`policy.effect_hints.${effect}`)}>
-            <Select value={effect} onChange={(e) => setEffect(e.target.value as typeof effect)}>
-              {PolicyEffect.options.map((e) => (
-                <option key={e} value={e}>
-                  {t(`policy.effects.${e}`)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="rule-enabled"
-              checked={enabled}
-              onCheckedChange={(value: boolean | 'indeterminate') => setEnabled(value === true)}
-            />
-            <Label.Root htmlFor="rule-enabled" className="text-sm font-medium">
-              {t('policy.enabled')}
-            </Label.Root>
-          </div>
-        </FieldSet>
-        <ErrorNotice error={save.error} />
-        {/* A grid stretches a button across the card unless it is told not to,
-            which is why both live in a row of their own. */}
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={save.isPending}>
-            {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
-          </Button>
-          {rule && (
-            <Button variant="outline" type="button" onClick={onCancel}>
-              {t('common.cancel')}
-            </Button>
+          ) : (
+            <Input value={value} onChange={(e) => setValue(e.target.value)} required />
           )}
+        </Field>
+        <Field label={t('policy.action')}>
+          <Select value={action} onChange={(e) => setAction(e.target.value as typeof action)}>
+            {PolicyActionName.options.map((a) => (
+              <option key={a} value={a}>
+                {a}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t('policy.effect')} hint={t(`policy.effect_hints.${effect}`)}>
+          <Select value={effect} onChange={(e) => setEffect(e.target.value as typeof effect)}>
+            {PolicyEffect.options.map((e) => (
+              <option key={e} value={e}>
+                {t(`policy.effects.${e}`)}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex items-center gap-2">
+          <Checkbox
+            id="rule-enabled"
+            checked={enabled}
+            onCheckedChange={(value: boolean | 'indeterminate') => setEnabled(value === true)}
+          />
+          <Label.Root htmlFor="rule-enabled" className="text-sm font-medium">
+            {t('policy.enabled')}
+          </Label.Root>
         </div>
-      </form>
-    </Card>
+      </FieldSet>
+      <ErrorNotice error={save.error} />
+      <SheetFooter className="px-0">
+        <Button variant="outline" type="button" onClick={onCancel}>
+          {t('common.cancel')}
+        </Button>
+        <Button type="submit" disabled={save.isPending}>
+          {save.isPending ? t('common.working') : rule ? t('policy.save') : t('policy.create')}
+        </Button>
+      </SheetFooter>
+    </form>
   );
 }

@@ -8,3 +8,5 @@
 export const TAXONOMY_KEY = ['taxonomy'] as const;
 export const ACTORS_KEY = ['actors'] as const;
 export const TAXONOMY_HISTORY_KEY = ['taxonomy-history'] as const;
+
+export const AGENTS_KEY = ['admin', 'agents'] as const;
