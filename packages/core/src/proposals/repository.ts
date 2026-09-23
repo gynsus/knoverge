@@ -70,6 +70,17 @@ export interface ProposalRepository {
   /** Oldest first: a review inbox is a queue, not a feed. */
   list(workspaceId: WorkspaceId, options?: ListProposalsOptions): Promise<ProposalRecord[]>;
   /**
+   * How many proposals each reconciliation pass produced.
+   *
+   * One grouped query for a page of runs, rather than a list per row: a
+   * screen that exists to be scanned should not cost a query for every line
+   * on it, and counting by fetching is counting the expensive way.
+   */
+  countBySyncSession(
+    workspaceId: WorkspaceId,
+    syncSessionIds: readonly string[],
+  ): Promise<Map<string, number>>;
+  /**
    * Empties the payload of proposals resolved before a date, across every
    * workspace, and answers how many it emptied. The rows stay: who proposed
    * what kind of change, when, and what was decided is the review trail.

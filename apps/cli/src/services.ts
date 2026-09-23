@@ -117,6 +117,7 @@ export function createServices() {
         sessions: repositories.sessions,
         operations: repositories.operations,
         proposals: repositories.proposals,
+        sync: repositories.sync,
         idempotency: idempotency(),
       }),
   );

@@ -23,8 +23,7 @@ import type { MemberWithUser, UserRecord } from '@knoverge/core';
 
 /** How many runs a list shows. A workspace's history, not its archive. */
 const SYNC_RUNS_LIMIT = 50;
-/** Enough to say "90+"; the review inbox is where they are actually read. */
-const SYNC_RUNS_PROPOSAL_CAP = 200;
+
 import { DomainError } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -153,18 +152,27 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
       const agents = await services.repositories.agents.list(workspaceId);
       const nameOf = new Map(agents.map((a) => [a.id, a.name]));
 
-      const proposals = await Promise.all(
-        sessions.map((session) =>
-          services.repositories.proposals.list(workspaceId, {
-            syncSessionId: session.id,
-            limit: SYNC_RUNS_PROPOSAL_CAP,
-          }),
-        ),
+      // One grouped query for the page, not one per row: counting by
+      // fetching up to two hundred rows fifty times over is counting the
+      // expensive way.
+      const proposalCounts = await services.repositories.proposals.countBySyncSession(
+        workspaceId,
+        sessions.map((s) => s.id),
       );
 
       return {
-        runs: sessions.map((session, index) => {
-          const count = counts.get(session.id);
+        runs: sessions.map((session) => {
+          // A finished pass answers from the stats written when it finished,
+          // not from its candidates: those are pruned after ninety days, and
+          // a run whose numbers went to zero with them would be a lie.
+          const count =
+            session.state === 'completed'
+              ? {
+                  byClassification: session.stats,
+                  pending: session.stats['pending'] ?? 0,
+                  total: session.stats['total'] ?? 0,
+                }
+              : counts.get(session.id);
           return {
             sync_session_id: session.id,
             agent_id: session.agentId,
@@ -177,7 +185,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
             ) as SyncRunsResponse['runs'][number]['counts'],
             candidate_count: count?.total ?? 0,
             pending_count: count?.pending ?? 0,
-            proposal_count: proposals[index]?.length ?? 0,
+            proposal_count: proposalCounts.get(session.id) ?? 0,
             created_at: session.createdAt.toISOString(),
             completed_at: session.completedAt?.toISOString() ?? null,
           };

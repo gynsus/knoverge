@@ -13,7 +13,7 @@ import type {
   ProposalRepository,
   Tx,
 } from '@knoverge/core';
-import { and, asc, eq, isNotNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { proposals } from '../schema/proposals.ts';
@@ -74,6 +74,25 @@ export function createProposalRepository(db: Database): ProposalRepository {
         .limit(Math.min(options.limit ?? 50, 200));
       return rows.map(toProposal);
     },
+    async countBySyncSession(workspaceId: WorkspaceId, syncSessionIds: readonly string[]) {
+      const counts = new Map<string, number>();
+      if (syncSessionIds.length === 0) return counts;
+      const rows = await db
+        .select({ syncSessionId: proposals.syncSessionId, total: sql<number>`count(*)::int` })
+        .from(proposals)
+        .where(
+          and(
+            eq(proposals.workspaceId, workspaceId),
+            inArray(proposals.syncSessionId, [...syncSessionIds]),
+          ),
+        )
+        .groupBy(proposals.syncSessionId);
+      for (const row of rows) {
+        if (row.syncSessionId) counts.set(row.syncSessionId, row.total);
+      }
+      return counts;
+    },
+
     async redactResolvedBefore(tx: Tx, before: Date) {
       const rows = await asTx(tx)
         .update(proposals)

@@ -115,6 +115,17 @@ export interface SyncRepository {
     Map<string, { byClassification: Record<string, number>; pending: number; total: number }>
   >;
 
+  /**
+   * Drops the candidates of passes finished before a date, and answers how
+   * many it dropped.
+   *
+   * The session row stays: its stats were written when it completed, so the
+   * run is still readable as a run. What goes is the per-candidate detail,
+   * which is where an agent's own text about its material lives and which
+   * nothing reads once the pass is over.
+   */
+  deleteCandidatesCompletedBefore(tx: Tx, before: Date): Promise<number>;
+
   findState(
     workspaceId: WorkspaceId,
     agentId: AgentId,
