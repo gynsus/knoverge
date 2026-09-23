@@ -6,6 +6,13 @@ import { AGENT_LIMITS, MAX_TOOL_BODY_BYTES, limitConcurrency } from '../plugins/
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import { activityDigest, knowledgeBriefing } from './briefing.ts';
 import { knowledgeChanges } from './changes.ts';
+import {
+  syncBegin,
+  syncComplete,
+  syncGetMatches,
+  syncStatus,
+  syncSubmitInventory,
+} from './sync.ts';
 import { eventsList } from './events.ts';
 import { knowledgeIndex, workspaceManifest } from './manifest.ts';
 import type { Services } from '../services.ts';
@@ -63,6 +70,11 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   knowledge_changes: knowledgeChanges as ToolHandler,
   events_list: eventsList as ToolHandler,
   activity_digest: activityDigest as ToolHandler,
+  sync_begin: syncBegin as ToolHandler,
+  sync_submit_inventory: syncSubmitInventory as ToolHandler,
+  sync_get_matches: syncGetMatches as ToolHandler,
+  sync_status: syncStatus as ToolHandler,
+  sync_complete: syncComplete as ToolHandler,
 };
 
 /** The handler a tool runs, for the MCP adapter as well as for HTTP. */

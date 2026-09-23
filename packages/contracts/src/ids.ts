@@ -23,6 +23,7 @@ export const ID_PREFIXES = {
   operation: 'op',
   syncSession: 'sync',
   syncCandidate: 'cand',
+  agentSyncState: 'ast',
   attachment: 'att',
   webhook: 'hook',
   policyRule: 'rule',

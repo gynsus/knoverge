@@ -24,6 +24,7 @@ import {
   TaxonomyRecovery,
   TaxonomyService,
   SessionService,
+  SyncService,
   UserService,
   WorkspaceService,
   type LedgerKey,
@@ -245,6 +246,12 @@ export function createServices(config: ServicesConfig) {
     workspaceService: workspaces,
     ledger,
   });
+  const sync = new SyncService({
+    uow,
+    sync: repositories.sync,
+    items: repositories.knowledge,
+    categories: repositories.categories,
+  });
   const bootstrap = new BootstrapService({
     uow,
     users,
@@ -269,6 +276,7 @@ export function createServices(config: ServicesConfig) {
     knowledge,
     proposals,
     taxonomy,
+    sync,
     users,
     sessions,
     workspaces,
