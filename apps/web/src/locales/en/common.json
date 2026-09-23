@@ -171,6 +171,7 @@
     "sidebar_description": "The navigation for this workspace.",
     "sidebar_edge": "Navigation edge: show or hide",
     "skip_to_content": "Skip to content",
+    "sync": "Reconciliation",
     "taxonomy": "Taxonomy",
     "toggle_sidebar": "Show or hide the navigation",
     "workspace_settings": "Workspace settings",
@@ -321,6 +322,43 @@
     },
     "latency": "{{count}} ms",
     "refresh": "Refresh"
+  },
+  "sync": {
+    "already_known": "{{known}} of {{offered}} already recorded here",
+    "classifications": {
+      "exact_known": "Already recorded",
+      "likely_match": "Probably the same",
+      "new_candidate": "New to this workspace",
+      "conflict": "Conflicting",
+      "agent_copy_stale": "The workspace is ahead",
+      "server_copy_stale": "The agent is ahead",
+      "ambiguous": "Several possible matches",
+      "ignored": "Not for recording"
+    },
+    "empty": "No reconciliation yet",
+    "empty_hint": "An agent that calls sync_begin before it records anything will appear here.",
+    "finished": "finished {{when}}",
+    "inspect": "What {{name}} found",
+    "intro": "What agents found when they checked what they know against what this workspace holds.",
+    "nothing_offered": "Nothing has been offered in this pass yet.",
+    "offered_one": "{{count}} candidate offered",
+    "offered_other": "{{count}} candidates offered",
+    "pending_one": "{{count}} still being matched",
+    "pending_other": "{{count}} still being matched",
+    "proposal_count_one": "{{count}} proposal",
+    "proposal_count_other": "{{count}} proposals",
+    "proposals": "Proposals from this run",
+    "review_them": "Review them",
+    "started": "Started {{when}}",
+    "states": {
+      "open": "Open",
+      "processing": "Matching",
+      "waiting_for_agent": "Waiting for the agent",
+      "completed": "Completed",
+      "failed": "Failed",
+      "expired": "Expired"
+    },
+    "title": "Reconciliation"
   },
   "taxonomy": {
     "actions": "Actions for {{name}}",

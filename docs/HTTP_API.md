@@ -98,6 +98,7 @@ GET  /v1/taxonomy.list                      (any member with taxonomy.read)
 GET  /v1/workspace.get                      (any member)
 GET  /v1/workspaces.list                    the caller's own memberships, with counts
 GET  /v1/actors.list                        (any member) actor ids to names, for events and provenance
+GET  /v1/admin/sync.list                    reconciliation runs, for whoever reviews what they produced
 POST /v1/admin/workspace.create             a new workspace, with the caller as its owner
 POST /v1/admin/workspace.update
 GET  /v1/admin/members.list
@@ -222,6 +223,12 @@ nothing yet. The lexical pass that settles them is a background job.
 The checkpoint records where the change feed stood when the session **opened**,
 not when it completed: anything committed while the agent was working is a
 change it has not seen, and resuming after it would skip exactly that.
+
+A proposal carries the session it came out of, when the agent passes one, and
+`proposal_list` filters by it. `GET /v1/admin/sync.list` is the same runs read
+from the workspace's side rather than the agent's, gated on `proposal.read_all`:
+the people who review what a run produced are the people who need to see the
+run.
 
 ### Listing workspaces
 

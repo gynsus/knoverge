@@ -60,6 +60,7 @@ function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): Pr
     resolved_by_actor_id: proposal.resolvedByActorId,
     resolution_note: proposal.resolutionNote,
     result_revision_ids: proposal.resultRevisionIds,
+    sync_session_id: proposal.syncSessionId,
   };
 }
 
@@ -121,6 +122,7 @@ export async function proposalList(
   const proposals = await services.proposals.list(actor.context.workspaceId, {
     limit: input.limit,
     ...(input.status ? { status: input.status } : {}),
+    ...(input.sync_session_id ? { syncSessionId: input.sync_session_id } : {}),
     ...(scope === 'own' ? { proposedByActorId: actor.context.actorId } : {}),
   });
   // One lookup for the whole page: a row naming an item has to say which.
@@ -193,6 +195,7 @@ export async function knowledgeProposeCreate(
         reason: body.reason,
         confidence: body.confidence,
         acknowledgedDuplicateIds: body.acknowledged_duplicate_ids,
+        syncSessionId: body.sync_session_id,
       });
       return {
         proposal: await named(services, actor.context.workspaceId, outcome.proposal),

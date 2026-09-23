@@ -9,6 +9,7 @@ import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
+import { SyncPage } from './pages/SyncPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
 import { TaxonomyPage } from './pages/TaxonomyPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
@@ -28,6 +29,7 @@ export function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
           <Route path="/review" element={<ReviewPage />} />
+          <Route path="/sync" element={<SyncPage />} />
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />

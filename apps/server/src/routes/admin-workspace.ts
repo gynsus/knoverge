@@ -5,6 +5,7 @@ import {
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
   ActorsResponse,
+  SyncRunsResponse,
   WorkspacesResponse,
   type ActorId,
   type WorkspaceId,
@@ -17,7 +18,13 @@ import {
   WorkspaceResponse,
   type MemberSummary,
 } from '@knoverge/contracts';
+import { SyncClassification } from '@knoverge/contracts';
 import type { MemberWithUser, UserRecord } from '@knoverge/core';
+
+/** How many runs a list shows. A workspace's history, not its archive. */
+const SYNC_RUNS_LIMIT = 50;
+/** Enough to say "90+"; the review inbox is where they are actually read. */
+const SYNC_RUNS_PROPOSAL_CAP = 200;
 import { DomainError } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
@@ -121,6 +128,60 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
           role: actor.role ?? null,
         },
         permissions: await services.authorization.heldActions(actor.context, actor.standing),
+      };
+    },
+  );
+
+  /**
+   * Every reconciliation pass in this workspace, newest first.
+   *
+   * The agent's own view is `sync_status`, keyed to the session it owns; this
+   * is the workspace's, because a reviewer facing ninety proposals from one
+   * import needs to know which import, and whether it is still running.
+   *
+   * Gated on `proposal.read_all`: the people who review what a run produced
+   * are exactly the people who need to see the run.
+   */
+  r.get(
+    '/v1/admin/sync.list',
+    { schema: { response: { 200: SyncRunsResponse } } },
+    async (request) => {
+      const actor = await requirePermission(services, request, 'proposal.read_all');
+      const workspaceId = actor.context.workspaceId;
+      const sessions = await services.repositories.sync.listSessions(workspaceId, SYNC_RUNS_LIMIT);
+      const counts = await services.repositories.sync.countForSessions(sessions.map((s) => s.id));
+      const agents = await services.repositories.agents.list(workspaceId);
+      const nameOf = new Map(agents.map((a) => [a.id, a.name]));
+
+      const proposals = await Promise.all(
+        sessions.map((session) =>
+          services.repositories.proposals.list(workspaceId, {
+            syncSessionId: session.id,
+            limit: SYNC_RUNS_PROPOSAL_CAP,
+          }),
+        ),
+      );
+
+      return {
+        runs: sessions.map((session, index) => {
+          const count = counts.get(session.id);
+          return {
+            sync_session_id: session.id,
+            agent_id: session.agentId,
+            agent_name: nameOf.get(session.agentId) ?? session.agentId,
+            source_system: session.sourceSystem,
+            source_namespace: session.sourceNamespace,
+            state: session.state,
+            counts: Object.fromEntries(
+              SyncClassification.options.map((name) => [name, count?.byClassification[name] ?? 0]),
+            ) as SyncRunsResponse['runs'][number]['counts'],
+            candidate_count: count?.total ?? 0,
+            pending_count: count?.pending ?? 0,
+            proposal_count: proposals[index]?.length ?? 0,
+            created_at: session.createdAt.toISOString(),
+            completed_at: session.completedAt?.toISOString() ?? null,
+          };
+        }),
       };
     },
   );

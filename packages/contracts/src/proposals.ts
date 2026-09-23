@@ -65,6 +65,14 @@ export const ProposalSummary = z.object({
   resolved_by_actor_id: ActorId.nullable(),
   resolution_note: z.string().nullable(),
   result_revision_ids: z.array(RevisionId),
+  /**
+   * The reconciliation pass this came out of, when it came out of one.
+   *
+   * A reviewer facing ninety proposals from one import wants them together:
+   * they were judged by one agent against one body of material, and reading
+   * them as a run is how the judgement is checked.
+   */
+  sync_session_id: z.string().nullable(),
 });
 export type ProposalSummary = z.infer<typeof ProposalSummary>;
 
@@ -91,6 +99,11 @@ export const ProposeCreateRequest = CreateKnowledgeRequest.extend({
    * considered and dismissed rather than having to wonder.
    */
   acknowledged_duplicate_ids: z.array(KnowledgeItemId).max(20).optional(),
+  /**
+   * The pass this was reconciled in, so a reviewer can read the run as a run
+   * (`AGENT_ONBOARDING_AND_RECONCILIATION.md` section 11).
+   */
+  sync_session_id: z.string().max(40).optional(),
 });
 export type ProposeCreateRequest = z.infer<typeof ProposeCreateRequest>;
 
@@ -198,6 +211,8 @@ export type WithdrawProposalRequest = z.infer<typeof WithdrawProposalRequest>;
 
 export const ProposalListInput = z.object({
   status: ProposalStatus.optional(),
+  /** Only what came out of one reconciliation pass. */
+  sync_session_id: z.string().max(40).optional(),
   limit: z.number().int().min(1).max(200).default(50),
 });
 export type ProposalListInput = z.infer<typeof ProposalListInput>;

@@ -63,6 +63,8 @@ export function createProposalRepository(db: Database): ProposalRepository {
       if (options.proposedByActorId)
         where.push(eq(proposals.proposedByActorId, options.proposedByActorId));
       if (options.targetItemId) where.push(eq(proposals.targetItemId, options.targetItemId));
+      if (options.syncSessionId)
+        where.push(eq(proposals.syncSessionId, options.syncSessionId));
       const rows = await db
         .select()
         .from(proposals)

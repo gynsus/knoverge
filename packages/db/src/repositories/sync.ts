@@ -148,6 +148,51 @@ export function createSyncRepository(db: Database): SyncRepository {
       return found;
     },
 
+    async listSessions(workspaceId, limit) {
+      const rows = await db
+        .select()
+        .from(syncSessions)
+        .where(eq(syncSessions.workspaceId, workspaceId))
+        .orderBy(desc(syncSessions.createdAt))
+        .limit(limit);
+      return rows.map(toSession);
+    },
+    async countForSessions(sessionIds) {
+      const counts = new Map<
+        string,
+        { byClassification: Record<string, number>; pending: number; total: number }
+      >();
+      if (sessionIds.length === 0) return counts;
+      // One grouped query for every session on the page, rather than one per
+      // row of a list that exists to be scanned.
+      const rows = await db
+        .select({
+          sessionId: syncCandidates.syncSessionId,
+          classification: syncCandidates.classification,
+          state: syncCandidates.classificationState,
+          total: sql<number>`count(*)::int`,
+        })
+        .from(syncCandidates)
+        .where(inArray(syncCandidates.syncSessionId, [...sessionIds]))
+        .groupBy(
+          syncCandidates.syncSessionId,
+          syncCandidates.classification,
+          syncCandidates.classificationState,
+        );
+      for (const row of rows) {
+        const entry = counts.get(row.sessionId) ?? {
+          byClassification: {},
+          pending: 0,
+          total: 0,
+        };
+        entry.byClassification[row.classification] =
+          (entry.byClassification[row.classification] ?? 0) + row.total;
+        if (row.state === 'provisional') entry.pending += row.total;
+        entry.total += row.total;
+        counts.set(row.sessionId, entry);
+      }
+      return counts;
+    },
     async findState(workspaceId, agentId, source) {
       const rows = await db
         .select()

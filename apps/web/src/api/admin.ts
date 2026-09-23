@@ -1,5 +1,6 @@
 import type {
   ActorsResponse,
+  SyncRunsResponse,
   AddMemberRequest,
   ApproveProposalRequest,
   AgentResponse,
@@ -56,6 +57,14 @@ export const adminApi = {
       apiPost<IssueCredentialResponse>('/v1/admin/agents.credentials.issue', body),
     revoke: (credentialId: string) =>
       apiPost<OkResponse>('/v1/admin/agents.credentials.revoke', { credential_id: credentialId }),
+  },
+  sync: {
+    runs: (signal?: AbortSignal) => apiGet<SyncRunsResponse>('/v1/admin/sync.list', signal),
+    proposals: (syncSessionId: string) =>
+      apiPost<ProposalsResponse>('/v1/proposal_list', {
+        sync_session_id: syncSessionId,
+        limit: 200,
+      }),
   },
   taxonomy: {
     list: (signal?: AbortSignal) =>
