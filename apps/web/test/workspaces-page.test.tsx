@@ -85,6 +85,7 @@ const LISTED = {
       item_count: 186,
       agent_count: 2,
       last_activity_at: '2026-09-22T09:00:00.000Z',
+      permissions: ['taxonomy.read', 'knowledge.read', 'workspace.admin'],
     },
     {
       id: SECOND,
@@ -97,6 +98,7 @@ const LISTED = {
       item_count: 428,
       agent_count: 3,
       last_activity_at: null,
+      permissions: ['taxonomy.read', 'knowledge.read'],
     },
   ],
 };

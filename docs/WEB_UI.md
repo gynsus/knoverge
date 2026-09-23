@@ -23,6 +23,12 @@ these screens used to do.
 What stays on a page: a list, a table, and anything a person scans rather than
 fills in. Members are a page for that reason, not a drawer.
 
+**Where this stands.** Taxonomy and workspaces are built this way. Agents,
+policy and knowledge are not yet: each is still a list card, a detail card
+below it and a permanent create form, which is the shape both converted screens
+had. The rule is what a new screen follows and what those three are owed, not a
+description of all seven.
+
 ## 2. A drawer somebody may want to link to lives in the address
 
 `?new` opens the create drawer; `?edit=<id>` opens the edit drawer for one
@@ -62,8 +68,14 @@ somebody else put there.
 
 ## 5. What somebody may do comes from the server
 
-`/v1/workspace.get` answers with a `permissions` array. Navigation entries and
-mutation controls are shown from that, never from the membership role. Deriving
+`/v1/workspace.get` answers with a `permissions` array for the workspace
+somebody is in, and `/v1/workspaces.list` answers with one per workspace they
+belong to. Navigation entries and mutation controls are shown from that, never
+from the membership role.
+
+The list carries them because an interface offering actions for a workspace
+somebody is not in has only the role to go on otherwise, and that is the second
+copy of the policy this rule exists to prevent. Deriving
 it from the role is a second copy of the policy engine that drifts from the
 first: it shows a disabled form to a reviewer who was granted an action
 explicitly, and offers a viewer forms whose every submission is refused.

@@ -279,13 +279,10 @@ export function WorkspacesPage() {
             <WorkspaceDetails
               workspace={inspected}
               current={inspected.id === workspaces.selectedId}
-              // Settings are the workspace's own, so they are asked for in
-              // the workspace: editing another one moves into it first.
-              canAdminister={
-                inspected.id === workspaces.selectedId
-                  ? workspaces.can('workspace.admin')
-                  : inspected.role === 'owner'
-              }
+              // The server's answer for this workspace, not a guess from the
+              // role. Editing one somebody is not in moves into it first,
+              // because the update route is scoped by the workspace header.
+              canAdminister={inspected.permissions.includes('workspace.admin')}
               onOpen={() => go(inspected.id, '/')}
               onEdit={() => {
                 if (inspected.id !== workspaces.selectedId) workspaces.select(inspected.id);
