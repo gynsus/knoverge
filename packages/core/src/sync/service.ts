@@ -27,6 +27,9 @@ import type {
 /** How long an agent has to finish a pass before it has to start again. */
 export const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 
+/** How many candidates one refinement pass reads at a time. */
+const REFINE_BATCH = 100;
+
 /** What one candidate was decided to be, before it is written down. */
 export interface Decision {
   classification: SyncClassification;
@@ -242,6 +245,103 @@ export class SyncService {
       });
     });
     return completed;
+  }
+
+  /**
+   * Step D. What a candidate is probably about, by how it reads.
+   *
+   * The pass that settles everything the deterministic steps left open. It
+   * runs away from the request because a trigram query per candidate over a
+   * batch of two hundred is not something to keep a client waiting for, and
+   * because step E — semantic similarity, when an embedding profile exists —
+   * will run here beside it.
+   *
+   * Only provisional rows are touched, so running it twice costs a query and
+   * changes nothing: a candidate the deterministic steps settled is already
+   * final and is never revisited.
+   */
+  async refine(
+    session: SyncSessionRecord,
+    readable: (itemIds: readonly KnowledgeItemId[]) => Promise<Set<string>>,
+    options: { threshold: number; limit: number },
+  ): Promise<number> {
+    let refined = 0;
+    for (;;) {
+      const batch = await this.o.sync.listCandidates(session.id, {
+        onlyProvisional: true,
+        limit: REFINE_BATCH,
+      });
+      if (batch.length === 0) break;
+
+      const now = this.clock.now();
+      const updated: SyncCandidateRecord[] = [];
+      for (const candidate of batch) {
+        const rows = await this.o.items.findSimilarTitles(
+          session.workspaceId,
+          candidate.title,
+          options.threshold,
+          options.limit,
+        );
+        const allowed = await readable(rows.map((r) => r.itemId));
+        const visible = rows.filter((r) => allowed.has(r.itemId));
+        updated.push({
+          ...candidate,
+          ...this.lexical(visible),
+          classificationState: 'final',
+          updatedAt: now,
+        });
+      }
+      await this.o.uow.run((tx) => this.o.sync.upsertCandidates(tx, updated));
+      refined += updated.length;
+      // A short batch is the last one; the rows just written are no longer
+      // provisional, so the next query would return the ones after them.
+      if (batch.length < REFINE_BATCH) break;
+    }
+    return refined;
+  }
+
+  /**
+   * One plausible item is a question; several are a different question.
+   *
+   * `ambiguous` exists because "here are four things it might be" is not
+   * advice an agent can act on the way "here is the one it probably is" is.
+   */
+  private lexical(
+    visible: readonly DuplicateRow[],
+  ): Pick<
+    SyncCandidateRecord,
+    'classification' | 'matchReason' | 'matchedItemIds' | 'serverReason'
+  > {
+    if (visible.length === 0) {
+      return {
+        classification: 'new_candidate',
+        matchReason: 'none',
+        matchedItemIds: [],
+        serverReason: {
+          explanation: 'nothing in the workspace reads like this; propose it',
+        },
+      };
+    }
+    const matched = visible.map((r) => r.itemId);
+    if (visible.length === 1) {
+      return {
+        classification: 'likely_match',
+        matchReason: 'lexical',
+        matchedItemIds: matched,
+        serverReason: {
+          explanation:
+            'one item reads like this; fetch it and decide whether yours is the same knowledge',
+        },
+      };
+    }
+    return {
+      classification: 'ambiguous',
+      matchReason: 'lexical',
+      matchedItemIds: matched,
+      serverReason: {
+        explanation: `${visible.length} items read like this; fetch them and decide which, if any, yours is`,
+      },
+    };
   }
 
   async requireSession(actor: ActorContext, sessionId: string): Promise<SyncSessionRecord> {

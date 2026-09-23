@@ -144,6 +144,13 @@ export async function syncSubmitInventory(
     input.candidates,
     readableItems(services, request),
   );
+  // The classifications are already recorded, so a runner that cannot be
+  // reached costs the agent a poll rather than its inventory. It is told
+  // through `pending_count`, and an operator through the log.
+  await services.enqueueRefine(actor.context.workspaceId, input.sync_session_id).catch((err) => {
+    request.log.warn({ err, sync_session_id: input.sync_session_id }, 'could not queue refinement');
+  });
+
   const counts = await services.repositories.sync.countCandidates(input.sync_session_id);
   return {
     sync_session_id: input.sync_session_id,

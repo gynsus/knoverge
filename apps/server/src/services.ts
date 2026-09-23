@@ -50,6 +50,15 @@ import {
 
 export interface ServicesConfig {
   databaseUrl: string;
+  /**
+   * Asks for a sync session's provisional candidates to be settled.
+   *
+   * Injected rather than reached for: the job runner needs these services to
+   * do the settling and these services need it to ask, so a closure resolved
+   * at call time is how the two are wired without a cycle. Absent on an
+   * API-only process, where nothing here runs jobs.
+   */
+  enqueueRefine?: (workspaceId: string, sessionId: string) => Promise<void>;
   ledgerKey: LedgerKey;
   /** Peppers agent credential hashes so a leaked database cannot be brute-forced offline. */
   tokenPepper: string;
@@ -277,6 +286,7 @@ export function createServices(config: ServicesConfig) {
     proposals,
     taxonomy,
     sync,
+    enqueueRefine: config.enqueueRefine ?? (async () => undefined),
     users,
     sessions,
     workspaces,

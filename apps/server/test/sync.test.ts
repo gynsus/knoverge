@@ -19,6 +19,7 @@ import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app.ts';
+import { refineSyncSession } from '../src/refine.ts';
 import { createServices, type Services } from '../src/services.ts';
 
 /**
@@ -353,5 +354,81 @@ describe('finishing a pass', () => {
       headers: { authorization: `Bearer ${otherToken}` },
     });
     expect(res.statusCode, res.body).toBe(403);
+  });
+});
+
+describe('settling what the deterministic steps left open', () => {
+  it('turns a provisional candidate into an answer, and says which kind', async () => {
+    await admin.post('/v1/admin/knowledge.create', {
+      title: 'Deploy pipeline overview',
+      body: 'Build, test, push, roll.\n',
+      type: 'fact',
+      categories: ['architecture'],
+    });
+
+    const session = await beginSession('claude-code', 'refinement');
+    await agent('/v1/sync_submit_inventory', {
+      sync_session_id: session.sync_session_id,
+      candidates: [
+        {
+          client_candidate_id: 'c-close',
+          title: 'Deploy pipeline overview',
+          type: 'fact',
+          proposed_category_paths: ['architecture'],
+        },
+        {
+          client_candidate_id: 'c-unrelated',
+          title: 'What the office wifi password is',
+          type: 'fact',
+        },
+      ],
+    });
+
+    const before = SyncStatusResult.parse(
+      (await agent('/v1/sync_status', { sync_session_id: session.sync_session_id })).json(),
+    );
+    expect(before.pending_count).toBe(2);
+
+    // The pass the job runner would run. Called directly, because a test that
+    // waits on a queue is a test that fails on a slow machine.
+    const settled = await refineSyncSession(
+      services,
+      session.workspace_id,
+      session.sync_session_id,
+    );
+    expect(settled).toBe(2);
+
+    const after = SyncMatchesResult.parse(
+      (await agent('/v1/sync_get_matches', { sync_session_id: session.sync_session_id })).json(),
+    );
+    expect(after.pending_count).toBe(0);
+    const byId = new Map(after.matches.map((m) => [m.client_candidate_id, m]));
+    expect(byId.get('c-close')).toMatchObject({
+      classification: 'likely_match',
+      classification_state: 'final',
+      match_reason: 'lexical',
+    });
+    // Nothing reads like it, and now that is an answer rather than a silence.
+    expect(byId.get('c-unrelated')).toMatchObject({
+      classification: 'new_candidate',
+      classification_state: 'final',
+      match_reason: 'none',
+    });
+  });
+
+  it('costs a query and changes nothing when it runs twice', async () => {
+    const session = await beginSession('claude-code', 'idempotent-refinement');
+    await agent('/v1/sync_submit_inventory', {
+      sync_session_id: session.sync_session_id,
+      candidates: [{ client_candidate_id: 'c-1', title: 'Something else again', type: 'fact' }],
+    });
+    expect(await refineSyncSession(services, session.workspace_id, session.sync_session_id)).toBe(
+      1,
+    );
+    // A candidate the pass settled is final, and final is never revisited, so
+    // a job delivered twice is a job that finds nothing to do.
+    expect(await refineSyncSession(services, session.workspace_id, session.sync_session_id)).toBe(
+      0,
+    );
   });
 });

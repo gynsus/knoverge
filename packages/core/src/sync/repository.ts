@@ -77,7 +77,13 @@ export interface SyncRepository {
   upsertCandidates(tx: Tx, candidates: readonly SyncCandidateRecord[]): Promise<void>;
   listCandidates(
     syncSessionId: string,
-    options: { onlyFinal?: boolean; after?: string; limit: number },
+    options: {
+      onlyFinal?: boolean;
+      /** The ones a background pass still owes an answer for. */
+      onlyProvisional?: boolean;
+      after?: string;
+      limit: number;
+    },
   ): Promise<SyncCandidateRecord[]>;
   /** Counts by classification, and how many are still provisional. */
   countCandidates(
