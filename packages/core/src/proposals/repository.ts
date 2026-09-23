@@ -58,6 +58,8 @@ export interface ListProposalsOptions {
   /** Only what this actor proposed, for an agent reading its own. */
   proposedByActorId?: ActorId;
   targetItemId?: KnowledgeItemId;
+  /** Only what came out of one reconciliation pass. */
+  syncSessionId?: string;
   limit?: number;
 }
 

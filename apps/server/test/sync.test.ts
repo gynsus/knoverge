@@ -10,6 +10,8 @@ import {
   SyncBeginResult,
   SyncCompleteResult,
   SyncMatchesResult,
+  ProposalsResponse,
+  SyncRunsResponse,
   SyncStatusResult,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
@@ -430,5 +432,61 @@ describe('settling what the deterministic steps left open', () => {
     expect(await refineSyncSession(services, session.workspace_id, session.sync_session_id)).toBe(
       0,
     );
+  });
+});
+
+describe('reading a run as a person', () => {
+  it('lists the runs with who made them and what they found', async () => {
+    const session = await beginSession('claude-code', 'for-people');
+    await agent('/v1/sync_submit_inventory', {
+      sync_session_id: session.sync_session_id,
+      candidates: [
+        { client_candidate_id: 'p-1', title: 'A thing worth knowing', type: 'fact' },
+        { client_candidate_id: 'p-2', title: 'Another thing entirely', type: 'fact' },
+      ],
+    });
+
+    const res = await admin.request({ method: 'GET', url: '/v1/admin/sync.list' });
+    expect(res.statusCode, res.body).toBe(200);
+    const runs = SyncRunsResponse.parse(res.json()).runs;
+    const run = runs.find((r) => r.sync_session_id === session.sync_session_id);
+    // Named, because a list of ids is not a list somebody can read.
+    expect(run?.agent_name).toBe('Claude Code');
+    expect(run?.candidate_count).toBe(2);
+    expect(run?.pending_count).toBe(2);
+    // Every classification, including the ones nothing fell into: a caller
+    // reading counts.conflict should not have to tell none from unsaid.
+    expect(run?.counts.conflict).toBe(0);
+  });
+
+  it('ties a proposal to the run it came out of, and filters by it', async () => {
+    const session = await beginSession('claude-code', 'proposing');
+    const proposed = await agent('/v1/knowledge_propose_create', {
+      title: 'Something the agent found locally',
+      body: 'Worth recording once.\n',
+      type: 'fact',
+      categories: ['architecture'],
+      sync_session_id: session.sync_session_id,
+    });
+    expect(proposed.statusCode, proposed.body).toBe(202);
+
+    // A reviewer facing ninety proposals from one import wants them together:
+    // they were judged by one agent against one body of material.
+    const filtered = await admin.post('/v1/proposal_list', {
+      sync_session_id: session.sync_session_id,
+      limit: 50,
+    });
+    expect(filtered.statusCode, filtered.body).toBe(200);
+    const list = ProposalsResponse.parse(filtered.json()).proposals;
+    expect(list).toHaveLength(1);
+    expect(list[0]?.sync_session_id).toBe(session.sync_session_id);
+
+    // And a different run does not collect it.
+    const other = await beginSession('claude-code', 'not-proposing');
+    const empty = await admin.post('/v1/proposal_list', {
+      sync_session_id: other.sync_session_id,
+      limit: 50,
+    });
+    expect(ProposalsResponse.parse(empty.json()).proposals).toHaveLength(0);
   });
 });

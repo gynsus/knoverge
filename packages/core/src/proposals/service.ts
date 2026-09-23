@@ -54,6 +54,8 @@ export interface ProposeCreateInput extends CreateItemInput {
   confidence?: number | undefined;
   /** Candidates the proposer has read and ruled out. */
   acknowledgedDuplicateIds?: readonly string[] | undefined;
+  /** The reconciliation pass this came out of, so a run can be read as one. */
+  syncSessionId?: string | undefined;
 }
 
 export interface ProposeUpdateInput extends UpdateItemInput {
@@ -132,6 +134,8 @@ interface RecordSpec {
   relations?: readonly FrontmatterRelation[] | undefined;
   /** What the proposer read and ruled out, kept for whoever reviews it. */
   acknowledgedDuplicateIds?: readonly string[] | undefined;
+  /** The reconciliation pass this came out of, so a run can be read as one. */
+  syncSessionId?: string | undefined;
   /** What `allow_direct` runs, and what approval runs later. */
   apply: (proposalId: ProposalId) => Promise<AppliedWrite>;
 }
@@ -302,6 +306,7 @@ export class ProposalService {
       eventType: 'knowledge.proposed_create',
       relations: input.relations ?? [],
       acknowledgedDuplicateIds: input.acknowledgedDuplicateIds ?? [],
+      ...(input.syncSessionId ? { syncSessionId: input.syncSessionId } : {}),
       apply: (proposalId) => applied(this.o.knowledge.create(actor, { ...input, proposalId })),
     });
   }
@@ -944,7 +949,7 @@ export class ProposalService {
       reason: spec.reason ?? null,
       confidence: spec.confidence ?? null,
       acknowledgedDuplicateIds: [...(spec.acknowledgedDuplicateIds ?? [])],
-      syncSessionId: null,
+      syncSessionId: spec.syncSessionId ?? null,
       policyRuleId: spec.decision.ruleId ?? null,
       createdAt: now,
       resolvedAt: null,

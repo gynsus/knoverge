@@ -106,6 +106,15 @@ export interface SyncRepository {
     externalKeys: readonly string[],
   ): Promise<Map<string, SyncCandidateRecord>>;
 
+  /** Every pass in the workspace, newest first, for a person reading them. */
+  listSessions(workspaceId: WorkspaceId, limit: number): Promise<SyncSessionRecord[]>;
+  /** Counts by classification for several sessions at once. */
+  countForSessions(
+    sessionIds: readonly string[],
+  ): Promise<
+    Map<string, { byClassification: Record<string, number>; pending: number; total: number }>
+  >;
+
   findState(
     workspaceId: WorkspaceId,
     agentId: AgentId,

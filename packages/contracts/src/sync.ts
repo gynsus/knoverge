@@ -187,3 +187,31 @@ export const SyncCompleteResult = z.object({
   counts: z.record(SyncClassification, z.number().int().nonnegative()),
 });
 export type SyncCompleteResult = z.infer<typeof SyncCompleteResult>;
+
+/**
+ * A reconciliation pass as a person reads it.
+ *
+ * The agent's own view is `sync_status`, keyed to the session it owns. This is
+ * the workspace's view: every run, whoever made it, because a reviewer facing
+ * ninety proposals from one import needs to know which import.
+ */
+export const SyncRunSummary = z.object({
+  sync_session_id: SyncSessionId,
+  agent_id: AgentId,
+  /** The agent's name, so a list of runs reads as a list of who and what. */
+  agent_name: z.string(),
+  source_system: SourceSystem,
+  source_namespace: z.string().nullable(),
+  state: SyncSessionState,
+  counts: z.record(SyncClassification, z.number().int().nonnegative()),
+  candidate_count: z.number().int().nonnegative(),
+  pending_count: z.number().int().nonnegative(),
+  /** How many proposals this run has produced so far. */
+  proposal_count: z.number().int().nonnegative(),
+  created_at: z.iso.datetime(),
+  completed_at: z.iso.datetime().nullable(),
+});
+export type SyncRunSummary = z.infer<typeof SyncRunSummary>;
+
+export const SyncRunsResponse = z.object({ runs: z.array(SyncRunSummary) });
+export type SyncRunsResponse = z.infer<typeof SyncRunsResponse>;
