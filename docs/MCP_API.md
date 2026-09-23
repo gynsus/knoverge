@@ -115,6 +115,12 @@ Output:
     "semantic_search": true
   },
   "stats": { "items": 5821, "categories": 38, "pending_proposals": 14 },
+  "limits": {
+    "reads_per_minute": 600,
+    "writes_per_minute": 60,
+    "concurrent_requests": 8,
+    "max_request_bytes": 524288
+  },
   "onboarding": {
     "required": true,
     "strategy": "reconcile",
@@ -126,6 +132,10 @@ Output:
 `can_write_direct` is true only if at least one policy rule grants `allow_direct` to this actor. Holding `knowledge.write` is not enough: rule 14 says a trusted agent still waits for review until a rule says otherwise, so the two questions have different answers and the manifest answers the one a client acts on.
 
 `archived` is true while the workspace is kept and no longer written to. Every capability that would change the knowledge is false at the same time; the flag says why, so a client can report "the workspace is archived" instead of listing four permissions it does not have. `sync_begin` is refused there as well, because a pass exists to end in proposals. See ADR 0018.
+
+`limits` is what this credential may spend here, so a client can pace itself
+rather than learn the budget by being refused. An operator may have raised or
+lowered them. Exceeding one is answered `RATE_LIMITED`, which is retryable.
 
 `onboarding` arrives with the sync sessions it describes, in Milestone 5.
 
@@ -200,6 +210,13 @@ Otherwise policy decides as it does for knowledge (rule 14): a rule may let this
 ### Reading knowledge
 
 #### `knowledge_search`
+
+Lexical until Milestone 6: PostgreSQL full-text search with a trigram pass over
+titles. It does not cross languages — a Russian query does not find an English
+item that says the same thing — because a lexical index matches words, and
+those are different words. That is the gap the semantic step in Milestone 6
+closes; until then `workspace_manifest` reports `semantic_search: false` and a
+client searching a bilingual workspace should search in both.
 
 Input:
 

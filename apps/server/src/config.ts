@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { parseLedgerKey, type LedgerKey } from '@knoverge/core';
 import { z } from 'zod';
 
+import type { AgentBudgets } from './plugins/agent-limits.ts';
+
 const EnvSchema = z.object({
   KNOVERGE_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   KNOVERGE_HOST: z.string().min(1).default('127.0.0.1'),
@@ -33,6 +35,12 @@ const EnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+  // What one agent credential may spend. Raised for a bulk import, lowered
+  // for an installation that wants a tighter leash; reported in the manifest
+  // either way, so a client can pace itself.
+  KNOVERGE_AGENT_READS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
+  KNOVERGE_AGENT_WRITES_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(60),
+  KNOVERGE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(256).default(8),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -57,6 +65,8 @@ export interface Config {
   autoMigrate: boolean;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   trustProxy: boolean;
+  /** What one agent credential may spend, per minute and at once. */
+  agentBudgets: AgentBudgets;
   nodeEnv: 'development' | 'test' | 'production';
 }
 
@@ -103,6 +113,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     autoMigrate: e.KNOVERGE_AUTO_MIGRATE,
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
+    agentBudgets: {
+      readsPerMinute: e.KNOVERGE_AGENT_READS_PER_MINUTE,
+      writesPerMinute: e.KNOVERGE_AGENT_WRITES_PER_MINUTE,
+      concurrent: e.KNOVERGE_AGENT_CONCURRENCY,
+    },
     nodeEnv: e.NODE_ENV,
   };
 }

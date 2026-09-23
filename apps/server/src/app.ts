@@ -20,6 +20,7 @@ import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerKnowledgeRoutes } from './routes/knowledge.ts';
 import { registerProposalRoutes } from './routes/proposals.ts';
+import { DEFAULT_AGENT_LIMITS, type AgentBudgets } from './plugins/agent-limits.ts';
 import { registerMcpRoutes } from './routes/mcp.ts';
 import { registerTaxonomyRoutes } from './routes/taxonomy.ts';
 import { registerToolRoutes } from './routes/tools.ts';
@@ -49,6 +50,8 @@ export interface AppOptions {
   security?: SecurityOptions;
   /** Overrides the default per-actor rate limit; tests raise it. */
   rateLimit?: { max?: number; timeWindow?: string };
+  /** What one agent credential may spend. Defaults where an operator said nothing. */
+  agentBudgets?: AgentBudgets;
 }
 
 const API_PREFIXES = ['/v1/', '/mcp', '/health/'];
@@ -64,12 +67,16 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     genReqId: (req: { headers: Record<string, string | string[] | undefined> }) =>
       resolveRequestId(req.headers['x-request-id']),
   };
+  const budgets = options.agentBudgets ?? DEFAULT_AGENT_LIMITS;
   // Whether the rate-limit plugin is present, which decides if routes and the
   // not-found handler can ask it for a budget.
   let limited = false;
   const app = options.loggerInstance
     ? Fastify({ ...common, loggerInstance: options.loggerInstance })
     : Fastify({ ...common, logger: false });
+  // Decorated before any route is registered, so the manifest can report the
+  // budgets a client should pace itself against.
+  app.decorate('agentBudgets', budgets);
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   registerErrorHandler(app);
@@ -98,9 +105,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerTaxonomyRoutes(app, options.services);
     // Last, so every handler it dispatches to is defined: one POST route per
     // tool, generated from the contract (rule 11).
-    registerToolRoutes(app, options.services);
+    registerToolRoutes(app, options.services, budgets);
     // The same tools again, over MCP. One contract, two transports (rule 11).
-    registerMcpRoutes(app, options.services, options.version);
+    registerMcpRoutes(app, options.services, options.version, budgets);
   }
 
   app.get('/health/live', { schema: { response: { 200: LiveResponse } } }, async () => ({
