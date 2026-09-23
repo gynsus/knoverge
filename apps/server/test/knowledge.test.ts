@@ -963,3 +963,36 @@ describe('the repository follows the taxonomy', () => {
     expect(await fileAt('knowledge/kept/the-same-name-twice-2.md')).toContain('has to move');
   });
 });
+
+describe('a title longer than a category slug', () => {
+  it('is recorded rather than refused, and through review too', async () => {
+    // The generator truncates a title at eighty characters and the check
+    // wanted sixty-four, so a title landing between them produced a slug the
+    // generator made and the check refused. An ordinary sentence does it.
+    const title = 'The reconciliation checkpoint is the sequence the session opened at';
+    expect(title.length).toBeGreaterThan(64);
+
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: 'Anything committed while the agent worked is a change it has not seen.\n',
+      type: 'fact',
+      categories: [],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = KnowledgeResponse.parse(res.json()).item;
+    // Truncated to the one limit everything now shares, rather than to a
+    // length only the generator believed in.
+    expect(item.slug.length).toBeLessThanOrEqual(64);
+    expect(item.slug).toBe('the-reconciliation-checkpoint-is-the-sequence-the-session-opened');
+
+    // It failed on approval rather than on proposing, so a reviewer was left
+    // with a proposal they could never act on. That is the path that matters.
+    const proposed = await admin.post('/v1/knowledge_propose_create', {
+      title: 'Whichever agent holds the newer copy proposes against the canonical revision',
+      body: 'The same length problem, arriving through review.\n',
+      type: 'fact',
+      categories: [],
+    });
+    expect(proposed.statusCode, proposed.body).toBe(200);
+  });
+});

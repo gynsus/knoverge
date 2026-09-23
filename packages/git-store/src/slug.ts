@@ -1,3 +1,5 @@
+import { MAX_SLUG_LENGTH } from '@knoverge/contracts';
+
 /** Latin transliteration for the scripts a slug cannot carry directly. */
 const CYRILLIC: Record<string, string> = {
   а: 'a',
@@ -35,7 +37,14 @@ const CYRILLIC: Record<string, string> = {
   я: 'ya',
 };
 
-export const MAX_SLUG_LENGTH = 80;
+/**
+ * Re-exported from the contract rather than chosen here.
+ *
+ * This constant said eighty while the schema and the database column said
+ * sixty-four, so a long title produced a slug this function was happy with
+ * and nothing downstream would take.
+ */
+export { MAX_SLUG_LENGTH };
 
 /**
  * A file name derived from a title: lowercase, transliterated, hyphenated.
