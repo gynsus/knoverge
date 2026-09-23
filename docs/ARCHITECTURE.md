@@ -195,6 +195,8 @@ Recovery runs at startup, before anything is served, and repairs what it can:
 - `git_committed` without revision row: complete the PostgreSQL side from the commit and mark `recovered`. The file at that commit carries the whole state — frontmatter for an item, `taxonomy.yaml` for the tree — because the file is the canonical record rather than a summary of one. What a file cannot carry is identity, since a path is not an id: `Knoverge-Change` names the item and revision, `Knoverge-Category` names the category and what happened to it, and the operation row carries the path it ended at and the request context the trailers do not;
 - revision row without commit: impossible by construction (Git commits first), report as corruption.
 
+An operation nobody can finish — the repository no longer has the commit it names, say, because it was restored from an older backup — is reported as unresolved, with the reason recorded on the row, and the pass carries on. It must not end the pass: recovery runs before the job runner starts and before the server reports ready, so a failure that propagates leaves an installation with no worker and permanent degraded readiness because one workspace is broken. The broken workspace keeps refusing writes, which is the correct answer for it alone.
+
 Do not hide cross-store failure cases.
 
 ## 5. Identity model

@@ -108,7 +108,14 @@ export function dbCommand(): Command {
         // An operator has to look at these, and a script has to be able to
         // notice that without reading the words.
         if (unresolved.length > 0) {
-          console.error(`unresolved operation(s): ${unresolved.join(', ')}`);
+          const reasons = Object.assign(
+            {},
+            ...Object.values(reports).map((r) => r.reasons),
+          ) as Record<string, string>;
+          for (const id of unresolved) {
+            console.error(`unresolved: ${id}: ${reasons[id] ?? 'no reason recorded'}`);
+          }
+          console.error('these need an operator, and may need the backup');
           process.exitCode = 1;
         }
       });

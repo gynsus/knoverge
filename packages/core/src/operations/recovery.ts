@@ -28,6 +28,13 @@ export interface RecoveryReport {
   failed: string[];
   recovered: string[];
   unresolved: string[];
+  /**
+   * Why each unresolved operation is unresolved, by operation id.
+   *
+   * An id on its own sends an operator to the database to find out what is
+   * wrong with it. This is the sentence they would have gone looking for.
+   */
+  reasons: Record<string, string>;
 }
 
 /**
@@ -71,35 +78,81 @@ export class RecoveryService {
   }
 
   async recover(workspaceId: WorkspaceId): Promise<RecoveryReport> {
-    const report: RecoveryReport = { examined: 0, failed: [], recovered: [], unresolved: [] };
+    const report: RecoveryReport = {
+      examined: 0,
+      failed: [],
+      recovered: [],
+      unresolved: [],
+      reasons: {},
+    };
     await this.o.uow.withWorkspaceLock(workspaceId, async () => {
       const unfinished = await this.o.operations.listUnfinished(workspaceId);
       report.examined = unfinished.length;
       for (const operation of unfinished) {
-        if (operation.state === 'pending') {
-          // Nothing was recorded as committed. A commit may still exist if the
-          // process died between committing and writing the hash, so the Git
-          // store is asked before the operation is abandoned.
-          if (await this.o.commitExists(workspaceId, operation.id)) {
-            report.unresolved.push(operation.id);
-            continue;
-          }
-          await this.mark(operation, 'failed', { reason: 'no commit for a pending operation' });
-          report.failed.push(operation.id);
-          continue;
-        }
-        const completed = this.o.completeFromCommit
-          ? await this.o.completeFromCommit(operation)
-          : false;
-        if (completed) {
-          await this.mark(operation, 'recovered', null);
-          report.recovered.push(operation.id);
-        } else {
+        try {
+          await this.resolve(operation, report);
+        } catch (error) {
+          // One operation nobody can finish must not end the pass.
+          //
+          // Asking Git about a commit the repository does not have throws, and
+          // the throw used to come out of here: the rest of the workspace's
+          // operations went unexamined, every workspace after it in a
+          // recoverAll() went unvisited, and at startup the whole bootstrap
+          // task failed and was retried for ever — so the job runner never
+          // started and readiness never left degraded, for an installation
+          // where one workspace was broken. The operation is unresolved, which
+          // is exactly what this report already had a place for.
+          await this.note(operation, error);
           report.unresolved.push(operation.id);
+          report.reasons[operation.id] = reasonOf(error);
         }
       }
     });
     return report;
+  }
+
+  /** One operation: finished, abandoned, or left for an operator. */
+  private async resolve(operation: OperationRecord, report: RecoveryReport): Promise<void> {
+    if (operation.state === 'pending') {
+      // Nothing was recorded as committed. A commit may still exist if the
+      // process died between committing and writing the hash, so the Git
+      // store is asked before the operation is abandoned.
+      if (await this.o.commitExists(operation.workspaceId, operation.id)) {
+        report.unresolved.push(operation.id);
+        report.reasons[operation.id] =
+          'a commit names this operation, but the hash was never recorded';
+        return;
+      }
+      await this.mark(operation, 'failed', { reason: 'no commit for a pending operation' });
+      report.failed.push(operation.id);
+      return;
+    }
+    const completed = this.o.completeFromCommit
+      ? await this.o.completeFromCommit(operation)
+      : false;
+    if (completed) {
+      await this.mark(operation, 'recovered', null);
+      report.recovered.push(operation.id);
+      return;
+    }
+    report.unresolved.push(operation.id);
+    report.reasons[operation.id] = 'nothing here knows how to finish this operation';
+  }
+
+  /**
+   * Records why an operation could not be resolved, without changing its state.
+   *
+   * The state is what keeps the workspace closed to writes, and it must stay
+   * that way: the two stores still disagree. What changes is that the next
+   * person to look at the row is told what went wrong.
+   */
+  private async note(operation: OperationRecord, error: unknown): Promise<void> {
+    await this.o.uow.run((tx) =>
+      this.o.operations.update(tx, operation.workspaceId, operation.id, {
+        error: { message: reasonOf(error), unresolved: true },
+        updatedAt: this.clock.now(),
+      }),
+    );
   }
 
   private async mark(
@@ -115,4 +168,9 @@ export class RecoveryService {
       }),
     );
   }
+}
+
+/** The message of a failure, whatever was thrown. */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
