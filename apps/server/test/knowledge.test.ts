@@ -250,6 +250,62 @@ describe('creating a knowledge item', () => {
   });
 });
 
+/**
+ * Tags are content, not identifiers (ADR 0019).
+ *
+ * The rule used to be a slug, so a Russian item could not carry Russian tags
+ * in a product whose knowledge is explicitly in any language.
+ */
+describe('tags in any language', () => {
+  it('keeps what was written, and treats two spellings as one tag', async () => {
+    const first = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Что такое сверка',
+      body: 'Сверка — это то, чем агент узнаёт, что пространство уже знает.\n',
+      type: 'fact',
+      language: 'ru',
+      tags: ['Машинное  Обучение', 'сверка'],
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const item = KnowledgeResponse.parse(first.json()).item;
+    // Stored as written, once whitespace is collapsed.
+    expect(item.tags).toEqual(['Машинное Обучение', 'сверка']);
+
+    // The file carries them, so the repository is readable without the
+    // application — which is the whole reason the frontmatter exists.
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    const file = await readFile(join(repository, item.markdown_path), 'utf8');
+    expect(file).toContain('Машинное Обучение');
+
+    // A second item spelling one of them differently joins the same tag
+    // rather than creating a second one that looks identical.
+    const second = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Ещё об обучении',
+      body: 'Второй элемент с тем же тегом, написанным иначе.\n',
+      type: 'fact',
+      language: 'ru',
+      tags: ['машинное обучение'],
+    });
+    expect(second.statusCode, second.body).toBe(200);
+    const rows = await services.database.pool.query(
+      'select name from tags where normalised_name = $1',
+      ['машинное обучение'],
+    );
+    expect(rows.rows).toHaveLength(1);
+  });
+
+  it('refuses a tag no interface could show or separate', async () => {
+    for (const tag of ['git,portability', 'bell\u0007', '   ']) {
+      const res = await admin.post('/v1/admin/knowledge.create', {
+        title: `Refused ${tag.length}`,
+        body: 'Body.\n',
+        type: 'fact',
+        tags: [tag],
+      });
+      expect(res.statusCode, `${tag}: ${res.body}`).toBe(400);
+    }
+  });
+});
+
 describe('changing an item', () => {
   const write = async (body: Record<string, unknown>) => {
     const res = await admin.post('/v1/admin/knowledge.create', {

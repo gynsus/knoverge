@@ -6,6 +6,7 @@ import type {
   RevisionId,
   WorkspaceId,
 } from '@knoverge/contracts';
+import { normaliseTag } from '@knoverge/contracts';
 import type {
   DuplicateRow,
   ItemCategoryRecord,
@@ -56,8 +57,15 @@ function toRevision(row: typeof knowledgeRevisions.$inferSelect): RevisionRecord
   };
 }
 
-/** Tags are matched case- and space-insensitively, and stored as given. */
-const normalise = (tag: string): string => tag.trim().toLowerCase();
+/**
+ * Tags are stored as given and matched by their normalised form.
+ *
+ * The rule lives in the contract rather than here: what makes two tags the
+ * same tag is a domain question, and the answer has to be the same one the
+ * API validates with and the interface groups by. This used to be a local
+ * `trim().toLowerCase()`, whose comment claimed it folded spaces and did not.
+ */
+const normalise = normaliseTag;
 
 export function createKnowledgeRepository(db: Database): KnowledgeRepository {
   const reader = (tx?: Tx) => (tx ? asTx(tx) : db);

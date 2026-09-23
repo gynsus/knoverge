@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { LanguageTag } from './identity.ts';
 import { KnowledgeItemId, RevisionId, WorkspaceId } from './ids.ts';
-import { CategoryPath, CategorySlug } from './taxonomy.ts';
+import { CategoryPath } from './taxonomy.ts';
 
 /**
  * The fixed type set from `docs/KNOWLEDGE_MODEL.md` section 2.
@@ -69,8 +69,53 @@ export const RelationType = z.enum([
 ]);
 export type RelationType = z.infer<typeof RelationType>;
 
-/** A tag: the same shape as a slug, because it appears in paths and queries. */
-export const Tag = CategorySlug;
+/**
+ * The form of a tag that is written down and shown: Unicode composed, runs of
+ * whitespace collapsed, trimmed. Case is left alone, because a tag is content
+ * and "PostgreSQL" is how somebody wrote it.
+ */
+export function canonicalTag(tag: string): string {
+  return tag.normalize('NFC').replace(/\s+/gu, ' ').trim();
+}
+
+/**
+ * Two tags are the same tag when these agree: canonical form, case folded.
+ *
+ * Composition is the one that is easy to miss. A Cyrillic "й" typed on one
+ * keyboard is a single code point and on another is "и" plus a combining
+ * breve; they look identical and compare unequal, so without NFC a workspace
+ * quietly grows two tags nobody can tell apart.
+ */
+export function normaliseTag(tag: string): string {
+  return canonicalTag(tag).toLocaleLowerCase();
+}
+
+/**
+ * A tag is content, not an identifier (ADR 0019).
+ *
+ * It used to be a slug — lower-case Latin letters, digits and hyphens — on the
+ * stated grounds that it "appears in paths and queries". It appears in
+ * neither: the file path is built from the category path and the item slug,
+ * and a query string carries any text. What the restriction did do was stop a
+ * Russian item from carrying Russian tags, in a product whose knowledge is
+ * explicitly in any language.
+ *
+ * What is refused: control characters, because they are invisible in every
+ * interface that would show the tag; and commas, because the frontmatter, the
+ * query string and the interface all use one to separate tags, and a tag that
+ * cannot survive its own separator is a tag nobody can round-trip.
+ *
+ * The schema validates and does not transform. It is also what responses are
+ * encoded with, and a transform only runs one way: putting the normalisation
+ * here made every response carrying a tag fail to serialise. Canonicalising is
+ * the domain's job, through canonicalTag().
+ */
+export const Tag = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[^\p{Cc}\p{Cf},]+$/u, 'any script, but no commas and no control characters')
+  .refine((value) => canonicalTag(value).length > 0, 'a tag cannot be only whitespace');
 
 /** An instant, or nothing. Written as `null` rather than omitted. */
 const Instant = z.iso.datetime({ offset: true });
