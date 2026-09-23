@@ -55,6 +55,19 @@ paging does.
 The filters go in the address for the same reason drawers do: "the unreviewed
 decisions in architecture" is a place, and somebody may need to be sent it.
 
+## 2b. Reading an object is not editing it
+
+A drawer opens in read mode. Editing is something somebody chose, from a
+control that says so.
+
+This matters more here than in most applications: every change to an item is a
+revision and a Git commit, so a screen that opens with the fields already
+editable is inviting a commit from somebody who came to read. The same drawer
+holds both, and the destructive action is never in the row with Save — it lives
+behind the menu, with what it does spelled out before it happens.
+
+Leaving edit mode with unsaved changes asks first.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

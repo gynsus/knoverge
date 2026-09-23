@@ -1197,6 +1197,28 @@ describe('knowledge page', () => {
     expect(await screen.findByRole('button', { name: ITEM.title })).toBeInTheDocument();
   });
 
+  it('opens for reading, and edits only when asked', async () => {
+    // Every change here is a revision and a Git commit. Opening an item used
+    // to put the fields on the screen straight away, which answers "what may
+    // I change?" when the question was "what does this say?".
+    mockApi(ROUTES);
+    renderApp('/knowledge');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: ITEM.title }));
+
+    const drawer = within(await screen.findByRole('dialog', { name: ITEM.title }));
+    expect(await drawer.findByText(DETAIL.body.trim())).toBeInTheDocument();
+    expect(drawer.queryByLabelText('Text')).toBeNull();
+    // The path lives here, where somebody asked for the item, rather than in
+    // every row of the list.
+    expect(drawer.getByText(ITEM.markdown_path)).toBeInTheDocument();
+
+    await user.click(drawer.getByRole('button', { name: 'Edit' }));
+    expect(drawer.getByLabelText('Text')).toBeInTheDocument();
+    // And deleting is not one button away from saving.
+    expect(drawer.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
   it('opens an item and sends the revision it was based on', async () => {
     const calls = mockApi({
       ...ROUTES,
@@ -1209,6 +1231,7 @@ describe('knowledge page', () => {
     // Scoped to the editor: the form for a new item carries the same labels,
     // which is why both are named regions.
     const editor = within(await screen.findByRole('dialog', { name: ITEM.title }));
+    await user.click(await editor.findByRole('button', { name: 'Edit' }));
     const body = editor.getByLabelText('Text');
     await user.clear(body);
     await user.type(body, 'Rewritten.');
@@ -1243,6 +1266,9 @@ describe('knowledge page', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: ITEM.title }));
     const editor = within(await screen.findByRole('dialog', { name: ITEM.title }));
+    await user.click(await editor.findByRole('button', { name: 'Edit' }));
+    const body = editor.getByLabelText('Text');
+    await user.type(body, ' Changed.');
     await user.click(editor.getByRole('button', { name: 'Save' }));
 
     // A conflict is the one answer this page must not swallow — and it is

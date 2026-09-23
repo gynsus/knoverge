@@ -1,4 +1,4 @@
-import type { ItemType, KnowledgeItemDetail, ReviewState } from '@knoverge/contracts';
+import type { ActorSummary, ItemType, KnowledgeItemDetail, ReviewState } from '@knoverge/contracts';
 import { ItemType as ItemTypes, ReviewState as ReviewStates } from '@knoverge/contracts';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
@@ -6,7 +6,6 @@ import { Plus, Search, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -23,8 +22,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
+import { ItemDetails } from '../components/knowledge/ItemDetails.tsx';
 import { KnowledgeRow, type RowItem } from '../components/knowledge/KnowledgeRow.tsx';
-import { TAXONOMY_KEY } from '@/lib/query-keys';
+import { ACTORS_KEY, TAXONOMY_KEY } from '@/lib/query-keys';
 
 const ITEMS_KEY = ['knowledge', 'items'] as const;
 
@@ -72,25 +72,31 @@ function ItemEditor({
   truncated,
   mayWrite,
   onChanged,
-  onClose,
+  onCancel,
+  actors,
 }: {
   item: KnowledgeItemDetail;
   /** Whether the body is only part of what the item holds. */
   truncated: boolean;
   mayWrite: boolean;
   onChanged: () => Promise<void>;
-  onClose: () => void;
+  /** Leaves edit mode. Asks first when there is unsaved work. */
+  onCancel: (dirty: boolean) => void;
+  actors: readonly ActorSummary[];
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(() => draftOf(item));
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
+  void actors;
 
-  const revisions = useQuery({
-    queryKey: [...ITEMS_KEY, item.id, 'revisions'],
-    queryFn: ({ signal }) => adminApi.knowledge.revisions(item.id, signal),
-  });
+  const initial = draftOf(item);
+  const dirty =
+    draft.title !== initial.title ||
+    draft.body !== initial.body ||
+    draft.type !== initial.type ||
+    draft.categories !== initial.categories ||
+    draft.tags !== initial.tags;
 
   const base = {
     item_id: item.id,
@@ -109,28 +115,9 @@ function ItemEditor({
       }),
     onSuccess: onChanged,
   });
-  const remove = useMutation({
-    mutationFn: () => adminApi.knowledge.remove(base),
-    onSuccess: async () => {
-      setConfirmingDelete(false);
-      await onChanged();
-    },
-  });
-  const restore = useMutation({
-    mutationFn: () => adminApi.knowledge.restore(item.id),
-    onSuccess: onChanged,
-  });
 
-  // The drawer is its own region, so the editor and the form for a new item
-  // no longer share a page and "Text" no longer appears twice with nothing to
-  // tell the two apart.
   return (
     <div className="grid content-start gap-3 p-4 sm:p-6">
-      <p className="flex flex-wrap items-center gap-2 text-sm">
-        <Badge>{t(`knowledge.review.${item.review_state}`)}</Badge>
-        <Badge>{t(`knowledge.evidence.${item.evidence_state}`)}</Badge>
-        <small>{t('knowledge.revision', { number: item.revision_number })}</small>
-      </p>
       {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
       <FieldSet disabled={!mayWrite || truncated || save.isPending}>
         <Field label={t('knowledge.item_title')}>
@@ -166,66 +153,38 @@ function ItemEditor({
         </Field>
         <Field label={t('knowledge.body')} hint={t('knowledge.body_hint')}>
           <Textarea
-            rows={12}
+            rows={16}
             value={draft.body}
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
           />
         </Field>
       </FieldSet>
-      <ErrorNotice error={save.error ?? remove.error ?? restore.error} />
-      <div className="flex flex-wrap gap-2">
-        {mayWrite && !truncated && item.status !== 'deleted' && (
-          <Button type="button" onClick={() => save.mutate()} disabled={save.isPending}>
-            {save.isPending ? t('common.working') : t('knowledge.save')}
-          </Button>
-        )}
-        {mayWrite && item.status === 'deleted' ? (
-          <Button type="button" onClick={() => restore.mutate()} disabled={restore.isPending}>
-            {t('knowledge.restore')}
-          </Button>
-        ) : mayWrite && confirmingDelete ? (
-          <>
-            <span className="self-center text-sm">{t('knowledge.confirm_delete')}</span>
-            <Button
-              variant="destructive"
-              type="button"
-              onClick={() => remove.mutate()}
-              disabled={remove.isPending}
-            >
-              {t('knowledge.delete')}
-            </Button>
-            <Button variant="outline" type="button" onClick={() => setConfirmingDelete(false)}>
-              {t('common.cancel')}
-            </Button>
-          </>
-        ) : (
-          mayWrite && (
-            <Button type="button" onClick={() => setConfirmingDelete(true)}>
-              {t('knowledge.delete')}
-            </Button>
-          )
-        )}
-        <Button variant="outline" type="button" onClick={onClose}>
-          {t('common.close')}
+      <ErrorNotice error={save.error} />
+      {/* Cancel and Save, and nothing else. Delete used to sit here, one
+          button away from the one somebody presses without looking. */}
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button variant="outline" type="button" onClick={() => onCancel(dirty)}>
+          {t('common.cancel')}
+        </Button>
+        <Button
+          type="button"
+          onClick={() => save.mutate()}
+          disabled={save.isPending || !dirty || truncated}
+        >
+          {save.isPending ? t('common.working') : t('knowledge.save')}
         </Button>
       </div>
-
-      <h3 className="mt-4 text-base font-semibold">{t('knowledge.history')}</h3>
-      <ErrorNotice error={revisions.error} />
-      <ul className="grid gap-1 text-sm">
-        {revisions.data?.revisions.map((revision) => (
-          <li key={revision.id} className="flex flex-wrap items-baseline gap-2">
-            <span>{t('knowledge.revision', { number: revision.revision_number })}</span>
-            <Badge>{t(`knowledge.kinds.${revision.change_kind}`)}</Badge>
-            <small>{new Date(revision.created_at).toLocaleString()}</small>
-            <code className="text-xs text-muted-foreground">{revision.git_commit.slice(0, 8)}</code>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
 
+/**
+ * Reading and writing knowledge.
+ *
+ * An edit carries the revision and hash it was based on, so two people editing
+ * one item ends in a conflict the second one is told about rather than in the
+ * first one's work disappearing.
+ */
 /**
  * Reading and writing knowledge.
  *
@@ -370,11 +329,33 @@ export function KnowledgePage() {
     enabled: selectedId !== null,
   });
 
+  // Read first, edit when somebody asks: a ledger where every change is a
+  // revision and a commit must not open with the fields already editable.
+  const [editing, setEditing] = useState(false);
+  const actors = useQuery({
+    queryKey: ACTORS_KEY,
+    queryFn: ({ signal }) => adminApi.workspace.actors(signal),
+  });
+
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ITEMS_KEY });
   };
+  const remove = useMutation({
+    mutationFn: (item: KnowledgeItemDetail) =>
+      adminApi.knowledge.remove({
+        item_id: item.id,
+        base_revision_id: item.current_revision_id,
+        base_content_hash: item.content_hash,
+      }),
+    onSuccess: refresh,
+  });
+  const restore = useMutation({
+    mutationFn: (itemId: string) => adminApi.knowledge.restore(itemId),
+    onSuccess: refresh,
+  });
   const close = () => {
     setSelectedId(null);
+    setEditing(false);
     lastTrigger.current?.focus();
   };
   const mayWrite = workspaces.can('knowledge.write');
@@ -566,19 +547,40 @@ export function KnowledgePage() {
               {t('common.loading')}
             </p>
           )}
-          {selected.data && (
-            <ItemEditor
-              key={selected.data.item.id}
-              item={selected.data.item}
-              // Saving a slice would write it over the rest. The browser asks
-              // for the whole body, so this never fires; it is here because
-              // the cost of being wrong about that is somebody's document.
-              truncated={selected.data.truncated}
-              mayWrite={mayWrite}
-              onChanged={refresh}
-              onClose={close}
-            />
-          )}
+          {selected.data &&
+            (editing ? (
+              <ItemEditor
+                key={`${selected.data.item.id}:edit`}
+                item={selected.data.item}
+                // Saving a slice would write it over the rest. The browser asks
+                // for the whole body, so this never fires; it is here because
+                // the cost of being wrong about that is somebody's document.
+                truncated={selected.data.truncated}
+                mayWrite={mayWrite}
+                actors={actors.data?.actors ?? []}
+                onChanged={async () => {
+                  setEditing(false);
+                  await refresh();
+                }}
+                onCancel={(dirty) => {
+                  if (dirty && !window.confirm(t('knowledge.discard'))) return;
+                  setEditing(false);
+                }}
+              />
+            ) : (
+              <ItemDetails
+                key={selected.data.item.id}
+                item={selected.data.item}
+                truncated={selected.data.truncated}
+                mayWrite={mayWrite}
+                actors={actors.data?.actors ?? []}
+                onEdit={() => setEditing(true)}
+                onDelete={() => remove.mutate(selected.data.item)}
+                onRestore={() => restore.mutate(selected.data.item.id)}
+                busy={remove.isPending || restore.isPending}
+                error={remove.error ?? restore.error}
+              />
+            ))}
         </SheetContent>
       </Sheet>
 
