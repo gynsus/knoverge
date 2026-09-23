@@ -218,6 +218,26 @@ inventory exact-match batch of 100: p95 < 1 s
 
 Do not sacrifice correctness for these targets.
 
+## 10. Timeouts are a backstop, not a budget
+
+A test's timeout is not the time its waits are allowed to take. Vitest's default
+is five seconds, and a suite whose waits are also budgeted at five seconds fails
+under load on the assertion nobody was looking at rather than on the one that
+was unmet.
+
+Every package that touches something real says so:
+
+- `packages/db` and `apps/server` start a PostgreSQL container, so their tests
+  get two minutes and their hooks three;
+- `packages/git-store` drives a real repository and every operation is a `git`
+  process, so its tests get thirty seconds;
+- `apps/web` gives one `findBy*` five seconds and the test itself twenty, so a
+  slow wait fails naming what was missing rather than that time ran out.
+
+Each of those numbers was set after a suite failed on a loaded machine and
+passed on a rerun. A test that passes alone and fails in the suite is usually
+this, not a race.
+
 ## 10. Test fixtures
 
 Create deterministic fixtures:
