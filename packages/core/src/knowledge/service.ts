@@ -1,6 +1,8 @@
 import {
   ItemSlug,
   FRONTMATTER_KEY_ORDER,
+  canonicalTag,
+  normaliseTag,
   type ActorId,
   type Frontmatter,
   type ChangeKind,
@@ -80,6 +82,25 @@ export function compareFrontmatter(from: Frontmatter, to: Frontmatter): Metadata
     }
   }
   return changes;
+}
+
+/**
+ * The tags an item carries, as they are written down.
+ *
+ * Canonical form for each, then one of each spelling, then sorted. Two tags
+ * that differ only in case or in how they are composed are one tag, and the
+ * first spelling given is the one kept — the workspace shows what somebody
+ * wrote rather than a lower-cased version of it.
+ */
+function tagList(tags: readonly string[]): string[] {
+  const seen = new Map<string, string>();
+  for (const raw of tags) {
+    const shown = canonicalTag(raw);
+    if (shown === '') continue;
+    const key = normaliseTag(shown);
+    if (!seen.has(key)) seen.set(key, shown);
+  }
+  return [...seen.values()].sort((a, b) => a.localeCompare(b));
 }
 
 /** Where an item with no category lives, so every item still has a path. */
@@ -298,7 +319,7 @@ export class KnowledgeService {
           status: 'active',
           language,
           categories: chosen.map((c) => c.path),
-          tags: [...new Set(input.tags ?? [])].sort(),
+          tags: tagList(input.tags ?? []),
           review: input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
           evidence: evidenceFrom(input.sources ?? []),
           disputed: false,
@@ -528,7 +549,7 @@ export class KnowledgeService {
           type: input.type ?? previous.type,
           language: input.language ?? previous.language,
           categories: chosen.map((c) => c.path),
-          tags: input.tags ? [...new Set(input.tags)].sort() : previous.tags,
+          tags: input.tags ? tagList(input.tags) : previous.tags,
           // A new revision resets review unless a human made it
           // (KNOWLEDGE_MODEL.md section 8): what was reviewed was the text
           // that changed. The review workflow says so explicitly instead,
@@ -826,7 +847,7 @@ export class KnowledgeService {
               status: 'active',
               language: input.newItem!.language ?? workspace.defaultLanguage,
               categories: chosen.map((c) => c.path),
-              tags: [...new Set(input.newItem!.tags ?? [])].sort(),
+              tags: tagList(input.newItem!.tags ?? []),
               review:
                 input.review ?? (actor.actorType === 'human' ? 'human_reviewed' : 'unreviewed'),
               evidence: evidenceFrom(input.newItem!.sources ?? []),

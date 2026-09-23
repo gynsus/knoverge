@@ -135,7 +135,7 @@
       "deleted": "Deleted"
     },
     "tags": "Tags",
-    "tags_hint": "Comma separated, lower case.",
+    "tags_hint": "Comma separated. Any language; case is kept.",
     "title": "Knowledge",
     "truncated": "Only part of this item was loaded, so it cannot be edited here. Reload the page, or read it with the API.",
     "type": "Type",

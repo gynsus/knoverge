@@ -351,8 +351,13 @@ Exactly one row per item has `is_primary = true` unless the item is uncategorise
 Tag
 - id
 - workspace_id
-- name
+- name              (as written, any script)
 - normalised_name (unique per workspace)
+
+`name` is the spelling to show; `normalised_name` is what decides sameness —
+NFC, whitespace collapsed, trimmed, case folded. The rule lives in
+`packages/contracts` so the API, the domain, the repository and the interface
+agree on when two tags are one. See ADR 0019.
 
 KnowledgeItemTag
 - knowledge_item_id

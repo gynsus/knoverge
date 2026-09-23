@@ -144,7 +144,15 @@ Career
 
 > What lightweight labels help retrieve this?
 
-Tags are flexible and do not need a hierarchy. Tags are normalised (lowercase, trimmed, NFC) and workspace-scoped.
+Tags are flexible and do not need a hierarchy. They are workspace-scoped.
+
+A tag is content rather than an identifier (ADR 0019): any script, spaces
+inside, stored exactly as written. Two tags are the same tag when their
+normalised forms agree — NFC, whitespace collapsed, trimmed, case folded — so
+`PostgreSQL` and `postgresql` are one tag and the workspace keeps the spelling
+it saw first. Control characters and commas are refused: the first are
+invisible wherever a tag is shown, and the second is what the frontmatter, the
+query string and the tag input all separate tags with.
 
 Examples:
 
