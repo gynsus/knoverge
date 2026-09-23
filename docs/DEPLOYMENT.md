@@ -242,7 +242,9 @@ docker compose exec knoverge knoverge db recover
 docker compose exec knoverge knoverge db recover --workspace personal
 ```
 
-It takes the same workspace lock the server's writers take, so it is safe against a live installation: it waits for whatever is writing. Each workspace is reported as examined, recovered, abandoned and unresolved. An operation that reached Git is completed from the commit; one that never committed is abandoned. Anything left **unresolved** is the case the architecture calls unrepairable — a revision with no commit, or a commit whose file the repository no longer has — and the command exits non-zero so a script notices. Those need the backup.
+It takes the same workspace lock the server's writers take, so it is safe against a live installation: it waits for whatever is writing. Each workspace is reported as examined, recovered, abandoned and unresolved. An operation that reached Git is completed from the commit; one that never committed is abandoned. Anything left **unresolved** is the case the architecture calls unrepairable — a revision with no commit, or a commit the repository no longer has — and the command names each one with the reason and exits non-zero, so a script notices. Those need the backup.
+
+An unresolved operation closes its own workspace and nothing else: the recovery pass carries on to the rest, the server finishes starting, and the job runner runs. The reason is also written to the operation row, so `db recover` and the startup log are not the only places to find it.
 
 ### Permission grants from the command line
 

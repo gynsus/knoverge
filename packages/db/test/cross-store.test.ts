@@ -334,6 +334,64 @@ describe('recovery', () => {
     expect((await repositories.operations.findById(workspaceId, id))?.state).toBe('failed');
   });
 
+  it('carries on past an operation nobody can finish, and says why', async () => {
+    // Asking Git about a commit the repository does not have throws. That
+    // throw used to come out of recover(): the rest of the workspace went
+    // unexamined, and at startup the whole bootstrap task failed and was
+    // retried for ever, so the job runner never started and readiness never
+    // left degraded — for an installation where one workspace was broken.
+    const now = new Date();
+    const stuck = 'op_01M2XBROKENBROKENBROKEN01';
+    const alsoPending = 'op_01M2XBROKENBROKENBROKEN02';
+    for (const [id, state, commit] of [
+      [stuck, 'git_committed', 'a'.repeat(40)],
+      [alsoPending, 'pending', null],
+    ] as const) {
+      await uow.run((tx) =>
+        repositories.operations.insert(tx, {
+          id,
+          workspaceId,
+          actorId: actor.actorId,
+          operationType: 'taxonomy',
+          state,
+          objectIds: {},
+          intendedPayloadHash: null,
+          gitCommitHash: commit,
+          taxonomyVersion: null,
+          requestId: 'req-broken',
+          sessionId: null,
+          agentId: null,
+          client: null,
+          provider: null,
+          model: null,
+          error: null,
+          createdAt: now,
+          updatedAt: now,
+        }),
+      );
+    }
+
+    const report = await recovery({
+      complete: async () => {
+        throw new Error('git log failed');
+      },
+    }).recover(workspaceId);
+
+    expect(report.unresolved).toContain(stuck);
+    expect(report.reasons[stuck]).toBe('git log failed');
+    // The operation after it was still examined, which is the whole point.
+    expect(report.failed).toContain(alsoPending);
+    // Its state is untouched, because the two stores still disagree and the
+    // workspace must stay closed. What changed is that the row says why.
+    const row = await repositories.operations.findById(workspaceId, stuck);
+    expect(row?.state).toBe('git_committed');
+    expect(row?.error).toMatchObject({ message: 'git log failed', unresolved: true });
+
+    // Leave nothing behind for the tests after this one. Removed rather than
+    // marked failed, because a failed operation may not carry a commit hash.
+    await handle.pool.query('delete from operations where id = $1', [stuck]);
+  });
+
   it('finds the workspaces that need it without locking the rest', async () => {
     const now = new Date();
     const id = 'op_01M2XCRASHCRASHCRASHCRASH3';

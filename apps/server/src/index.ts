@@ -133,6 +133,9 @@ async function main(): Promise<void> {
             failed: report.failed,
             recovered: report.recovered,
             unresolved: report.unresolved,
+            // Why, not only which: an id on its own sends an operator to the
+            // database to find out what is wrong with it.
+            reasons: report.reasons,
           },
           report.unresolved.length > 0
             ? 'a change to this workspace cannot be resolved automatically; the workspace will refuse writes until an operator resolves it'
