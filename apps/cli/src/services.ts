@@ -14,8 +14,11 @@ import {
   CrossStoreWriter,
   EventLedger,
   IdempotencyService,
+  KnowledgeRecovery,
   KnowledgeService,
   MaintenanceService,
+  RecoveryService,
+  TaxonomyRecovery,
   TaxonomyService,
   SessionService,
   UserService,
@@ -29,6 +32,7 @@ import {
   createGitStore,
   frontmatterHash,
   parseItem,
+  parseTaxonomy,
   renderItem,
   renderTaxonomy,
   slugifyTitle,
@@ -182,6 +186,48 @@ export function createServices() {
         actors: repositories.actors,
       }),
   );
+  // What finishes a write that reached Git and no further. The server builds
+  // the same three at startup; the command line has them so an operator can
+  // resolve a blocked workspace without restarting the process. The workspace
+  // lock is a PostgreSQL advisory lock, so this is safe to run against a
+  // installation that is up: it waits for whatever is writing.
+  const recovery = lazy(
+    () =>
+      new RecoveryService({
+        uow,
+        operations: repositories.operations,
+        commitExists: (workspaceId, operationId) =>
+          git().hasCommitForOperation(workspaceId, operationId),
+        // Each knows the operations it can finish, so the order only decides
+        // who is asked first, not who answers.
+        completeFromCommit: async (operation) =>
+          (await new KnowledgeRecovery({
+            uow,
+            items: repositories.knowledge,
+            revisions: repositories.revisions,
+            categories: repositories.categories,
+            relations: repositories.relations,
+            search: repositories.search,
+            ledger: ledger(),
+            git: git(),
+            parseItem,
+            contentHash,
+            frontmatterHash,
+          }).complete(operation)) ||
+          (await new TaxonomyRecovery({
+            uow,
+            categories: repositories.categories,
+            aliases: repositories.aliases,
+            versions: repositories.taxonomyVersions,
+            ledger: ledger(),
+            git: git(),
+            taxonomyPath: TAXONOMY_PATH,
+            items: repositories.knowledge,
+            uniqueSlug,
+            parseTaxonomy,
+          }).complete(operation)),
+      }),
+  );
   // Only the reindex command builds this, and it reads the repository rather
   // than writing to it: the cross-store writer it would need for a write is
   // the server's, and a command-line rebuild takes no lock on knowledge.
@@ -260,6 +306,9 @@ export function createServices() {
     },
     get maintenance() {
       return maintenance();
+    },
+    get recovery() {
+      return recovery();
     },
     get taxonomy() {
       return taxonomy();

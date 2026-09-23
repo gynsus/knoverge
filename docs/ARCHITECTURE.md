@@ -109,8 +109,10 @@ All strings come from message catalogues (English source, Russian first). See `I
 - `ledger verify`: recomputes the event chain;
 - `taxonomy`, `agent`, `permissions`, `workspace`: the administration a server
   operator may need without a browser;
-- `db migrate` / `db prune`;
-- `integrity check` (Milestone 9): cross-store and ledger verification, and the way to resolve a workspace the write guard has closed;
+- `db migrate` / `db prune` / `db recover`: the last finishes or abandons writes
+  an interrupted process left behind, which is how a workspace the write guard
+  has closed is opened without restarting the server;
+- `integrity check` (Milestone 9): cross-store and ledger verification;
 - `backup` / `restore` helpers (Milestone 9);
 - `mcp stdio`: local stdio bridge that proxies to a remote Knoverge MCP endpoint with a bearer token from the environment.
 
