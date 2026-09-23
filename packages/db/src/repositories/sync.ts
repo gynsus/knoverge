@@ -84,6 +84,9 @@ export function createSyncRepository(db: Database): SyncRepository {
           and(
             eq(syncCandidates.syncSessionId, syncSessionId),
             ...(options.onlyFinal ? [eq(syncCandidates.classificationState, 'final')] : []),
+            ...(options.onlyProvisional
+              ? [eq(syncCandidates.classificationState, 'provisional')]
+              : []),
             ...(options.after ? [gt(syncCandidates.id, options.after)] : []),
           ),
         )

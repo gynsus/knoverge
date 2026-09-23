@@ -4,7 +4,8 @@ import pino from 'pino';
 import pkg from '../package.json' with { type: 'json' };
 import { buildApp } from './app.ts';
 import { ConfigError, loadConfig } from './config.ts';
-import { createJobs } from './jobs.ts';
+import { refineSyncSession } from './refine.ts';
+import { createJobs, type Jobs } from './jobs.ts';
 import { createServices } from './services.ts';
 import { runUntilSuccess } from './startup.ts';
 import {
@@ -37,7 +38,14 @@ async function main(): Promise<void> {
   }
 
   const logger = createLogger(config.logLevel, config.nodeEnv);
+  // The runner needs the services to settle a session and the services need
+  // the runner to ask for it. The holder is how the two are tied without a
+  // cycle: the closure reads it when a request arrives, long after both exist.
+  const runner: { jobs: Jobs | undefined } = { jobs: undefined };
   const services = createServices({
+    enqueueRefine: async (workspaceId, sessionId) => {
+      await runner.jobs?.refineSync(workspaceId, sessionId);
+    },
     // An idle connection dying is the operator's business, not a caller's, and
     // must not end the process.
     onPoolError: (error) => logger.warn({ err: error }, 'a pooled connection failed while idle'),
@@ -51,9 +59,13 @@ async function main(): Promise<void> {
 
   const migrationsFolder = defaultMigrationsFolder();
   const runsWorker = config.role === 'all' || config.role === 'worker';
-  const jobs = runsWorker
-    ? createJobs(config.databaseUrl, logger, { prune: () => services.maintenance.prune() })
+  runner.jobs = runsWorker
+    ? createJobs(config.databaseUrl, logger, {
+        prune: () => services.maintenance.prune(),
+        refineSync: (workspaceId, sessionId) => refineSyncSession(services, workspaceId, sessionId),
+      })
     : undefined;
+  const jobs = runner.jobs;
 
   const app = await buildApp({
     version: pkg.version,
