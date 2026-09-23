@@ -964,6 +964,64 @@ describe('a form leaves room around its button', () => {
   });
 });
 
+describe('choosing a category', () => {
+  const CATEGORIES = {
+    taxonomy_version: 1,
+    categories: [CATEGORY],
+  };
+
+  /** jsdom reports 1024 by default; these tests say which side of it they want. */
+  function widthOf(width: number) {
+    const original = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+    return () =>
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: original });
+  }
+
+  it('greys nothing out when the detail panel is a column', async () => {
+    const restore = widthOf(1280);
+    try {
+      mockApi({
+        ...SIGNED_IN,
+        'GET /v1/taxonomy.list?include_archived=true': () => json(CATEGORIES),
+      });
+      const { baseElement } = renderApp('/taxonomy');
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'Projects' }));
+
+      // The panel is on screen, in the column it belongs to.
+      expect(await screen.findByRole('heading', { name: 'Projects', level: 3 })).toBeVisible();
+      // And nothing is behind an overlay. A sheet hidden with a class still
+      // draws one through a portal the class does not reach, and still locks
+      // the page's scrolling, neither of which anybody can see.
+      expect(baseElement.querySelector('[data-slot="sheet-overlay"]')).toBeNull();
+      expect(document.body).not.toHaveAttribute('data-scroll-locked');
+    } finally {
+      restore();
+    }
+  });
+
+  it('opens a sheet when there is no column for it', async () => {
+    const restore = widthOf(800);
+    try {
+      mockApi({
+        ...SIGNED_IN,
+        'GET /v1/taxonomy.list?include_archived=true': () => json(CATEGORIES),
+      });
+      const { baseElement } = renderApp('/taxonomy');
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'Projects' }));
+
+      await waitFor(() =>
+        expect(baseElement.querySelector('[data-slot="sheet-overlay"]')).not.toBeNull(),
+      );
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    } finally {
+      restore();
+    }
+  });
+});
+
 describe('a checkbox is a checkbox', () => {
   it('renders the rule toggle as one, with a label beside it', async () => {
     // The migration turned every input into the text Input, which made this a

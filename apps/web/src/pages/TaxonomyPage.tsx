@@ -20,6 +20,7 @@ import {
 } from '@/lib/category-draft';
 import { ACTORS_KEY, TAXONOMY_HISTORY_KEY, TAXONOMY_KEY } from '@/lib/query-keys';
 import { buildTree, matching, subtreeIds } from '@/lib/taxonomy-tree';
+import { LARGE_BREAKPOINT, useBelow } from '@/hooks/use-mobile';
 import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
@@ -62,6 +63,9 @@ export function TaxonomyPage() {
   const [merging, setMerging] = useState<CategorySummary | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Below `lg` the tree takes the whole width and the detail panel is a sheet;
+  // at or above it the panel is a column that is always there.
+  const narrow = useBelow(LARGE_BREAKPOINT);
   const [notice, setNotice] = useState<{ message: string; tone: 'status' | 'error' } | null>(null);
 
   const taxonomy = useQuery({
@@ -378,8 +382,12 @@ export function TaxonomyPage() {
           </div>
         ))}
 
-      <Sheet open={detailsOpen && selected !== null} onOpenChange={setDetailsOpen}>
-        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-md lg:hidden">
+      {/* Only where there is no column for it. A sheet hidden with a class is
+          still a dialog: it draws its overlay through a portal the class does
+          not reach, traps the focus, and locks the page's scrolling, none of
+          which is visible. */}
+      <Sheet open={narrow && detailsOpen && selected !== null} onOpenChange={setDetailsOpen}>
+        <SheetContent side="right" className="w-full gap-0 overflow-y-auto sm:max-w-md">
           <SheetHeader className="sr-only">
             <SheetTitle>{selected?.name ?? t('taxonomy.title')}</SheetTitle>
           </SheetHeader>
