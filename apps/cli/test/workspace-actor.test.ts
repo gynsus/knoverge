@@ -14,6 +14,7 @@ function workspace(slug: string, id: string): WorkspaceRecord {
     settings: {},
     createdAt: new Date(),
     updatedAt: new Date(),
+    archivedAt: null,
   };
 }
 

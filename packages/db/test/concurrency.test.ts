@@ -102,6 +102,7 @@ beforeAll(async () => {
     grants: repositories.grants,
     rules: repositories.policyRules,
     categories: repositories.categories,
+    workspaces: repositories.workspaces,
     ledger,
   });
   const bootstrap = new BootstrapService({

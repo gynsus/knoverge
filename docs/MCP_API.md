@@ -100,7 +100,7 @@ Output:
 ```json
 {
   "server": { "name": "knoverge", "version": "0.1.0", "contract_version": "1" },
-  "workspace": { "id": "ws_01J...", "name": "Personal Knowledge", "default_language": "en" },
+  "workspace": { "id": "ws_01J...", "name": "Personal Knowledge", "default_language": "en", "archived": false },
   "taxonomy_version": 42,
   "change_sequence": 18734,
   "event_sequence": 22010,
@@ -124,6 +124,8 @@ Output:
 ```
 
 `can_write_direct` is true only if at least one policy rule grants `allow_direct` to this actor. Holding `knowledge.write` is not enough: rule 14 says a trusted agent still waits for review until a rule says otherwise, so the two questions have different answers and the manifest answers the one a client acts on.
+
+`archived` is true while the workspace is kept and no longer written to. Every capability that would change the knowledge is false at the same time; the flag says why, so a client can report "the workspace is archived" instead of listing four permissions it does not have. `sync_begin` is refused there as well, because a pass exists to end in proposals. See ADR 0018.
 
 `onboarding` arrives with the sync sessions it describes, in Milestone 5.
 

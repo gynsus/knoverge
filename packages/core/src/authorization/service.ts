@@ -25,6 +25,7 @@ import { DomainError } from '../errors.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { UnitOfWork } from '../ports/unit-of-work.ts';
 import type { CategoryRepository } from '../taxonomy/repository.ts';
+import type { WorkspaceRepository } from '../workspace/repository.ts';
 import type { PermissionGrantRepository, PolicyRuleRepository } from './repository.ts';
 
 /** What the caller holds beyond explicit grants. */
@@ -38,11 +39,41 @@ export interface AuthorizationServiceOptions {
   grants: PermissionGrantRepository;
   rules: PolicyRuleRepository;
   categories: CategoryRepository;
+  /** Read to find out whether the workspace is archived, and so frozen. */
+  workspaces: Pick<WorkspaceRepository, 'findById'>;
   ledger: EventLedger;
 }
 
 /** Every action the permission model defines, in a stable order. */
 const ALL_PERMISSION_ACTIONS: readonly PermissionAction[] = PermissionAction.options;
+
+/**
+ * What an archived workspace stops allowing, whoever asks (ADR 0018).
+ *
+ * Everything that would change the knowledge: writing it, proposing a change
+ * to it, approving one, and changing the taxonomy it is filed under. Reading,
+ * searching and history are untouched — an archive nobody can read is a
+ * deletion with extra steps.
+ *
+ * Administration is deliberately not here. `workspace.admin` is how the
+ * workspace is brought back, and freezing it would make archiving one-way;
+ * `agent.manage` is how a credential is revoked, which somebody closing a
+ * project has more reason to do, not less; `policy.manage` writes rules that
+ * decide how writes are applied, and there are no writes to apply.
+ */
+const FROZEN_BY_ARCHIVE: ReadonlySet<PermissionAction> = new Set<PermissionAction>([
+  'knowledge.propose_create',
+  'knowledge.propose_update',
+  'knowledge.propose_delete',
+  'knowledge.propose_supersede',
+  'knowledge.write',
+  'knowledge.approve',
+  'taxonomy.propose',
+  'taxonomy.manage',
+]);
+
+/** The reason a refusal carries when the workspace, not the grant, is the cause. */
+export const ARCHIVED_REASON = 'workspace_archived';
 
 /** How long the same refusal is recorded only once. */
 export const DENIAL_REPEAT_MS = 60_000;
@@ -106,6 +137,7 @@ export class AuthorizationService {
     action: PermissionAction,
   ): Promise<boolean> {
     if (actor.actorType === 'system') return true;
+    if (FROZEN_BY_ARCHIVE.has(action) && (await this.isArchived(actor.workspaceId))) return false;
     return holdsAction(await this.grantsFor(actor, standing), action);
   }
 
@@ -139,7 +171,10 @@ export class AuthorizationService {
   async heldActions(actor: ActorContext, standing: ActorStanding): Promise<PermissionAction[]> {
     if (actor.actorType === 'system') return [...ALL_PERMISSION_ACTIONS];
     const grants = await this.grantsFor(actor, standing);
-    return ALL_PERMISSION_ACTIONS.filter((action) => holdsAction(grants, action));
+    const frozen = await this.isArchived(actor.workspaceId);
+    return ALL_PERMISSION_ACTIONS.filter(
+      (action) => holdsAction(grants, action) && !(frozen && FROZEN_BY_ARCHIVE.has(action)),
+    );
   }
 
   async missingAction(
@@ -153,6 +188,19 @@ export class AuthorizationService {
     if (actor.actorType === 'system') return null;
     const grants = await this.grantsFor(actor, standing);
     return actions.find((action) => !holdsAction(grants, action)) ?? null;
+  }
+
+  /**
+   * Whether this workspace is frozen.
+   *
+   * One indexed lookup, asked only when the action in hand is one an archive
+   * would freeze, so the reading paths that make up most traffic never pay for
+   * it. Not cached: a stale answer here either keeps refusing a workspace that
+   * was brought back or accepts a write into one that was just closed.
+   */
+  private async isArchived(workspaceId: WorkspaceId): Promise<boolean> {
+    const workspace = await this.o.workspaces.findById(workspaceId);
+    return workspace?.archivedAt != null;
   }
 
   private async grantsFor(actor: ActorContext, standing: ActorStanding): Promise<Grant[]> {
@@ -189,6 +237,12 @@ export class AuthorizationService {
     // disagree, so a command line path that happened to reach check() instead
     // would have been refused, taking the documented recovery route with it.
     if (actor.actorType === 'system') return { allowed: true, reason: 'system_actor' };
+    // Before the grants, and above them: an archived workspace refuses the
+    // change whatever anybody holds, and the reason says so rather than
+    // reading as a missing grant in the audit trail.
+    if (FROZEN_BY_ARCHIVE.has(action) && (await this.isArchived(actor.workspaceId))) {
+      return { allowed: false, reason: ARCHIVED_REASON };
+    }
     const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
     const grants = await this.grantsFor(actor, standing);
     const decision = evaluatePermission(grants, action, target, ancestorsOf);
@@ -211,7 +265,12 @@ export class AuthorizationService {
     const decision = await this.check(actor, standing, action, target);
     if (decision.allowed) return;
     await this.recordDenied(actor, action, decision.reason, target);
-    throw new DomainError('FORBIDDEN', `not permitted: ${action}`);
+    throw new DomainError(
+      'FORBIDDEN',
+      decision.reason === ARCHIVED_REASON
+        ? 'this workspace is archived and accepts no changes'
+        : `not permitted: ${action}`,
+    );
   }
 
   /** Decides how a permitted write is applied: directly, after review, or not at all. */

@@ -49,6 +49,7 @@ const ME = {
       workspace_id: WORKSPACE,
       workspace_slug: 'personal',
       workspace_name: 'Personal',
+      workspace_archived_at: null,
       role: 'owner',
     },
   ],

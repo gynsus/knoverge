@@ -56,8 +56,11 @@ Workspace
 - default_language
 - created_at
 - updated_at
+- archived_at nullable
 - settings_json
 ```
+
+`archived_at` is set while the workspace is kept and no longer written to. Reading, search and history are untouched; every action that would change the knowledge is refused for everyone, by the authorisation service rather than by a cascade over the rows. It is reversible, and both states are ledger events (`workspace.archived`, `workspace.restored`). See ADR 0018.
 
 ## 2. User
 

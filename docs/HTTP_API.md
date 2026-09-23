@@ -101,6 +101,7 @@ GET  /v1/actors.list                        (any member) actor ids to names, for
 GET  /v1/admin/sync.list                    reconciliation runs, for whoever reviews what they produced
 POST /v1/admin/workspace.create             a new workspace, with the caller as its owner
 POST /v1/admin/workspace.update
+POST /v1/admin/workspace.archive            closes the workspace to changes, or opens it again
 GET  /v1/admin/members.list
 POST /v1/admin/members.add
 POST /v1/admin/members.update
@@ -261,6 +262,27 @@ quietly creating a second workspace. The new workspace starts its own event
 chain with `workspace.created`, carrying `created_by_actor_id` and
 `created_by_workspace_id` so the act is attributable across the two. Its Git
 repository is created on the first write, as for any workspace.
+
+### Archiving a workspace
+
+`POST /v1/admin/workspace.archive` takes `{ "archived": true | false }` and
+requires `workspace.admin` in the workspace named by the header. An archived
+workspace is kept and no longer written to: reading, search, history and the
+event feed answer exactly as before, and every action that would change the
+knowledge — writing, proposing, approving, changing the taxonomy — is refused
+with `FORBIDDEN` for everyone, people and agents alike. `sync_begin` is refused
+for the same reason: a pass exists to end in proposals.
+
+Administration is not frozen. `workspace.admin` is how the workspace comes
+back, `agent.manage` is how a credential is revoked, and neither changes what
+the workspace holds.
+
+`workspace.get`, `workspaces.list` and the session's memberships carry
+`archived_at`, and the manifest carries `archived`, so a client can say why
+rather than list the permissions it no longer has. `workspace.get` also stops
+reporting the frozen actions, which is what the interface builds its controls
+from. Asking for the state the workspace is already in changes nothing and
+records nothing. See ADR 0018.
 
 ## 7. Web-only read endpoints
 

@@ -38,6 +38,7 @@ const WORKSPACES_KEY = ['workspaces-list'] as const;
 
 const ROLES: MembershipRole[] = ['owner', 'admin', 'reviewer', 'viewer'];
 type Sort = 'activity' | 'name' | 'items';
+type Status = 'all' | 'active' | 'archived';
 
 /**
  * Every workspace this person belongs to.
@@ -66,6 +67,10 @@ export function WorkspacesPage() {
   const [notice, setNotice] = useState<{ message: string; tone: 'status' | 'error' } | null>(null);
   const [query, setQuery] = useState('');
   const [role, setRole] = useState<'all' | MembershipRole>('all');
+  // Archived workspaces are listed rather than hidden: somebody who cannot
+  // find the one they archived would reasonably conclude it was deleted. They
+  // sort to the bottom instead, and this narrows to one state or the other.
+  const [status, setStatus] = useState<Status>('all');
   const [sort, setSort] = useState<Sort>('activity');
 
   const list = useQuery({
@@ -117,6 +122,26 @@ export function WorkspacesPage() {
     },
   });
 
+  const archive = useMutation({
+    mutationFn: ({ id, archived }: { id: string; archived: boolean }) =>
+      adminApi.workspace.archive(id, archived),
+    onSuccess: async (_result, variables) => {
+      await client.invalidateQueries({ queryKey: WORKSPACES_KEY });
+      // The workspace being looked at decides which controls the rest of the
+      // interface offers, and archiving has just changed the answer.
+      await client.invalidateQueries({ queryKey: WORKSPACE_KEY });
+      setNotice({
+        message: variables.archived ? t('workspaces.was_archived') : t('workspaces.was_restored'),
+        tone: 'status',
+      });
+    },
+    onError: (error: unknown) =>
+      setNotice({
+        message: error instanceof Error ? error.message : t('workspaces.archive_failed'),
+        tone: 'error',
+      }),
+  });
+
   const save = useMutation({
     mutationFn: (draft: WorkspaceDraft) =>
       adminApi.workspace.update({
@@ -140,21 +165,27 @@ export function WorkspacesPage() {
           w.name.toLowerCase().includes(needle) ||
           w.slug.toLowerCase().includes(needle) ||
           (w.description ?? '').toLowerCase().includes(needle)) &&
-        (role === 'all' || w.role === role),
+        (role === 'all' || w.role === role) &&
+        (status === 'all' || (status === 'archived') === (w.archived_at !== null)),
     );
     const byActivity = (w: WorkspaceListEntry) =>
       w.last_activity_at === null ? 0 : new Date(w.last_activity_at).getTime();
     return [...matches].sort((a, b) => {
+      // Before every other order: an archived workspace is not what somebody
+      // scanning this list is looking for, whichever way they sorted it.
+      const closed = Number(a.archived_at !== null) - Number(b.archived_at !== null);
+      if (closed !== 0) return closed;
       if (sort === 'name') return a.name.localeCompare(b.name, i18n.language);
       if (sort === 'items') return b.item_count - a.item_count;
       return byActivity(b) - byActivity(a);
     });
-  }, [all, query, role, sort, i18n.language]);
+  }, [all, query, role, status, sort, i18n.language]);
 
-  const filtered = query !== '' || role !== 'all';
+  const filtered = query !== '' || role !== 'all' || status !== 'all';
   const reset = () => {
     setQuery('');
     setRole('all');
+    setStatus('all');
   };
   // The server refuses anyone without workspace.admin, so the interface asks
   // the same question rather than offering a button that only fails.
@@ -215,6 +246,16 @@ export function WorkspacesPage() {
                 {t(`roles.${r}`)}
               </option>
             ))}
+          </Select>
+          <Select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as Status)}
+            aria-label={t('workspaces.filter_status')}
+            className="sm:w-44"
+          >
+            <option value="all">{t('workspaces.all_states')}</option>
+            <option value="active">{t('workspaces.state_active')}</option>
+            <option value="archived">{t('workspaces.state_archived')}</option>
           </Select>
           <Select
             value={sort}
@@ -290,6 +331,8 @@ export function WorkspacesPage() {
                 setParams({ edit: inspected.id }, { replace: true });
               }}
               onMembers={() => go(inspected.id, '/workspaces/members')}
+              onArchive={(archived) => archive.mutate({ id: inspected.id, archived })}
+              archiving={archive.isPending}
               onNotice={(message, tone) => setNotice({ message, tone })}
             />
           )}
@@ -383,6 +426,11 @@ function WorkspaceCard({
       <CardContent className="grid content-end gap-5">
         <div className="flex flex-wrap items-center gap-2">
           {current && <Badge>{t('workspaces.current')}</Badge>}
+          {workspace.archived_at !== null && (
+            <Badge variant="outline" className="text-muted-foreground">
+              {t('workspaces.archived')}
+            </Badge>
+          )}
           <Badge variant="outline">{t(`roles.${workspace.role}`)}</Badge>
           <Badge variant="outline" className="font-mono font-normal">
             {workspace.slug}

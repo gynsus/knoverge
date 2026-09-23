@@ -25,6 +25,13 @@ export const MembershipSummary = z.object({
   workspace_id: WorkspaceId,
   workspace_slug: z.string(),
   workspace_name: z.string(),
+  /**
+   * Set while the workspace is archived: kept and readable, closed to changes.
+   *
+   * Here as well as on the workspaces list, because the switcher is built from
+   * this and has no other way to tell a live workspace from a closed one.
+   */
+  workspace_archived_at: z.iso.datetime().nullable(),
   role: MembershipRole,
 });
 export type MembershipSummary = z.infer<typeof MembershipSummary>;

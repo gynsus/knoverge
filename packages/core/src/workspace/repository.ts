@@ -12,10 +12,18 @@ export interface WorkspaceRecord {
   settings: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
+  /**
+   * When the workspace was archived, or null while it is live.
+   *
+   * An archived workspace is read-only: its knowledge, history and ledger stay
+   * exactly as they were and every write is refused. The state is reversible,
+   * which is why this is a date and not a deletion.
+   */
+  archivedAt: Date | null;
 }
 
 export type WorkspacePatch = Partial<
-  Pick<WorkspaceRecord, 'name' | 'description' | 'defaultLanguage' | 'updatedAt'>
+  Pick<WorkspaceRecord, 'name' | 'description' | 'defaultLanguage' | 'updatedAt' | 'archivedAt'>
 >;
 
 /** What a workspace holds, for a list that has to say so without opening it. */

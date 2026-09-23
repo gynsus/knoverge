@@ -8,6 +8,8 @@ import { CategoryPath } from './taxonomy.ts';
 export const EventType = z.enum([
   'workspace.created',
   'workspace.updated',
+  'workspace.archived',
+  'workspace.restored',
   'user.created',
   'user.password_reset',
   'membership.created',

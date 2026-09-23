@@ -96,6 +96,10 @@ export const adminApi = {
       apiPost<CreateWorkspaceResponse>('/v1/admin/workspace.create', body),
     update: (body: UpdateWorkspaceRequest) =>
       apiPost<OkResponse>('/v1/admin/workspace.update', body),
+    // Named explicitly, because this is reached from a list where the
+    // workspace acted on is often not the one being looked at.
+    archive: (workspaceId: string, archived: boolean) =>
+      apiPost<OkResponse>('/v1/admin/workspace.archive', { archived }, workspaceId),
     members: (signal?: AbortSignal) => apiGet<MembersResponse>('/v1/admin/members.list', signal),
     addMember: (body: AddMemberRequest) => apiPost<MembersResponse>('/v1/admin/members.add', body),
     updateMember: (body: UpdateMemberRequest) =>
