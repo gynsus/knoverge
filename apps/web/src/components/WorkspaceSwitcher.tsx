@@ -108,15 +108,17 @@ export function WorkspaceSwitcher({ workspaces }: { workspaces: WorkspaceContext
               ))}
             </DropdownMenuRadioGroup>
             <DropdownMenuSeparator />
+            {/* Straight to the drawer for the workspace they are in, rather
+                than to a list they would have to find it in again. */}
             <DropdownMenuItem asChild>
-              <Link to="/workspaces/settings" onClick={() => setOpenMobile(false)}>
+              <Link to={`/workspaces?edit=${current.id}`} onClick={() => setOpenMobile(false)}>
                 <Settings2 aria-hidden="true" />
                 {t('nav.workspace_settings')}
               </Link>
             </DropdownMenuItem>
             {canCreate && (
               <DropdownMenuItem asChild>
-                <Link to="/workspaces/new" onClick={() => setOpenMobile(false)}>
+                <Link to="/workspaces?new" onClick={() => setOpenMobile(false)}>
                   <Plus aria-hidden="true" />
                   {t('workspace.create')}
                 </Link>

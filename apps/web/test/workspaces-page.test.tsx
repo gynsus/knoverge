@@ -21,14 +21,19 @@ function json(body: unknown, status = 200): Response {
 }
 
 function mockApi(routes: Record<string, Handler>) {
-  const calls: { url: string; method: string; workspace?: string }[] = [];
+  const calls: { url: string; method: string; body?: unknown; workspace?: string }[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
       const method = init?.method ?? 'GET';
       const workspace = new Headers(init?.headers).get('x-knoverge-workspace');
-      calls.push({ url, method, ...(workspace ? { workspace } : {}) });
+      calls.push({
+        url,
+        method,
+        body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
+        ...(workspace ? { workspace } : {}),
+      });
       const handler = routes[`${method} ${url}`];
       if (!handler)
         return json(
@@ -215,19 +220,76 @@ describe('the workspaces page', () => {
     expect(await screen.findByRole('heading', { name: 'Personal' })).toBeInTheDocument();
   });
 
-  it('opening one moves into it', async () => {
+  it('shows what a workspace is before moving into it', async () => {
     const calls = mockApi(signedIn());
     renderApp('/workspaces');
     await screen.findByRole('heading', { name: 'Pixel Brisbane' });
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole('button', { name: 'Pixel Brisbane' }));
+    // Choosing a card asks about it rather than entering it. Somebody
+    // scanning a list is deciding which one they want, and being moved into
+    // one because they looked at it is a surprise.
+    await user.click(screen.getByRole('button', { name: 'What Pixel Brisbane is' }));
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('428 items')).toBeInTheDocument();
+    expect(within(panel).getByText('3 agents')).toBeInTheDocument();
+    expect(calls.filter((c) => c.url === '/v1/workspace.get').at(-1)?.workspace).toBe(FIRST);
+
+    await user.click(within(panel).getByRole('button', { name: 'Open' }));
     // Not just navigation: every later request has to name the new workspace,
     // or the page would show one workspace's rows under the other's name.
     await waitFor(() =>
       expect(calls.filter((c) => c.url === '/v1/workspace.get').at(-1)?.workspace).toBe(SECOND),
     );
     expect(await screen.findByText('Your workspaces')).toBeInTheDocument();
+  });
+
+  it('creates one in a drawer, from an address the switcher can link to', async () => {
+    let memberships = [MEMBERSHIPS[0]!];
+    const calls = mockApi({
+      ...signedIn(),
+      'GET /v1/auth/me': () => json({ user: USER, memberships, session: SESSION }),
+      'POST /v1/admin/workspace.create': () => {
+        memberships = MEMBERSHIPS;
+        return json({ workspace: { ...LISTED.workspaces[1]!, role: 'owner' } });
+      },
+    });
+    renderApp('/workspaces?new');
+    const user = userEvent.setup();
+
+    // The form arrives open, because the address said so: a reload does not
+    // lose it and the switcher can point straight at it.
+    await user.type(await screen.findByLabelText('Name'), 'Pixel Brisbane');
+    expect(screen.getByLabelText('Workspace identifier')).toHaveValue('pixel-brisbane');
+    await user.click(screen.getByRole('button', { name: 'Create and switch to it' }));
+
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/workspace.create')).toBeDefined(),
+    );
+  });
+
+  it('edits the one it was asked about', async () => {
+    const calls = mockApi({
+      ...signedIn(),
+      'POST /v1/admin/workspace.update': () => json({ ok: true }),
+    });
+    renderApp(`/workspaces?edit=${FIRST}`);
+    const user = userEvent.setup();
+
+    const name = await screen.findByLabelText('Name');
+    expect(name).toHaveValue('Personal');
+    // The identifier is fixed once a workspace exists: the repository is
+    // named after it and every path in it would move.
+    expect(screen.queryByLabelText('Workspace identifier')).not.toBeInTheDocument();
+
+    await user.clear(name);
+    await user.type(name, 'Personal Knowledge');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/workspace.update')?.body).toMatchObject({
+        name: 'Personal Knowledge',
+      }),
+    );
   });
 
   it('offers creating one only to somebody who may', async () => {

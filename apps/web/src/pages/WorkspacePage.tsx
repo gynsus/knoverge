@@ -1,17 +1,16 @@
-import type { MemberSummary, MembershipRole, WorkspaceSummary } from '@knoverge/contracts';
+import type { MemberSummary, MembershipRole } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { adminApi } from '../api/admin.ts';
 import { useAuth } from '../auth/use-auth.ts';
-import { WORKSPACE_KEY, useWorkspaceContext } from '../auth/use-workspace.ts';
+import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { Button } from '@/components/ui/button';
 import { Card, CardTitle } from '@/components/ui/card';
 import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableActions,
@@ -178,78 +177,14 @@ function MemberRow({
   );
 }
 
-function WorkspaceSettingsForm({
-  workspace,
-  canAdminister,
-}: {
-  workspace: WorkspaceSummary;
-  canAdminister: boolean;
-}) {
-  const { t } = useTranslation();
-  const client = useQueryClient();
-  // Initialised from the loaded workspace; the key on this component resets the
-  // fields when a different workspace is shown.
-  const [name, setName] = useState(workspace.name);
-  const [description, setDescription] = useState(workspace.description ?? '');
-  const [language, setLanguage] = useState<string>(workspace.default_language);
-  const [saved, setSaved] = useState(false);
-
-  const save = useMutation({
-    mutationFn: () =>
-      adminApi.workspace.update({
-        name,
-        description: description || null,
-        default_language: language,
-      }),
-    onSuccess: async () => {
-      setSaved(true);
-      await client.invalidateQueries({ queryKey: WORKSPACE_KEY });
-    },
-  });
-
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    setSaved(false);
-    save.mutate();
-  };
-
-  return (
-    <form onSubmit={submit} className="grid gap-4">
-      <FieldSet disabled={!canAdminister || save.isPending}>
-        <Field label={t('workspace.name')}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} required maxLength={120} />
-        </Field>
-        <Field label={t('workspace.description')}>
-          <Textarea
-            rows={3}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            maxLength={2000}
-          />
-        </Field>
-        <Field label={t('workspace.default_language')} hint={t('workspace.default_language_hint')}>
-          <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
-            <option value="en">{t('language.en')}</option>
-            <option value="ru">{t('language.ru')}</option>
-          </Select>
-        </Field>
-        <p>
-          <small>
-            {t('workspace.identifier')}: <code>{workspace.slug}</code>
-          </small>
-        </p>
-      </FieldSet>
-      <ErrorNotice error={save.error} />
-      {saved && <p role="status">{t('workspace.saved')}</p>}
-      {canAdminister && (
-        <Button type="submit" disabled={save.isPending} className="justify-self-start">
-          {save.isPending ? t('common.working') : t('workspace.save')}
-        </Button>
-      )}
-    </form>
-  );
-}
-
+/**
+ * Who reaches this workspace.
+ *
+ * The workspace's own settings are edited in a drawer on the list, where
+ * every workspace is: a form on a page of its own could only ever change the
+ * one you happened to be in, which is not where somebody arrives wanting to
+ * rename a different one.
+ */
 export function WorkspacePage() {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -299,25 +234,24 @@ export function WorkspacePage() {
 
   return (
     <>
-      <Card aria-labelledby="workspace-title" className="grid gap-3 p-4 sm:p-6">
-        <CardTitle id="workspace-title">{t('workspace.title')}</CardTitle>
+      <div className="grid gap-1.5">
+        <h2 className="text-2xl font-semibold tracking-tight">{t('workspace.members')}</h2>
+        <p className="max-w-2xl text-sm text-muted-foreground">
+          {t('workspace.members_intro', { name: workspaces.workspace?.name ?? '' })}
+        </p>
         {/* The same request the shell already made, read from the context
             rather than fetched again under a second key. */}
         {workspaces.isPending && <p role="status">{t('common.loading')}</p>}
         <ErrorNotice error={workspaces.error} />
-        {workspaces.workspace && (
-          <WorkspaceSettingsForm
-            key={workspaces.workspace.id}
-            workspace={workspaces.workspace}
-            canAdminister={canAdminister}
-          />
-        )}
-      </Card>
+      </div>
+
+      {!canAdminister && <p>{t('workspace.members_forbidden')}</p>}
 
       {canAdminister && (
         <>
-          <Card aria-labelledby="members-title" className="grid gap-3 p-4 sm:p-6">
-            <CardTitle id="members-title">{t('workspace.members')}</CardTitle>
+          {/* No title of its own: the page heading above says Members, and
+              two headings of the same name is one more than a reader needs. */}
+          <Card aria-label={t('workspace.members')} className="grid gap-3 p-4 sm:p-6">
             {members.isPending && <p role="status">{t('common.loading')}</p>}
             {members.isError && <ErrorNotice error={members.error} />}
             {members.data && (

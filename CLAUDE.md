@@ -36,10 +36,11 @@ Before implementing features, read:
 9. `docs/HTTP_API.md`
 10. `docs/SECURITY.md`
 11. `docs/I18N.md`
-12. `docs/IMPLEMENTATION_PLAN.md`
-13. `docs/TESTING.md`
-14. `docs/CODEBASE.md`
-15. `docs/adr/`
+12. `docs/WEB_UI.md`
+13. `docs/IMPLEMENTATION_PLAN.md`
+14. `docs/TESTING.md`
+15. `docs/CODEBASE.md`
+16. `docs/adr/`
 
 Architecture changes require an ADR under `docs/adr/`.
 
