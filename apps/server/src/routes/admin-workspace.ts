@@ -172,6 +172,24 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
       const records = await Promise.all(
         memberships.map((m) => services.repositories.workspaces.findById(m.workspaceId)),
       );
+      // Asked of the authorisation service per workspace rather than read off
+      // the role: a grant can widen or narrow what a role confers, and an
+      // interface that guesses from the role drifts from the server that
+      // decides.
+      const held = await Promise.all(
+        memberships.map((m) =>
+          services.authorization.heldActions(
+            {
+              workspaceId: m.workspaceId,
+              actorId: m.actorId,
+              actorType: 'human',
+              sessionId: human.session.id,
+              requestId: request.id,
+            },
+            { role: m.role },
+          ),
+        ),
+      );
       return {
         workspaces: memberships.flatMap((membership, index) => {
           const workspace = records[index];
@@ -189,6 +207,7 @@ export function registerAdminWorkspaceRoutes(app: FastifyInstance, services: Ser
               item_count: counts?.items ?? 0,
               agent_count: counts?.agents ?? 0,
               last_activity_at: counts?.lastActivityAt?.toISOString() ?? null,
+              permissions: held[index] ?? [],
             },
           ];
         }),

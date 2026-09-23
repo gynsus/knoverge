@@ -358,6 +358,12 @@ describe('creating a workspace', () => {
       item_count: 0,
       agent_count: 0,
     });
+    // What they may do there, decided by the authorisation service rather
+    // than guessed from the role, so an interface choosing what to offer for
+    // a workspace somebody is not in does not carry a second copy of the
+    // policy.
+    expect(second.permissions).toContain('workspace.admin');
+    expect(listed.find((w) => w.slug === 'personal')?.permissions).toContain('workspace.admin');
     // A workspace that has only just been created still has a ledger, so it
     // has an activity time; a null here would mean nothing was recorded.
     expect(second.last_activity_at).not.toBeNull();

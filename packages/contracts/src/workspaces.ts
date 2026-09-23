@@ -77,6 +77,16 @@ export const WorkspaceListEntry = z.object({
   agent_count: z.number().int().nonnegative(),
   /** The newest event in this workspace's ledger, or null if nothing happened yet. */
   last_activity_at: z.iso.datetime().nullable(),
+  /**
+   * What the caller may do in this workspace, after roles, tiers and grants.
+   *
+   * The same answer `workspace.get` gives for the one they are in, for each of
+   * the others. Without it an interface choosing what to offer for a workspace
+   * somebody is not in has only the role to go on, which is the second copy of
+   * the policy engine that every other screen avoids: a reviewer granted
+   * workspace administration explicitly would be shown nothing.
+   */
+  permissions: z.array(PermissionAction),
 });
 export type WorkspaceListEntry = z.infer<typeof WorkspaceListEntry>;
 
