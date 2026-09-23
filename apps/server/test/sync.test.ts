@@ -518,3 +518,65 @@ describe('what a finished pass leaves behind', () => {
     expect(run?.counts.new_candidate).toBe(2);
   });
 });
+
+describe('an external identity survives review', () => {
+  it('is on the item after approval, so a second pass finds it', async () => {
+    // Found by running the protocol against a real instance: three suites
+    // passed and the whole external-identity half of reconciliation did
+    // nothing, because the payload a proposal stores had no room for it.
+    const curator = await admin.post('/v1/admin/agents.create', {
+      name: 'Reviewing curator',
+      trust_tier: 'trusted',
+    });
+    const curatorId = (curator.json() as { agent: { id: string } }).agent.id;
+    const curatorToken = (
+      (await admin.post('/v1/admin/agents.credentials.issue', { agent_id: curatorId })).json() as {
+        token: string;
+      }
+    ).token;
+    // Approving is a permission, granted through the route an operator uses.
+    const curatorActor = (curator.json() as { agent: { actor_id: string } }).agent.actor_id;
+    const granted = await admin.post('/v1/admin/permissions.grant', {
+      actor_id: curatorActor,
+      action: 'knowledge.approve',
+    });
+    expect(granted.statusCode, granted.body).toBe(200);
+
+    const proposed = await agent('/v1/knowledge_propose_create', {
+      title: 'Where the nightly export lands',
+      body: 'A bucket per day, keyed by source.\n',
+      type: 'fact',
+      categories: ['architecture'],
+      external: { source_system: 'claude-code', external_key: 'ops/nightly-export' },
+    });
+    expect(proposed.statusCode, proposed.body).toBe(202);
+    const proposalId = (proposed.json() as { proposal: { id: string } }).proposal.id;
+
+    const approved = await app.inject({
+      method: 'POST',
+      url: '/v1/proposal_approve',
+      payload: { proposal_id: proposalId },
+      headers: { authorization: `Bearer ${curatorToken}` },
+    });
+    expect(approved.statusCode, approved.body).toBe(200);
+
+    // The point: a second pass recognises what the first one recorded.
+    const session = await beginSession('claude-code', 'external-identity');
+    const res = await agent('/v1/sync_submit_inventory', {
+      sync_session_id: session.sync_session_id,
+      candidates: [
+        {
+          client_candidate_id: 'e-1',
+          title: 'Where the nightly export lands',
+          type: 'fact',
+          external_key: 'ops/nightly-export',
+          source_modified_at: '2020-01-01T00:00:00.000Z',
+        },
+      ],
+    });
+    const match = SyncMatchesResult.parse(res.json()).matches[0]!;
+    expect(match.match_reason).toBe('external_key');
+    // The workspace's copy is newer than the agent's 2020 timestamp.
+    expect(match.classification).toBe('agent_copy_stale');
+  });
+});
