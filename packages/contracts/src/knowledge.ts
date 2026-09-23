@@ -122,6 +122,36 @@ export type FrontmatterExternal = z.infer<typeof FrontmatterExternal>;
  * Every field here is part of the revision. Changing any of them is a new
  * revision and a new commit, metadata-only changes included.
  */
+/**
+ * How long a slug may be, for a category or an item.
+ *
+ * Exported as a number because three places need it and they were allowed to
+ * disagree: the generator in `packages/git-store` truncated at eighty, this
+ * schema refused past sixty-four, and the database column is sixty-four. A
+ * title landing between the first two produced a slug the generator made and
+ * nothing would accept, and the item could not be recorded at all.
+ *
+ * The database is the one that cannot be argued with, so this is its number
+ * and everything else derives from it.
+ */
+export const MAX_SLUG_LENGTH = 64;
+
+/**
+ * A knowledge item's file name.
+ *
+ * Its own schema rather than a category's, because the two are different
+ * things that happen to look alike — a category slug is a directory name and
+ * chains into a path; an item slug is one file name at the end of one. Naming
+ * them apart is what stops a change to one silently moving the other.
+ */
+export const ItemSlug = z
+  .string()
+  .trim()
+  .min(1)
+  .max(MAX_SLUG_LENGTH)
+  .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lower-case letters, digits and hyphens');
+export type ItemSlug = z.infer<typeof ItemSlug>;
+
 export const Frontmatter = z
   .object({
     id: KnowledgeItemId,
@@ -224,7 +254,7 @@ export interface RevisionRef {
 export const KnowledgeItemSummary = z.object({
   id: KnowledgeItemId,
   workspace_id: WorkspaceId,
-  slug: CategorySlug,
+  slug: ItemSlug,
   /** `knowledge/<primary category path>/<slug>.md`, derived and stored. */
   markdown_path: z.string(),
   title: z.string(),
@@ -271,7 +301,7 @@ export const CreateKnowledgeRequest = z.object({
   categories: z.array(CategoryPath).max(20).default([]),
   tags: z.array(Tag).max(50).default([]),
   /** Chosen from the title unless one is given. */
-  slug: CategorySlug.optional(),
+  slug: ItemSlug.optional(),
   valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
   valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
   observed_at: z.iso.datetime({ offset: true }).nullable().optional(),

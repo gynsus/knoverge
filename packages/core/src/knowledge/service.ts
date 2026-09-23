@@ -1,5 +1,5 @@
 import {
-  CategorySlug,
+  ItemSlug,
   FRONTMATTER_KEY_ORDER,
   type ActorId,
   type Frontmatter,
@@ -1754,7 +1754,7 @@ export class KnowledgeService {
   }
 
   private parseSlug(slug: string): string {
-    const parsed = CategorySlug.safeParse(slug);
+    const parsed = ItemSlug.safeParse(slug);
     if (!parsed.success) {
       throw new DomainError('VALIDATION_ERROR', `not a usable slug: ${slug}`);
     }
