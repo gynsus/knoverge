@@ -61,6 +61,8 @@ export interface RevisionRecord {
   createdByActorId: ActorId;
   createdAt: Date;
   operationId: string;
+  /** Why the change was made. Null for a revision nobody explained. */
+  reason: string | null;
 }
 
 export interface ItemCategoryRecord {

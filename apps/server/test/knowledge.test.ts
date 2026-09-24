@@ -331,6 +331,80 @@ describe('narrowing the list', () => {
   });
 });
 
+/**
+ * Every change is a revision and a Git commit. Until now the history could say
+ * who and when, and not why.
+ */
+describe('why a change was made', () => {
+  it('keeps the reason on the revision and in the commit', async () => {
+    const created = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Backup retention',
+      body: 'Thirty days.\n',
+      type: 'decision',
+      reason: 'Recorded after the incident review.',
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const item = KnowledgeResponse.parse(created.json()).item;
+
+    const updated = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'Ninety days.\n',
+      reason: 'Legal asked for ninety, not thirty.',
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+
+    const history = RevisionsResponse.parse(
+      (await admin.get(`/v1/knowledge.revisions?item_id=${item.id}`)).json(),
+    ).revisions;
+    expect(history.map((r) => r.reason)).toEqual([
+      'Legal asked for ninety, not thirty.',
+      'Recorded after the incident review.',
+    ]);
+
+    // In the commit body, where Git has always kept the reason for a change,
+    // so `git log` answers without the application.
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    const message = await gitIn(repository, ['log', '-1', '--format=%B']);
+    expect(message).toContain('update(decision): Backup retention');
+    expect(message).toContain('Legal asked for ninety, not thirty.');
+    // Above the trailers, not folded into them.
+    expect(message.indexOf('Legal asked')).toBeLessThan(message.indexOf('Knoverge-Operation'));
+  });
+
+  it('is optional, and absent means null rather than empty', async () => {
+    const created = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Unexplained item',
+      body: 'Body.\n',
+      type: 'fact',
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const item = KnowledgeResponse.parse(created.json()).item;
+    const history = RevisionsResponse.parse(
+      (await admin.get(`/v1/knowledge.revisions?item_id=${item.id}`)).json(),
+    ).revisions;
+    expect(history[0]?.reason).toBeNull();
+  });
+
+  it('is not in the frontmatter, because that describes the item', async () => {
+    // A reason folded into the content hash would make every revision differ
+    // from itself, and a reader of the file would meet last week's argument
+    // at the top of this week's knowledge.
+    const created = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Frontmatter stays about the item',
+      body: 'Body.\n',
+      type: 'fact',
+      reason: 'A sentence that must not appear in the file.',
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const item = KnowledgeResponse.parse(created.json()).item;
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    const file = await readFile(join(repository, item.markdown_path), 'utf8');
+    expect(file).not.toContain('must not appear');
+  });
+});
+
 describe('tags in any language', () => {
   it('keeps what was written, and treats two spellings as one tag', async () => {
     const first = await admin.post('/v1/admin/knowledge.create', {
@@ -1229,7 +1303,12 @@ describe('two writers at once', () => {
 
     expect([a.statusCode, b.statusCode].sort(), `${a.body}\n${b.body}`).toEqual([200, 409]);
     // One replacement exists, not two: the loser wrote nothing at all.
-    const list = KnowledgeListResponse.parse((await admin.get('/v1/knowledge.list')).json());
+    // The whole workspace, not the first page: this suite adds items, and a
+    // page-sized window turns an assertion about the workspace into one about
+    // how much was written before it.
+    const list = KnowledgeListResponse.parse(
+      (await admin.get('/v1/knowledge.list?limit=200')).json(),
+    );
     const replacements = list.items.filter((i) => i.title.startsWith('Replacement '));
     expect(replacements).toHaveLength(1);
     await stillWritable('After two supersessions');

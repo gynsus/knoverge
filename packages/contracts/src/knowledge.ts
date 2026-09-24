@@ -357,6 +357,16 @@ export const CreateKnowledgeRequest = z.object({
   relations: z.array(FrontmatterRelation).max(50).default([]),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Optional, and worth giving: the history says who changed an item and
+   * when, and this is the only thing that says why. It is kept on the
+   * revision and written into the commit body, where Git has always held the
+   * reason for a change — never in the frontmatter, which describes the item
+   * and would fold the sentence into the content hash.
+   */
+  reason: z.string().trim().max(500).optional(),
 });
 export type CreateKnowledgeRequest = z.infer<typeof CreateKnowledgeRequest>;
 
@@ -577,6 +587,16 @@ export const UpdateKnowledgeRequest = z.object({
   relations: z.array(FrontmatterRelation).max(50).optional(),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Optional, and worth giving: the history says who changed an item and
+   * when, and this is the only thing that says why. It is kept on the
+   * revision and written into the commit body, where Git has always held the
+   * reason for a change — never in the frontmatter, which describes the item
+   * and would fold the sentence into the content hash.
+   */
+  reason: z.string().trim().max(500).optional(),
 });
 export type UpdateKnowledgeRequest = z.infer<typeof UpdateKnowledgeRequest>;
 
@@ -591,6 +611,16 @@ export const DeleteKnowledgeRequest = z.object({
   base_revision_id: RevisionId,
   base_content_hash: z.string().min(1).max(80),
   request_id: z.string().max(128).optional(),
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Optional, and worth giving: the history says who changed an item and
+   * when, and this is the only thing that says why. It is kept on the
+   * revision and written into the commit body, where Git has always held the
+   * reason for a change — never in the frontmatter, which describes the item
+   * and would fold the sentence into the content hash.
+   */
+  reason: z.string().trim().max(500).optional(),
 });
 export type DeleteKnowledgeRequest = z.infer<typeof DeleteKnowledgeRequest>;
 
@@ -610,6 +640,8 @@ export const RevisionSummary = z.object({
   content_hash: z.string(),
   frontmatter_hash: z.string(),
   git_commit: z.string(),
+  /** Why the change was made. Null for a revision nobody explained. */
+  reason: z.string().nullable(),
   actor_id: z.string(),
   created_at: z.iso.datetime({ offset: true }),
 });

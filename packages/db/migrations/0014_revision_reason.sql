@@ -1,0 +1,11 @@
+-- Why a revision was made, in whoever's own words.
+--
+-- The history could say who changed an item and when, and not why. For a
+-- ledger whose whole claim is that every change is recorded, that is the
+-- interesting half missing.
+--
+-- Nullable because every revision written before this one has no answer, and
+-- inventing one would be worse than an honest null. It is not in the
+-- frontmatter: the frontmatter describes the item, and a reason that changed
+-- the content hash on every edit would make each revision differ from itself.
+ALTER TABLE "knowledge_revisions" ADD COLUMN "reason" varchar(500);
