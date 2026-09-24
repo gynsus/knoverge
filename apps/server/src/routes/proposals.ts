@@ -39,6 +39,17 @@ export function proposedTitle(proposal: ProposalRecord): string | null {
   return typeof title === 'string' && title !== '' ? title : null;
 }
 
+/** Where the proposal says it belongs, read the same way its title is. */
+function proposedCategories(proposal: ProposalRecord): string[] {
+  const payload = proposal.proposedPayload as Record<string, unknown>;
+  const source =
+    proposal.proposalType === 'knowledge_supersede'
+      ? ((payload['newItem'] as Record<string, unknown> | undefined) ?? {})
+      : payload;
+  const categories = source['categories'];
+  return Array.isArray(categories) ? categories.map(String) : [];
+}
+
 function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): ProposalSummary {
   return {
     id: proposal.id,
@@ -48,6 +59,7 @@ function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): Pr
     title:
       proposedTitle(proposal) ??
       (proposal.targetItemId ? (itemTitles?.get(proposal.targetItemId) ?? null) : null),
+    categories: proposedCategories(proposal) as ProposalSummary['categories'],
     target_item_id: proposal.targetItemId,
     proposed_by_actor_id: proposal.proposedByActorId,
     base_revision_id: proposal.baseRevisionId,

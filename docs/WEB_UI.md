@@ -23,9 +23,25 @@ these screens used to do.
 What stays on a page: a list, a table, and anything a person scans rather than
 fills in. Members are a page for that reason, not a drawer.
 
-**Where this stands.** Every screen is built this way now: taxonomy,
-workspaces, agents, policy, knowledge and reconciliation. The list keeps the
-page; the thing in it opens over the page.
+**Where this stands.** Every screen is built this way: taxonomy, workspaces,
+agents, policy, knowledge and reconciliation. The list keeps the page; the
+thing in it opens over the page.
+
+**The one exception: a queue.** Review is not a list somebody browses, it is a
+queue somebody works down. Every decision there is followed by the next one, so
+a drawer costs an open and a close per proposal, and the queue disappears at
+the moment a reviewer most wants to see how much is left. On a wide screen the
+queue and the decision are side by side; below it there is no room for both and
+the decision opens over the queue, as everything else does. Two columns on a
+phone are two columns too narrow to read.
+
+A screen may only choose this when the list is worked through rather than
+looked at. If in doubt it is a drawer.
+
+One copy of the panel, not two. `hidden lg:block` hides an element and leaves
+it in the document, so a panel rendered in both places is two of every field,
+two elements carrying the same id, and two effects fighting over the focus.
+Which one exists is decided in JavaScript, with `useMediaQuery`.
 
 ## 2. A drawer somebody may want to link to lives in the address
 
@@ -154,6 +170,35 @@ prose with nothing framed inside it, is a card.
 A dashed border means "nothing here yet", and means it in both directions: an
 empty list and a section that exists in the plan and not yet in the product get
 the same treatment, because a reader is asking the same question of both.
+
+## 2i. A queue says why each thing is in it
+
+Review is a queue of decisions. Somebody arrives at it asking "should this
+happen", and the screen's job is to answer the questions that decision rests
+on before offering the controls that make it.
+
+Every item says why it is waiting. A proposal is in the queue because policy
+asked for review, or because it no longer applies cleanly, or because nobody
+chose a category — and a reviewer who cannot tell which is deciding without the
+one fact that frames the decision. The reason is read off the record rather
+than stored as a sentence, so it cannot drift from what is true.
+
+Read first, edit second. The panel opens showing what was proposed, what it
+would change and where it came from; the form appears when somebody says they
+want to change it before approving. A panel that opens as five input boxes has
+answered "how do I edit this record", which is not the question a reviewer
+arrived with.
+
+Provenance is stated even when there is none. "No sources given" is a finding
+about an agent's proposal; a section that is simply absent is not.
+
+A count at the top of a pile is also the filter for it. Seeing that three of
+twelve are conflicts, and being able to say "those three", is the difference
+between a queue and a list.
+
+An irreversible decision is never one keypress. Keyboard shortcuts move
+through the queue and open things; rejecting opens the dialog that asks why,
+because "rejected, no reason given" teaches an agent nothing.
 
 ## 3. A dialog is never turned off with a CSS class
 

@@ -52,6 +52,16 @@ export const ProposalSummary = z.object({
    * when neither exists, which a redacted payload can produce.
    */
   title: z.string().nullable(),
+  /**
+   * The categories this proposal names, which is where it would be filed.
+   *
+   * What the proposal itself says, not what the item it changes says now: a
+   * queue is scanned for "where would this land", and an update that leaves
+   * the categories alone names none. Empty therefore means "this proposal
+   * decides nothing about where it goes", which for a new item means nobody
+   * decided at all.
+   */
+  categories: z.array(CategoryPath),
   target_item_id: KnowledgeItemId.nullable(),
   proposed_by_actor_id: ActorId,
   base_revision_id: RevisionId.nullable(),

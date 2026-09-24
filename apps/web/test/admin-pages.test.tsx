@@ -9,6 +9,7 @@ import {
   AgentsResponse,
   MembersResponse,
   PolicyRulesResponse,
+  ProposalsResponse,
   MeResponse,
   TaxonomyListResponse,
   WorkspaceResponse,
@@ -1365,6 +1366,7 @@ const PROPOSAL = {
   proposal_type: 'knowledge_update' as const,
   status: 'pending' as const,
   title: 'Release cadence',
+  categories: ['architecture/constraints'],
   target_item_id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   base_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
@@ -1377,6 +1379,7 @@ const PROPOSAL = {
   resolved_by_actor_id: null,
   resolution_note: null,
   result_revision_ids: [],
+  sync_session_id: null,
 };
 
 const ITEM = {
@@ -1408,33 +1411,83 @@ const ITEM = {
 };
 
 describe('review inbox', () => {
-  it('opens the proposal in a drawer, from an address somebody can be sent', async () => {
-    // Rule 1 of the interface contract: a list is a place, an object opens
-    // over it. This screen used to render the proposal as a card below the
-    // queue, with the selection in local state, so a reviewer could not send
-    // anybody the proposal — only the queue it was somewhere in.
+  it('has fixtures the contract accepts', () => {
+    // Parsed rather than trusted: a field added to the contract has to be
+    // added here too, and a crash in a page is a worse way to find that out.
+    expect(() => ProposalsResponse.parse({ proposals: [PROPOSAL] })).not.toThrow();
+  });
+
+  it('opens the proposal from an address somebody can be sent', async () => {
+    // A reviewer has to be able to send somebody the proposal rather than the
+    // queue it is somewhere in.
     mockApi({
       ...SIGNED_IN,
       'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
       [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
         json({ proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } } }),
       [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
     });
     renderApp(`/review?proposal=${PROPOSAL.id}`);
 
-    // Arrived open, because the address said so.
-    const drawer = await screen.findByRole('dialog');
-    expect(await within(drawer).findByRole('region', { name: 'Release cadence' })).toBeVisible();
+    // Arrived open, because the address said so. Beside the queue rather than
+    // over it: this is a queue somebody works down, and a drawer would cost an
+    // open and a close for every decision (WEB_UI.md rule 1).
+    expect(await screen.findByRole('region', { name: 'Release cadence' })).toBeVisible();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('says why each proposal is waiting, which is what frames the decision', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({ proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } } }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+    });
+    renderApp(`/review?proposal=${PROPOSAL.id}`);
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
+    // `policy_decision: require_review` is why this one is here.
+    expect(detail.textContent).toContain('Policy asks for a person to review');
+    // Provenance decides an agent proposal, so its absence is stated rather
+    // than left as a section that is simply not there.
+    expect(detail.textContent).toContain('Nothing here says where this came from');
+  });
+
+  it('counts the piles, and the count is also the filter', async () => {
+    const stuck = {
+      ...PROPOSAL,
+      id: 'prop_01J8Z3M4Q9V0X7K2B5N6P8R1T4',
+      status: 'conflict' as const,
+      title: 'Stuck one',
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [stuck] }),
+    });
+    renderApp('/review');
+    const user = userEvent.setup();
+    // Both are in the queue: everything unresolved belongs here.
+    expect(await screen.findByRole('button', { name: /Release cadence/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Stuck one/ })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^Conflicts/ }));
+    expect(screen.queryByRole('button', { name: /Release cadence/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Stuck one/ })).toBeInTheDocument();
   });
 
   it('says who proposed each one, by name rather than by id', async () => {
     mockApi({
       ...SIGNED_IN,
       'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
     });
     renderApp('/review');
     // A queue of ninety from one import is unreadable without it.
-    expect(await screen.findByText('Proposed by Owner')).toBeInTheDocument();
+    const queue = await screen.findByRole('list', { name: 'The review queue' });
+    expect(within(queue).getByText('Owner')).toBeInTheDocument();
     expect(screen.queryByText(new RegExp(PROPOSAL.proposed_by_actor_id))).toBeNull();
   });
 
@@ -1442,6 +1495,7 @@ describe('review inbox', () => {
     const calls = mockApi({
       ...SIGNED_IN,
       'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
       [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
         json({
           proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } },
@@ -1453,7 +1507,7 @@ describe('review inbox', () => {
     renderApp('/review');
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Release cadence' }));
+    await user.click(await screen.findByRole('button', { name: /Release cadence/ }));
 
     const detail = await screen.findByRole('region', { name: 'Release cadence' });
     // The reviewer sees the old line going and the new one arriving, rather
@@ -1461,8 +1515,10 @@ describe('review inbox', () => {
     await waitFor(() => expect(detail.textContent).toContain('- We release on Thursdays.'));
     expect(detail.textContent).toContain('+ We release on Tuesdays.');
     expect(detail.textContent).toContain('The source changed.');
+    // Read first: the panel opens showing the proposal, not a form.
+    expect(within(detail).queryByLabelText('Text')).toBeNull();
 
-    await user.click(within(detail).getByRole('button', { name: 'Approve' }));
+    await user.click(within(detail).getByRole('button', { name: 'Approve as it is' }));
     await waitFor(() =>
       expect(calls.some((c) => c.url.endsWith('/v1/proposal_approve'))).toBe(true),
     );
@@ -1470,14 +1526,32 @@ describe('review inbox', () => {
     expect(approval.body).toMatchObject({ proposal_id: PROPOSAL.id });
     // Nothing was edited, so nothing is sent as an edit.
     expect((approval.body as Record<string, unknown>)['edits']).toBeUndefined();
-    // The proposal changes only the body, so only the body is offered.
+  });
+
+  it('offers only the fields the proposal carries, once editing is asked for', async () => {
+    // An update that changes the body and nothing else carries no title, and
+    // an empty title box beside it reads as the proposal taking the title away.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({ proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } } }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+    });
+    renderApp(`/review?proposal=${PROPOSAL.id}`);
+    const user = userEvent.setup();
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
+    await user.click(within(detail).getByRole('button', { name: 'Edit before approving' }));
+    expect(within(detail).getByLabelText('Text')).toBeInTheDocument();
     expect(within(detail).queryByLabelText('Title')).toBeNull();
   });
 
-  it('sends the reviewer’s text when they changed it, and their reason on a rejection', async () => {
+  it('asks why on a rejection, and sends what was said', async () => {
     const calls = mockApi({
       ...SIGNED_IN,
       'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
       [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
         json({
           proposal: { ...PROPOSAL, proposed_payload: { body: 'We release on Tuesdays.' } },
@@ -1489,11 +1563,18 @@ describe('review inbox', () => {
     renderApp('/review');
 
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Release cadence' }));
+    await user.click(await screen.findByRole('button', { name: /Release cadence/ }));
     const detail = await screen.findByRole('region', { name: 'Release cadence' });
 
-    await user.type(within(detail).getByLabelText('Note'), 'Already in the handbook.');
+    // Rejecting asks why. "Rejected, no reason given" teaches an agent
+    // nothing about what to do differently.
     await user.click(within(detail).getByRole('button', { name: 'Reject' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByLabelText('What to tell the proposer'),
+      'Already in the handbook.',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Reject' }));
     await waitFor(() =>
       expect(calls.some((c) => c.url.endsWith('/v1/proposal_reject'))).toBe(true),
     );

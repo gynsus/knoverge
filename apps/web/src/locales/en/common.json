@@ -342,21 +342,106 @@
     "title": "Policy rules"
   },
   "review": {
+    "all_proposers": "Anyone",
     "approve": "Approve",
+    "approve_as_is": "Approve as it is",
     "approve_with_edits": "Approve with your edits",
+    "body_unchanged": "The text is unchanged.",
     "changes": "What this would change",
+    "changes_item": "Changes",
+    "choose": "Choose something from the queue to decide about it.",
     "confidence": "The proposer's confidence: {{value}}%",
+    "confidence_label": "The proposer's confidence",
+    "context": "Context",
+    "count_one": "{{count}} waiting",
+    "count_other": "{{count}} waiting",
+    "duplicates_ruled_out": "The proposer ruled out {{count}} similar item(s).",
+    "edit_first": "Edit before approving",
     "edit_hint": "Change the text before approving, and the proposal records that you did.",
-    "empty": "Nothing is waiting.",
+    "editing": "Your changes",
+    "empty": "Nothing is waiting",
+    "empty_filtered": "Nothing matches",
+    "empty_filtered_hint": "Try a different search, or clear the filters.",
+    "empty_hint": "Every agent write arrives here unless a policy rule lets it through.",
+    "filter_proposer": "Filter by who proposed it",
     "from_run": "From one reconciliation run",
     "intro": "What agents have proposed. Every agent write waits here unless a policy rule lets it through.",
+    "lands_in": "Would be filed under",
+    "no_category": "Nowhere — no category was chosen",
+    "no_category_short": "No category",
     "no_content": "This proposal carries no text of its own.",
+    "no_sources": "None given. Nothing here says where this came from.",
     "note": "Note",
     "note_hint": "Why you decided as you did. Kept with the proposal.",
+    "postpone": "Postpone",
+    "postpone_not_yet": "A proposal has no postponed state yet, so this would be a queue only this browser agreed with.",
+    "proposed": "What is proposed",
     "proposed_by": "Proposed by {{name}}",
+    "queue": "The review queue",
+    "queue_reason": "Why this is waiting",
+    "queue_reasons": {
+      "conflict": "The item changed while this was waiting, so it no longer applies cleanly. It has to be proposed again against what the item says now.",
+      "policy": "Policy asks for a person to review this kind of write.",
+      "duplicate_ruled_out": "Something similar already exists. The proposer saw it and decided this is not the same thing.",
+      "no_category": "No category was chosen, so nothing decided where this belongs.",
+      "unknown": "It has not been decided yet."
+    },
     "reason": "Why it was proposed",
     "reject": "Reject",
+    "reject_intro": "The reason is kept with the proposal and is what the proposer reads back. \"Rejected, no reason given\" teaches an agent nothing.",
+    "reject_note": "What to tell the proposer",
+    "reject_note_hint": "Optional, and the one thing that says what to do differently next time.",
+    "reject_reason": "Reason",
+    "reject_reason_own": "Write your own",
+    "reject_reasons": {
+      "duplicate": "This is already recorded elsewhere.",
+      "no_evidence": "Nothing here says where this came from.",
+      "wrong_category": "This does not belong in the category it names.",
+      "contradicts": "This contradicts knowledge the workspace already holds.",
+      "too_vague": "This is too vague to act on as it stands.",
+      "out_of_scope": "This is not what this workspace is for."
+    },
+    "reject_title": "Reject this proposal?",
+    "replaces": "Replaces",
+    "reset_filters": "Clear filters",
+    "search": "Search the queue",
+    "search_clear": "Clear the search",
+    "segments": {
+      "all": "Waiting",
+      "conflict": "Conflicts",
+      "create": "New items",
+      "change": "Changes",
+      "today": "Today"
+    },
+    "shortcut_keys": {
+      "next": {
+        "what": "Next in the queue",
+        "key": "J"
+      },
+      "previous": {
+        "what": "Previous in the queue",
+        "key": "K"
+      },
+      "search": {
+        "what": "Search",
+        "key": "/"
+      },
+      "close": {
+        "what": "Close what is open",
+        "key": "Esc"
+      },
+      "help": {
+        "what": "Show or hide these",
+        "key": "?"
+      }
+    },
+    "shortcuts": "Keys",
     "show_all": "Show everything pending",
+    "sort": "Order",
+    "sort_newest": "Newest first",
+    "sort_oldest": "Longest waiting first",
+    "source_unnamed": "Unnamed",
+    "sources": "Sources",
     "statuses": {
       "pending": "Waiting",
       "approved": "Approved",
@@ -366,6 +451,7 @@
       "withdrawn": "Withdrawn",
       "conflict": "Needs rebasing"
     },
+    "stop_editing": "Discard my changes",
     "title": "Review",
     "types": {
       "knowledge_create": "New item",
