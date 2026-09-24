@@ -68,6 +68,17 @@ behind the menu, with what it does spelled out before it happens.
 
 Leaving edit mode with unsaved changes asks first.
 
+## 2c. Knowledge is rendered, and never becomes HTML
+
+An item's body is Markdown, and it is written by agents as often as by people.
+The renderer builds elements rather than an HTML string — no
+`dangerouslySetInnerHTML` anywhere in the path — so raw HTML in a body is text
+that says `<script>` rather than a script. Nothing is sanitised afterwards,
+because nothing is parsed that would need it.
+
+Links get `rel="noopener"` and a new tab, and a URL whose protocol is not a
+safe one never reaches the document.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

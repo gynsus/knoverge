@@ -18,6 +18,7 @@ import { copyToClipboard } from '@/lib/password';
 import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
+import { Markdown } from './Markdown.tsx';
 
 /**
  * One item, read rather than edited.
@@ -153,11 +154,9 @@ export function ItemDetails({
         </div>
       )}
 
-      {/* The Markdown is shown as written: paragraphs kept, nothing rendered
-          into HTML. A renderer for agent-authored text is a question about
-          sanitising, and it deserves its own answer rather than arriving as
-          part of a layout change. */}
-      <article className="text-sm leading-6 whitespace-pre-wrap">{item.body}</article>
+      <article>
+        <Markdown>{item.body}</Markdown>
+      </article>
 
       <Separator />
 
