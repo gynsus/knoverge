@@ -236,6 +236,18 @@ Disabled by default, and the default is a complete installation: search is
 lexical, `workspace_manifest` reports `semantic_search: false`, and nothing
 contacts anything.
 
+**Configure this in the product, at Settings → AI and models.** The wizard asks
+an address whether it answers, shows which models it holds, runs one embedding
+to show how many numbers come back, and turns it on — with no restart, because
+a wizard that needs one is not a wizard (ADR 0021).
+
+The variables below still exist and do one thing: provision a **first** start.
+If no provider has ever been configured and these are set, a provider is created
+from them and marked as having come from the environment. After that they are
+not read again, so changing them and restarting does nothing — the settings page
+is where a configured installation is changed, and it says which of the two
+configured each provider.
+
 ```text
 KNOVERGE_EMBEDDING_PROVIDER   disabled | openai_compatible | ollama
 KNOVERGE_EMBEDDING_BASE_URL   required unless disabled
@@ -248,6 +260,13 @@ local servers imitate; `ollama` posts to `<base>/api/embed`. A provider named
 without a base URL and a model is refused at startup rather than run
 half-configured, because an installation that silently embedded nothing would
 report `semantic_search: false` and give an operator nothing to look at.
+
+API keys are the one thing the interface cannot set. Storing one needs
+encryption at rest, a key to encrypt it with, and an answer for what happens
+when that is lost; until that exists, a key stays in `KNOVERGE_EMBEDDING_API_KEY`
+and is sent to the provider whose address matches
+`KNOVERGE_EMBEDDING_BASE_URL`. Ollama needs no key, which is why it is the one
+the wizard can connect on its own.
 
 The dimension is not configured — it is read from the model's own first answer.
 Changing model is safe: the new one fills a profile of its own while the old

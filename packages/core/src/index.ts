@@ -39,6 +39,22 @@ export {
   type MatchReason,
 } from './knowledge/duplicates.ts';
 export {
+  AiSettingsService,
+  type AiSettingsServiceOptions,
+  type AiSettingsView,
+  type CatalogueProbe,
+  type CheckOutcome,
+  type EmbeddingFactory,
+  type SaveProviderInput,
+  type TestOutcome,
+} from './ai/service.ts';
+export type {
+  AiAssignmentRecord,
+  AiProviderRecord,
+  AiRepository,
+  ProviderCheckOutcome,
+} from './ai/repository.ts';
+export {
   EmbeddingService,
   FILL_BATCH,
   type EmbeddingServiceOptions,

@@ -1,5 +1,5 @@
 import type { WorkspaceId } from '@knoverge/contracts';
-import type { EmbeddingProvider } from '@knoverge/intelligence';
+import type { EmbeddingSource } from '@knoverge/intelligence';
 import { bestPerItem, fuse } from '@knoverge/search';
 
 import type { EmbeddingService } from '../embeddings/service.ts';
@@ -17,8 +17,14 @@ export const CANDIDATE_POOL = 60;
 export interface SearchServiceOptions {
   search: SearchRepository;
   embeddings: EmbeddingService;
-  /** Embeds the query. Null when no provider is configured, which is the default. */
-  provider: EmbeddingProvider | null;
+  /**
+   * Embeds the query, when anything does.
+   *
+   * A question rather than a provider held since start-up: an operator
+   * connects one while the product runs (ADR 0021), and nothing configured
+   * stays the default answer.
+   */
+  source: EmbeddingSource;
   /** Told when the semantic half failed, so it can be logged rather than raised. */
   onSemanticFailure?: (workspaceId: WorkspaceId, error: unknown) => void;
 }
@@ -63,7 +69,7 @@ export class SearchService {
 
   /** The semantic half, or nothing at all when it cannot answer. */
   private async semantic(query: SearchQuery, pool: number): Promise<SearchCandidate[]> {
-    const provider = this.o.provider;
+    const provider = await this.o.source();
     if (!provider) return [];
     const profile = await this.o.embeddings.activeProfile(query.workspaceId);
     if (!profile) return [];

@@ -46,6 +46,61 @@
     "token_once": "Copy this token now. It is shown once and cannot be recovered.",
     "trust_tier": "Trust tier"
   },
+  "ai": {
+    "intro": "Knoverge does not need an AI provider. Connect one and search also finds knowledge that says the same thing in different words; without one, everything else works exactly as it does now.",
+    "connect": "Connect a provider",
+    "empty": "Nothing is connected. Search, proposals, review, history and the MCP endpoint all work; what is missing is the half of search that matches meaning rather than words.",
+    "change": "Change",
+    "disconnect": "Disconnect",
+    "recheck": "Check again",
+    "checked": "Answered {{when}}",
+    "kinds": {
+      "ollama": "Ollama",
+      "openai_compatible": "OpenAI-compatible",
+      "openai_compatible_not_yet": "OpenAI-compatible — needs an API key, not yet"
+    },
+    "origin": {
+      "environment": "From the environment",
+      "interface": "Configured here"
+    },
+    "embedding": {
+      "title": "Embeddings",
+      "description": "The model that turns knowledge into vectors, so a search for \"how we sign people in\" can find a note about passwordless login.",
+      "in_use": "Embedding with {{model}}",
+      "not_in_use": "Connected, and not used for anything."
+    },
+    "generation": {
+      "title": "Summaries and suggestions",
+      "description": "Summarising a set of items, proposing categories and spotting contradictions. Nothing here reads a generation model yet."
+    },
+    "wizard": {
+      "address": "Address",
+      "address_example": "http://ollama:11434",
+      "address_hint": "The base URL, with no path. The server makes the request, so it must be reachable from the server rather than from this browser.",
+      "back": "Back",
+      "check": "Check the connection",
+      "finish": "Save and use it",
+      "intro": "Nothing is saved until the last step. Both checks run against the address you type.",
+      "kind": "Kind",
+      "kind_hint": "How the product talks to it. OpenAI-compatible means the /v1/embeddings shape, whoever is behind it.",
+      "model": "Embedding model",
+      "model_failed": "The model did not return a vector.",
+      "model_hint": "Only models the provider says can embed. Changing this later re-embeds the workspace; the old model keeps answering until it is done.",
+      "model_placeholder": "Choose a model",
+      "model_works": "{{dimensions}} numbers per vector, in {{ms}} ms.",
+      "name": "Name",
+      "name_hint": "What you call this machine, so a list of providers reads as places rather than addresses.",
+      "no_models": "This provider holds no model that can embed. Pull one — bge-m3 and nomic-embed-text are the usual choices — and check again.",
+      "no_version": "unknown",
+      "reached": "Answered — version {{version}}, {{count}} models.",
+      "step_model": "Which model",
+      "step_where": "Where it is",
+      "test_model": "Test this model",
+      "title_change": "Change this provider",
+      "title_connect": "Connect a provider",
+      "unreachable": "Nothing answered at that address."
+    }
+  },
   "app": {
     "name": "Knoverge",
     "tagline": "A knowledge ledger for humans and AI agents"

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { WorkspaceId } from '@knoverge/contracts';
-import type { EmbeddingProvider } from '@knoverge/intelligence';
+import { fixedSource, type EmbeddingProvider } from '@knoverge/intelligence';
 
 import { SearchService } from '../src/search/service.ts';
 import type { SearchCandidate, SearchQuery, SearchRepository } from '../src/search/repository.ts';
@@ -71,7 +71,7 @@ describe('with no embedding provider', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(true),
-      provider: null,
+      source: fixedSource(null),
     });
 
     const hits = await service.find(query);
@@ -89,7 +89,7 @@ describe('with no embedding provider', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(false),
-      provider: provider(),
+      source: fixedSource(provider()),
     });
     expect(await service.find(query)).toHaveLength(1);
     expect(repo.semanticCalls).toBe(0);
@@ -104,7 +104,7 @@ describe('with both halves', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(true),
-      provider: provider(),
+      source: fixedSource(provider()),
     });
     const hits = await service.find(query);
     expect(hits.map((h) => h.itemId).sort()).toEqual(['i1', 'i9']);
@@ -118,7 +118,7 @@ describe('with both halves', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(true),
-      provider: provider(),
+      source: fixedSource(provider()),
     });
     expect((await service.find(query))[0]?.itemId).toBe('ib');
   });
@@ -130,7 +130,7 @@ describe('with both halves', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(true),
-      provider: provider(),
+      source: fixedSource(provider()),
     });
     const hits = await service.find(query);
     expect(hits).toHaveLength(1);
@@ -145,9 +145,11 @@ describe('with both halves', () => {
     const service = new SearchService({
       search: repo,
       embeddings: embeddings(true),
-      provider: provider(async () => {
-        throw new Error('connection refused');
-      }),
+      source: fixedSource(
+        provider(async () => {
+          throw new Error('connection refused');
+        }),
+      ),
       onSemanticFailure: told,
     });
 

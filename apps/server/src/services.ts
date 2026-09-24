@@ -1,7 +1,6 @@
 import type { WorkspaceId } from '@knoverge/contracts';
-import { createHttpEmbeddingProvider } from '@knoverge/intelligence';
+import { createHttpEmbeddingProvider, probeProvider } from '@knoverge/intelligence';
 
-import type { EmbeddingSettings } from './config.ts';
 import {
   dummyPasswordHash,
   generateOpaqueToken,
@@ -14,6 +13,7 @@ import {
   AuthorizationAdminService,
   AuthorizationService,
   BootstrapService,
+  AiSettingsService,
   EmbeddingService,
   EventLedger,
   SearchService,
@@ -75,11 +75,15 @@ export interface ServicesConfig {
   /** Told when a pooled connection dies while nobody is using it. */
   onPoolError?: (error: Error) => void;
   /**
-   * Where vectors come from. Absent is the ordinary case: the core runs with
-   * no AI provider (rule 9), and nothing is contacted unless an operator
-   * configured it (rule 12).
+   * The API key for an address, when the environment holds one.
+   *
+   * Keys stay in the environment. A key in the database needs encryption at
+   * rest, a key to encrypt it with and a decision about what happens when that
+   * is lost, and none of those is this change (ADR 0021) — so the interface
+   * can configure a provider but never a secret, and a provider that needs one
+   * is a provider whose address is named in the environment.
    */
-  embeddings?: EmbeddingSettings | null;
+  apiKeyFor?: (baseUrl: string) => string | undefined;
   /**
    * Told when the semantic half of a search failed.
    *
@@ -233,20 +237,30 @@ export function createServices(config: ServicesConfig) {
     contentHash,
     frontmatterHash,
   });
-  // Null unless an operator configured one, which is what makes every feature
-  // that uses it optional rather than every installation need one.
-  const embeddingProvider = config.embeddings
-    ? createHttpEmbeddingProvider({
-        provider: config.embeddings.provider,
-        baseUrl: config.embeddings.baseUrl,
-        model: config.embeddings.model,
-        apiKey: config.embeddings.apiKey,
-      })
-    : null;
+  /**
+   * What is configured, and how to talk to it.
+   *
+   * The provider is not decided here. An operator connects one, changes the
+   * model and disconnects it while the product runs (ADR 0021), so everything
+   * below asks `embeddingSource` rather than holding what was true at start-up
+   * — and null, meaning nothing configured, stays the ordinary answer.
+   */
+  const ai = new AiSettingsService({
+    repository: repositories.ai,
+    embeddings: (spec) =>
+      createHttpEmbeddingProvider({
+        provider: spec.kind,
+        baseUrl: spec.baseUrl,
+        model: spec.model,
+        apiKey: config.apiKeyFor?.(spec.baseUrl),
+      }),
+    probe: (spec) => probeProvider({ ...spec, apiKey: config.apiKeyFor?.(spec.baseUrl) }),
+  });
+  const embeddingSource = ai.embeddingSource;
   const embeddings = new EmbeddingService({
     uow,
     embeddings: repositories.embeddings,
-    provider: embeddingProvider,
+    source: embeddingSource,
   });
   /**
    * Passages nearest in meaning to a text, for the duplicate check.
@@ -257,11 +271,12 @@ export function createServices(config: ServicesConfig) {
    * somebody proposing knowledge is waiting for it.
    */
   const nearest = async (workspaceId: WorkspaceId, text: string, limit: number) => {
-    if (!embeddingProvider) return [];
     try {
+      const provider = await embeddingSource();
+      if (!provider) return [];
       const profile = await embeddings.activeProfile(workspaceId);
       if (!profile) return [];
-      const [vector] = await embeddingProvider.embed([text]);
+      const [vector] = await provider.embed([text]);
       if (!vector) return [];
       const candidates = await repositories.search.semantic(
         { workspaceId, text, statuses: ['active'] },
@@ -290,7 +305,10 @@ export function createServices(config: ServicesConfig) {
     duplicates: new DuplicateMatcher({
       items: repositories.knowledge,
       contentHash,
-      ...(embeddingProvider ? { nearest } : {}),
+      // Always wired, because whether anything answers is now a question with
+      // a current answer rather than a fact known at start-up. With nothing
+      // configured it returns no candidates, which is what it did before.
+      nearest,
     }),
     actors: repositories.actors,
     ledger,
@@ -331,7 +349,7 @@ export function createServices(config: ServicesConfig) {
   const search = new SearchService({
     search: repositories.search,
     embeddings,
-    provider: embeddingProvider,
+    source: embeddingSource,
     ...(config.onSemanticFailure ? { onSemanticFailure: config.onSemanticFailure } : {}),
   });
   const sync = new SyncService({
@@ -340,15 +358,11 @@ export function createServices(config: ServicesConfig) {
     items: repositories.knowledge,
     categories: repositories.categories,
     workspaces: repositories.workspaces,
-    ...(embeddingProvider
-      ? {
-          nearest: async (workspaceId: WorkspaceId, text: string, limit: number) =>
-            (await nearest(workspaceId, text, limit)).map((match) => ({
-              itemId: match.itemId,
-              similarity: match.similarity,
-            })),
-        }
-      : {}),
+    nearest: async (workspaceId: WorkspaceId, text: string, limit: number) =>
+      (await nearest(workspaceId, text, limit)).map((match) => ({
+        itemId: match.itemId,
+        similarity: match.similarity,
+      })),
   });
   const bootstrap = new BootstrapService({
     uow,
@@ -377,6 +391,7 @@ export function createServices(config: ServicesConfig) {
     sync,
     search,
     embeddings,
+    ai,
     enqueueRefine: config.enqueueRefine ?? (async () => undefined),
     users,
     sessions,

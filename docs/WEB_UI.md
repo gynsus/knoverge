@@ -105,6 +105,21 @@ Hiding it would let somebody looking for backups conclude they were in the
 wrong place; a disabled button would invite a press that does nothing. It is
 a card that says so.
 
+## 2f. A connection is tested against what was typed, not what was saved
+
+A form that can only test a connection after it has been stored teaches people
+to store connections that do not work, and leaves a broken one configured while
+they find out. The check takes the address from the field.
+
+Saving is the last step, and it is a separate question from turning something
+on. The wizard asks whether anything is there, then whether the chosen model
+does the job, and only then writes anything — so abandoning it halfway leaves
+the installation as it was.
+
+What the far end said is shown in its own words. "Could not connect" is the
+same sentence for the wrong port, the wrong machine and a firewall;
+`ECONNREFUSED 192.168.1.7:11434` is the only thing that tells them apart.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

@@ -1,4 +1,5 @@
 export * from './agents.ts';
+export * from './ai.ts';
 export * from './auth.ts';
 export * from './errors.ts';
 export * from './events.ts';

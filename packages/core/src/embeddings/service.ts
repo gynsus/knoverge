@@ -1,5 +1,5 @@
 import type { WorkspaceId } from '@knoverge/contracts';
-import type { EmbeddingProvider } from '@knoverge/intelligence';
+import type { EmbeddingProvider, EmbeddingSource } from '@knoverge/intelligence';
 
 import { newId } from '../ids.ts';
 import type { Clock } from '../ports/clock.ts';
@@ -14,12 +14,14 @@ export interface EmbeddingServiceOptions {
   uow: UnitOfWork;
   embeddings: EmbeddingRepository;
   /**
-   * The configured provider, or null when none is.
+   * What embeds now, asked again on every pass.
    *
-   * Null is the ordinary case, not an error: rule 9 says the core runs with no
-   * AI provider, and everything here answers "nothing to do" when it is.
+   * Answering null is the ordinary case, not an error: rule 9 says the core
+   * runs with no AI provider, and everything here answers "nothing to do" when
+   * it does. It is a question rather than a provider held since start-up
+   * because an operator changes the answer while the product runs (ADR 0021).
    */
-  provider: EmbeddingProvider | null;
+  source: EmbeddingSource;
   clock?: Clock;
 }
 
@@ -64,7 +66,7 @@ export class EmbeddingService {
    * rather than this holding a worker for the length of a rebuild.
    */
   async fill(workspaceId: WorkspaceId, batch = FILL_BATCH): Promise<FillReport> {
-    const provider = this.o.provider;
+    const provider = await this.o.source();
     if (!provider) return { embedded: 0, remaining: 0 };
 
     const profile = await this.profileFor(workspaceId, provider);

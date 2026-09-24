@@ -8,6 +8,14 @@ export {
   EmbeddingError,
   createHttpEmbeddingProvider,
   type EmbeddingProfile,
+  fixedSource,
   type EmbeddingProvider,
+  type EmbeddingSource,
   type HttpEmbeddingOptions,
 } from './embeddings.ts';
+export {
+  probeProvider,
+  type CatalogueModel,
+  type ProbeOptions,
+  type ProviderCatalogue,
+} from './catalogue.ts';
