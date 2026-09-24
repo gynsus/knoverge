@@ -233,6 +233,53 @@ export function createServices(config: ServicesConfig) {
     contentHash,
     frontmatterHash,
   });
+  // Null unless an operator configured one, which is what makes every feature
+  // that uses it optional rather than every installation need one.
+  const embeddingProvider = config.embeddings
+    ? createHttpEmbeddingProvider({
+        provider: config.embeddings.provider,
+        baseUrl: config.embeddings.baseUrl,
+        model: config.embeddings.model,
+        apiKey: config.embeddings.apiKey,
+      })
+    : null;
+  const embeddings = new EmbeddingService({
+    uow,
+    embeddings: repositories.embeddings,
+    provider: embeddingProvider,
+  });
+  /**
+   * Passages nearest in meaning to a text, for the duplicate check.
+   *
+   * Answers with nothing rather than throwing: this runs on the write path,
+   * and a write refused because an optional feature was down would make the
+   * feature mandatory (rule 9). The budget is short for the same reason —
+   * somebody proposing knowledge is waiting for it.
+   */
+  const nearest = async (workspaceId: WorkspaceId, text: string, limit: number) => {
+    if (!embeddingProvider) return [];
+    try {
+      const profile = await embeddings.activeProfile(workspaceId);
+      if (!profile) return [];
+      const [vector] = await embeddingProvider.embed([text]);
+      if (!vector) return [];
+      const candidates = await repositories.search.semantic(
+        { workspaceId, text, statuses: ['active'] },
+        vector,
+        profile.id,
+        limit,
+      );
+      return candidates.map((candidate) => ({
+        itemId: candidate.itemId,
+        title: candidate.title,
+        markdownPath: candidate.markdownPath,
+        similarity: candidate.components.semantic ?? 0,
+      }));
+    } catch {
+      return [];
+    }
+  };
+
   const proposals = new ProposalService({
     uow,
     proposals: repositories.proposals,
@@ -240,7 +287,11 @@ export function createServices(config: ServicesConfig) {
     knowledgeIndex: repositories.knowledge,
     categories: repositories.categories,
     authorization,
-    duplicates: new DuplicateMatcher({ items: repositories.knowledge, contentHash }),
+    duplicates: new DuplicateMatcher({
+      items: repositories.knowledge,
+      contentHash,
+      ...(embeddingProvider ? { nearest } : {}),
+    }),
     actors: repositories.actors,
     ledger,
   });
@@ -277,21 +328,6 @@ export function createServices(config: ServicesConfig) {
     workspaceService: workspaces,
     ledger,
   });
-  // Null unless an operator configured one, which is what makes every feature
-  // that uses it optional rather than every installation need one.
-  const embeddingProvider = config.embeddings
-    ? createHttpEmbeddingProvider({
-        provider: config.embeddings.provider,
-        baseUrl: config.embeddings.baseUrl,
-        model: config.embeddings.model,
-        apiKey: config.embeddings.apiKey,
-      })
-    : null;
-  const embeddings = new EmbeddingService({
-    uow,
-    embeddings: repositories.embeddings,
-    provider: embeddingProvider,
-  });
   const search = new SearchService({
     search: repositories.search,
     embeddings,
@@ -304,6 +340,15 @@ export function createServices(config: ServicesConfig) {
     items: repositories.knowledge,
     categories: repositories.categories,
     workspaces: repositories.workspaces,
+    ...(embeddingProvider
+      ? {
+          nearest: async (workspaceId: WorkspaceId, text: string, limit: number) =>
+            (await nearest(workspaceId, text, limit)).map((match) => ({
+              itemId: match.itemId,
+              similarity: match.similarity,
+            })),
+        }
+      : {}),
   });
   const bootstrap = new BootstrapService({
     uow,

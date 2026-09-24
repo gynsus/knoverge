@@ -74,9 +74,17 @@ export interface SearchHit {
   revisionId: RevisionId;
   contentHash: string;
   updatedAt: Date;
+  markdownPath: string;
   /** 0 to 1, from the components below. Comparable only within one search. */
   score: number;
-  components: { lexical: number; title: number };
+  /**
+   * What each ranking thought, before they were fused.
+   *
+   * `lexical` is `ts_rank_cd`, which has no ceiling; `semantic` is cosine
+   * similarity, which is bounded; `title` is the title's share of the lexical
+   * one. Null means that ranking did not find this chunk at all.
+   */
+  components: { lexical: number; title: number; semantic: number | null };
   /**
    * Which chunk of the item answered, so a snippet is the part that matched
    * rather than the opening of a long document.

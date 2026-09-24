@@ -158,7 +158,16 @@ export function createSearchRepository(db: Database): SearchRepository {
         .where(and(...filters(db, query), eq(embeddings.profileId, profileId)))
         .orderBy(sql`${embeddings.vector} <=> ${literal}::vector`)
         .limit(limit);
-      return rows.map(toCandidate);
+      // The similarity is what this ranking thought, and it is not a
+      // `ts_rank_cd`: putting it in the lexical component would be two
+      // different measurements under one name.
+      return rows.map((row) => {
+        const candidate = toCandidate(row);
+        return {
+          ...candidate,
+          components: { ...candidate.components, lexical: 0, semantic: Number(row.score) },
+        };
+      });
     },
   };
 }
@@ -215,6 +224,7 @@ function columns(query: SearchQuery, score: SQL<number>, tsquery: SQL, simpleQue
   return {
     chunkId: searchChunks.id,
     itemId: searchChunks.knowledgeItemId,
+    markdownPath: knowledgeItems.markdownPath,
     title: searchChunks.title,
     language: searchChunks.language,
     ordinal: searchChunks.ordinal,
@@ -246,6 +256,7 @@ function columns(query: SearchQuery, score: SQL<number>, tsquery: SQL, simpleQue
 function toCandidate(row: {
   chunkId: string;
   itemId: string;
+  markdownPath: string;
   title: string;
   language: string;
   ordinal: number;
@@ -264,6 +275,7 @@ function toCandidate(row: {
   return {
     chunkId: row.chunkId,
     itemId: row.itemId as KnowledgeItemId,
+    markdownPath: row.markdownPath,
     title: row.title,
     type: row.type as ItemType,
     status: row.status as ItemStatus,
@@ -277,7 +289,11 @@ function toCandidate(row: {
     // Filled by whoever fuses the two rankings; a position in one list is not
     // a score anybody outside can use.
     score: 0,
-    components: { lexical: Number(row.score), title: Number(row.titleScore) },
+    components: {
+      lexical: Number(row.score),
+      title: Number(row.titleScore),
+      semantic: null,
+    },
     chunkOrdinal: row.ordinal,
     snippet: row.snippet ?? null,
   };

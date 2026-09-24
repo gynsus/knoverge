@@ -30,6 +30,19 @@ export const SESSION_LIFETIME_MS = 24 * 60 * 60 * 1000;
 /** How many candidates one refinement pass reads at a time. */
 const REFINE_BATCH = 100;
 
+/**
+ * How near a passage must be before step E calls it a match.
+ *
+ * Lower than the duplicate check's, on purpose. This one offers a candidate to
+ * read; that one refuses a write. An agent told "this might be the same
+ * knowledge" can look and disagree at no cost, so the cost of being wrong here
+ * is a glance rather than a refusal somebody has to argue with.
+ */
+const SEMANTIC_MATCH_THRESHOLD = 0.8;
+
+/** At most this many items are offered as meaning nearly the same thing. */
+const SEMANTIC_MATCHES = 3;
+
 /** What one candidate was decided to be, before it is written down. */
 export interface Decision {
   classification: SyncClassification;
@@ -52,6 +65,21 @@ export interface SyncServiceOptions {
   };
   /** Read to refuse a new pass in a workspace that accepts no changes. */
   workspaces: { findById(id: WorkspaceId): Promise<{ archivedAt: Date | null } | null> };
+  /**
+   * Items nearest in meaning to a candidate, when anything can answer.
+   *
+   * Step E of the matching order. Absent whenever no embedding provider is
+   * configured, which is the default: the four steps before it are the ones
+   * that work without one (rule 9), and a pass that cannot reach this one
+   * simply stops at step D.
+   */
+  nearest?: (
+    workspaceId: WorkspaceId,
+    text: string,
+    limit: number,
+  ) => Promise<readonly { itemId: KnowledgeItemId; similarity: number }[]>;
+  /** How near a passage must be before step E calls it a match. */
+  semanticThreshold?: number;
   clock?: Clock;
 }
 
@@ -294,9 +322,14 @@ export class SyncService {
         );
         const allowed = await readable(rows.map((r) => r.itemId));
         const visible = rows.filter((r) => allowed.has(r.itemId));
+        const decided =
+          visible.length > 0
+            ? this.lexical(visible)
+            : ((await this.semantic(session.workspaceId, candidate, readable)) ??
+              this.lexical(visible));
         updated.push({
           ...candidate,
-          ...this.lexical(visible),
+          ...decided,
           classificationState: 'final',
           updatedAt: now,
         });
@@ -308,6 +341,60 @@ export class SyncService {
       if (batch.length < REFINE_BATCH) break;
     }
     return refined;
+  }
+
+  /**
+   * Step E: what means nearly the same thing without sharing the words.
+   *
+   * Only asked when step D found nothing — a title that reads alike is more
+   * evidence than a passage that means something alike, and asking anyway
+   * would cost an embedding call per candidate for an answer already had.
+   *
+   * Returns null when nothing can answer or nothing is near enough, and the
+   * caller falls back to what step D concluded.
+   */
+  private async semantic(
+    workspaceId: WorkspaceId,
+    candidate: SyncCandidateRecord,
+    readable: (itemIds: readonly KnowledgeItemId[]) => Promise<Set<string>>,
+  ): Promise<Pick<
+    SyncCandidateRecord,
+    'classification' | 'matchReason' | 'matchedItemIds' | 'serverReason'
+  > | null> {
+    if (!this.o.nearest) return null;
+    const threshold = this.o.semanticThreshold ?? SEMANTIC_MATCH_THRESHOLD;
+    const text = candidate.abstract
+      ? `${candidate.title}\n\n${candidate.abstract}`
+      : candidate.title;
+    const near = (await this.o.nearest(workspaceId, text, SEMANTIC_MATCHES)).filter(
+      (match) => match.similarity >= threshold,
+    );
+    if (near.length === 0) return null;
+    // The same rule as everywhere else: a match outside the caller's scope is
+    // not a match it hears about.
+    const allowed = await readable(near.map((match) => match.itemId));
+    const visible = near.filter((match) => allowed.has(match.itemId));
+    if (visible.length === 0) return null;
+
+    const matched = visible.map((match) => match.itemId as string);
+    return visible.length === 1
+      ? {
+          classification: 'likely_match',
+          matchReason: 'semantic',
+          matchedItemIds: matched,
+          serverReason: {
+            explanation:
+              'one item means nearly this, in other words; fetch it and decide whether yours is the same knowledge',
+          },
+        }
+      : {
+          classification: 'ambiguous',
+          matchReason: 'semantic',
+          matchedItemIds: matched,
+          serverReason: {
+            explanation: `${visible.length} items mean nearly this; fetch them and decide which, if any, yours is`,
+          },
+        };
   }
 
   /**

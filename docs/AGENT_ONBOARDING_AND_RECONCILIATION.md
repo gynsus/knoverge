@@ -253,6 +253,23 @@ Use PostgreSQL FTS/trigram similarity with the candidate's language configuratio
 
 If an embedding profile is active, use vector similarity over chunks.
 
+Asked only where step D found nothing. A title that reads alike is more
+evidence than a passage that means something alike, so a candidate already
+matched lexically is not embedded again — the answer is already had, and the
+call is not free.
+
+The threshold is 0.8, lower than the duplicate check's 0.88. The two decide
+different things: this offers a candidate to read, and an agent that looks and
+disagrees has lost a glance; that refuses a write, and the only way past a
+false one is acknowledging a candidate that was never a duplicate, which
+teaches a proposer to acknowledge everything.
+
+A match outside the caller's read scope is not a match it hears about, here as
+everywhere: the candidate is classified as though nothing matched (section 19).
+
+With no embedding provider configured there is no profile, no call and no step
+E: a pass stops at step D, which is the whole of what rule 9 requires.
+
 ### Step F - freshness (only with known lineage)
 
 `agent_copy_stale` and `server_copy_stale` are assigned only when the two sides are known to be versions of the same lineage:

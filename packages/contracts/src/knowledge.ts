@@ -448,7 +448,19 @@ export const SearchResult = z.object({
    * and a reader can be shown where in a long document it came from.
    */
   chunk_ordinal: z.number().int().nonnegative(),
-  score_components: z.object({ title: z.number(), lexical: z.number() }),
+  /**
+   * What each ranking thought, before they were fused.
+   *
+   * `lexical` is `ts_rank_cd`, which has no ceiling; `semantic` is cosine
+   * similarity, which is bounded; `title` is the title's share of the lexical
+   * one. `semantic` is null when the vector ranking did not find this passage
+   * — or when there is no vector ranking at all.
+   */
+  score_components: z.object({
+    title: z.number(),
+    lexical: z.number(),
+    semantic: z.number().nullable(),
+  }),
   /** The passage the match was found in, with `<b>` around the terms. */
   snippet: z.string().nullable(),
 });
