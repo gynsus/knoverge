@@ -25,6 +25,7 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-i18next": "catalog:",
+    "react-markdown": "catalog:",
     "react-router": "catalog:",
     "tailwind-merge": "catalog:"
   },
