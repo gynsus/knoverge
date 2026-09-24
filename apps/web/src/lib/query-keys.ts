@@ -10,3 +10,6 @@ export const ACTORS_KEY = ['actors'] as const;
 export const TAXONOMY_HISTORY_KEY = ['taxonomy-history'] as const;
 
 export const AGENTS_KEY = ['admin', 'agents'] as const;
+
+/** A person's own sessions, shared by the pages that show and end them. */
+export const SESSIONS_KEY = ['account', 'sessions'] as const;

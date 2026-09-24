@@ -92,6 +92,19 @@ one back, and what was typed and never committed is kept rather than thrown
 away when the field loses focus. Where a set of likely values exists — category
 paths — they are offered, and nothing outside the set is refused.
 
+## 2e. Settings are a catalogue, split by whose they are
+
+A screen that collects unrelated switches becomes one long canvas, and every
+addition makes it worse. Settings are an index of sections, each with its own
+address, split into what belongs to the person and what belongs to the
+installation. A workspace's own settings are neither: they live with the
+workspace.
+
+A section that is planned and not built is shown, marked, and not a link.
+Hiding it would let somebody looking for backups conclude they were in the
+wrong place; a disabled button would invite a press that does nothing. It is
+a card that says so.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a
