@@ -73,6 +73,7 @@ beforeAll(async () => {
     sessions: repositories.sessions,
     uow,
     users: repositories.users,
+    actors: repositories.actors,
     passwords: {
       hash: async (p) => `hashed:${p}`,
       verify: async () => true,

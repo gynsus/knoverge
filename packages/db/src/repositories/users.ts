@@ -72,6 +72,10 @@ export function createUserRepository(db: Database): UserRepository {
         .set({ passwordHash, passwordChangedAt: at })
         .where(eq(users.id, id));
     },
+    async updateDisplayName(tx: Tx, id: UserId, displayName: string) {
+      await asTx(tx).update(users).set({ displayName }).where(eq(users.id, id));
+    },
+
     async updateEmail(tx: Tx, id: UserId, email: string) {
       try {
         await asTx(tx).update(users).set({ email }).where(eq(users.id, id));

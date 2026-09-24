@@ -85,6 +85,7 @@ beforeAll(async () => {
       sessions: repositories.sessions,
       uow,
       users: repositories.users,
+      actors: repositories.actors,
       // The drill is about what a restore brings back, not about hashing.
       passwords: {
         hash: async (p) => `hashed:${p}`,

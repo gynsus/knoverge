@@ -2,6 +2,7 @@ import {
   AuthStatusResponse,
   BootstrapRequest,
   BootstrapResponse,
+  ChangeDisplayNameRequest,
   ChangeEmailRequest,
   ChangePasswordRequest,
   CsrfResponse,
@@ -200,6 +201,28 @@ export function registerAuthRoutes(app: FastifyInstance, options: AuthRouteOptio
       // was opened against an identity that no longer exists.
       await services.sessions.revokeAll(auth.user.id, auth.session.id);
       return { ok: true as const };
+    },
+  );
+
+  r.post(
+    '/v1/auth/profile',
+    {
+      onRequest: app.csrfProtection,
+      preHandler: requireUser,
+      schema: { body: ChangeDisplayNameRequest, response: { 200: MeResponse } },
+    },
+    async (request) => {
+      const auth = request.humanAuth as HumanAuth;
+      // No password and no session revoked: a display name is a label, not a
+      // credential, and the identity has not moved.
+      const displayName = await services.users.changeDisplayName(
+        auth.user.id,
+        request.body.display_name,
+      );
+      // The whole account back, because the name is shown in the shell and in
+      // the workspace switcher: answering `ok` would leave the old one on
+      // screen until something else happened to refetch it.
+      return meResponse(services, { ...auth, user: { ...auth.user, displayName } });
     },
   );
 

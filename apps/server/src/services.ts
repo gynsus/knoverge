@@ -110,6 +110,7 @@ export function createServices(config: ServicesConfig) {
     sessions: repositories.sessions,
     uow,
     users: repositories.users,
+    actors: repositories.actors,
     passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },
   });
   const sessions = new SessionService({

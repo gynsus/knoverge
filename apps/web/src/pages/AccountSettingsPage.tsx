@@ -24,9 +24,14 @@ import { SettingsHeader } from '../components/settings/SettingsHeader.tsx';
 /**
  * Who the person is: their name, their address, the language they read in.
  *
- * The address is shown rather than offered for editing. Changing it is a thing
- * somebody decides to do, and a form standing open for it makes every visit
- * look like the start of that decision.
+ * Neither is offered as a form standing open. Changing one is a thing somebody
+ * decides to do, and a form waiting for it makes every visit look like the
+ * start of that decision.
+ *
+ * The two are not asked for in the same way, because they are not the same
+ * kind of change. The address is what the account signs in with, so it takes
+ * the password and a dialog. A name is a label: it changes in place, and the
+ * only thing that undoes it is typing the old one back.
  */
 export function AccountSettingsPage() {
   const { t } = useTranslation();
@@ -36,6 +41,9 @@ export function AccountSettingsPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [changed, setChanged] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState('');
+  const [renamed, setRenamed] = useState(false);
 
   const changeEmail = useMutation({
     mutationFn: () => adminApi.account.changeEmail(password, email),
@@ -51,9 +59,26 @@ export function AccountSettingsPage() {
     },
   });
 
+  const changeName = useMutation({
+    mutationFn: () => adminApi.account.changeDisplayName(name.trim()),
+    onSuccess: async () => {
+      setRenaming(false);
+      setRenamed(true);
+      // The name is in the shell and in the workspace switcher, so the account
+      // has to be read again for the rest of the page to agree with this one.
+      await auth.refresh();
+    },
+  });
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     changeEmail.mutate();
+  };
+
+  const submitName = (event: FormEvent) => {
+    event.preventDefault();
+    setRenamed(false);
+    changeName.mutate();
   };
 
   const me = auth.state.kind === 'authenticated' ? auth.state.me : null;
@@ -72,17 +97,78 @@ export function AccountSettingsPage() {
         <CardContent className="grid gap-4">
           <dl className="grid gap-3 text-sm sm:grid-cols-[10rem_1fr]">
             <dt className="text-muted-foreground">{t('fields.display_name')}</dt>
-            <dd>{me?.user.display_name ?? '—'}</dd>
+            <dd>
+              {renaming ? (
+                <form onSubmit={submitName} className="grid max-w-md gap-2">
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    aria-label={t('fields.display_name')}
+                    required
+                    maxLength={120}
+                    autoComplete="name"
+                    autoFocus
+                    disabled={changeName.isPending}
+                  />
+                  <div className="flex gap-2">
+                    <Button type="submit" size="sm" disabled={changeName.isPending}>
+                      {changeName.isPending ? t('common.working') : t('workspace.save')}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setRenaming(false)}
+                    >
+                      {t('common.cancel')}
+                    </Button>
+                  </div>
+                  <ErrorNotice error={changeName.error} />
+                </form>
+              ) : (
+                <span className="flex flex-wrap items-center gap-3">
+                  <span>{me?.user.display_name ?? '—'}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setName(me?.user.display_name ?? '');
+                      setRenamed(false);
+                      changeName.reset();
+                      setRenaming(true);
+                    }}
+                    // Two buttons reading "Change" one above the other are
+                    // the same word twice to anyone who hears them rather
+                    // than sees which row they are on.
+                    aria-label={t('settings.change_name')}
+                  >
+                    {t('common.change')}
+                  </Button>
+                </span>
+              )}
+            </dd>
             <dt className="text-muted-foreground">{t('fields.email')}</dt>
             <dd className="flex flex-wrap items-center gap-3">
               <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
                 {me?.user.email ?? '—'}
               </code>
-              <Button type="button" variant="outline" size="sm" onClick={() => setChanging(true)}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setChanging(true)}
+                aria-label={t('settings.change_email')}
+              >
                 {t('common.change')}
               </Button>
             </dd>
           </dl>
+          {renamed && (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t('settings.name_changed')}
+            </p>
+          )}
           {changed && (
             <p role="status" className="text-sm text-muted-foreground">
               {t('settings.email_changed')}
@@ -95,14 +181,12 @@ export function AccountSettingsPage() {
         <CardHeader>
           <CardTitle id="language-title">{t('language.label')}</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Field
-            label={t('language.label')}
-            hint={t('settings.language_hint')}
-            className="max-w-md"
-          >
-            <LanguageSwitcher />
-          </Field>
+        <CardContent className="grid max-w-md gap-1.5">
+          {/* No label: the card is titled "Language" and a field labelled
+              the same directly under it is the same word twice (rule 2g).
+              The control keeps the name, for anyone not reading the card. */}
+          <LanguageSwitcher className="h-9 w-full text-base md:text-sm" />
+          <p className="text-xs text-muted-foreground">{t('settings.language_hint')}</p>
         </CardContent>
       </Card>
 

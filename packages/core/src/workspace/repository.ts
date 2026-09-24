@@ -1,4 +1,4 @@
-import type { ActorId, ActorType, WorkspaceId } from '@knoverge/contracts';
+import type { ActorId, ActorType, UserId, WorkspaceId } from '@knoverge/contracts';
 
 import type { Tx } from '../ports/unit-of-work.ts';
 
@@ -67,4 +67,17 @@ export interface ActorRepository {
   findSystemActor(workspaceId: WorkspaceId): Promise<ActorRecord | null>;
   /** Every actor in the workspace, for turning an id in an event into a name. */
   listForWorkspace(workspaceId: WorkspaceId): Promise<ActorRecord[]>;
+  /**
+   * Renames this person's actor in every workspace they belong to.
+   *
+   * An actor carries a copy of the name the account had when the membership
+   * was made, and one actor exists per workspace. Leaving the copies behind
+   * would let somebody correct their name and still see the old one against
+   * everything they had ever done.
+   *
+   * No event is rewritten: an event stores an actor id, and the name is
+   * resolved when it is read. This changes how the same person is shown, not
+   * what happened.
+   */
+  renameForUser(tx: Tx, userId: UserId, displayName: string): Promise<number>;
 }

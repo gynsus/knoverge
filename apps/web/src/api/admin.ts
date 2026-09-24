@@ -29,6 +29,7 @@ import type {
   KnowledgeSearchInput,
   KnowledgeSearchResponse,
   KnowledgeResponse,
+  MeResponse,
   MergeCategoryRequest,
   MoveCategoryRequest,
   OkResponse,
@@ -212,6 +213,8 @@ export const adminApi = {
     sessions: (signal?: AbortSignal) => apiGet<SessionsResponse>('/v1/auth/sessions', signal),
     revokeSession: (sessionId: string) =>
       apiPost<OkResponse>('/v1/auth/sessions/revoke', { session_id: sessionId }),
+    changeDisplayName: (displayName: string) =>
+      apiPost<MeResponse>('/v1/auth/profile', { display_name: displayName }),
     changeEmail: (currentPassword: string, newEmail: string) =>
       apiPost<OkResponse>('/v1/auth/email', {
         current_password: currentPassword,

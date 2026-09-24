@@ -78,6 +78,16 @@ export const ChangeEmailRequest = z.object({
 });
 export type ChangeEmailRequest = z.infer<typeof ChangeEmailRequest>;
 
+/**
+ * The name shown next to what this account did.
+ *
+ * No password, unlike an address or a password: a display name is a label, not
+ * a credential, and requiring one to correct a typo in your own name would be
+ * asking for a secret to buy nothing.
+ */
+export const ChangeDisplayNameRequest = z.object({ display_name: DisplayName });
+export type ChangeDisplayNameRequest = z.infer<typeof ChangeDisplayNameRequest>;
+
 export const SessionSummary = z.object({
   id: SessionId,
   created_at: z.iso.datetime(),

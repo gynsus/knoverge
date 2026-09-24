@@ -1,5 +1,5 @@
 import type { UserId } from '@knoverge/contracts';
-import type { SessionRepository } from '../src/index.ts';
+import type { ActorRepository, SessionRepository } from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -33,6 +33,10 @@ function repository(initial: UserRecord[] = []) {
   const repo: UserRepository = {
     insert: async (_tx, user) => void rows.push(user),
     updateEmail: async () => undefined,
+    updateDisplayName: async (_tx, id, displayName) => {
+      const user = rows.find((u) => u.id === id);
+      if (user) Object.assign(user, { displayName });
+    },
     findByEmail: async (email) => rows.find((u) => u.email === email) ?? null,
     findById: async (id) => rows.find((u) => u.id === id) ?? null,
     count: async () => rows.length,
@@ -72,9 +76,28 @@ const sessions = {
   deleteEndedBefore: async () => 0,
 } as unknown as SessionRepository;
 
+/** Counts the actors a rename reached, which is the point of the rename. */
+function actorStore() {
+  const renamed: { userId: string; displayName: string }[] = [];
+  return {
+    renamed,
+    repo: {
+      renameForUser: async (_tx: Tx, userId: string, displayName: string) => {
+        renamed.push({ userId, displayName });
+        return 2;
+      },
+    } as unknown as Pick<ActorRepository, 'renameForUser'>,
+  };
+}
+
 function service(initial: UserRecord[] = []) {
   const { repo, rows } = repository(initial);
-  return { service: new UserService({ uow, users: repo, sessions, passwords, clock }), rows };
+  const actors = actorStore();
+  return {
+    service: new UserService({ uow, users: repo, sessions, actors: actors.repo, passwords, clock }),
+    rows,
+    renamed: actors.renamed,
+  };
 }
 
 async function existingUser(email = 'owner@example.com', password = 'correct horse battery') {

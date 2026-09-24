@@ -7,6 +7,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import {
   TERMS_VERSION,
   AuthStatusResponse,
+  ActorsResponse,
   MeResponse,
   SessionsResponse,
 } from '@knoverge/contracts';
@@ -298,6 +299,49 @@ describe('login and sessions', () => {
       (await browser.post('/v1/auth/email', { current_password: password, new_email: ADMIN.email }))
         .statusCode,
     ).toBe(200);
+  });
+
+  it('renames the person everywhere their name was copied to', async () => {
+    // An actor carries a copy of the name the account had when the membership
+    // was made, one per workspace. A rename that stopped at the user row would
+    // let somebody correct their name and still see the old one against
+    // everything they had ever done.
+    const browser = new Browser();
+    await browser.fetchCsrf();
+    expect(
+      (
+        await browser.post('/v1/auth/login', {
+          email: ADMIN.email,
+          password: 'a brand new passphrase',
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const before = ActorsResponse.parse(
+      (await browser.request({ method: 'GET', url: '/v1/actors.list' })).json(),
+    );
+    expect(before.actors.some((a) => a.display_name === 'Owner')).toBe(true);
+
+    // No password: a display name is a label, not a credential.
+    const res = await browser.post('/v1/auth/profile', { display_name: '  Grigory F.  ' });
+    expect(res.statusCode, res.body).toBe(200);
+    // The whole account comes back, so the shell does not keep the old name.
+    expect(MeResponse.parse(res.json()).user.display_name).toBe('Grigory F.');
+
+    const after = ActorsResponse.parse(
+      (await browser.request({ method: 'GET', url: '/v1/actors.list' })).json(),
+    );
+    expect(after.actors.some((a) => a.display_name === 'Grigory F.')).toBe(true);
+    expect(after.actors.some((a) => a.display_name === 'Owner')).toBe(false);
+    // The session that made the change survives: the identity has not moved,
+    // only its label.
+    expect((await browser.request({ method: 'GET', url: '/v1/auth/me' })).statusCode).toBe(200);
+
+    expect((await browser.post('/v1/auth/profile', { display_name: '' })).statusCode).toBe(400);
+    // Put it back, so the tests after this one read the name they expect.
+    expect((await browser.post('/v1/auth/profile', { display_name: 'Owner' })).statusCode).toBe(
+      200,
+    );
   });
 
   it('requires a CSRF token for state-changing requests even when signed in', async () => {

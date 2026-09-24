@@ -1,4 +1,4 @@
-import type { WorkspaceId } from '@knoverge/contracts';
+import type { UserId, WorkspaceId } from '@knoverge/contracts';
 import type {
   ActorRecord,
   ActorRepository,
@@ -117,6 +117,15 @@ export function createActorRepository(db: Database): ActorRepository {
         .where(and(eq(actors.workspaceId, workspaceId), eq(actors.id, id)))
         .limit(1);
       return rows[0] ? toActor(rows[0]) : null;
+    },
+    async renameForUser(tx: Tx, userId: UserId, displayName: string) {
+      // Every workspace this person belongs to holds one actor of their own.
+      const changed = await asTx(tx)
+        .update(actors)
+        .set({ displayName })
+        .where(eq(actors.userId, userId))
+        .returning({ id: actors.id });
+      return changed.length;
     },
     async listForWorkspace(workspaceId: WorkspaceId) {
       const rows = await db
