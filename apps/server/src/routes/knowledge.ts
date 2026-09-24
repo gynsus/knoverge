@@ -5,6 +5,7 @@ import {
   KnowledgeDiffResponse,
   KnowledgeItemId,
   KnowledgeHistoryInput,
+  KnowledgeCountsResponse,
   KnowledgeListQuery,
   KnowledgeListResponse,
   KnowledgeResponse,
@@ -66,6 +67,7 @@ function summary(entry: ItemSummary): KnowledgeItemSummary {
     status: item.status,
     language: item.language,
     current_revision_id: item.currentRevisionId,
+    revision_number: entry.revisionNumber,
     review_state: item.reviewState,
     evidence_state: item.evidenceState,
     disputed: item.disputed,
@@ -290,6 +292,20 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
   );
 
   r.get(
+    '/v1/knowledge.counts',
+    { schema: { response: { 200: KnowledgeCountsResponse } } },
+    async (request) => {
+      // The same permission the list needs, because these count what that
+      // caller would see if they asked for all of it.
+      const actor = await requirePermission(services, request, 'knowledge.read');
+      const piles = await services.knowledge.pileSizes(actor.context);
+      return {
+        counts: { total: piles.total, unreviewed: piles.unreviewed, unsourced: piles.unsourced },
+      };
+    },
+  );
+
+  r.get(
     '/v1/knowledge.list',
     { schema: { querystring: KnowledgeListQuery, response: { 200: KnowledgeListResponse } } },
     async (request) => {
@@ -325,6 +341,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         ...(categoryIds ? { categoryIds } : {}),
         ...(query.types.length > 0 ? { types: query.types } : {}),
         ...(query.review_states.length > 0 ? { reviewStates: query.review_states } : {}),
+        ...(query.evidence_states.length > 0 ? { evidenceStates: query.evidence_states } : {}),
         ...(query.status ? { status: query.status } : {}),
       });
       const page = items.slice(0, query.limit);
@@ -437,6 +454,7 @@ export async function knowledgeSearch(
     ...(input.statuses.length ? { statuses: input.statuses } : {}),
     ...(input.languages.length ? { languages: input.languages } : {}),
     ...(input.review_states.length ? { reviewStates: input.review_states } : {}),
+    ...(input.evidence_states.length ? { evidenceStates: input.evidence_states } : {}),
     includeDisputed: input.include_disputed,
     limit: input.limit,
     includeSnippets: input.include_snippets,

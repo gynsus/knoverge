@@ -18,6 +18,8 @@ import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { ItemDetails } from '../components/knowledge/ItemDetails.tsx';
+import { QuickViews } from '../components/knowledge/QuickViews.tsx';
+import { VIEWS, type View } from '../components/knowledge/views.ts';
 import { ItemEditor } from '../components/knowledge/ItemEditor.tsx';
 import { KnowledgeRow } from '../components/knowledge/KnowledgeRow.tsx';
 import { KnowledgeToolbar } from '../components/knowledge/KnowledgeToolbar.tsx';
@@ -62,7 +64,19 @@ export function KnowledgePage() {
   const category = params.get('category') ?? '';
   const type = params.get('type') ?? '';
   const state = params.get('state') ?? '';
-  const narrowed = query !== '' || category !== '' || type !== '' || state !== '';
+  /**
+   * Which pile is open, as a name rather than as the filters behind it.
+   *
+   * One parameter, so the address says "the unsourced ones" rather than a
+   * combination somebody has to read backwards, and so the row of views knows
+   * which of them is pressed.
+   */
+  const view: View = VIEWS.includes(params.get('view') as View)
+    ? (params.get('view') as View)
+    : 'all';
+  const viewState = view === 'unreviewed' ? 'unreviewed' : '';
+  const viewEvidence = view === 'unsourced' ? 'none' : '';
+  const narrowed = query !== '' || category !== '' || type !== '' || state !== '' || view !== 'all';
 
   // Typed here, committed to the address after a pause: a round trip per
   // keystroke buys nothing, and a history entry per keystroke buys less.
@@ -96,7 +110,7 @@ export function KnowledgePage() {
   const reset = () => {
     setTyped('');
     const next = new URLSearchParams(params);
-    for (const key of ['q', 'category', 'type', 'state']) next.delete(key);
+    for (const key of ['q', 'category', 'type', 'state', 'view']) next.delete(key);
     setParams(next, { replace: true });
   };
 
@@ -111,7 +125,21 @@ export function KnowledgePage() {
     queryKey: ACTORS_KEY,
     queryFn: ({ signal }) => adminApi.workspace.actors(signal),
   });
-  const list = useKnowledgeRows({ query, category, type, state });
+  const list = useKnowledgeRows({
+    query,
+    category,
+    type,
+    // The view wins where they overlap: it is the control somebody just
+    // pressed, and the filter is the one they left behind.
+    state: viewState || state,
+    evidence: viewEvidence,
+  });
+
+  // The sizes of the piles, over the workspace rather than over the page.
+  const counts = useQuery({
+    queryKey: [...ITEMS_KEY, 'counts'],
+    queryFn: ({ signal }) => adminApi.knowledge.counts(signal),
+  });
 
   const selected = useQuery({
     queryKey: [...ITEMS_KEY, selectedId],
@@ -161,6 +189,20 @@ export function KnowledgePage() {
           </Button>
         )}
       </div>
+
+      <QuickViews
+        counts={counts.data?.counts ?? null}
+        current={view}
+        onChoose={(chosen) => {
+          const next = new URLSearchParams(params);
+          if (chosen === 'all') next.delete('view');
+          else next.set('view', chosen);
+          // The view and the review filter are two ways of saying the same
+          // thing, and two controls disagreeing about it is worse than either.
+          next.delete('state');
+          setParams(next, { replace: true });
+        }}
+      />
 
       <KnowledgeToolbar
         typed={typed}

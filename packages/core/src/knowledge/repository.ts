@@ -82,6 +82,8 @@ export interface ListItemsOptions {
   types?: readonly ItemType[];
   /** Only items in these review states, for the queue of what nobody checked. */
   reviewStates?: readonly ReviewState[];
+  /** What the item's claim rests on: `none` is the pile with no sources. */
+  evidenceStates?: readonly EvidenceState[];
   /** Only items the workspace marks as contested. */
   disputed?: boolean;
   updatedAfter?: Date;
@@ -96,6 +98,15 @@ export interface ListItemsOptions {
    * workspace, whatever the caller asked for.
    */
   orderBy?: 'created' | 'updated';
+}
+
+/** How many active items fall into each of the piles the list offers. */
+export interface KnowledgePiles {
+  total: number;
+  /** Nobody has checked it. */
+  unreviewed: number;
+  /** Nothing says where it came from. */
+  unsourced: number;
 }
 
 export interface KnowledgeRepository {
@@ -183,6 +194,15 @@ export interface KnowledgeRepository {
 
   /** How many items the workspace holds, for a manifest. */
   countFor(workspaceId: WorkspaceId): Promise<number>;
+
+  /**
+   * The sizes of the piles a person works through, for the list's quick views.
+   *
+   * Counted over the workspace rather than over the page that happens to be
+   * loaded: a number that describes fifty rows while claiming to describe the
+   * workspace is worse than no number.
+   */
+  pileSizes(workspaceId: WorkspaceId): Promise<KnowledgePiles>;
 
   /** The item already recorded under this external identity, if any. */
   findByExternal(

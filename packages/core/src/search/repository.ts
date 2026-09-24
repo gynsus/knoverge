@@ -45,6 +45,8 @@ export interface SearchQuery {
   /** The workspace's own language, when the caller named none. */
   defaultLanguage?: string | undefined;
   reviewStates?: readonly ReviewState[] | undefined;
+  /** What the item's claim rests on: `none` is the pile with no sources. */
+  evidenceStates?: readonly EvidenceState[] | undefined;
   includeDisputed?: boolean | undefined;
   limit?: number | undefined;
   /** A passage of the body around the match, when the caller wants one. */

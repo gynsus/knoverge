@@ -110,6 +110,9 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       const where = [eq(knowledgeItems.workspaceId, workspaceId)];
       if (options.status) where.push(eq(knowledgeItems.status, options.status));
       if (options.types?.length) where.push(inArray(knowledgeItems.type, [...options.types]));
+      if (options.evidenceStates?.length) {
+        where.push(inArray(knowledgeItems.evidenceState, [...options.evidenceStates]));
+      }
       if (options.reviewStates?.length) {
         where.push(inArray(knowledgeItems.reviewState, [...options.reviewStates]));
       }
@@ -254,6 +257,26 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
         .from(knowledgeItems)
         .where(eq(knowledgeItems.workspaceId, workspaceId));
       return rows[0]?.total ?? 0;
+    },
+
+    async pileSizes(workspaceId) {
+      // One query, three numbers. Three queries would be three scans of the
+      // same rows to draw one row of buttons.
+      const [row] = await db
+        .select({
+          total: count(),
+          unreviewed: sql<number>`count(*) filter (
+            where ${knowledgeItems.reviewState} = 'unreviewed'
+          )::int`,
+          unsourced: sql<number>`count(*) filter (
+            where ${knowledgeItems.evidenceState} = 'none'
+          )::int`,
+        })
+        .from(knowledgeItems)
+        .where(
+          and(eq(knowledgeItems.workspaceId, workspaceId), eq(knowledgeItems.status, 'active')),
+        );
+      return row ?? { total: 0, unreviewed: 0, unsourced: 0 };
     },
 
     async titlesOf(workspaceId, itemIds) {

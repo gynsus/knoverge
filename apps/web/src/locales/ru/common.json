@@ -293,7 +293,12 @@
     },
     "uncategorised": "Без категории",
     "unsourced": "Без источников",
-    "updated_when": "Обновлено {{when}}"
+    "updated_when": "Обновлено {{when}}",
+    "views": {
+      "all": "Всё",
+      "unreviewed": "Ещё не проверено",
+      "unsourced": "Без источников"
+    }
   },
   "language": {
     "label": "Язык",

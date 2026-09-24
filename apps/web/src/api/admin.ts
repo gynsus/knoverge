@@ -24,6 +24,7 @@ import type {
   DeleteKnowledgeRequest,
   IssueCredentialRequest,
   IssueCredentialResponse,
+  KnowledgeCountsResponse,
   KnowledgeDiffResponse,
   KnowledgeListResponse,
   KnowledgeSearchQuery,
@@ -151,6 +152,7 @@ export const adminApi = {
         category?: string | undefined;
         type?: string | undefined;
         reviewState?: string | undefined;
+        evidenceState?: string | undefined;
       },
       signal?: AbortSignal,
     ) => {
@@ -159,6 +161,7 @@ export const adminApi = {
       if (filters.category) query.set('category_path', filters.category);
       if (filters.type) query.set('types', filters.type);
       if (filters.reviewState) query.set('review_states', filters.reviewState);
+      if (filters.evidenceState) query.set('evidence_states', filters.evidenceState);
       const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return apiGet<KnowledgeListResponse>(`/v1/knowledge.list${suffix}`, signal);
     },
@@ -169,6 +172,8 @@ export const adminApi = {
      */
     search: (body: KnowledgeSearchQuery) =>
       apiPost<KnowledgeSearchResponse>('/v1/knowledge_search', body),
+    counts: (signal?: AbortSignal) =>
+      apiGet<KnowledgeCountsResponse>('/v1/knowledge.counts', signal),
     get: (itemId: string, signal?: AbortSignal) =>
       apiGet<KnowledgeResponse>(`/v1/knowledge.get?item_id=${encodeURIComponent(itemId)}`, signal),
     revisions: (itemId: string, signal?: AbortSignal) =>

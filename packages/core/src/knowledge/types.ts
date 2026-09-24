@@ -203,6 +203,8 @@ export interface SupersedeResult {
 export interface ItemSummary {
   item: KnowledgeItemRecord;
   title: string;
+  /** From the current revision, which the list already fetches for the title. */
+  revisionNumber: number;
   categories: string[];
   tags: string[];
 }

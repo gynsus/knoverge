@@ -296,9 +296,16 @@ records nothing. See ADR 0018.
 
 `GET /v1/knowledge.list` pages in creation order and narrows on the server:
 `category_path` (the whole branch, resolved to ids at the boundary per rule
-13), repeatable `types` and `review_states`, and `status`. A path that names no
-category is `NOT_FOUND` rather than an empty page — silence and "there is
-nothing there" are different answers.
+13), repeatable `types`, `review_states` and `evidence_states`, and `status`. A
+path that names no category is `NOT_FOUND` rather than an empty page — silence
+and "there is nothing there" are different answers.
+
+`GET /v1/knowledge.counts` answers how big three piles are across the
+workspace: everything active, what nobody has checked, and what nothing backs.
+Each number counts exactly what the matching filter returns, because a count
+that does not match the list it opens is read as a fact and is wrong. It exists
+because a list that pages cannot say how much there is, and "31 items have no
+sources" is a different question from "here are the first fifty".
 
 There is deliberately no sort parameter. The cursor is the item id, which sorts
 in creation order; ordering by anything else needs a different cursor, and a

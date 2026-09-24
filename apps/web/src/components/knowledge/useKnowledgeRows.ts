@@ -1,4 +1,4 @@
-import type { ItemType, ReviewState } from '@knoverge/contracts';
+import type { EvidenceState, ItemType, ReviewState } from '@knoverge/contracts';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
@@ -12,6 +12,8 @@ export interface Narrowing {
   category: string;
   type: string;
   state: string;
+  /** `none` is the pile with nothing saying where it came from. */
+  evidence: string;
 }
 
 /**
@@ -24,9 +26,9 @@ export interface Narrowing {
  * Both answers become the same shape, because the reader is asking the same
  * question either way: which of these do I want to read.
  */
-export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
+export function useKnowledgeRows({ query, category, type, state, evidence }: Narrowing) {
   const browse = useInfiniteQuery({
-    queryKey: [...ITEMS_KEY, category, type, state],
+    queryKey: [...ITEMS_KEY, category, type, state, evidence],
     queryFn: ({ pageParam, signal }) =>
       adminApi.knowledge.list(
         {
@@ -34,6 +36,7 @@ export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
           category: category || undefined,
           type: type || undefined,
           reviewState: state || undefined,
+          evidenceState: evidence || undefined,
         },
         signal,
       ),
@@ -43,7 +46,7 @@ export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
   });
 
   const found = useQuery({
-    queryKey: [...ITEMS_KEY, 'search', query, category, type, state],
+    queryKey: [...ITEMS_KEY, 'search', query, category, type, state, evidence],
     queryFn: () =>
       adminApi.knowledge.search({
         query,
@@ -52,6 +55,7 @@ export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
         statuses: ['active'],
         languages: [],
         review_states: state ? [state as ReviewState] : [],
+        evidence_states: evidence ? [evidence as EvidenceState] : [],
         include_disputed: true,
         limit: 50,
         include_snippets: true,
@@ -70,6 +74,7 @@ export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
         evidenceState: hit.evidence_state,
         disputed: hit.disputed,
         updatedAt: hit.updated_at,
+        ...(hit.snippet ? { snippet: hit.snippet } : {}),
       }));
     }
     return (browse.data?.pages.flatMap((page) => page.items) ?? []).map((entry) => ({
@@ -81,6 +86,7 @@ export function useKnowledgeRows({ query, category, type, state }: Narrowing) {
       evidenceState: entry.evidence_state,
       disputed: entry.disputed,
       updatedAt: entry.updated_at,
+      revisionNumber: entry.revision_number,
     }));
   }, [query, found.data, browse.data]);
 

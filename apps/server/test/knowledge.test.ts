@@ -7,6 +7,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import {
   TERMS_VERSION,
   KnowledgeDiffResponse,
+  KnowledgeCountsResponse,
   KnowledgeListResponse,
   CategoryResponse,
   KnowledgeResponse,
@@ -322,6 +323,30 @@ describe('narrowing the list', () => {
     expect(
       (await list('category_path=browsing&review_states=human_reviewed&limit=200')).length,
     ).toBe(2);
+  });
+
+  it('narrows to what nothing backs, which is the pile worth finding', async () => {
+    // Everything here was written by a person with no sources given, so the
+    // filter has to find all of it and the opposite filter none of it.
+    const unsourced = await list('category_path=browsing&evidence_states=none&limit=200');
+    expect(unsourced.length).toBe(2);
+    expect(await list('category_path=browsing&evidence_states=source_backed&limit=200')).toEqual(
+      [],
+    );
+  });
+
+  it('counts the piles over the workspace, not over a page', async () => {
+    // A number describing the fifty rows that happen to be loaded, while
+    // claiming to describe the workspace, is worse than no number.
+    const res = await admin.get('/v1/knowledge.counts');
+    expect(res.statusCode, res.body).toBe(200);
+    const { counts } = KnowledgeCountsResponse.parse(res.json());
+    // The count and the filter it opens have to agree, or the number is read
+    // as a fact and is wrong.
+    const everything = await list('limit=200');
+    const unsourced = await list('evidence_states=none&limit=200');
+    expect(counts.total).toBe(everything.length);
+    expect(counts.unsourced).toBe(unsourced.length);
   });
 
   it('says so when the category does not exist, rather than answering empty', async () => {

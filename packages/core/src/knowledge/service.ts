@@ -21,6 +21,7 @@ import type { Tx } from '../ports/unit-of-work.ts';
 import type { CategoryRecord } from '../taxonomy/repository.ts';
 import type {
   ItemCategoryRecord,
+  KnowledgePiles,
   ListItemsOptions,
   KnowledgeItemRecord,
   RevisionRecord,
@@ -1084,18 +1085,29 @@ export class KnowledgeService {
     // One query for the page's titles, not one per item: a list of fifty was
     // fifty round trips to draw one screen.
     const revisionIds = items.map((i) => i.currentRevisionId).filter((id) => id !== null);
-    const titles = new Map<string, string>(
-      (await this.o.revisions.findManyByIds(actor.workspaceId, revisionIds)).map((r) => [
-        r.id,
-        r.title,
-      ]),
+    const current = new Map(
+      (await this.o.revisions.findManyByIds(actor.workspaceId, revisionIds)).map((r) => [r.id, r]),
     );
-    return items.map((item) => ({
-      item,
-      title: item.currentRevisionId ? (titles.get(item.currentRevisionId) ?? '') : '',
-      categories: categories.get(item.id) ?? [],
-      tags: tags.get(item.id) ?? [],
-    }));
+    return items.map((item) => {
+      const revision = item.currentRevisionId ? current.get(item.currentRevisionId) : undefined;
+      return {
+        item,
+        title: revision?.title ?? '',
+        revisionNumber: revision?.revisionNumber ?? 1,
+        categories: categories.get(item.id) ?? [],
+        tags: tags.get(item.id) ?? [],
+      };
+    });
+  }
+
+  /**
+   * The sizes of the piles the list offers as quick views.
+   *
+   * The same permission the list needs and no narrower: these count what that
+   * caller would see if they asked for all of it.
+   */
+  pileSizes(actor: ActorContext): Promise<KnowledgePiles> {
+    return this.o.items.pileSizes(actor.workspaceId);
   }
 
   /** The commit and the rows that take an item out of the working tree. */

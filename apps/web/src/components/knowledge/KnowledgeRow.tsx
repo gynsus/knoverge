@@ -21,7 +21,9 @@ export interface RowItem {
   evidenceState: EvidenceState;
   disputed: boolean;
   updatedAt: string;
-  /** Present on a search result: the text that matched, already highlighted. */
+  /** How many times it has been written. A ledger's rows say. */
+  revisionNumber?: number | undefined;
+  /** Present on a search result: the passage that answered. */
   snippet?: string | undefined;
 }
 
@@ -86,8 +88,17 @@ export function KnowledgeRow({ item, onOpen }: { item: RowItem; onOpen: () => vo
             {t('knowledge.updated_when', {
               when: relativeTime(item.updatedAt, i18n.language),
             })}
+            {item.revisionNumber !== undefined &&
+              ` · ${t('knowledge.revision', { number: item.revisionNumber })}`}
           </span>
         </div>
+
+        {/* Why this row answered, when a search is what produced it. The
+            passage is far more use than the title alone: two items can share
+            a title and differ entirely in what they say. */}
+        {item.snippet && (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{item.snippet}</p>
+        )}
       </div>
     </li>
   );
