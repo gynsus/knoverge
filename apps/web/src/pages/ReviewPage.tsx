@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Inbox, Keyboard, Search, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -111,8 +111,24 @@ export function ReviewPage() {
   );
 
   const all = useMemo(
-    () => [...(pending.data?.proposals ?? []), ...(conflicts.data?.proposals ?? [])],
+    () =>
+      [...(pending.data?.proposals ?? []), ...(conflicts.data?.proposals ?? [])].filter(
+        // A proposed category is decided where the taxonomy is, because the
+        // decision is about the tree: what already sounds like it, what would
+        // go in it, where it would hang. None of that is here, and a proposal
+        // with two homes is a proposal decided twice — or, worse, one whose
+        // approve button refuses here and works there.
+        (proposal) => !proposal.proposal_type.startsWith('category_'),
+      ),
     [pending.data, conflicts.data],
+  );
+
+  /** How many are waiting somewhere else, so the queue does not hide them. */
+  const categoryProposals = useMemo(
+    () =>
+      [...(pending.data?.proposals ?? [])].filter((p) => p.proposal_type.startsWith('category_'))
+        .length,
+    [pending.data],
   );
 
   const now = useMemo(() => new Date(), []);
@@ -253,6 +269,17 @@ export function ReviewPage() {
             </div>
           ))}
         </dl>
+      )}
+
+      {/* Named rather than silently dropped: somebody looking for a category
+          they proposed would otherwise conclude it never arrived. */}
+      {categoryProposals > 0 && (
+        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          {t('review.categories_elsewhere', { count: categoryProposals })}
+          <Button asChild variant="link" className="h-auto p-0">
+            <Link to="/taxonomy">{t('review.go_to_taxonomy')}</Link>
+          </Button>
+        </p>
       )}
 
       {runId && (

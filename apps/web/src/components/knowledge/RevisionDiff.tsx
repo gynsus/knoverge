@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
+import { Patch, WasNow } from '@/components/ui/diff';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 
@@ -50,15 +51,10 @@ export function RevisionDiff({
       {/* What changed about the item, answered rather than left in the patch
           for a reader to pick out. */}
       {changes.length > 0 && (
-        <ul className="grid gap-1 text-xs">
+        <ul className="grid gap-1">
           {changes.map((change, index) => (
             <li key={index}>
-              <span className="text-muted-foreground">{change.field}: </span>
-              <span className="text-rose-700 line-through dark:text-rose-400">
-                {readable(change.from)}
-              </span>
-              <span aria-hidden="true"> → </span>
-              <span className="text-emerald-700 dark:text-emerald-400">{readable(change.to)}</span>
+              <WasNow label={change.field} was={readable(change.from)} now={readable(change.to)} />
             </li>
           ))}
         </ul>
@@ -66,22 +62,7 @@ export function RevisionDiff({
       {patch === '' ? (
         <p className="text-xs text-muted-foreground">{t('knowledge.text_unchanged')}</p>
       ) : (
-        <pre className="overflow-x-auto rounded-md border border-border bg-muted/40 p-3 text-xs leading-relaxed">
-          {patch.split('\n').map((line, index) => (
-            <div
-              key={index}
-              className={
-                line.startsWith('+') && !line.startsWith('+++')
-                  ? 'text-emerald-700 dark:text-emerald-400'
-                  : line.startsWith('-') && !line.startsWith('---')
-                    ? 'text-rose-700 dark:text-rose-400'
-                    : 'text-muted-foreground'
-              }
-            >
-              {line || ' '}
-            </div>
-          ))}
-        </pre>
+        <Patch text={patch} />
       )}
     </div>
   );
