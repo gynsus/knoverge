@@ -829,6 +829,119 @@ describe('the taxonomy toolbar', () => {
   });
 });
 
+describe('categories an agent has asked for', () => {
+  const PROPOSED = {
+    id: 'prop_01J8Z3M4Q9V0X7K2B5N6P8R1TA',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    proposal_type: 'category_create' as const,
+    status: 'pending' as const,
+    title: 'Data Governance',
+    categories: [],
+    target_item_id: null,
+    proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    base_revision_id: null,
+    base_content_hash: null,
+    reason: 'Nothing distinguishes ownership from retention.',
+    confidence: null,
+    policy_decision: 'require_review' as const,
+    created_at: '2026-09-21T00:00:00.000Z',
+    resolved_at: null,
+    resolved_by_actor_id: null,
+    resolution_note: null,
+    result_revision_ids: [],
+    sync_session_id: null,
+  };
+  const DATA_MODEL = {
+    id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1TB',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    parent_id: null,
+    slug: 'data-model',
+    path: 'data-model',
+    name: 'Data Model',
+    description: null,
+    inclusion_guidance: [],
+    exclusion_guidance: [],
+    aliases: [],
+    status: 'active',
+    created_at: '2026-09-19T00:00:00.000Z',
+    updated_at: '2026-09-19T00:00:00.000Z',
+    item_count: 0,
+    subtree_item_count: 0,
+    created_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    approved_by_actor_id: null,
+    merged_into_category_id: null,
+  };
+
+  it('shows them above the tree, with the case for each one', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 1, categories: [DATA_MODEL] }),
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSED] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSED.id}`]: () =>
+        json({
+          proposal: {
+            ...PROPOSED,
+            proposed_payload: {
+              name: 'Data Governance',
+              parentPath: null,
+              description: null,
+              exampleTitles: ['Backup retention policy', 'Attachment ownership'],
+            },
+          },
+        }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    // A proposed category is not in the tree: it has no path and no place
+    // among the real ones, and putting it there would claim it exists.
+    await user.click(await screen.findByRole('button', { name: /Data Governance/ }));
+
+    expect(
+      await screen.findByText('Nothing distinguishes ownership from retention.'),
+    ).toBeInTheDocument();
+    // The case for a category is the material that has nowhere else to go.
+    expect(screen.getByText('Backup retention policy')).toBeInTheDocument();
+    // And the collision this view exists to catch, named in the panel rather
+    // than only standing in the tree.
+    expect(screen.getByText('Categories that sound close')).toBeInTheDocument();
+    expect(screen.getByText('data-model')).toBeInTheDocument();
+  });
+
+  it('offers what works and says what does not', async () => {
+    // Approving a category proposal does not make the category yet, so the
+    // button that exists is the one that works.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 1, categories: [DATA_MODEL] }),
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSED] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSED.id}`]: () =>
+        json({
+          proposal: {
+            ...PROPOSED,
+            proposed_payload: {
+              name: 'Data Governance',
+              parentPath: null,
+              description: null,
+              exampleTitles: [],
+            },
+          },
+        }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /Data Governance/ }));
+    expect(await screen.findByRole('button', { name: 'Create this category' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(screen.getByText(/does not make the category yet/)).toBeInTheDocument();
+
+    // Creating starts from what was proposed rather than from an empty form.
+    await user.click(screen.getByRole('button', { name: 'Create this category' }));
+    expect(await screen.findByDisplayValue('Data Governance')).toBeInTheDocument();
+  });
+});
+
 describe('editing a category', () => {
   const ROOT = {
     id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
