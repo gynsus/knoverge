@@ -262,6 +262,93 @@ describe('searching knowledge', () => {
   });
 });
 
+/**
+ * The index is chunked (ADR 0020), which is what a long document needs.
+ */
+describe('a long document', () => {
+  const filler = (word: string, times: number) =>
+    Array.from({ length: times }, () => word).join(' ');
+
+  it('answers from its strongest passage, not from the first one that matched', async () => {
+    // Two chunks mention the query. The weak one names a single word among
+    // filler; the strong one is the sentence somebody was looking for. Which
+    // of the two represents the item is the whole question chunking raises,
+    // and the answer has to be the strong one — otherwise a long document
+    // answers every query with whichever paragraph happens to come first.
+    // Both chunks contain both words — a query ANDs its terms, so a chunk
+    // missing one would not match at all and the fold would never be asked.
+    // What separates them is proximity, which is what `ts_rank_cd` measures.
+    const weak = [filler('routine', 70), 'ledger', filler('routine', 70), 'escalation'].join(' ');
+    const strong = 'The ledger escalation path runs through the operator on duty.';
+    const long = await create({
+      title: 'Operations handbook',
+      body: [weak, filler('unrelated', 200), strong, filler('afterwards', 200)].join('\n\n'),
+      type: 'document',
+      categories: ['runbooks'],
+    });
+
+    const { results } = KnowledgeSearchResponse.parse(
+      (await search({ query: 'ledger escalation' })).json(),
+    );
+    expect(results[0]?.item_id).toBe(long.id);
+    // The passage is the one that answers, not the other one that also
+    // contained the words.
+    expect(results[0]?.snippet).toContain('operator');
+    expect(results[0]?.snippet).not.toContain('routine');
+    // And it says which passage, so a reader can be taken to it.
+    expect(results[0]?.chunk_ordinal).toBeGreaterThan(0);
+  });
+
+  it('does not win a query by having more words to contain it', async () => {
+    // An item is as good as its best chunk. Scoring by the sum would hand
+    // every query to the longest document in the workspace.
+    const precise = await create({
+      title: 'Ledger key rotation',
+      body: 'Rotating the ledger key re-signs nothing; the chain is verified with the key of its time.',
+      type: 'decision',
+      categories: ['runbooks'],
+    });
+    await create({
+      title: 'Everything about everything',
+      body: Array.from({ length: 12 }, () => 'The ledger key is mentioned here again.').join(
+        '\n\n',
+      ),
+      type: 'document',
+      categories: ['runbooks'],
+    });
+
+    const { results } = KnowledgeSearchResponse.parse(
+      (await search({ query: 'ledger key rotation' })).json(),
+    );
+    expect(results[0]?.item_id).toBe(precise.id);
+  });
+
+  it('stops being findable by text an edit removed', async () => {
+    const item = await create({
+      title: 'Shrinking item',
+      body: ['The first paragraph stays.', 'Removable sentence about marmalade.'].join('\n\n'),
+      type: 'fact',
+    });
+    expect(
+      KnowledgeSearchResponse.parse((await search({ query: 'marmalade' })).json()).results,
+    ).toHaveLength(1);
+
+    const updated = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'The first paragraph stays.\n',
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+
+    // The item has fewer chunks than before. Overwriting the ones it still
+    // has would leave the tail of the old text findable.
+    expect(
+      KnowledgeSearchResponse.parse((await search({ query: 'marmalade' })).json()).results,
+    ).toEqual([]);
+  });
+});
+
 describe('an index that was not there when the knowledge was written', () => {
   it('is filled for what it does not hold, without touching what it does', async () => {
     const item = await create({

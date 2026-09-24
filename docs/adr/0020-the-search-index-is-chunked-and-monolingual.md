@@ -33,13 +33,13 @@ This is a decision, not a limitation nobody got to. It means: no multilingual em
 
 The `simple` unstemmed vector stays. It is not cross-language retrieval — it is what finds an exact word in an item whose language the query was not parsed in, such as an identifier or a product name.
 
-### Embeddings are optional, and the index says which rows have one
+### Embeddings are optional, and the chunk is what they will hang from
 
-The embedding lives on the chunk row, nullable, with the profile it was computed under — provider, model, dimension. A chunk whose profile is not the configured one is stale: the query ignores it and the job refills it. Switching models is therefore a rebuild rather than a silent mixture of incomparable vectors, which is the failure that has no symptom.
+With no provider configured, chunks are still built, the lexical vectors are still generated, and the hybrid score has one component instead of two. `workspace_manifest` already reports `semantic_search: false`; that stays true of the index as well as of the query.
 
-With no provider configured, chunks are still built, the lexical vectors are still generated, and the hybrid score has one component instead of two. `workspace_manifest` already reports `semantic_search: false`; now it is true of the index as well as of the query.
+Where a vector is stored is **not settled here**, and deliberately so. This decision is about the unit of the index; the storage of embeddings is decided when embeddings are built, because the choice turns on a question chunking does not raise — whether two profiles may coexist while a workspace is re-embedded under a new model. `DATA_MODEL.md` section 29 already sketches an `EmbeddingProfile` with a status and a separate `Embedding` row per chunk, which buys exactly that and costs a join. Committing to a nullable column on the chunk row inside this change would have pre-empted it with the version that has no answer for a rebuild.
 
-The column is `vector(1024)`. A model of another dimension needs a migration — cheap, because the index is derived and rebuildable, but not silent. Storing the dimension only in the profile and leaving the column unconstrained would forbid the index that makes vector search fast, which defeats the purpose.
+What is settled is that the chunk is the thing an embedding describes. A vector over a whole document is an average of everything it says.
 
 ### Where the code lives
 

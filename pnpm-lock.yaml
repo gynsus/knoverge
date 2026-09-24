@@ -663,6 +663,9 @@ importers:
       '@knoverge/policy':
         specifier: workspace:*
         version: link:../policy
+      '@knoverge/search':
+        specifier: workspace:*
+        version: link:../search
       ulid:
         specifier: 'catalog:'
         version: 3.0.2
