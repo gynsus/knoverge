@@ -31,6 +31,12 @@
      #949494 passed against the card (3.03) and failed against the fill (2.91). */
   --input: #919191;
   --ring: #2456c4;
+  /* What a change added and what it took away. Their own tokens because they
+     mean something — two places render a diff, and a palette class copied
+     into both is a decision made twice. Measured against --card: 5.02 and
+     6.27, over the 4.5:1 WCAG AA asks of body text. */
+  --added: #096b3f;
+  --removed: #a11228;
   --radius: 0.5rem;
 }
 
@@ -53,6 +59,9 @@
     --border: #333333;
     --input: #6a6a6a;
     --ring: #7aa2ff;
+    /* Against the dark --card: 6.41 and 5.13. */
+    --added: #5cc98d;
+    --removed: #ff8085;
   }
 }
 
@@ -94,6 +103,8 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-added: var(--added);
+  --color-removed: var(--removed);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);

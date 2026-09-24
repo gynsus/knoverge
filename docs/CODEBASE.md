@@ -201,17 +201,47 @@ so rule 3 records the same thing whichever transport the call came in on.
 ## The review inbox
 
 `apps/web/src/pages/ReviewPage.tsx` is where an agent's proposals become the
-workspace's knowledge. It lists what is pending, oldest first, because a review
-inbox is a queue and the thing that has been waiting longest is the thing to
-look at. It appears in the navigation only for somebody holding
+workspace's knowledge. It appears in the navigation only for somebody holding
 `knowledge.approve`.
 
+It is a queue beside a decision rather than a list with a drawer, which is
+rule 1's one exception: every decision here is followed by the next, so a
+drawer would cost an open and a close per proposal and hide how much is left.
+Below the large breakpoint the decision opens over the queue, and `lib/
+use-media-query.ts` decides which of the two exists — a panel rendered in both
+and hidden with a class is two of every field and two effects fighting over the
+focus.
+
+The counts across the top are the filters: waiting, conflicts, new items,
+changes, today. Oldest first, because what has waited longest is what to look
+at, except that a conflict sorts above everything — that is somebody's work
+about to be lost.
+
+`components/review/ProposalDetail.tsx` answers, in order, the questions a
+decision rests on: why this is waiting, where it would land, what it would
+change, and what it rests on. The reason is read off the record — the policy
+decision, the status, the payload — rather than stored as a sentence, so it
+cannot drift from what is true. The panel opens as the proposal and becomes a
+form only when somebody asks to change it before approving.
+
 A proposal against an existing item is shown as a diff against what that item
-says now, line by line. Approving without seeing that is approving a change
-nobody read, which is the one thing a review is for. A reviewer who edits the
-text before approving sends it as `edits`, and the proposal records
-`approved_with_edits`, so the trail never claims the proposer wrote words they
-never saw.
+says now. Approving without seeing that is approving a change nobody read,
+which is the one thing a review is for. A reviewer who edits the text before
+approving sends it as `edits`, and the proposal records `approved_with_edits`,
+so the trail never claims the proposer wrote words they never saw. Rejecting
+opens a dialog that asks why, with the sentences somebody would otherwise type
+offered and still editable: "rejected, no reason given" teaches an agent
+nothing.
+
+Postponing is in the row of actions, marked, and does nothing. A proposal has
+no postponed state, and inventing one in the browser would be a queue only that
+browser agreed with.
+
+Category proposals are not here. They are decided with the taxonomy, because
+the decision is about the tree — what already sounds like the proposed
+category, what would go in it, where it would hang — and none of that is on
+this screen. The queue says how many are waiting there rather than dropping
+them silently.
 
 ## Working with the taxonomy in the browser
 
@@ -233,8 +263,17 @@ and the scope of every permission written against those categories, and a
 gesture that can be made by accident is the wrong way to ask for that. Archive
 is offered where delete would be, because a category holds knowledge.
 
-Taxonomy proposals stay in the review inbox, where every other proposal is
-decided; the page links to it rather than growing a second copy of the rules.
+Categories an agent has asked for sit above the tree rather than in it: a
+proposed category has no id and no path until somebody makes it, and putting it
+among the real ones would claim it exists. Choosing one shows who asked, why,
+what they would file there, and the categories that already sound close —
+matched by a shared word in the name and labelled as such, because nothing
+compares categories by meaning.
+
+Approving one is not offered. Making the category out of the proposal is this
+service's own create and the review workflow does not reach it yet, so the
+buttons are the two that work: create it with the proposal's answers already in
+the form, or reject it. The sentence under them says why there is no third.
 
 ## The taxonomy is the first thing in the repository
 
@@ -264,6 +303,62 @@ commit. `runExclusive` keeps its transaction-scoped meaning for single
 transaction work such as first-run setup. ADR 0012 records why, including why
 a process that dies leaves an operation row rather than a lock nobody can
 release.
+
+## Knowledge in the browser
+
+`apps/web/src/pages/KnowledgePage.tsx` is a dense list, not a grid of cards:
+there may be thousands of items, so scanning and narrowing beat browsing. The
+Git path is deliberately not in a row — it was the widest thing in every one
+and the least useful — and lives in the drawer where somebody asks for it.
+
+Three piles across the top say how big they are and open exactly what they
+counted: everything, what nobody has checked, what nothing backs. The counts
+come from `GET /v1/knowledge.counts` because a list that pages cannot say how
+much there is, and a number describing the fifty rows that happen to be loaded
+while claiming to describe the workspace is worse than no number. Each one
+counts what its filter returns; a count that opens a different list is read as
+a fact and is wrong.
+
+`components/knowledge/ItemDetails.tsx` opens as the item and not as a form,
+because reading knowledge and changing it are different acts and a ledger is
+the wrong place to blur them. It is three tabs — the item, its history, its
+connections — which is where it stops: three is the number of questions
+somebody has about one item. Sources stay with the item, because reading where
+something came from is part of reading it.
+
+The history fetches what a revision changed only when asked. Forty revisions
+would otherwise be forty diffs nobody read, each one two files out of Git. What
+changed *about* the item is answered field by field; the patch is for the text.
+
+Arrow keys walk the list, Enter opens, `e` edits, `n` starts a new item, and
+the list of them is on the screen. None of them writes: a single key that saved
+or deleted is a single key somebody presses while reading. Enter's key-down is
+prevented, or the key-up lands on the close button the opening panel just took
+the focus to.
+
+The open item is in the address. Rule 2's test is whether somebody else may
+need to arrive at the same thing, and "here is what we decided: <link>" is the
+most likely sentence anybody writes about one.
+
+## Connecting a provider
+
+`apps/web/src/pages/AiSettingsPage.tsx` and `components/settings/
+ProviderWizard.tsx` are where an operator points the product at an Ollama and
+picks a model. ADR 0021 records why that is configuration the product owns
+rather than environment variables: every step of choosing a provider is
+iteration, and each one used to need a container restart.
+
+Both checks run against the address in the field rather than a saved row. A
+form that can only test what has already been stored teaches people to store
+things that do not work. The model list is filtered by the capabilities the
+provider reports, so a generative model cannot be chosen to make vectors, and
+"test this model" reports the dimension — the number the whole index hangs from
+and the one nobody configures.
+
+`packages/core/src/ai/service.ts` holds the built provider between calls.
+That is not an optimisation: `EmbeddingProvider` learns its dimension from the
+model's first answer, and a fresh instance per call would report zero for ever,
+which is how a profile fails to be recognised.
 
 ## The web interface
 

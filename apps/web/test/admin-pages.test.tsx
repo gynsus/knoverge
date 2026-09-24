@@ -1844,6 +1844,29 @@ describe('review inbox', () => {
     expect(screen.getByRole('button', { name: /Stuck one/ })).toBeInTheDocument();
   });
 
+  it('leaves a proposed category to the taxonomy, and says where it went', async () => {
+    // A proposal with two homes is a proposal decided twice — or, worse, one
+    // whose approve button refuses here and works there.
+    const category = {
+      ...PROPOSAL,
+      id: 'prop_01J8Z3M4Q9V0X7K2B5N6P8R1TC',
+      proposal_type: 'category_create' as const,
+      title: 'Data Governance',
+      target_item_id: null,
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL, category] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
+    });
+    renderApp('/review');
+    await screen.findByRole('button', { name: /Release cadence/ });
+    expect(screen.queryByRole('button', { name: /Data Governance/ })).toBeNull();
+    // Named rather than silently dropped: somebody looking for it would
+    // otherwise conclude it never arrived.
+    expect(screen.getByText(/waiting with the taxonomy/)).toBeInTheDocument();
+  });
+
   it('says who proposed each one, by name rather than by id', async () => {
     mockApi({
       ...SIGNED_IN,
