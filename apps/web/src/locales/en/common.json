@@ -192,6 +192,7 @@
     "filter_type": "Filter by type",
     "found_one": "{{count}} match",
     "found_other": "{{count}} matches",
+    "hide_changes": "Hide what changed",
     "history": "History",
     "intro": "What this workspace knows. Every change is a revision and a commit.",
     "item_title": "Title",
@@ -241,6 +242,38 @@
     "save": "Save",
     "search": "Search knowledge",
     "search_clear": "Clear the search",
+    "shortcut_keys": {
+      "next": {
+        "what": "Next item",
+        "key": "↓"
+      },
+      "previous": {
+        "what": "Previous item",
+        "key": "↑"
+      },
+      "open": {
+        "what": "Open the item",
+        "key": "Enter"
+      },
+      "edit": {
+        "what": "Edit the open item",
+        "key": "E"
+      },
+      "create": {
+        "what": "Add an item",
+        "key": "N"
+      },
+      "search": {
+        "what": "Search",
+        "key": "/"
+      },
+      "close": {
+        "what": "Close what is open",
+        "key": "Esc"
+      }
+    },
+    "shortcuts": "Keys",
+    "show_changes": "See what changed",
     "source_role": "What it is to this item",
     "source_type": "Kind of source",
     "source_types": {
@@ -270,8 +303,12 @@
       "archived": "Archived",
       "deleted": "Deleted"
     },
+    "tab_content": "The item",
+    "tab_history": "History",
+    "tab_relations": "Connections",
     "tags": "Tags",
     "tags_hint": "Any language; case is kept.",
+    "text_unchanged": "The text is unchanged; only the metadata moved.",
     "title": "Knowledge",
     "truncated": "Only part of this item was loaded, so it cannot be edited here. Reload the page, or read it with the API.",
     "type": "Type",

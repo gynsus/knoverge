@@ -1236,6 +1236,19 @@ describe('knowledge page', () => {
     frontmatter_hash: 'sha256:' + 'b'.repeat(64),
     revision_number: 1,
   };
+  const REVISION = {
+    id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    revision_number: 1,
+    change_kind: 'create' as const,
+    title: 'Authentication strategy',
+    markdown_path: 'knowledge/architecture/authentication-strategy.md',
+    content_hash: 'sha256:' + 'a'.repeat(64),
+    frontmatter_hash: 'sha256:' + 'b'.repeat(64),
+    git_commit: 'c'.repeat(40),
+    actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    created_at: '2026-09-19T00:00:00.000Z',
+    reason: null,
+  };
   const ROUTES = {
     ...SIGNED_IN,
     'GET /v1/knowledge.counts': () => json({ counts: { total: 1, unreviewed: 0, unsourced: 1 } }),
@@ -1325,7 +1338,9 @@ describe('knowledge page', () => {
       [`GET /v1/knowledge.get?item_id=${other.id}`]: () => json({ item: other }),
     });
     renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
     const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('tab', { name: /Connections/ }));
     // "supersedes kn_01J8..." tells a reader nothing they can act on.
     expect(await within(drawer).findByRole('button', { name: 'The older decision' })).toBeVisible();
     expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
@@ -1359,6 +1374,79 @@ describe('knowledge page', () => {
       { type: 'web_url', role: 'primary', uri: 'https://example.com/adr-4' },
     ]);
     expect(body['relations']).toEqual([]);
+  });
+
+  it('fetches what a revision changed only when somebody asks', async () => {
+    // A history of forty revisions would be forty diffs nobody read, each one
+    // two files out of Git.
+    const second = 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T8';
+    const calls = mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.revisions?item_id=${ITEM.id}`]: () =>
+        json({
+          revisions: [
+            {
+              ...REVISION,
+              id: second,
+              revision_number: 2,
+              change_kind: 'update',
+              reason: 'Tightened the wording.',
+            },
+            REVISION,
+          ],
+        }),
+      [`GET /v1/knowledge.diff?item_id=${ITEM.id}&from_revision_id=${REVISION.id}&to_revision_id=${second}`]:
+        () =>
+          json({
+            from: REVISION,
+            to: { ...REVISION, id: second, revision_number: 2 },
+            body_diff: '-old line\n+new line',
+            metadata_changes: [{ field: 'tags', from: ['auth'], to: ['auth', 'login'] }],
+          }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('tab', { name: /History/ }));
+    // The reason is the only thing the history has that says why.
+    expect(await within(drawer).findByText('Tightened the wording.')).toBeInTheDocument();
+    expect(calls.some((c) => c.url.includes('knowledge.diff'))).toBe(false);
+
+    await user.click(within(drawer).getByRole('button', { name: 'See what changed' }));
+    expect(await within(drawer).findByText('+new line')).toBeInTheDocument();
+    // What changed about the item, answered rather than left in the patch.
+    expect(within(drawer).getByText('auth, login')).toBeInTheDocument();
+  });
+
+  it('asks before dropping unsaved work, however the drawer is closed', async () => {
+    // Cancel used to be the only way out that asked. The overlay, the close
+    // button and Escape all dropped the work without a word.
+    mockApi(ROUTES);
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+    await user.type(within(drawer).getByLabelText('Title'), ' and more');
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await user.click(within(drawer).getByRole('button', { name: 'Close' }));
+    expect(confirm).toHaveBeenCalled();
+    // Refused, so the work is still there.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('walks the list with the arrows and opens what it lands on', async () => {
+    mockApi(ROUTES);
+    renderApp('/knowledge');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: ITEM.title });
+    await user.keyboard('{ArrowDown}');
+    // Marked, or the arrows move nothing anybody can see.
+    const row = screen.getByRole('button', { name: ITEM.title }).closest('li') as HTMLElement;
+    expect(row).toHaveAttribute('aria-current', 'true');
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
   it('shows what a reader needs and not the file path', async () => {

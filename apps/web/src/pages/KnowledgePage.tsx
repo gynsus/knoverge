@@ -1,7 +1,7 @@
 import type { KnowledgeItemDetail } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Keyboard, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
 
@@ -42,6 +42,13 @@ export function KnowledgePage() {
   const workspaces = useWorkspaceContext();
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState(false);
+  // Whether the open editor has work nobody has saved. Held here because the
+  // drawer can be closed from outside the form — the overlay, the close
+  // button, Escape — and each of those would drop it without asking.
+  const [dirty, setDirty] = useState(false);
+  /** Where the arrow keys are in the list, or null before they are used. */
+  const [cursor, setCursor] = useState<number | null>(null);
+  const [keysShown, setKeysShown] = useState(false);
   const lastTrigger = useRef<HTMLElement | null>(null);
 
   /**
@@ -82,6 +89,12 @@ export function KnowledgePage() {
   // keystroke buys nothing, and a history entry per keystroke buys less.
   const [typed, setTyped] = useState(query);
   useEffect(() => {
+    // Nothing to push: on the first render, and on every render where the box
+    // already agrees with the address, this effect has no change to make.
+    // Writing anyway replaced the address with a copy of itself built a moment
+    // ago, which threw away whatever else had been put in it since — the item
+    // somebody had just opened, for one.
+    if (typed.trim() === query) return;
     const id = setTimeout(() => {
       // The functional form, so this reads whatever the address holds when it
       // fires rather than what it held when the effect was set up. Reading
@@ -99,7 +112,7 @@ export function KnowledgePage() {
       );
     }, TYPING_SETTLES_MS);
     return () => clearTimeout(id);
-  }, [typed, setParams]);
+  }, [typed, query, setParams]);
 
   const setFilter = (key: 'category' | 'type' | 'state', value: string) => {
     const next = new URLSearchParams(params);
@@ -163,11 +176,65 @@ export function KnowledgePage() {
   });
 
   const close = () => {
+    if (dirty && !window.confirm(t('knowledge.discard'))) return;
+    setDirty(false);
     setSelectedId(null);
     setEditing(false);
     lastTrigger.current?.focus();
   };
   const mayWrite = workspaces.can('knowledge.write');
+
+  /**
+   * The keys somebody reading down a list reaches for.
+   *
+   * Nothing here writes. The arrows move, Enter opens, `e` and `n` open a form
+   * somebody still has to submit. A single key that saved or deleted would be
+   * a single key somebody presses while reading.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target?.tagName === 'INPUT' ||
+        target?.tagName === 'TEXTAREA' ||
+        target?.tagName === 'SELECT' ||
+        target?.isContentEditable === true;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (typing) {
+        if (event.key === 'Escape') target?.blur();
+        return;
+      }
+      // `/` is the toolbar's own: the search box is its, and two handlers
+      // racing for one key is how one of them stops working.
+      // The drawer has its own controls and Radix closes it on Escape.
+      if (selectedId !== null) {
+        if (event.key === 'e' && mayWrite) setEditing(true);
+        return;
+      }
+      if (event.key === 'n' && mayWrite) {
+        event.preventDefault();
+        setParams({ new: '' });
+      } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        if (list.rows.length === 0) return;
+        event.preventDefault();
+        setCursor((at) => {
+          const from = at ?? -1;
+          const to = event.key === 'ArrowDown' ? from + 1 : from - 1;
+          return Math.min(Math.max(to, 0), list.rows.length - 1);
+        });
+      } else if (event.key === 'Enter' && cursor !== null) {
+        const row = list.rows[cursor];
+        if (!row) return;
+        // Without this the drawer opens and shuts in one press: the panel
+        // takes the focus, and the key-up of the same Enter lands on the
+        // close button it put the focus on.
+        event.preventDefault();
+        setSelectedId(row.id);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const creating = params.has('new');
   const closeForm = () => {
     const next = new URLSearchParams(params);
@@ -182,13 +249,46 @@ export function KnowledgePage() {
           <h2 className="text-2xl font-semibold tracking-tight">{t('knowledge.title')}</h2>
           <p className="max-w-2xl text-sm text-muted-foreground">{t('knowledge.intro')}</p>
         </div>
-        {mayWrite && (
-          <Button type="button" className="shrink-0" onClick={() => setParams({ new: '' })}>
-            <Plus aria-hidden="true" className="size-4" />
-            {t('knowledge.add')}
+        <div className="flex shrink-0 items-center gap-2">
+          {/* A shortcut nobody is told about is a shortcut nobody uses. */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground"
+            aria-expanded={keysShown}
+            onClick={() => setKeysShown((shown) => !shown)}
+          >
+            <Keyboard aria-hidden="true" className="size-4" />
+            {t('knowledge.shortcuts')}
           </Button>
-        )}
+          {mayWrite && (
+            <Button type="button" onClick={() => setParams({ new: '' })}>
+              <Plus aria-hidden="true" className="size-4" />
+              {t('knowledge.add')}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {keysShown && (
+        <dl className="grid gap-x-6 gap-y-1 rounded-lg border border-border bg-muted/40 p-4 text-sm sm:grid-cols-2">
+          {(['next', 'previous', 'open', 'edit', 'create', 'search', 'close'] as const).map(
+            (key) => (
+              <div key={key} className="flex items-baseline justify-between gap-3">
+                <dt className="text-muted-foreground">
+                  {t(`knowledge.shortcut_keys.${key}.what`)}
+                </dt>
+                <dd>
+                  <kbd className="rounded border border-border bg-background px-1.5 py-0.5 font-mono text-xs">
+                    {t(`knowledge.shortcut_keys.${key}.key`)}
+                  </kbd>
+                </dd>
+              </div>
+            ),
+          )}
+        </dl>
+      )}
 
       <QuickViews
         counts={counts.data?.counts ?? null}
@@ -249,8 +349,13 @@ export function KnowledgePage() {
         </div>
       )}
       <ul className="grid">
-        {list.rows.map((row) => (
-          <KnowledgeRow key={row.id} item={row} onOpen={() => setSelectedId(row.id)} />
+        {list.rows.map((row, index) => (
+          <KnowledgeRow
+            key={row.id}
+            item={row}
+            atCursor={index === cursor}
+            onOpen={() => setSelectedId(row.id)}
+          />
         ))}
       </ul>
       {list.hasMore && (
@@ -292,8 +397,9 @@ export function KnowledgePage() {
                   setEditing(false);
                   await refresh();
                 }}
-                onCancel={(dirty) => {
-                  if (dirty && !window.confirm(t('knowledge.discard'))) return;
+                onDirty={setDirty}
+                onCancel={(unsaved) => {
+                  if (unsaved && !window.confirm(t('knowledge.discard'))) return;
                   setEditing(false);
                 }}
               />

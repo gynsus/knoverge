@@ -3,6 +3,7 @@ import { AlertTriangle, Check, FileText, Link2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { relativeTime } from '@/lib/relative-time';
 
 /**
@@ -39,13 +40,30 @@ function breadcrumb(path: string): string {
  * it was most of what the eye had to skip past to reach the titles. It belongs
  * where somebody asks for it, which is the drawer.
  */
-export function KnowledgeRow({ item, onOpen }: { item: RowItem; onOpen: () => void }) {
+export function KnowledgeRow({
+  item,
+  onOpen,
+  atCursor = false,
+}: {
+  item: RowItem;
+  onOpen: () => void;
+  /** Where the arrow keys are. Marked, or they move nothing anybody can see. */
+  atCursor?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const reviewed = item.reviewState !== 'unreviewed';
   const sourced = item.evidenceState !== 'none';
 
   return (
-    <li className="group relative border-b border-border last:border-0">
+    <li
+      ref={(node) => {
+        // Brought into view as the arrows move, or the cursor walks off the
+        // bottom of a long list and nothing appears to happen.
+        if (atCursor) node?.scrollIntoView({ block: 'nearest' });
+      }}
+      aria-current={atCursor ? 'true' : undefined}
+      className={cn('group relative border-b border-border last:border-0', atCursor && 'bg-accent')}
+    >
       <div className="grid gap-1 py-3">
         <div className="flex items-start justify-between gap-3">
           <button
