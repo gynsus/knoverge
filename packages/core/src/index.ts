@@ -79,6 +79,7 @@ export type {
   DuplicateRow,
   ItemCategoryRecord,
   KnowledgeItemRecord,
+  KnowledgePiles,
   KnowledgeRepository,
   ListItemsOptions,
   RelationRecord,

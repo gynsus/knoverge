@@ -205,6 +205,9 @@ function filters(db: Database, query: SearchQuery): SQL[] {
   if (query.languages?.length) {
     where.push(inArray(searchChunks.language, [...query.languages]) as SQL);
   }
+  if (query.evidenceStates?.length) {
+    where.push(inArray(knowledgeItems.evidenceState, [...query.evidenceStates]) as SQL);
+  }
   if (query.reviewStates?.length) {
     where.push(inArray(knowledgeItems.reviewState, [...query.reviewStates]) as SQL);
   }

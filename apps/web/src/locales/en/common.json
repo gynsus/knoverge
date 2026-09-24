@@ -289,7 +289,12 @@
     },
     "uncategorised": "Uncategorised",
     "unsourced": "No sources",
-    "updated_when": "Updated {{when}}"
+    "updated_when": "Updated {{when}}",
+    "views": {
+      "all": "Everything",
+      "unreviewed": "Not checked yet",
+      "unsourced": "No sources"
+    }
   },
   "language": {
     "label": "Language",

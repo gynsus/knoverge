@@ -307,6 +307,8 @@ export const KnowledgeItemSummary = z.object({
   status: ItemStatus,
   language: LanguageTag,
   current_revision_id: RevisionId,
+  /** How many times this item has been written. A ledger's rows say. */
+  revision_number: z.number().int().positive(),
   review_state: ReviewState,
   evidence_state: EvidenceState,
   disputed: z.boolean(),
@@ -328,7 +330,6 @@ export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
   relations: z.array(FrontmatterRelation),
   content_hash: z.string(),
   frontmatter_hash: z.string(),
-  revision_number: z.number().int().positive(),
 });
 export type KnowledgeItemDetail = z.infer<typeof KnowledgeItemDetail>;
 
@@ -428,6 +429,7 @@ export const KnowledgeSearchInput = z.object({
   statuses: z.array(ItemStatus).max(8).default(['active']),
   languages: z.array(LanguageTag).max(8).default([]),
   review_states: z.array(ReviewState).max(4).default([]),
+  evidence_states: z.array(EvidenceState).max(4).default([]),
   include_disputed: z.boolean().default(true),
   limit: z.number().int().min(1).max(100).default(20),
   include_snippets: z.boolean().default(true),
@@ -558,6 +560,11 @@ export const KnowledgeListQuery = z.object({
     .union([ReviewState, z.array(ReviewState)])
     .optional()
     .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
+  /** Repeatable, like the others: what an item's claim rests on. */
+  evidence_states: z
+    .union([EvidenceState, z.array(EvidenceState)])
+    .optional()
+    .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
   /** Active by default: what the workspace currently asserts. */
   status: ItemStatus.optional(),
 });
@@ -569,6 +576,30 @@ export const KnowledgeListResponse = z.object({
   next_cursor: z.string().nullable(),
 });
 export type KnowledgeListResponse = z.infer<typeof KnowledgeListResponse>;
+
+/**
+ * How big each of the piles the list offers is.
+ *
+ * Over the workspace, not over the page that happens to be loaded: a number
+ * describing fifty rows while claiming to describe the workspace is worse than
+ * no number, and the page already has its own count.
+ *
+ * Each one counts exactly what its view filters to. A count that does not
+ * match the list it opens is the worst of both — it is read as a fact and it
+ * is wrong.
+ */
+export const KnowledgeCounts = z.object({
+  /** Active items. What is archived is not what somebody is working through. */
+  total: z.number().int().nonnegative(),
+  /** Nobody has checked it. */
+  unreviewed: z.number().int().nonnegative(),
+  /** Nothing says where it came from. */
+  unsourced: z.number().int().nonnegative(),
+});
+export type KnowledgeCounts = z.infer<typeof KnowledgeCounts>;
+
+export const KnowledgeCountsResponse = z.object({ counts: KnowledgeCounts });
+export type KnowledgeCountsResponse = z.infer<typeof KnowledgeCountsResponse>;
 
 /**
  * Changing an item.

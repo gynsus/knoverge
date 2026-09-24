@@ -9,6 +9,7 @@ import {
   AgentsResponse,
   MembersResponse,
   PolicyRulesResponse,
+  KnowledgeListResponse,
   ProposalsResponse,
   MeResponse,
   TaxonomyListResponse,
@@ -1214,6 +1215,7 @@ describe('knowledge page', () => {
     status: 'active',
     language: 'en',
     current_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    revision_number: 1,
     review_state: 'human_reviewed',
     evidence_state: 'none',
     disputed: false,
@@ -1236,6 +1238,7 @@ describe('knowledge page', () => {
   };
   const ROUTES = {
     ...SIGNED_IN,
+    'GET /v1/knowledge.counts': () => json({ counts: { total: 1, unreviewed: 0, unsourced: 1 } }),
     'GET /v1/knowledge.list': () => json({ items: [ITEM], next_cursor: null }),
     [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: DETAIL }),
     [`GET /v1/knowledge.revisions?item_id=${ITEM.id}`]: () =>
@@ -1256,6 +1259,34 @@ describe('knowledge page', () => {
         ],
       }),
   };
+
+  it('has fixtures the contract accepts', () => {
+    // Parsed rather than trusted: a field added to the contract has to be
+    // added here too, and a row quietly missing it is a worse way to learn.
+    expect(() => KnowledgeListResponse.parse({ items: [ITEM], next_cursor: null })).not.toThrow();
+  });
+
+  it('offers the piles a person works through, counted over the workspace', async () => {
+    // A number describing the fifty rows that happen to be loaded, while
+    // claiming to describe the workspace, is worse than no number.
+    const calls = mockApi({
+      ...ROUTES,
+      'GET /v1/knowledge.counts': () =>
+        json({ counts: { total: 186, unreviewed: 12, unsourced: 31 } }),
+    });
+    renderApp('/knowledge');
+    const user = userEvent.setup();
+    // Waits for the number, not just the name: the view works before the
+    // count arrives, and the count is what this is about.
+    const view = await screen.findByRole('button', { name: 'No sources' });
+    await waitFor(() => expect(view.textContent).toContain('31'));
+
+    await user.click(view);
+    // Each count opens exactly the list it counted.
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes('evidence_states=none'))).toBe(true),
+    );
+  });
 
   it('says where an item came from, and says it when nothing did', async () => {
     // Provenance is one of the things this product is for, so a bare badge
@@ -1344,6 +1375,8 @@ describe('knowledge page', () => {
     expect(row.getByText('architecture')).toBeInTheDocument();
     expect(row.getByText('Reviewed by a person')).toBeInTheDocument();
     expect(row.getByText('No sources')).toBeInTheDocument();
+    // A ledger's rows say how far an item has moved.
+    expect((title.closest('li') as HTMLElement).textContent).toContain('revision 1');
   });
 
   it('narrows on the server, from an address somebody can be sent', async () => {
