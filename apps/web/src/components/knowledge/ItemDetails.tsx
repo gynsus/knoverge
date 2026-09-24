@@ -19,6 +19,8 @@ import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { Markdown } from './Markdown.tsx';
+import { RelationList } from './RelationList.tsx';
+import { SourceList } from './SourceList.tsx';
 
 /**
  * One item, read rather than edited.
@@ -36,6 +38,7 @@ export function ItemDetails({
   onEdit,
   onDelete,
   onRestore,
+  onOpenItem,
   busy,
   error,
 }: {
@@ -46,6 +49,8 @@ export function ItemDetails({
   onEdit: () => void;
   onDelete: () => void;
   onRestore: () => void;
+  /** Opens another item, for following a relation. */
+  onOpenItem: (itemId: string) => void;
   busy: boolean;
   error: unknown;
 }) {
@@ -182,6 +187,20 @@ export function ItemDetails({
           <dt>{t('knowledge.file')}</dt>
           <dd className="font-mono text-xs break-all text-foreground">{item.markdown_path}</dd>
         </dl>
+      </section>
+
+      <Separator />
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-medium">{t('knowledge.sources')}</h4>
+        <SourceList sources={item.sources} />
+      </section>
+
+      <Separator />
+
+      <section className="grid gap-2">
+        <h4 className="text-sm font-medium">{t('knowledge.relations')}</h4>
+        <RelationList relations={item.relations} onOpen={onOpenItem} />
       </section>
 
       <Separator />

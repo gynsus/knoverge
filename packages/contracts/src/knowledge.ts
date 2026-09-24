@@ -433,6 +433,14 @@ export const KnowledgeSearchInput = z.object({
   include_snippets: z.boolean().default(true),
 });
 export type KnowledgeSearchInput = z.infer<typeof KnowledgeSearchInput>;
+/**
+ * A search as a caller writes it, before the defaults are filled in.
+ *
+ * `KnowledgeSearchInput` is what the server works with — every filter present.
+ * A caller that wants nothing but a query should not have to spell out six
+ * empty lists the schema supplies anyway.
+ */
+export type KnowledgeSearchQuery = z.input<typeof KnowledgeSearchInput>;
 
 /** One candidate, with enough of the item to decide whether to read it. */
 export const SearchResult = z.object({

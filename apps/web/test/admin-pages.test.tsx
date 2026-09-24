@@ -1257,6 +1257,79 @@ describe('knowledge page', () => {
       }),
   };
 
+  it('says where an item came from, and says it when nothing did', async () => {
+    // Provenance is one of the things this product is for, so a bare badge
+    // that cannot be acted on is the wrong end of it.
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({
+          item: {
+            ...DETAIL,
+            sources: [
+              { type: 'web_url', role: 'primary', uri: 'https://example.com/adr-4' },
+              { type: 'agent_session', role: 'supporting', client: 'claude-code' },
+            ],
+          },
+        }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByText('https://example.com/adr-4')).toBeInTheDocument();
+    // The role is what makes a source evidence rather than a link.
+    expect(within(drawer).getByText('Supporting')).toBeInTheDocument();
+  });
+
+  it('names the items a connection points at, rather than printing ids', async () => {
+    const other = { ...DETAIL, id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T9', title: 'The older decision' };
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({
+          item: {
+            ...DETAIL,
+            relations: [{ type: 'supersedes', target: other.id }],
+          },
+        }),
+      [`GET /v1/knowledge.get?item_id=${other.id}`]: () => json({ item: other }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    // "supersedes kn_01J8..." tells a reader nothing they can act on.
+    expect(await within(drawer).findByRole('button', { name: 'The older decision' })).toBeVisible();
+    expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
+  });
+
+  it('sends the sources a reviewer added, and drops a connection left empty', async () => {
+    const calls = mockApi({
+      ...ROUTES,
+      'POST /v1/admin/knowledge.update': () => json({ item: DETAIL }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+
+    await user.click(within(drawer).getByRole('button', { name: 'Add a source' }));
+    await user.type(within(drawer).getByLabelText('Where it is'), 'https://example.com/adr-4');
+    // Started and not finished: sending it would be refused, and dropping it
+    // is what leaving a row empty already means.
+    await user.click(within(drawer).getByRole('button', { name: 'Add a connection' }));
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/knowledge.update'))).toBe(true),
+    );
+    const body = calls.find((c) => c.url.endsWith('/v1/admin/knowledge.update'))!.body as Record<
+      string,
+      unknown
+    >;
+    expect(body['sources']).toEqual([
+      { type: 'web_url', role: 'primary', uri: 'https://example.com/adr-4' },
+    ]);
+    expect(body['relations']).toEqual([]);
+  });
+
   it('shows what a reader needs and not the file path', async () => {
     // The path was the widest thing in every row and the least useful: at
     // seventy items it was most of what the eye had to skip past.

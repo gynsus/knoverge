@@ -10,6 +10,8 @@ import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { changed, draftOf, listOf, type Draft } from './draft.ts';
 import { ItemFields } from './ItemFields.tsx';
+import { RelationEditor } from './RelationList.tsx';
+import { SourceEditor } from './SourceList.tsx';
 
 /**
  * Changing one item.
@@ -59,6 +61,11 @@ export function ItemEditor({
         type: draft.type,
         categories: listOf(draft.categories),
         tags: listOf(draft.tags),
+        sources: draft.sources,
+        // A relation with no target is a row somebody started and did not
+        // finish; sending it would be refused, and dropping it silently is
+        // what "cancel" already means for an empty row.
+        relations: draft.relations.filter((relation) => relation.target !== ''),
         ...(reason.trim() ? { reason: reason.trim() } : {}),
       }),
     onSuccess: onChanged,
@@ -69,6 +76,19 @@ export function ItemEditor({
       {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
       <FieldSet disabled={!mayWrite || truncated || save.isPending}>
         <ItemFields draft={draft} onChange={setDraft} rows={16} categories={categories} />
+        <Field label={t('knowledge.sources')} hint={t('knowledge.sources_hint')}>
+          <SourceEditor
+            sources={draft.sources}
+            onChange={(sources) => setDraft({ ...draft, sources })}
+          />
+        </Field>
+        <Field label={t('knowledge.relations')} hint={t('knowledge.relations_hint')}>
+          <RelationEditor
+            relations={draft.relations}
+            selfId={item.id}
+            onChange={(relations) => setDraft({ ...draft, relations })}
+          />
+        </Field>
         {/* Every change here is a revision and a Git commit. The history can
             say who and when without this; only this says why. */}
         <Field label={t('knowledge.reason')} hint={t('knowledge.reason_hint')}>

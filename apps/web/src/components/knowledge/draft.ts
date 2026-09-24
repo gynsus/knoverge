@@ -1,4 +1,9 @@
-import type { ItemType, KnowledgeItemDetail } from '@knoverge/contracts';
+import type {
+  FrontmatterRelation,
+  FrontmatterSource,
+  ItemType,
+  KnowledgeItemDetail,
+} from '@knoverge/contracts';
 
 /** The fields a person edits. Everything else follows from them. */
 export interface Draft {
@@ -7,9 +12,20 @@ export interface Draft {
   type: ItemType;
   categories: string;
   tags: string;
+  /** Where this came from, and how it connects to the rest. */
+  sources: FrontmatterSource[];
+  relations: FrontmatterRelation[];
 }
 
-export const emptyDraft: Draft = { title: '', body: '', type: 'fact', categories: '', tags: '' };
+export const emptyDraft: Draft = {
+  title: '',
+  body: '',
+  type: 'fact',
+  categories: '',
+  tags: '',
+  sources: [],
+  relations: [],
+};
 
 /**
  * A comma-separated field as a list.
@@ -29,6 +45,8 @@ export const draftOf = (item: KnowledgeItemDetail): Draft => ({
   type: item.type,
   categories: item.categories.join(', '),
   tags: item.tags.join(', '),
+  sources: [...item.sources],
+  relations: [...item.relations],
 });
 
 /** Whether anything in the form differs from the item it started at. */
@@ -37,4 +55,9 @@ export const changed = (draft: Draft, from: Draft): boolean =>
   draft.body !== from.body ||
   draft.type !== from.type ||
   draft.categories !== from.categories ||
-  draft.tags !== from.tags;
+  draft.tags !== from.tags ||
+  // Compared as JSON: these are small, ordered lists of plain values, and a
+  // field-by-field comparison here would be a second definition of what a
+  // source is, drifting from the first one.
+  JSON.stringify(draft.sources) !== JSON.stringify(from.sources) ||
+  JSON.stringify(draft.relations) !== JSON.stringify(from.relations);

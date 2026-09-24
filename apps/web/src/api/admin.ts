@@ -26,7 +26,7 @@ import type {
   IssueCredentialResponse,
   KnowledgeDiffResponse,
   KnowledgeListResponse,
-  KnowledgeSearchInput,
+  KnowledgeSearchQuery,
   KnowledgeSearchResponse,
   KnowledgeResponse,
   MeResponse,
@@ -162,7 +162,12 @@ export const adminApi = {
       const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return apiGet<KnowledgeListResponse>(`/v1/knowledge.list${suffix}`, signal);
     },
-    search: (body: KnowledgeSearchInput) =>
+    /**
+     * The input before the contract's defaults are applied: a caller that
+     * wants nothing but a query should not have to spell out six empty
+     * filters the server fills in anyway.
+     */
+    search: (body: KnowledgeSearchQuery) =>
       apiPost<KnowledgeSearchResponse>('/v1/knowledge_search', body),
     get: (itemId: string, signal?: AbortSignal) =>
       apiGet<KnowledgeResponse>(`/v1/knowledge.get?item_id=${encodeURIComponent(itemId)}`, signal),
