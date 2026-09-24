@@ -511,6 +511,45 @@ describe('archiving a workspace', () => {
     ).not.toBeNull();
   });
 
+  it('freezes every way in, not four of the five', async () => {
+    // `filter` is the one that decides which of a list somebody may act on.
+    // Every caller passes a reading action today, which an archive does not
+    // freeze; an entry point that decides differently from the other four is
+    // the kind of gap that is found by being exploited rather than by being
+    // read.
+    const archived = await scoped('GET', '/v1/workspace.get');
+    expect(WorkspaceResponse.parse(archived.json()).workspace.archived_at).not.toBeNull();
+
+    const kept = await services.authorization.filter(
+      {
+        workspaceId: workspaceId,
+        actorId: 'act_00000000000000000000000000' as never,
+        actorType: 'human',
+        requestId: 'test',
+      },
+      { role: 'owner' },
+      'knowledge.write',
+      [{ id: 'one' }],
+      () => ({}),
+    );
+    expect(kept).toEqual([]);
+
+    // Reading is untouched, which is the other half of what archiving means.
+    const readable = await services.authorization.filter(
+      {
+        workspaceId: workspaceId,
+        actorId: 'act_00000000000000000000000000' as never,
+        actorType: 'human',
+        requestId: 'test',
+      },
+      { role: 'owner' },
+      'knowledge.read',
+      [{ id: 'one' }],
+      () => ({}),
+    );
+    expect(readable).toHaveLength(1);
+  });
+
   it('records nothing when asked for the state it is already in', async () => {
     const before = await services.repositories.events.listAfter(workspaceId, 0, 500);
     const again = await scoped('POST', '/v1/admin/workspace.archive', { archived: true });

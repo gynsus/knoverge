@@ -141,7 +141,15 @@ export class AuthorizationService {
     return holdsAction(await this.grantsFor(actor, standing), action);
   }
 
-  /** Keeps the items the actor may see for this action. */
+  /**
+   * Keeps the items the actor may see for this action.
+   *
+   * Every caller today passes a reading action, which an archive does not
+   * freeze. It asks anyway: this is the last of the five ways in that did not
+   * know about the archive, and one entry point that decides differently from
+   * the other four is the kind of gap that is found by being exploited rather
+   * than by being read.
+   */
   async filter<T>(
     actor: ActorContext,
     standing: ActorStanding,
@@ -149,6 +157,7 @@ export class AuthorizationService {
     items: readonly T[],
     toTarget: (item: T) => Target,
   ): Promise<T[]> {
+    if (FROZEN_BY_ARCHIVE.has(action) && (await this.isArchived(actor.workspaceId))) return [];
     const ancestorsOf = await this.ancestorsOf(actor.workspaceId);
     const grants = await this.grantsFor(actor, standing);
     return items.filter(
@@ -177,6 +186,15 @@ export class AuthorizationService {
     );
   }
 
+  /**
+   * The first action the actor does not hold anywhere, or null.
+   *
+   * Deliberately blind to the archive. It asks whether somebody has the
+   * authority to hand out a role, not whether the workspace is accepting
+   * changes right now; freezing it would stop an administrator adding a member
+   * to an archived workspace, because the roles they can assign include
+   * writing.
+   */
   async missingAction(
     actor: ActorContext,
     standing: ActorStanding,

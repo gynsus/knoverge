@@ -161,6 +161,8 @@ While `workspaces.archived_at` is set, every action that would change the knowle
 
 Reading is untouched, and administration is not frozen: `workspace.admin` is how the workspace is brought back, and `agent.manage` is how a credential is revoked. The system actor — the operator on the host — is unconstrained, as everywhere else. ADR 0018 has the reasoning.
 
+Every way in asks: the single check, the listing check, the report of what somebody holds, and the filter that narrows a list to what they may act on. The one exception is the question "does this person have the authority to hand out this role", which is about standing rather than about whether the workspace is accepting changes — freezing it would stop an administrator adding a member to an archived workspace, because the roles they can assign include writing.
+
 ## 8. Scoped access
 
 Permissions and policy rules carry a scope selector stored by **stable category ids** with `include_descendants`, plus optional type and language filters. Paths are accepted by the API and UI for convenience and resolved to ids at write time.
