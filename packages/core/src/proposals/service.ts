@@ -735,6 +735,20 @@ export class ProposalService {
         }),
       );
     }
+    // Before the check below, which asks for an item: a category proposal
+    // names none, so it used to fail as "the proposal names no item to
+    // change" — an internal error for something the product simply has not
+    // built yet, and nothing a reviewer could act on.
+    if (
+      proposal.proposalType === 'category_create' ||
+      proposal.proposalType === 'category_update'
+    ) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'approving a category proposal arrives in a later milestone; create the category and reject the proposal',
+        { objectIds: { proposal: proposal.id } },
+      );
+    }
     const itemId = proposal.targetItemId;
     const baseRevisionId = proposal.baseRevisionId;
     const baseContentHash = proposal.baseContentHash;
@@ -778,8 +792,7 @@ export class ProposalService {
       // is the one that was superseded.
       return { itemId, revisionIds: [result.new.revision.id, result.old.revision.id] };
     }
-    // Supersession and category proposals arrive with the proposals that
-    // produce them; refusing beats applying a payload this cannot read.
+    // Refusing beats applying a payload this cannot read.
     throw new DomainError(
       'VALIDATION_ERROR',
       `approving a ${proposal.proposalType} proposal arrives in a later milestone`,

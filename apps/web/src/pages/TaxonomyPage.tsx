@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -29,9 +30,10 @@ import { CategoryDetails } from '../components/taxonomy/CategoryDetails.tsx';
 import { CategorySheet } from '../components/taxonomy/CategorySheet.tsx';
 import { CategoryTree } from '../components/taxonomy/CategoryTree.tsx';
 import { MergeDialog, MoveDialog } from '../components/taxonomy/TaxonomyDialogs.tsx';
+import { ProposedCategory } from '../components/taxonomy/ProposedCategory.tsx';
 import { TaxonomyHistory } from '../components/taxonomy/TaxonomyHistory.tsx';
 
-type Shown = 'active' | 'all' | 'archived';
+type Shown = 'active' | 'all' | 'archived' | 'proposed';
 
 /**
  * The taxonomy, as something to work with rather than a list with a form
@@ -63,6 +65,8 @@ export function TaxonomyPage() {
   const [merging, setMerging] = useState<CategorySummary | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  /** Which proposed category is open, when one is instead of a real one. */
+  const [proposalId, setProposalId] = useState<string | null>(null);
   // Below `lg` the tree takes the whole width and the detail panel is a sheet;
   // at or above it the panel is a column that is always there.
   const narrow = useBelow(LARGE_BREAKPOINT);
@@ -72,6 +76,24 @@ export function TaxonomyPage() {
     queryKey: TAXONOMY_KEY,
     queryFn: ({ signal }) => adminApi.taxonomy.list(signal),
   });
+  /**
+   * The categories an agent has asked for.
+   *
+   * A separate call rather than a filter over the tree, because a proposed
+   * category is a proposal and not a category with a status: it has no id, no
+   * path and no place in the tree until somebody makes it.
+   */
+  const proposed = useQuery({
+    queryKey: ['proposals', 'categories'],
+    queryFn: ({ signal }) => adminApi.proposals.list('pending', {}, signal),
+    select: (answer) => answer.proposals.filter((p) => p.proposal_type === 'category_create'),
+  });
+  const openProposal = useQuery({
+    queryKey: ['proposals', 'one', proposalId],
+    queryFn: ({ signal }) => adminApi.proposals.get(proposalId as string, signal),
+    enabled: proposalId !== null,
+  });
+
   const actors = useQuery({
     queryKey: ACTORS_KEY,
     queryFn: ({ signal }) => adminApi.workspace.actors(signal),
@@ -126,6 +148,8 @@ export function TaxonomyPage() {
   // A search opens whatever it needs to show its matches; outside a search the
   // person's own open and closed branches are what is on screen.
   const expanded = query.trim() === '' ? (opened ?? defaultOpen) : visible;
+  /** The proposals on show, which is all of them unless one filter hides them. */
+  const waiting = proposed.data ?? [];
   const filtered = query.trim() !== '' || shown !== 'active';
   const reset = () => {
     setQuery('');
@@ -234,17 +258,46 @@ export function TaxonomyPage() {
     onRestore: (category: CategorySummary) => restore.mutate(category),
   };
 
-  const details = selected && (
-    <CategoryDetails
-      category={selected}
+  // A proposal wins where both are open: it is what somebody just chose, and
+  // the category they were looking at is still in the tree behind it.
+  const details = openProposal.data ? (
+    <ProposedCategory
+      proposal={openProposal.data.proposal}
+      proposer={
+        actors.data?.actors.find((a) => a.id === openProposal.data.proposal.proposed_by_actor_id)
+          ?.display_name ?? openProposal.data.proposal.proposed_by_actor_id
+      }
       categories={all}
-      actors={actors.data?.actors ?? []}
-      canManage={canManage}
-      onEdit={() => openSheet(selected, null)}
-      onAddChild={() => openSheet(null, selected)}
-      onNotice={(message, tone) => setNotice({ message, tone })}
-      childCount={all.filter((c) => c.parent_id === selected.id).length}
+      onCreate={(payload) => {
+        const parent = all.find((c) => c.path === payload.parentPath) ?? null;
+        setProposalId(null);
+        setDraft({
+          ...emptyDraft,
+          name: payload.name,
+          description: payload.description ?? '',
+          parentId: parent?.id ?? null,
+        });
+        setEditing(null);
+        setSheetOpen(true);
+      }}
+      onResolved={async () => {
+        setProposalId(null);
+        await client.invalidateQueries({ queryKey: ['proposals'] });
+      }}
     />
+  ) : (
+    selected && (
+      <CategoryDetails
+        category={selected}
+        categories={all}
+        actors={actors.data?.actors ?? []}
+        canManage={canManage}
+        onEdit={() => openSheet(selected, null)}
+        onAddChild={() => openSheet(null, selected)}
+        onNotice={(message, tone) => setNotice({ message, tone })}
+        childCount={all.filter((c) => c.parent_id === selected.id).length}
+      />
+    )
   );
 
   return (
@@ -325,6 +378,7 @@ export function TaxonomyPage() {
             className="sm:w-44"
           >
             <option value="active">{t('taxonomy.only_active')}</option>
+            <option value="proposed">{t('taxonomy.only_proposed')}</option>
             <option value="archived">{t('taxonomy.only_closed')}</option>
             <option value="all">{t('taxonomy.all_statuses')}</option>
           </Select>
@@ -373,6 +427,42 @@ export function TaxonomyPage() {
         ) : (
           <div className="grid min-h-[32rem] overflow-hidden rounded-lg border border-border lg:grid-cols-[minmax(0,1fr)_22rem]">
             <section className="min-w-0 overflow-y-auto">
+              {/* What an agent has asked for, above the tree it is not in
+                  yet. A proposed category has no path and no place among the
+                  real ones, and putting it there would claim it exists. */}
+              {waiting.length > 0 && shown !== 'archived' && (
+                <div className="grid gap-1 border-b border-border bg-muted/40 p-3">
+                  <h3 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    {t('taxonomy.waiting_for_you', { count: waiting.length })}
+                  </h3>
+                  <ul className="grid">
+                    {waiting.map((proposal) => (
+                      <li key={proposal.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProposalId(proposal.id);
+                            setDetailsOpen(true);
+                          }}
+                          aria-current={proposal.id === proposalId ? 'true' : undefined}
+                          className={cn(
+                            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm',
+                            'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring',
+                            proposal.id === proposalId ? 'bg-accent' : 'hover:bg-muted',
+                          )}
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            {proposal.title ?? t('taxonomy.untitled_proposal')}
+                          </span>
+                          <Badge variant="outline" className="shrink-0 font-normal">
+                            {t('taxonomy.proposed')}
+                          </Badge>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {tree.length === 0 ? (
                 <p className="p-6 text-sm text-muted-foreground">{t('taxonomy.no_matches')}</p>
               ) : (

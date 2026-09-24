@@ -627,6 +627,17 @@ describe('proposing a category', () => {
       expect(detail.proposal.reason).toContain('where data comes from');
       expect(detail.proposal.proposed_payload.name).toBe('Data sources');
       expect(detail.proposal.proposed_payload.exampleTitles).toHaveLength(2);
+
+      // Approving one does not make the category yet, and it says so. It
+      // used to fail as "the proposal names no item to change" — an internal
+      // error for something the product has simply not built, and nothing a
+      // reviewer could act on.
+      const approved = await admin.post('/v1/proposal_approve', {
+        proposal_id: result.proposal_id,
+      });
+      expect(approved.statusCode, approved.body).toBe(400);
+      expect(approved.json().code).toBe('VALIDATION_ERROR');
+      expect(approved.json().message).toMatch(/create the category/);
     } finally {
       await client.close();
     }
