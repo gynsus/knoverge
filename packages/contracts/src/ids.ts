@@ -29,6 +29,8 @@ export const ID_PREFIXES = {
   policyRule: 'rule',
   permissionGrant: 'grant',
   searchChunk: 'chunk',
+  embeddingProfile: 'eprof',
+  embedding: 'emb',
 } as const;
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];

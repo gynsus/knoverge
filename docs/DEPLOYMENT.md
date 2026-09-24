@@ -117,14 +117,10 @@ Not read yet. The features they configure do not exist, and the configuration
 schema ignores unknown variables, so setting one of these today has no effect
 at all — not even a warning:
 
-KNOVERGE_LLM_PROVIDER         (Milestone 6) disabled | openai_compatible | anthropic | ollama
-KNOVERGE_LLM_BASE_URL         (Milestone 6)
-KNOVERGE_LLM_API_KEY          (Milestone 6)
-KNOVERGE_LLM_MODEL            (Milestone 6)
-KNOVERGE_EMBEDDING_PROVIDER   (Milestone 6) disabled | openai_compatible | ollama
-KNOVERGE_EMBEDDING_BASE_URL   (Milestone 6)
-KNOVERGE_EMBEDDING_API_KEY    (Milestone 6)
-KNOVERGE_EMBEDDING_MODEL      (Milestone 6)
+KNOVERGE_LLM_PROVIDER         (Milestone 8) disabled | openai_compatible | anthropic | ollama
+KNOVERGE_LLM_BASE_URL         (Milestone 8)
+KNOVERGE_LLM_API_KEY          (Milestone 8)
+KNOVERGE_LLM_MODEL            (Milestone 8)
 KNOVERGE_ATTACHMENT_MAX_MB    (Milestone 11)
 ```
 
@@ -233,6 +229,36 @@ docker compose exec knoverge knoverge db prune
 ```
 
 Session rows outlive the session by thirty days, so the settings page can still show a person where they were recently signed in.
+
+### Embeddings
+
+Disabled by default, and the default is a complete installation: search is
+lexical, `workspace_manifest` reports `semantic_search: false`, and nothing
+contacts anything.
+
+```text
+KNOVERGE_EMBEDDING_PROVIDER   disabled | openai_compatible | ollama
+KNOVERGE_EMBEDDING_BASE_URL   required unless disabled
+KNOVERGE_EMBEDDING_MODEL      required unless disabled
+KNOVERGE_EMBEDDING_API_KEY    optional; sent as a bearer token
+```
+
+`openai_compatible` posts to `<base>/v1/embeddings`, which most gateways and
+local servers imitate; `ollama` posts to `<base>/api/embed`. A provider named
+without a base URL and a model is refused at startup rather than run
+half-configured, because an installation that silently embedded nothing would
+report `semantic_search: false` and give an operator nothing to look at.
+
+The dimension is not configured — it is read from the model's own first answer.
+Changing model is safe: the new one fills a profile of its own while the old
+one keeps answering queries, and they change places when the last chunk is
+embedded. Nothing has to be re-indexed by hand.
+
+Vectors are computed by the worker, not on the request path, because the
+provider is somebody else's server. A sweep every five minutes asks each
+workspace what it is missing, and a pass that leaves anything comes straight
+back for the next batch. New knowledge is findable lexically at once and
+semantically within a few minutes.
 
 ### Agent budgets
 

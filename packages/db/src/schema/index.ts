@@ -2,6 +2,7 @@
 export * from './actors.ts';
 export * from './agents.ts';
 export * from './categories.ts';
+export * from './embeddings.ts';
 export * from './events.ts';
 export * from './idempotency.ts';
 export * from './knowledge.ts';

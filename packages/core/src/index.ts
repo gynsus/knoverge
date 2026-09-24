@@ -38,6 +38,18 @@ export {
   type DuplicateQuery,
   type MatchReason,
 } from './knowledge/duplicates.ts';
+export {
+  EmbeddingService,
+  FILL_BATCH,
+  type EmbeddingServiceOptions,
+  type FillReport,
+} from './embeddings/service.ts';
+export type {
+  EmbeddingProfileRecord,
+  EmbeddingProfileStatus,
+  EmbeddingRepository,
+  PendingChunk,
+} from './embeddings/repository.ts';
 export type {
   SearchDocumentRecord,
   SearchHit,

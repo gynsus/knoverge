@@ -92,6 +92,13 @@
       "when": 1790223932623,
       "tag": "0012_search_chunks",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790225323374,
+      "tag": "0013_embeddings",
+      "breakpoints": true
     }
   ]
 }
