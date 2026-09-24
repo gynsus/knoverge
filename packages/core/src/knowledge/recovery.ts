@@ -8,6 +8,7 @@ import type {
 
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
+import { chunksFor } from './chunks.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { SearchRepository } from '../search/repository.ts';
 import type { OperationRecord } from '../operations/repository.ts';
@@ -313,7 +314,7 @@ export class KnowledgeRecovery {
           revisionId: plan.revisionId,
           language: f.language,
           title: f.title,
-          body: plan.body,
+          chunks: chunksFor(plan.body, f.title),
           updatedAt: plan.now,
         });
         await this.o.relations.replaceForItem(

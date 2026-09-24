@@ -129,7 +129,7 @@ for. `packages/core` holds the service that calls both, and
 why, and why the chunker is deterministic: an index nobody can reproduce from
 the canonical files is a second source of truth.
 
-`search_documents` is a projection of canonical content, written in the same
+`search_chunks` is a projection of canonical content, written in the same
 transaction as the revision it describes. `ARCHITECTURE.md` describes
 projections as jobs, which is right for an embedding — that needs a provider
 and can fail. A tsvector needs nothing but the text, so writing it with the

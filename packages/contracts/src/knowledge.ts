@@ -440,6 +440,14 @@ export const SearchResult = z.object({
   updated_at: z.iso.datetime({ offset: true }),
   /** 0 to 1, relative to the best hit of this search and no other. */
   score: z.number(),
+  /**
+   * Which passage of the item answered, counting from zero.
+   *
+   * The index is chunked (ADR 0020), so a hit names the part that matched
+   * rather than the item as a whole. The snippet is taken from this chunk,
+   * and a reader can be shown where in a long document it came from.
+   */
+  chunk_ordinal: z.number().int().nonnegative(),
   score_components: z.object({ title: z.number(), lexical: z.number() }),
   /** The passage the match was found in, with `<b>` around the terms. */
   snippet: z.string().nullable(),

@@ -732,28 +732,33 @@ Any new canonical revision of a dependency item marks related summaries stale.
 Rebuildable projections of canonical content.
 
 ```text
-SearchDocument
-- knowledge_item_id
-- revision_id
-- language
-- title_tsv, body_tsv (tsvector built with the language configuration)
-- title_trgm
-- abstract
-- updated_at
-
 SearchChunk
 - id
 - knowledge_item_id
-- revision_id
-- chunk_index
+- workspace_id
+- revision_id      (what it was built from, so a stale row is recognisable)
+- language
+- title            (repeated on every chunk, weighted above the text)
+- ordinal          (zero-based, stable for the same text)
 - text
-- content_hash
-- start_offset
-- end_offset
-- tsv
+- updated_at
+- document_tsv     (generated: title weighted A, text weighted B, in `language`)
+- simple_tsv       (generated: the same text unstemmed)
 ```
 
-Chunks are produced by a deterministic paragraph-based splitter with a size limit. Short items have exactly one chunk. Canonical Markdown is never split.
+One row per chunk and no row per item: two granularities over the same text
+drift, and every query then has to decide which one it believes (ADR 0020).
+
+Chunks are produced by a deterministic paragraph-based splitter with a size
+limit: paragraphs merged to a target, an over-long paragraph split on sentence
+ends, and a sentence with no end split on a character count. Short items have
+exactly one chunk. Canonical Markdown is never split — this is the index, and
+`knoverge db reindex` rebuilds it from the files.
+
+The vectors are generated columns, so a chunk cannot be indexed under one text
+and searched under another. An item is ranked by its best chunk, never by the
+sum of them: summing hands every query to the longest document, which has more
+chances to contain the words by having more words.
 
 ## 29. Embedding profile and embedding
 

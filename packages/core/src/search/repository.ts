@@ -10,14 +10,26 @@ import type {
 
 import type { Tx } from '../ports/unit-of-work.ts';
 
-/** One item as the index holds it, built from the revision that is current. */
+/** One piece of an item's body, as the index holds it. */
+export interface SearchChunkRecord {
+  ordinal: number;
+  text: string;
+}
+
+/**
+ * One item as the index holds it, built from the revision that is current.
+ *
+ * The chunks arrive already split: how text becomes chunks is a decision about
+ * retrieval and lives in `@knoverge/search`, not in the repository that writes
+ * the rows (ADR 0020).
+ */
 export interface SearchDocumentRecord {
   knowledgeItemId: KnowledgeItemId;
   workspaceId: WorkspaceId;
   revisionId: RevisionId;
   language: string;
   title: string;
-  body: string;
+  chunks: readonly SearchChunkRecord[];
   updatedAt: Date;
 }
 
@@ -55,14 +67,19 @@ export interface SearchHit {
   /** 0 to 1, from the components below. Comparable only within one search. */
   score: number;
   components: { lexical: number; title: number };
+  /**
+   * Which chunk of the item answered, so a snippet is the part that matched
+   * rather than the opening of a long document.
+   */
+  chunkOrdinal: number;
   /** The passage the match was found in, with the terms marked. */
   snippet: string | null;
 }
 
 export interface SearchRepository {
-  /** Writes or replaces the index row for one item, with its revision. */
+  /** Writes or replaces every chunk of one item, with its revision. */
   upsert(tx: Tx, document: SearchDocumentRecord): Promise<void>;
-  /** Removes the row, for an item that left the index. */
+  /** Removes the chunks, for an item that left the index. */
   remove(tx: Tx, itemId: KnowledgeItemId): Promise<void>;
   /** Best first. Filters are applied before ranking, never after. */
   search(query: SearchQuery): Promise<SearchHit[]>;
@@ -71,10 +88,11 @@ export interface SearchRepository {
   /** Which items the index already holds, so startup fills only the gaps. */
   indexedIds(workspaceId: WorkspaceId): Promise<Set<string>>;
   /**
-   * The indexed body of each item, for an abstract.
+   * The indexed body of each item, for an abstract: its chunks in order,
+   * joined back into one text.
    *
-   * The projection already holds the text, so a page of index records costs
-   * one query rather than one file read per item.
+   * The projection already holds the text, so a page of abstracts costs one
+   * query rather than one file read per item.
    */
   bodiesFor(
     workspaceId: WorkspaceId,

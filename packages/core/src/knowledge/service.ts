@@ -17,6 +17,7 @@ import {
   type WorkspaceId,
 } from '@knoverge/contracts';
 
+import { chunksFor } from './chunks.ts';
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -1644,7 +1645,7 @@ export class KnowledgeService {
             revisionId: item.currentRevisionId as RevisionId,
             language: parsed.frontmatter.language,
             title: parsed.frontmatter.title,
-            body: parsed.body,
+            chunks: chunksFor(parsed.body, parsed.frontmatter.title),
             updatedAt: item.updatedAt,
           }),
         );
@@ -1683,7 +1684,7 @@ export class KnowledgeService {
       revisionId,
       language: frontmatter.language,
       title: frontmatter.title,
-      body,
+      chunks: chunksFor(body, frontmatter.title),
       updatedAt: at,
     });
   }
