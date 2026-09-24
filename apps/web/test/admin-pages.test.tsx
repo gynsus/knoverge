@@ -769,6 +769,65 @@ describe('policy page', () => {
   });
 });
 
+describe('the taxonomy toolbar', () => {
+  const CATEGORY = {
+    id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    workspace_id: ME.memberships[0]!.workspace_id,
+    parent_id: null,
+    slug: 'projects',
+    path: 'projects',
+    name: 'Projects',
+    description: null,
+    inclusion_guidance: [],
+    exclusion_guidance: [],
+    aliases: [],
+    status: 'active',
+    created_at: '2026-09-19T00:00:00.000Z',
+    updated_at: '2026-09-19T00:00:00.000Z',
+    item_count: 0,
+    subtree_item_count: 0,
+    created_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+    approved_by_actor_id: null,
+    merged_into_category_id: null,
+  };
+
+  it('says how big the tree is, and how much of it a search found', async () => {
+    // A search changes the tree in place, and nothing else on the screen
+    // would say it had shrunk.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({
+          taxonomy_version: 1,
+          categories: [
+            CATEGORY,
+            {
+              ...CATEGORY,
+              id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T9',
+              slug: 'people',
+              path: 'people',
+              name: 'People',
+            },
+          ],
+        }),
+    });
+    renderApp('/taxonomy');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'People' });
+    const count = () => screen.getByRole('status').textContent;
+    expect(count()).toContain('2 categories');
+    expect(screen.queryByRole('button', { name: 'Clear filters' })).toBeNull();
+
+    await user.type(
+      screen.getByLabelText('Search names, paths, aliases and descriptions'),
+      'people',
+    );
+    await waitFor(() => expect(count()).toContain('1 matches the search'));
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }));
+    await waitFor(() => expect(count()).toContain('2 categories'));
+  });
+});
+
 describe('editing a category', () => {
   const ROOT = {
     id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',

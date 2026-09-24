@@ -126,6 +126,11 @@ export function TaxonomyPage() {
   // A search opens whatever it needs to show its matches; outside a search the
   // person's own open and closed branches are what is on screen.
   const expanded = query.trim() === '' ? (opened ?? defaultOpen) : visible;
+  const filtered = query.trim() !== '' || shown !== 'active';
+  const reset = () => {
+    setQuery('');
+    setShown('active');
+  };
   const lastChange = all.reduce<string | null>(
     (newest, c) => (newest === null || c.updated_at > newest ? c.updated_at : newest),
     null,
@@ -343,6 +348,24 @@ export function TaxonomyPage() {
       <ErrorNotice error={taxonomy.isError ? taxonomy.error : undefined} />
       <ErrorNotice error={archive.error ?? restore.error} />
       {taxonomy.isPending && <p role="status">{t('common.loading')}</p>}
+
+      {taxonomy.data && all.length > 0 && (
+        <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
+          {/* Announced, because a search changes it and nothing else on the
+              screen would say the tree had shrunk. The two numbers are
+              different questions: how much is in the tree, and how much of it
+              the search actually found. */}
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('taxonomy.count', { count: categories.length })}
+            {query.trim() !== '' && ` · ${t('taxonomy.found', { count: matched.size })}`}
+          </p>
+          {filtered && (
+            <Button variant="ghost" size="sm" onClick={reset} className="text-muted-foreground">
+              {t('taxonomy.reset_filters')}
+            </Button>
+          )}
+        </div>
+      )}
 
       {taxonomy.data &&
         (all.length === 0 ? (
