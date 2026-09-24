@@ -17,15 +17,34 @@ export const TITLE_SIMILARITY_THRESHOLD = 0.6;
 export const MAX_LEXICAL_CANDIDATES = 5;
 
 /**
+ * How near two passages must be before this calls them possibly the same.
+ *
+ * Deliberately high. A false positive refuses a write somebody meant to make,
+ * and the only way past it is acknowledging a candidate that was never a
+ * duplicate — which teaches a proposer to acknowledge everything. A missed
+ * one is caught by the same check on approval, and by a reviewer reading the
+ * text.
+ *
+ * It is a starting point rather than a measured value: tuning it needs a
+ * corpus, an embedding model and somebody's judgement about pairs, and until
+ * all three exist the conservative number is the honest one.
+ */
+export const SEMANTIC_SIMILARITY_THRESHOLD = 0.88;
+
+/** At most this many semantic candidates. */
+export const MAX_SEMANTIC_CANDIDATES = 3;
+
+/**
  * Why an item was offered as a possible duplicate.
  *
  * `exact` is the same text in the same place — the same type and the same
  * primary category — and is not a judgement call. `content_hash` is the same
  * text somewhere else, which may well be a different piece of knowledge: the
  * same instruction in two projects is two instructions. `lexical` is a title
- * close enough to be worth reading.
+ * close enough to be worth reading, and `semantic` is a passage that says
+ * something close enough without sharing the words.
  */
-export type MatchReason = 'exact' | 'content_hash' | 'lexical';
+export type MatchReason = 'exact' | 'content_hash' | 'lexical' | 'semantic';
 
 export interface DuplicateCandidate {
   itemId: KnowledgeItemId;
@@ -62,11 +81,35 @@ export interface DuplicateQuery {
   readable?: ((itemIds: readonly KnowledgeItemId[]) => Promise<Set<string>>) | undefined;
 }
 
+/** One passage that means nearly the same thing, and how near. */
+export interface NearestMatch {
+  itemId: KnowledgeItemId;
+  title: string;
+  markdownPath: string;
+  /** Cosine similarity, 0 to 1. */
+  similarity: number;
+}
+
 export interface DuplicateMatcherOptions {
   items: KnowledgeRepository;
   contentHash: (title: string, body: string) => string;
   threshold?: number;
   limit?: number;
+  /**
+   * Passages nearest to this text, when anything can answer.
+   *
+   * Absent whenever no embedding provider is configured, which is the default
+   * and has to stay a working configuration (rule 9). It is also expected to
+   * answer with nothing rather than throw when the provider is unavailable:
+   * a write refused because an optional feature was down would make the
+   * feature mandatory.
+   */
+  nearest?: (
+    workspaceId: WorkspaceId,
+    text: string,
+    limit: number,
+  ) => Promise<readonly NearestMatch[]>;
+  semanticThreshold?: number;
 }
 
 /**
@@ -209,6 +252,31 @@ export class DuplicateMatcher {
     }
 
     if (query.lexical === false) return [...found.values()];
+
+    // Near in meaning, which is what finds the same decision written in other
+    // words. Only when something can answer: with no provider configured
+    // there is no call and no cost.
+    if (this.o.nearest) {
+      const threshold = this.o.semanticThreshold ?? SEMANTIC_SIMILARITY_THRESHOLD;
+      const near = await this.o.nearest(
+        query.workspaceId,
+        `${query.title.trim()}\n\n${query.body.trim()}`,
+        MAX_SEMANTIC_CANDIDATES,
+      );
+      for (const match of near) {
+        if (match.similarity < threshold) continue;
+        // Anything already found says more than nearness does.
+        if (found.has(match.itemId)) continue;
+        found.set(match.itemId, {
+          itemId: match.itemId,
+          title: match.title,
+          markdownPath: match.markdownPath,
+          reason: 'semantic',
+          score: match.similarity,
+        });
+      }
+    }
+
     for (const row of await this.o.items.findSimilarTitles(
       query.workspaceId,
       query.title.trim(),

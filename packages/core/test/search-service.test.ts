@@ -14,6 +14,7 @@ function candidate(chunkId: string, itemId: string, lexical = 1): SearchCandidat
   return {
     chunkId,
     itemId: itemId as SearchCandidate['itemId'],
+    markdownPath: `knowledge/_uncategorised/${chunkId}.md`,
     title: chunkId,
     type: 'fact',
     status: 'active',
@@ -25,7 +26,7 @@ function candidate(chunkId: string, itemId: string, lexical = 1): SearchCandidat
     contentHash: 'sha256:x',
     updatedAt: new Date(),
     score: 0,
-    components: { lexical, title: 0 },
+    components: { lexical, title: 0, semantic: null },
     chunkOrdinal: 0,
     snippet: null,
   };

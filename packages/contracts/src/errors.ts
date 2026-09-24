@@ -44,7 +44,7 @@ export const ApiError = z.object({
         item_id: z.string(),
         title: z.string(),
         markdown_path: z.string(),
-        match_reason: z.enum(['exact', 'content_hash', 'lexical']),
+        match_reason: z.enum(['exact', 'content_hash', 'lexical', 'semantic']),
         /** 0 to 1 for a lexical match; null when the text matched exactly. */
         score: z.number().nullable(),
       }),

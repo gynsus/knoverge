@@ -479,7 +479,11 @@ export async function knowledgeSearch(
       updated_at: hit.updatedAt.toISOString(),
       score: hit.score,
       chunk_ordinal: hit.chunkOrdinal,
-      score_components: { title: hit.components.title, lexical: hit.components.lexical },
+      score_components: {
+        title: hit.components.title,
+        lexical: hit.components.lexical,
+        semantic: hit.components.semantic,
+      },
       snippet: hit.snippet,
     })) as KnowledgeSearchResponse['results'],
   };
