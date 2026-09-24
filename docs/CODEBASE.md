@@ -121,6 +121,14 @@ viewer would be shown forms whose every submission is refused.
 
 ## Search
 
+The parts are split by what they know. `packages/search` holds what retrieval
+decides — how text becomes chunks, and how two opinions about relevance become
+one number. `packages/db` holds the SQL, because that is what a repository is
+for. `packages/core` holds the service that calls both, and
+`packages/intelligence` the provider port an embedding needs. ADR 0020 records
+why, and why the chunker is deterministic: an index nobody can reproduce from
+the canonical files is a second source of truth.
+
 `search_documents` is a projection of canonical content, written in the same
 transaction as the revision it describes. `ARCHITECTURE.md` describes
 projections as jobs, which is right for an embedding — that needs a provider
