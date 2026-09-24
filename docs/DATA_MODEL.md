@@ -777,12 +777,30 @@ Embedding
 - workspace_id
 - profile_id
 - chunk_id
-- vector
-- content_hash
+- vector            (pgvector, no fixed dimension)
 - created_at
 ```
 
-Embeddings attach to chunks. Search aggregates chunk scores to items and returns the best chunk with each item. Exactly one profile is `active` per workspace.
+Embeddings attach to chunks and go with them: a chunk is rewritten whenever its
+item changes, and a vector for text that no longer exists is worse than none.
+Search aggregates chunk scores to items and returns the best chunk with each
+item.
+
+Exactly one profile is `active` per workspace, and at most one is
+`rebuilding` — both enforced by partial unique indexes. Changing model does not
+blank semantic search: the new profile fills as `rebuilding` while the old one
+keeps answering, and they change places when the last chunk is embedded.
+
+`dimensions` is read from the model's own first answer rather than configured.
+A number an operator has to keep in step with their model is a number that will
+eventually be wrong, and vectors compared against vectors of another shape fail
+without a symptom.
+
+The vector column has no fixed dimension. One fixed in the DDL is what an index
+over vectors needs, and it would refuse every model that does not have it;
+exact search needs no index and is right at the size one self-hosted workspace
+reaches. When a workspace outgrows it, the index and its fixed dimension are a
+migration — cheap, because the index is derived.
 
 ## 30. Idempotency record
 

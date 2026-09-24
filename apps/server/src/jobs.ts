@@ -20,6 +20,21 @@ const MAINTENANCE_SCHEDULE = '0 * * * *';
 export const SYNC_REFINE_QUEUE = 'sync.refine';
 
 /**
+ * Where chunks get their vectors.
+ *
+ * Away from the request because it calls somebody else's server, which may be
+ * slow, down, or a local model on a busy machine. A knowledge write must not
+ * wait for it, and search answers lexically until the pass catches up.
+ */
+export const EMBEDDING_QUEUE = 'search.embed';
+
+/**
+ * Often enough that a workspace catches up on its own after a restart or a
+ * model change, rarely enough that an idle installation is idle.
+ */
+const EMBEDDING_SCHEDULE = '*/5 * * * *';
+
+/**
  * Background job runner (pg-boss on PostgreSQL). Queues are registered by the
  * milestones that need them.
  */
@@ -43,6 +58,13 @@ export interface JobsOptions {
   prune: () => Promise<MaintenanceResult>;
   /** Settles the candidates the deterministic steps left provisional. */
   refineSync: (workspaceId: string, sessionId: string) => Promise<number>;
+  /**
+   * Embeds a batch of the workspace's chunks and says how many are left, so
+   * the runner can come straight back rather than wait for the schedule.
+   */
+  embed: (workspaceId: string) => Promise<{ embedded: number; remaining: number }>;
+  /** Every workspace, for the sweep that catches up after a restart. */
+  workspaces: () => Promise<string[]>;
 }
 
 export function createJobs(
@@ -81,9 +103,32 @@ export function createJobs(
           }
         },
       );
+      await boss.createQueue(EMBEDDING_QUEUE);
+      await boss.work<{ workspaceId: string }>(EMBEDDING_QUEUE, async (jobs) => {
+        for (const job of jobs) {
+          const result = await options.embed(job.data.workspaceId);
+          if (result.embedded > 0) {
+            logger.info({ ...job.data, ...result }, 'chunks embedded');
+          }
+          // Straight back for the next batch rather than waiting five
+          // minutes: a workspace being re-embedded should finish today.
+          if (result.remaining > 0) await boss.send(EMBEDDING_QUEUE, job.data);
+        }
+      });
+      // A sweep rather than a fill: it asks every workspace whether it has
+      // anything outstanding, which is how one catches up after a restart, a
+      // model change, or a provider that was down when the write happened.
+      await boss.work(`${EMBEDDING_QUEUE}.sweep`, async () => {
+        for (const workspaceId of await options.workspaces()) {
+          await boss.send(EMBEDDING_QUEUE, { workspaceId });
+        }
+      });
+      await boss.createQueue(`${EMBEDDING_QUEUE}.sweep`);
+      await boss.schedule(`${EMBEDDING_QUEUE}.sweep`, EMBEDDING_SCHEDULE);
+
       started = true;
       logger.info(
-        { schema: JOBS_SCHEMA, queues: [MAINTENANCE_QUEUE, SYNC_REFINE_QUEUE] },
+        { schema: JOBS_SCHEMA, queues: [MAINTENANCE_QUEUE, SYNC_REFINE_QUEUE, EMBEDDING_QUEUE] },
         'job runner started',
       );
     },

@@ -1,3 +1,4 @@
+import type { WorkspaceId } from '@knoverge/contracts';
 import { defaultMigrationsFolder, runMigrations } from '@knoverge/db';
 import pino from 'pino';
 
@@ -46,6 +47,7 @@ async function main(): Promise<void> {
     enqueueRefine: async (workspaceId, sessionId) => {
       await runner.jobs?.refineSync(workspaceId, sessionId);
     },
+    ...(config.embeddings ? { embeddings: config.embeddings } : {}),
     // An idle connection dying is the operator's business, not a caller's, and
     // must not end the process.
     onPoolError: (error) => logger.warn({ err: error }, 'a pooled connection failed while idle'),
@@ -63,6 +65,9 @@ async function main(): Promise<void> {
     ? createJobs(config.databaseUrl, logger, {
         prune: () => services.maintenance.prune(),
         refineSync: (workspaceId, sessionId) => refineSyncSession(services, workspaceId, sessionId),
+        embed: (workspaceId) => services.embeddings.fill(workspaceId as WorkspaceId),
+        workspaces: async () =>
+          (await services.repositories.workspaces.list()).map((workspace) => workspace.id),
       })
     : undefined;
   const jobs = runner.jobs;

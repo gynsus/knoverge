@@ -41,6 +41,15 @@ const EnvSchema = z.object({
   KNOVERGE_AGENT_READS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
   KNOVERGE_AGENT_WRITES_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(60),
   KNOVERGE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(256).default(8),
+  // Optional, and disabled is the default: rule 9 says the core runs with no
+  // AI provider, and rule 12 says nothing is contacted unless an operator
+  // asked for it.
+  KNOVERGE_EMBEDDING_PROVIDER: z
+    .enum(['disabled', 'openai_compatible', 'ollama'])
+    .default('disabled'),
+  KNOVERGE_EMBEDDING_BASE_URL: z.string().url().optional(),
+  KNOVERGE_EMBEDDING_API_KEY: z.string().min(1).optional(),
+  KNOVERGE_EMBEDDING_MODEL: z.string().min(1).optional(),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -67,7 +76,17 @@ export interface Config {
   trustProxy: boolean;
   /** What one agent credential may spend, per minute and at once. */
   agentBudgets: AgentBudgets;
+  /** Null unless an operator configured a provider, which is the default. */
+  embeddings: EmbeddingSettings | null;
   nodeEnv: 'development' | 'test' | 'production';
+}
+
+/** Where vectors come from, when anything does. */
+export interface EmbeddingSettings {
+  provider: 'openai_compatible' | 'ollama';
+  baseUrl: string;
+  model: string;
+  apiKey: string | undefined;
 }
 
 export class ConfigError extends Error {
@@ -118,6 +137,35 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       writesPerMinute: e.KNOVERGE_AGENT_WRITES_PER_MINUTE,
       concurrent: e.KNOVERGE_AGENT_CONCURRENCY,
     },
+    embeddings: embeddingSettings(e),
     nodeEnv: e.NODE_ENV,
+  };
+}
+
+/**
+ * The embedding settings, or null.
+ *
+ * A provider named without the two things it cannot work without is a
+ * configuration mistake rather than a reason to run half-configured: an
+ * installation that silently embedded nothing would report
+ * `semantic_search: false` and give an operator nothing to look at.
+ */
+function embeddingSettings(e: z.infer<typeof EnvSchema>): EmbeddingSettings | null {
+  if (e.KNOVERGE_EMBEDDING_PROVIDER === 'disabled') return null;
+  const missing: string[] = [];
+  if (!e.KNOVERGE_EMBEDDING_BASE_URL) missing.push('KNOVERGE_EMBEDDING_BASE_URL');
+  if (!e.KNOVERGE_EMBEDDING_MODEL) missing.push('KNOVERGE_EMBEDDING_MODEL');
+  if (missing.length > 0) {
+    throw new ConfigError(
+      `Invalid configuration:\n${missing.join(' and ')} ${
+        missing.length > 1 ? 'are' : 'is'
+      } required when KNOVERGE_EMBEDDING_PROVIDER is ${e.KNOVERGE_EMBEDDING_PROVIDER}`,
+    );
+  }
+  return {
+    provider: e.KNOVERGE_EMBEDDING_PROVIDER,
+    baseUrl: e.KNOVERGE_EMBEDDING_BASE_URL as string,
+    model: e.KNOVERGE_EMBEDDING_MODEL as string,
+    apiKey: e.KNOVERGE_EMBEDDING_API_KEY,
   };
 }

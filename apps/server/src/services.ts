@@ -1,4 +1,7 @@
 import type { WorkspaceId } from '@knoverge/contracts';
+import { createHttpEmbeddingProvider } from '@knoverge/intelligence';
+
+import type { EmbeddingSettings } from './config.ts';
 import {
   dummyPasswordHash,
   generateOpaqueToken,
@@ -11,6 +14,7 @@ import {
   AuthorizationAdminService,
   AuthorizationService,
   BootstrapService,
+  EmbeddingService,
   EventLedger,
   CrossStoreWriter,
   DuplicateMatcher,
@@ -69,6 +73,12 @@ export interface ServicesConfig {
   poolMax?: number;
   /** Told when a pooled connection dies while nobody is using it. */
   onPoolError?: (error: Error) => void;
+  /**
+   * Where vectors come from. Absent is the ordinary case: the core runs with
+   * no AI provider (rule 9), and nothing is contacted unless an operator
+   * configured it (rule 12).
+   */
+  embeddings?: EmbeddingSettings | null;
 }
 
 /**
@@ -258,6 +268,21 @@ export function createServices(config: ServicesConfig) {
     workspaceService: workspaces,
     ledger,
   });
+  // Null unless an operator configured one, which is what makes every feature
+  // that uses it optional rather than every installation need one.
+  const embeddingProvider = config.embeddings
+    ? createHttpEmbeddingProvider({
+        provider: config.embeddings.provider,
+        baseUrl: config.embeddings.baseUrl,
+        model: config.embeddings.model,
+        apiKey: config.embeddings.apiKey,
+      })
+    : null;
+  const embeddings = new EmbeddingService({
+    uow,
+    embeddings: repositories.embeddings,
+    provider: embeddingProvider,
+  });
   const sync = new SyncService({
     uow,
     sync: repositories.sync,
@@ -290,6 +315,7 @@ export function createServices(config: ServicesConfig) {
     proposals,
     taxonomy,
     sync,
+    embeddings,
     enqueueRefine: config.enqueueRefine ?? (async () => undefined),
     users,
     sessions,

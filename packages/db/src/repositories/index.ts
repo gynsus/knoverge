@@ -14,6 +14,7 @@ import { createUserRepository } from './users.ts';
 import { createKnowledgeRepository, createRevisionRepository } from './knowledge.ts';
 import { createRelationRepository, createSourceRepository } from './sources.ts';
 import { createProposalRepository } from './proposals.ts';
+import { createEmbeddingRepository } from './embeddings.ts';
 import { createSearchRepository } from './search.ts';
 import { createSyncRepository } from './sync.ts';
 import { createOperationRepository } from './operations.ts';
@@ -40,6 +41,7 @@ export function createRepositories(db: Database) {
     relations: createRelationRepository(db),
     proposals: createProposalRepository(db),
     search: createSearchRepository(db),
+    embeddings: createEmbeddingRepository(db),
     sync: createSyncRepository(db),
     users: createUserRepository(db),
     sessions: createSessionRepository(db),
