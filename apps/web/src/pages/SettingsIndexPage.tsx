@@ -27,7 +27,7 @@ const PERSONAL: Section[] = [
 ];
 
 const INSTANCE: Section[] = [
-  { key: 'ai', icon: Bot },
+  { key: 'ai', icon: Bot, to: '/settings/ai' },
   { key: 'storage', icon: Database },
   { key: 'network', icon: Network },
   { key: 'system', icon: Server },

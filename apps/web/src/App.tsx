@@ -8,6 +8,7 @@ import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
+import { AiSettingsPage } from './pages/AiSettingsPage.tsx';
 import { AccountSettingsPage } from './pages/AccountSettingsPage.tsx';
 import { SecuritySettingsPage } from './pages/SecuritySettingsPage.tsx';
 import { SettingsIndexPage } from './pages/SettingsIndexPage.tsx';
@@ -53,6 +54,7 @@ export function App() {
           <Route path="/settings" element={<SettingsIndexPage />} />
           <Route path="/settings/account" element={<AccountSettingsPage />} />
           <Route path="/settings/security" element={<SecuritySettingsPage />} />
+          <Route path="/settings/ai" element={<AiSettingsPage />} />
         </Route>
       </Route>
     </Routes>

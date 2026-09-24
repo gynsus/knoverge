@@ -9,7 +9,7 @@ import {
   WorkspaceService,
   parseLedgerKey,
 } from '@knoverge/core';
-import type { EmbeddingProvider } from '@knoverge/intelligence';
+import { fixedSource, type EmbeddingProvider } from '@knoverge/intelligence';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -39,7 +39,7 @@ function stubProvider(model: string, dimensions: number) {
       return texts.map((_, i) => Array.from({ length: dimensions }, (_, d) => (i + d) / 100));
     },
   };
-  return { provider, asked: () => asked };
+  return { source: fixedSource(provider), asked: () => asked };
 }
 
 /** Chunks, written straight in: this is about what happens to them afterwards. */
@@ -124,7 +124,7 @@ describe('with no provider configured', () => {
     const service = new EmbeddingService({
       uow,
       embeddings: repositories.embeddings,
-      provider: null,
+      source: fixedSource(null),
     });
     expect(await service.fill(workspaceId)).toEqual({ embedded: 0, remaining: 0 });
     expect(await service.activeProfile(workspaceId)).toBeNull();
@@ -134,8 +134,8 @@ describe('with no provider configured', () => {
 describe('filling a workspace', () => {
   it('embeds a batch at a time and says what is left', async () => {
     await chunksFor(5);
-    const { provider, asked } = stubProvider('first-model', 4);
-    const service = new EmbeddingService({ uow, embeddings: repositories.embeddings, provider });
+    const { source, asked } = stubProvider('first-model', 4);
+    const service = new EmbeddingService({ uow, embeddings: repositories.embeddings, source });
 
     const first = await service.fill(workspaceId, 2);
     expect(first).toMatchObject({ embedded: 2, remaining: 3 });
@@ -159,8 +159,8 @@ describe('filling a workspace', () => {
 
   it('loses the vectors when the chunks they described are rewritten', async () => {
     // A vector for text that no longer exists is worse than none.
-    const { provider } = stubProvider('first-model', 4);
-    const service = new EmbeddingService({ uow, embeddings: repositories.embeddings, provider });
+    const { source } = stubProvider('first-model', 4);
+    const service = new EmbeddingService({ uow, embeddings: repositories.embeddings, source });
     await chunksFor(2);
     expect(await service.fill(workspaceId)).toMatchObject({ embedded: 2, remaining: 0 });
     const rows = await handle.pool.query('select count(*)::int as n from embeddings');
@@ -171,11 +171,11 @@ describe('filling a workspace', () => {
 describe('the semantic ranking', () => {
   it('answers by nearness, closest first', async () => {
     await chunksFor(3);
-    const { provider } = stubProvider('first-model', 4);
+    const { source } = stubProvider('first-model', 4);
     const service = new EmbeddingService({
       uow,
       embeddings: repositories.embeddings,
-      provider,
+      source,
     });
     await service.fill(workspaceId);
     const profile = await service.activeProfile(workspaceId);
@@ -218,14 +218,14 @@ describe('changing the model', () => {
     await new EmbeddingService({
       uow,
       embeddings: repositories.embeddings,
-      provider: first.provider,
+      source: first.source,
     }).fill(workspaceId);
 
     const second = stubProvider('second-model', 8);
     const service = new EmbeddingService({
       uow,
       embeddings: repositories.embeddings,
-      provider: second.provider,
+      source: second.source,
     });
 
     // Half way through: the new profile is being built, and the one queries

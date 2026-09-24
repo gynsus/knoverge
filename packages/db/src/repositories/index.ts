@@ -1,5 +1,6 @@
 import type { Database } from '../client.ts';
 import { createAgentRepository, createCredentialRepository } from './agents.ts';
+import { createAiRepository } from './ai.ts';
 import {
   createAliasRepository,
   createCategoryRepository,
@@ -25,6 +26,7 @@ export function createRepositories(db: Database) {
   return {
     events: createEventRepository(db),
     agents: createAgentRepository(db),
+    ai: createAiRepository(db),
     credentials: createCredentialRepository(db),
     categories: createCategoryRepository(db),
     aliases: createAliasRepository(db),

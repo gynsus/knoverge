@@ -1,5 +1,14 @@
 import type {
   ActorsResponse,
+  AiSettingsResponse,
+  AssignAiModelRequest,
+  CheckAiProviderRequest,
+  CheckAiProviderResponse,
+  RemoveAiProviderRequest,
+  SaveAiProviderRequest,
+  TestAiModelRequest,
+  TestAiModelResponse,
+  UnassignAiModelRequest,
   SyncRunsResponse,
   AddMemberRequest,
   ApproveProposalRequest,
@@ -46,6 +55,20 @@ import type {
 import { apiGet, apiPost } from './client.ts';
 
 export const adminApi = {
+  ai: {
+    settings: (signal?: AbortSignal) => apiGet<AiSettingsResponse>('/v1/admin/ai.settings', signal),
+    save: (body: SaveAiProviderRequest) =>
+      apiPost<AiSettingsResponse>('/v1/admin/ai.providers.save', body),
+    remove: (body: RemoveAiProviderRequest) =>
+      apiPost<AiSettingsResponse>('/v1/admin/ai.providers.remove', body),
+    check: (body: CheckAiProviderRequest) =>
+      apiPost<CheckAiProviderResponse>('/v1/admin/ai.providers.check', body),
+    assign: (body: AssignAiModelRequest) =>
+      apiPost<AiSettingsResponse>('/v1/admin/ai.assign', body),
+    unassign: (body: UnassignAiModelRequest) =>
+      apiPost<AiSettingsResponse>('/v1/admin/ai.unassign', body),
+    test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
+  },
   agents: {
     list: (signal?: AbortSignal) => apiGet<AgentsResponse>('/v1/admin/agents.list', signal),
     create: (body: CreateAgentRequest) => apiPost<AgentResponse>('/v1/admin/agents.create', body),

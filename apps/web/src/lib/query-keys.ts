@@ -13,3 +13,6 @@ export const AGENTS_KEY = ['admin', 'agents'] as const;
 
 /** A person's own sessions, shared by the pages that show and end them. */
 export const SESSIONS_KEY = ['account', 'sessions'] as const;
+
+/** The AI settings, which every step of the wizard refreshes. */
+export const AI_SETTINGS_KEY = ['ai-settings'] as const;

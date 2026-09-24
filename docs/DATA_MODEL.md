@@ -818,6 +818,53 @@ exact search needs no index and is right at the size one self-hosted workspace
 reaches. When a workspace outgrows it, the index and its fixed dimension are a
 migration — cheap, because the index is derived.
 
+## 29a. AI provider and assignment
+
+```text
+AiProvider
+- id
+- kind: ollama | openai_compatible
+- name
+- base_url                 (unique)
+- origin: environment | interface
+- last_checked_at
+- last_error               (one line, never a body)
+- created_at
+- updated_at
+
+AiAssignment
+- purpose: embedding | generation   (primary key)
+- provider_id
+- model
+- updated_at
+```
+
+Instance-level, with no `workspace_id`: one Ollama server is not a property of a
+workspace. Both tables are empty in an installation with no AI provider, which
+is the ordinary case (rule 9).
+
+Configuration lives here rather than in the environment (ADR 0021). An operator
+points at a server, finds out whether it answers, sees which models it holds and
+changes their mind, and every step of that used to need a container restart. The
+variables still provision a first start — if no provider exists and
+`KNOVERGE_EMBEDDING_*` is set, a row is created from them with
+`origin = environment` — and after that they are not read again. `origin` is what
+the settings page shows when the compose file and the interface disagree.
+
+API keys are not stored. Ollama needs none; a key in a database needs encryption
+at rest, a key to encrypt it with and a decision about what happens when that is
+lost. Until that exists, a provider that needs a key is one whose address is
+named in `KNOVERGE_EMBEDDING_BASE_URL`, and the key reaches it from the
+environment without ever being written down.
+
+`base_url` is unique because two rows for one server are two places to change a
+setting and one of them will be forgotten. Removing a provider cascades to its
+assignments: one pointing at nothing reads as configured and embeds nothing.
+
+`purpose` is the primary key of the assignment, so there is one answer to "what
+embeds" rather than a list to choose from. `generation` is allowed and nothing
+reads it yet.
+
 ## 30. Idempotency record
 
 ```text

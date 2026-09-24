@@ -1,6 +1,7 @@
 // Drizzle schema. Tables follow docs/DATA_MODEL.md; each milestone adds its own file.
 export * from './actors.ts';
 export * from './agents.ts';
+export * from './ai.ts';
 export * from './categories.ts';
 export * from './embeddings.ts';
 export * from './events.ts';

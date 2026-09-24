@@ -15,6 +15,7 @@ import { registerRequestLogging } from './plugins/logging.ts';
 import { registerRateLimits, registerSecurity, type SecurityOptions } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
+import { registerAdminAiRoutes } from './routes/admin-ai.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
 import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
@@ -98,6 +99,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       cookieSecure: options.security.cookieSecure,
     });
     registerAdminAgentRoutes(app, options.services);
+    registerAdminAiRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
     registerAdminWorkspaceRoutes(app, options.services);
     registerKnowledgeRoutes(app, options.services);

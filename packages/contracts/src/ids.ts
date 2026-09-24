@@ -31,6 +31,7 @@ export const ID_PREFIXES = {
   searchChunk: 'chunk',
   embeddingProfile: 'eprof',
   embedding: 'emb',
+  aiProvider: 'aip',
 } as const;
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
@@ -77,3 +78,6 @@ export const PermissionGrantId = idSchema('grant');
 export type PermissionGrantId = z.infer<typeof PermissionGrantId>;
 export const CredentialId = idSchema('cred');
 export type CredentialId = z.infer<typeof CredentialId>;
+
+export const AiProviderId = idSchema('aip');
+export type AiProviderId = z.infer<typeof AiProviderId>;

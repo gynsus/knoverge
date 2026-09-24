@@ -44,10 +44,15 @@ async function main(): Promise<void> {
   // cycle: the closure reads it when a request arrives, long after both exist.
   const runner: { jobs: Jobs | undefined } = { jobs: undefined };
   const services = createServices({
+    // Keys stay in the environment (ADR 0021). This is how one reaches the
+    // provider it was meant for without ever being stored.
+    apiKeyFor: (baseUrl) =>
+      config.embeddings && trimSlashes(config.embeddings.baseUrl) === trimSlashes(baseUrl)
+        ? config.embeddings.apiKey
+        : undefined,
     enqueueRefine: async (workspaceId, sessionId) => {
       await runner.jobs?.refineSync(workspaceId, sessionId);
     },
-    ...(config.embeddings ? { embeddings: config.embeddings } : {}),
     // An idle connection dying is the operator's business, not a caller's, and
     // must not end the process.
     onPoolError: (error) => logger.warn({ err: error }, 'a pooled connection failed while idle'),
@@ -155,6 +160,22 @@ async function main(): Promise<void> {
             : 'interrupted changes resolved',
         );
       }
+      // The environment provisions a first start and is not read again
+      // (ADR 0021): an installation configured through the interface must
+      // not be reset by a compose file somebody forgot to update.
+      if (config.embeddings) {
+        const seeded = await services.ai.seed({
+          kind: config.embeddings.provider,
+          baseUrl: config.embeddings.baseUrl,
+          model: config.embeddings.model,
+        });
+        logger.info(
+          { model: config.embeddings.model, seeded },
+          seeded
+            ? 'the embedding provider in the environment was configured'
+            : 'a provider is already configured; the environment was not read',
+        );
+      }
       // Fills the search index for knowledge recorded before the index
       // existed, or before a restore that predates it. A feature that ships
       // an index and leaves it empty for everything already there is a
@@ -182,6 +203,11 @@ async function main(): Promise<void> {
     },
     'knoverge server started',
   );
+}
+
+/** One spelling for an address, so two forms of the same URL are one. */
+function trimSlashes(url: string): string {
+  return url.replace(/\/+$/u, '');
 }
 
 main().catch((err: unknown) => {

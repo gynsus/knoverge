@@ -150,3 +150,17 @@ function numbers(value: unknown): number[] {
   }
   return value as number[];
 }
+
+/**
+ * What the embedding provider is *now*.
+ *
+ * Not an `EmbeddingProvider | null` held since start-up, because an operator
+ * connects one, changes the model and disconnects it while the product runs
+ * (ADR 0021). Every consumer asks again, and null stays the ordinary answer.
+ */
+export type EmbeddingSource = () => Promise<EmbeddingProvider | null>;
+
+/** A source that is always this, for tests and for nothing configured. */
+export function fixedSource(provider: EmbeddingProvider | null): EmbeddingSource {
+  return () => Promise.resolve(provider);
+}
