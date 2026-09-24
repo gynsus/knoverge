@@ -39,9 +39,24 @@ export function KnowledgePage() {
   const client = useQueryClient();
   const workspaces = useWorkspaceContext();
   const [params, setParams] = useSearchParams();
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const lastTrigger = useRef<HTMLElement | null>(null);
+
+  /**
+   * Which item is open, in the address.
+   *
+   * A knowledge item is the thing this product exists to hold, and the most
+   * likely sentence anybody writes about one is "here is what we decided:
+   * <link>". Rule 2's test is whether somebody else may need to arrive at the
+   * same thing, and for this they will.
+   */
+  const selectedId = params.get('item');
+  const setSelectedId = (itemId: string | null) => {
+    const next = new URLSearchParams(params);
+    if (itemId === null) next.delete('item');
+    else next.set('item', itemId);
+    setParams(next, { replace: true });
+  };
 
   const query = params.get('q') ?? '';
   const category = params.get('category') ?? '';
@@ -54,15 +69,23 @@ export function KnowledgePage() {
   const [typed, setTyped] = useState(query);
   useEffect(() => {
     const id = setTimeout(() => {
-      const next = new URLSearchParams(window.location.search);
-      if (typed.trim() === '') next.delete('q');
-      else next.set('q', typed.trim());
-      setParams(next, { replace: true });
+      // The functional form, so this reads whatever the address holds when it
+      // fires rather than what it held when the effect was set up. Reading
+      // `window.location` instead was the same idea and quietly wrong: it is
+      // not where a router keeps the address, so everything else in it — the
+      // filters, the item that is open — was dropped on the first keystroke.
+      setParams(
+        (current) => {
+          const next = new URLSearchParams(current);
+          if (typed.trim() === '') next.delete('q');
+          else next.set('q', typed.trim());
+          return next;
+        },
+        { replace: true },
+      );
     }, TYPING_SETTLES_MS);
     return () => clearTimeout(id);
-    // `params` is deliberately absent: it changes as a result of this.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [typed]);
+  }, [typed, setParams]);
 
   const setFilter = (key: 'category' | 'type' | 'state', value: string) => {
     const next = new URLSearchParams(params);
@@ -242,6 +265,12 @@ export function KnowledgePage() {
                 onEdit={() => setEditing(true)}
                 onDelete={() => remove.mutate(selected.data.item)}
                 onRestore={() => restore.mutate(selected.data.item.id)}
+                onOpenItem={(itemId) => {
+                  // Following a relation moves the drawer to the other item
+                  // rather than opening a second one over the first.
+                  setEditing(false);
+                  setSelectedId(itemId);
+                }}
                 busy={remove.isPending || restore.isPending}
                 error={remove.error ?? restore.error}
               />
