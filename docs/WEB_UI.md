@@ -79,6 +79,19 @@ because nothing is parsed that would need it.
 Links get `rel="noopener"` and a new tab, and a URL whose protocol is not a
 safe one never reaches the document.
 
+## 2d. A list of values is entered as a list
+
+A comma-separated text box asks somebody to remember a syntax in order to type
+two words, and it stopped being merely unpleasant when a tag became able to
+contain a space (ADR 0019): the separator was then the only thing telling two
+tags from one.
+
+Values are entered one at a time and shown as chips with their own remove
+button. Enter and comma both commit, Backspace on an empty box takes the last
+one back, and what was typed and never committed is kept rather than thrown
+away when the field loses focus. Where a set of likely values exists — category
+paths — they are offered, and nothing outside the set is refused.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

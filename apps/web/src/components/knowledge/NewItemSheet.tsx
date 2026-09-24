@@ -22,10 +22,13 @@ export function NewItemSheet({
   open,
   onClose,
   onCreated,
+  categories,
 }: {
   open: boolean;
   onClose: () => void;
   onCreated: () => Promise<void>;
+  /** Every category path, offered while typing. */
+  categories: readonly string[];
 }) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -62,7 +65,7 @@ export function NewItemSheet({
         </SheetHeader>
         <form onSubmit={submit} className="grid gap-4 p-4">
           <FieldSet disabled={create.isPending}>
-            <ItemFields draft={draft} onChange={setDraft} rows={8} />
+            <ItemFields draft={draft} onChange={setDraft} rows={8} categories={categories} />
           </FieldSet>
           <ErrorNotice error={create.error} />
           <SheetFooter className="px-0">

@@ -2,6 +2,7 @@ import type { ItemType } from '@knoverge/contracts';
 import { ItemType as ItemTypes } from '@knoverge/contracts';
 import { useTranslation } from 'react-i18next';
 
+import { ChipInput } from '@/components/ui/chip-input';
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -19,11 +20,14 @@ export function ItemFields({
   draft,
   onChange,
   rows,
+  categories,
 }: {
   draft: Draft;
   onChange: (draft: Draft) => void;
   /** How tall the body box is: a new item starts smaller than an open one. */
   rows: number;
+  /** Every category path, offered while typing. */
+  categories?: readonly string[];
 }) {
   const { t } = useTranslation();
   return (
@@ -49,13 +53,19 @@ export function ItemFields({
         </Select>
       </Field>
       <Field label={t('knowledge.categories')} hint={t('knowledge.categories_hint')}>
-        <Input
+        <ChipInput
+          label={t('knowledge.categories')}
           value={draft.categories}
-          onChange={(e) => onChange({ ...draft, categories: e.target.value })}
+          onChange={(paths) => onChange({ ...draft, categories: paths })}
+          {...(categories ? { suggestions: categories } : {})}
         />
       </Field>
       <Field label={t('knowledge.tags')} hint={t('knowledge.tags_hint')}>
-        <Input value={draft.tags} onChange={(e) => onChange({ ...draft, tags: e.target.value })} />
+        <ChipInput
+          label={t('knowledge.tags')}
+          value={draft.tags}
+          onChange={(tags) => onChange({ ...draft, tags })}
+        />
       </Field>
       <Field label={t('knowledge.body')} hint={t('knowledge.body_hint')}>
         <Textarea
