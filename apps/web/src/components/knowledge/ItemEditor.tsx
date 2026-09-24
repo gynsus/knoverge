@@ -28,6 +28,7 @@ export function ItemEditor({
   mayWrite,
   onChanged,
   onCancel,
+  categories,
 }: {
   item: KnowledgeItemDetail;
   /** Whether the body is only part of what the item holds. */
@@ -36,6 +37,8 @@ export function ItemEditor({
   onChanged: () => Promise<void>;
   /** Leaves edit mode. Told whether there is unsaved work. */
   onCancel: (dirty: boolean) => void;
+  /** Every category path, offered while typing. */
+  categories: readonly string[];
 }) {
   const { t } = useTranslation();
   const initial = draftOf(item);
@@ -65,7 +68,7 @@ export function ItemEditor({
     <div className="grid content-start gap-3 p-4 sm:p-6">
       {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
       <FieldSet disabled={!mayWrite || truncated || save.isPending}>
-        <ItemFields draft={draft} onChange={setDraft} rows={16} />
+        <ItemFields draft={draft} onChange={setDraft} rows={16} categories={categories} />
         {/* Every change here is a revision and a Git commit. The history can
             say who and when without this; only this says why. */}
         <Field label={t('knowledge.reason')} hint={t('knowledge.reason_hint')}>

@@ -83,6 +83,7 @@ export function KnowledgePage() {
     queryKey: TAXONOMY_KEY,
     queryFn: ({ signal }) => adminApi.taxonomy.list(signal),
   });
+  const categoryPaths = (taxonomy.data?.categories ?? []).map((c) => c.path);
   const actors = useQuery({
     queryKey: ACTORS_KEY,
     queryFn: ({ signal }) => adminApi.workspace.actors(signal),
@@ -144,7 +145,7 @@ export function KnowledgePage() {
         category={category}
         type={type}
         state={state}
-        categories={(taxonomy.data?.categories ?? []).map((c) => c.path)}
+        categories={categoryPaths}
         onFilter={setFilter}
       />
 
@@ -221,6 +222,7 @@ export function KnowledgePage() {
                 // the cost of being wrong about that is somebody's document.
                 truncated={selected.data.truncated}
                 mayWrite={mayWrite}
+                categories={categoryPaths}
                 onChanged={async () => {
                   setEditing(false);
                   await refresh();
@@ -247,7 +249,12 @@ export function KnowledgePage() {
         </SheetContent>
       </Sheet>
 
-      <NewItemSheet open={creating} onClose={closeForm} onCreated={refresh} />
+      <NewItemSheet
+        open={creating}
+        onClose={closeForm}
+        onCreated={refresh}
+        categories={categoryPaths}
+      />
     </div>
   );
 }
