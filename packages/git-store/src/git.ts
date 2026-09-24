@@ -30,6 +30,13 @@ export interface CommitRequest {
   paths: readonly string[];
   /** One line, for example `create(fact): Backend database`. */
   subject: string;
+  /**
+   * Why the change was made, in whoever's own words.
+   *
+   * Goes in the commit body, above the trailers, which is where Git has
+   * always kept the reason for a change. Absent when nobody gave one.
+   */
+  body?: string | undefined;
   /** Repeated `Knoverge-*` lines, in the order given. */
   trailers: [string, string][];
   identity: CommitIdentity;
@@ -165,9 +172,15 @@ export class WorkspaceGitRepository {
     const staged = await this.git(['diff', '--cached', '--name-only', '--', ...pathspec]);
     if (staged.trim() === '') return null;
 
-    const message = [subject, '', ...trailers.map(([name, value]) => `${name}: ${value}`)].join(
-      '\n',
-    );
+    // Subject, then the reason, then the trailers — the shape `git log` and
+    // every tool that reads a commit already expect.
+    const reason = request.body?.trim();
+    const message = [
+      subject,
+      '',
+      ...(reason ? [reason, ''] : []),
+      ...trailers.map(([name, value]) => `${name}: ${value}`),
+    ].join('\n');
     const when = request.at.toISOString();
     await this.git(['commit', '--quiet', '--message', message], {
       GIT_AUTHOR_NAME: authorName(request.identity.authorName),

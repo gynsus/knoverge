@@ -48,6 +48,7 @@ function revisionSummary(revision: RevisionRecord): RevisionSummary {
     content_hash: revision.contentHash,
     frontmatter_hash: revision.frontmatterHash,
     git_commit: revision.gitCommitHash,
+    reason: revision.reason,
     actor_id: revision.createdByActorId,
     created_at: revision.createdAt.toISOString(),
   };
@@ -161,6 +162,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         relations: request.body.relations,
         sources: request.body.sources,
         external: request.body.external,
+        reason: request.body.reason,
       });
       return whole(result);
     },
@@ -190,6 +192,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         observedAt: request.body.observed_at,
         sources: request.body.sources,
         relations: request.body.relations,
+        reason: request.body.reason,
       });
       return whole(result);
     },
@@ -208,6 +211,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         itemId: request.body.item_id,
         baseRevisionId: request.body.base_revision_id,
         baseContentHash: request.body.base_content_hash,
+        reason: request.body.reason,
       });
       return whole(result);
     },

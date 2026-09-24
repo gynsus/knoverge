@@ -207,6 +207,7 @@ export function ItemDetails({
                 {' · '}
                 <code>{revision.git_commit.slice(0, 8)}</code>
               </span>
+              {revision.reason !== null && <span className="text-sm">{revision.reason}</span>}
             </li>
           ))}
         </ul>

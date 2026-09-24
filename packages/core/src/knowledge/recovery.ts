@@ -254,6 +254,10 @@ export class KnowledgeRecovery {
       createdByActorId: operation.actorId,
       createdAt: plan.now,
       operationId: operation.id,
+      // Recovery rebuilds from the commit, and the commit body is where the
+      // reason lives — but a body is free text and this reads trailers, so a
+      // recovered revision keeps the change and loses the sentence about it.
+      reason: null,
     };
     {
       if (!plan.existing) {

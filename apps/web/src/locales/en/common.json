@@ -141,6 +141,8 @@
       "import": "imported"
     },
     "no_tags": "No tags",
+    "reason": "What changed?",
+    "reason_hint": "Optional. The history says who and when; this is what says why.",
     "reset_filters": "Clear filters",
     "restore": "Restore",
     "review": {

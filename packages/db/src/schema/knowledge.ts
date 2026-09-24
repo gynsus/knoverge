@@ -81,6 +81,8 @@ export const knowledgeRevisions = pgTable(
       .references(() => actors.id),
     createdAt: timestampTz('created_at').notNull(),
     operationId: id('operation_id').notNull(),
+    /** Why, in whoever's own words. Null for a revision nobody explained. */
+    reason: varchar('reason', { length: 500 }),
   },
   (t) => [
     uniqueIndex('knowledge_revisions_number_idx').on(t.knowledgeItemId, t.revisionNumber),

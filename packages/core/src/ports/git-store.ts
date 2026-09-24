@@ -15,6 +15,8 @@ export interface GitCommitRequest {
   paths: readonly string[];
   /** One line, for example `taxonomy: add Projects`. */
   subject: string;
+  /** Why the change was made, in whoever's own words. Absent when nobody said. */
+  body?: string | undefined;
   /** Repeated `Knoverge-*` lines, in the order given. */
   trailers: [string, string][];
   author: CommitAuthor;

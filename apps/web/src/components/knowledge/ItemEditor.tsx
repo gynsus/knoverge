@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
-import { FieldSet } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
+import { Input } from '@/components/ui/input';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { changed, draftOf, listOf, type Draft } from './draft.ts';
@@ -39,6 +40,9 @@ export function ItemEditor({
   const { t } = useTranslation();
   const initial = draftOf(item);
   const [draft, setDraft] = useState<Draft>(initial);
+  // Not part of the draft: it describes the change rather than the item, and
+  // it does not carry over to the next one.
+  const [reason, setReason] = useState('');
   const dirty = changed(draft, initial);
 
   const save = useMutation({
@@ -52,6 +56,7 @@ export function ItemEditor({
         type: draft.type,
         categories: listOf(draft.categories),
         tags: listOf(draft.tags),
+        ...(reason.trim() ? { reason: reason.trim() } : {}),
       }),
     onSuccess: onChanged,
   });
@@ -61,6 +66,11 @@ export function ItemEditor({
       {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
       <FieldSet disabled={!mayWrite || truncated || save.isPending}>
         <ItemFields draft={draft} onChange={setDraft} rows={16} />
+        {/* Every change here is a revision and a Git commit. The history can
+            say who and when without this; only this says why. */}
+        <Field label={t('knowledge.reason')} hint={t('knowledge.reason_hint')}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
+        </Field>
       </FieldSet>
       <ErrorNotice error={save.error} />
       {/* Cancel and Save, and nothing else. Delete used to sit here, one

@@ -382,9 +382,25 @@ KnowledgeRevision
 - created_at
 - operation_id
 - proposal_id nullable
+- reason nullable      (why, in whoever's own words)
 ```
 
 Revisions are immutable. One operation (one commit) may produce several revisions, for example a supersession or a category merge.
+
+`reason` is what the history could not say. It is written into the commit body
+as well, above the trailers, where Git has always kept the reason for a change
+— so `git log` answers without the application, which is the whole point of the
+repository being canonical.
+
+It is deliberately not in the frontmatter. The frontmatter describes the item;
+a reason folded into it would enter the content hash, make every revision
+differ from itself, and leave a reader of the file meeting last week's argument
+at the top of this week's knowledge. It is also not in the ledger: events carry
+ids, hashes and actor context, never text somebody wrote.
+
+A revision rebuilt by recovery has none. Recovery reads trailers, and a reason
+is free text in the body; the change survives and the sentence about it does
+not, which is the honest trade rather than a parser that guesses.
 
 ## 18. Source reference
 

@@ -154,6 +154,15 @@ export interface DeleteItemInput {
   baseContentHash: string;
   /** See `CreateItemInput`: the proposal this write applies. */
   proposalId?: ProposalId | undefined;
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Kept on the revision and written into the commit body, which is where
+   * Git has always held the reason for a change. Never in the frontmatter:
+   * that describes the item, and a reason folded into the content hash would
+   * make every revision differ from itself.
+   */
+  reason?: string | undefined;
 }
 
 export interface UpdateItemInput {
@@ -177,6 +186,15 @@ export interface UpdateItemInput {
   proposalId?: ProposalId | undefined;
   /** See `CreateItemInput`: set only by the review workflow. */
   review?: ReviewState | undefined;
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Kept on the revision and written into the commit body, which is where
+   * Git has always held the reason for a change. Never in the frontmatter:
+   * that describes the item, and a reason folded into the content hash would
+   * make every revision differ from itself.
+   */
+  reason?: string | undefined;
 }
 
 export interface CreateItemInput {
@@ -205,6 +223,15 @@ export interface CreateItemInput {
    * agent does not.
    */
   review?: ReviewState | undefined;
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Kept on the revision and written into the commit body, which is where
+   * Git has always held the reason for a change. Never in the frontmatter:
+   * that describes the item, and a reason folded into the content hash would
+   * make every revision differ from itself.
+   */
+  reason?: string | undefined;
 }
 
 /** An item that already exists, taking over from the one being superseded. */
@@ -232,6 +259,15 @@ export interface SupersedeInput {
   existingItem?: ExistingReplacement | undefined;
   proposalId?: ProposalId | undefined;
   review?: ReviewState | undefined;
+  /**
+   * Why the change is being made, in the caller's own words.
+   *
+   * Kept on the revision and written into the commit body, which is where
+   * Git has always held the reason for a change. Never in the frontmatter:
+   * that describes the item, and a reason folded into the content hash would
+   * make every revision differ from itself.
+   */
+  reason?: string | undefined;
 }
 
 /** Both sides of a supersession, which is one operation with two results. */
@@ -354,6 +390,7 @@ export class KnowledgeService {
           ],
           author,
           at: now,
+          ...(input.reason ? { body: input.reason } : {}),
         });
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the item was written but produced no commit');
@@ -405,6 +442,7 @@ export class KnowledgeService {
           createdByActorId: actor.actorId,
           createdAt: p.now,
           operationId: operation.id,
+          reason: input.reason ?? null,
         };
         await this.o.items.insert(tx, item);
         await this.o.revisions.insert(tx, revision);
@@ -585,11 +623,22 @@ export class KnowledgeService {
           ],
           author,
           at: now,
+          ...(input.reason ? { body: input.reason } : {}),
         });
         if (commitHash === null) {
           throw new DomainError('VALIDATION_ERROR', 'this change would alter nothing');
         }
-        planned = { frontmatter, body, markdownPath, chosen, rendered, now, commitHash, kind };
+        planned = {
+          frontmatter,
+          body,
+          markdownPath,
+          chosen,
+          rendered,
+          now,
+          commitHash,
+          kind,
+          ...(input.reason ? { reason: input.reason } : {}),
+        };
         return { commitHash, objectIds: { knowledge_item: input.itemId, path: markdownPath } };
       },
       record: async (tx, operation) => {
@@ -698,6 +747,7 @@ export class KnowledgeService {
         ),
       'delete',
       input.proposalId,
+      input.reason,
     );
   }
 
@@ -904,6 +954,7 @@ export class KnowledgeService {
           ],
           author,
           at: now,
+          ...(input.reason ? { body: input.reason } : {}),
         });
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the supersession produced no commit');
@@ -1293,6 +1344,7 @@ export class KnowledgeService {
     load: () => Promise<ItemResult>,
     kind: 'delete',
     proposalId?: ProposalId | undefined,
+    reason?: string | undefined,
   ): Promise<ItemResult> {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
@@ -1324,6 +1376,7 @@ export class KnowledgeService {
           ],
           author,
           at: now,
+          ...(reason ? { body: reason } : {}),
         });
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the file was already gone from the tree');
@@ -1339,6 +1392,7 @@ export class KnowledgeService {
           now,
           commitHash,
           kind,
+          ...(reason ? { reason } : {}),
         };
         return { commitHash, objectIds: { knowledge_item: itemId } };
       },
@@ -1725,6 +1779,8 @@ export class KnowledgeService {
       now: Date;
       commitHash: string;
       kind?: ChangeKind;
+      /** Why, in whoever's own words. Absent when nobody said. */
+      reason?: string | undefined;
     },
     operationId: string,
   ): RevisionRecord {
@@ -1747,6 +1803,7 @@ export class KnowledgeService {
       createdByActorId: actor.actorId,
       createdAt: planned.now,
       operationId,
+      reason: planned.reason ?? null,
     };
   }
 
@@ -1848,6 +1905,8 @@ interface PlannedUpdate {
   now: Date;
   commitHash: string;
   kind: ChangeKind;
+  /** Why, in whoever's own words. Absent when nobody said. */
+  reason?: string | undefined;
 }
 
 interface PlannedItem {
