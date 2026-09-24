@@ -59,9 +59,13 @@ export interface FieldSetProps {
 }
 
 /**
- * A group of fields with no subheading of its own, used where the card's title
- * already names the section. It exists so the layout is written once: the same
- * class list repeated at every form is the thing that drifts.
+ * A group of fields with no subheading of its own, used where the card's or
+ * dialog's title already names the section. That is most of them, and it is
+ * the one to reach for by default: a legend repeating the title above it puts
+ * the same words twice in a row and tells the reader nothing the first did not.
+ *
+ * It exists so the layout is written once: the same class list repeated at
+ * every form is the thing that drifts.
  *
  * The width cap is here for the same reason. A card fills the content area, so
  * an uncapped text field is as wide as the monitor, and a line that long is
@@ -78,6 +82,16 @@ export function FieldSet({ disabled, className, children }: FieldSetProps) {
 export interface FieldGroupProps {
   /** The subheading for this group of fields. */
   legend: string;
+  /**
+   * Applied to the legend, for a group whose name is already drawn nearby.
+   *
+   * `sm:sr-only` is what a step in a wizard passes: the step indicator shows
+   * the labels from `sm` up and hides them below it, so the legend is drawn
+   * exactly where the indicator is not showing the same words. It stays in the
+   * accessibility tree at every width, because a fieldset that names itself
+   * only on a phone is a fieldset with no name on a laptop.
+   */
+  legendClassName?: string;
   disabled?: boolean;
   className?: string;
   children: ReactNode;
@@ -91,10 +105,16 @@ export interface FieldGroupProps {
  * legend takes no part in the grid's gap, which is why its spacing is its own:
  * relying on the gap left it sitting against the first field's label.
  */
-export function FieldGroup({ legend, disabled, className, children }: FieldGroupProps) {
+export function FieldGroup({
+  legend,
+  legendClassName,
+  disabled,
+  className,
+  children,
+}: FieldGroupProps) {
   return (
     <fieldset disabled={disabled} className={cn('grid max-w-md gap-4 border-0 p-0', className)}>
-      <legend className="mb-3 text-base font-semibold">{legend}</legend>
+      <legend className={cn('mb-3 text-base font-semibold', legendClassName)}>{legend}</legend>
       {children}
     </fieldset>
   );

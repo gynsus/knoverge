@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Field, FieldGroup } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { SESSIONS_KEY } from '@/lib/query-keys';
 import { adminApi } from '../api/admin.ts';
@@ -113,7 +113,7 @@ export function AccountSettingsPage() {
             <DialogDescription>{t('settings.email_hint')}</DialogDescription>
           </DialogHeader>
           <form onSubmit={submit} className="grid gap-4">
-            <FieldGroup legend={t('settings.change_email')} disabled={changeEmail.isPending}>
+            <FieldSet disabled={changeEmail.isPending}>
               <Field label={t('settings.new_email')}>
                 <Input
                   type="email"
@@ -135,7 +135,7 @@ export function AccountSettingsPage() {
                   autoComplete="current-password"
                 />
               </Field>
-            </FieldGroup>
+            </FieldSet>
             <ErrorNotice error={changeEmail.error} />
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setChanging(false)}>

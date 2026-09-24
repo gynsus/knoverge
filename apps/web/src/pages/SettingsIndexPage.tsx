@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 
 /**
  * One section of the settings, as the catalogue shows it.
@@ -81,8 +81,10 @@ function SectionCard({ section }: { section: Section }) {
   const title = t(`settings.sections.${section.key}.title`);
   const description = t(`settings.sections.${section.key}.description`);
 
+  // A plain padded element rather than `CardContent`: this card has no header,
+  // and `CardContent` exists to sit under one.
   const body = (
-    <CardContent className="flex items-start gap-3 p-5">
+    <div className="flex items-start gap-3 p-5">
       <span className="grid size-9 shrink-0 place-items-center rounded-md bg-muted">
         <Icon aria-hidden="true" className="size-4 text-muted-foreground" />
       </span>
@@ -97,7 +99,7 @@ function SectionCard({ section }: { section: Section }) {
         </CardTitle>
         <CardDescription className="leading-5">{description}</CardDescription>
       </div>
-    </CardContent>
+    </div>
   );
 
   if (section.to === undefined) {

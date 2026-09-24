@@ -120,6 +120,25 @@ What the far end said is shown in its own words. "Could not connect" is the
 same sentence for the wrong port, the wrong machine and a firewall;
 `ECONNREFUSED 192.168.1.7:11434` is the only thing that tells them apart.
 
+## 2g. A thing is named once on the screen
+
+A card titled "Change password" whose first child is a fieldset with the legend
+"Change password" says the same words twice in a row, and the second one tells
+the reader nothing the first did not. `FieldSet` is the group with no name of
+its own, for the common case where the card or dialog above already names the
+section; `FieldGroup` is for a group that genuinely needs a subheading.
+
+Where a name is already on screen at some widths and not at others, the second
+copy is hidden at exactly those widths and no further. A wizard's step
+indicator shows its labels from `sm` up, so the matching legend is
+`sm:sr-only`: drawn on a phone, where the indicator shows only numbers, and
+silent above it. It is never removed outright — a fieldset named only on a
+phone has no name on a laptop, and a screen reader is not a narrow screen.
+
+The button that performs the action is not a repetition. "Change password" as a
+card's title and on the button under the form is a heading and a verb, and the
+reader needs both.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a
