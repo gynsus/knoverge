@@ -28,6 +28,16 @@ export function CardDescription({ className, ...props }: ComponentProps<'p'>) {
   return <p className={cn('text-sm text-muted-foreground', className)} {...props} />;
 }
 
+/**
+ * The body of a card that has a `CardHeader` above it.
+ *
+ * `pt-0` is why: the header already carries the space at the top, and two lots
+ * of it would open a gap between a title and the thing it titles. A card with
+ * no header does not want this — and cannot simply pass `p-5` to undo it,
+ * because that overrides `pt-0` and leaves `sm:pt-0` standing, so the padding
+ * is right on a phone and gone on everything wider. Such a card uses its own
+ * padded element instead.
+ */
 export function CardContent({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cn('p-4 pt-0 sm:p-6 sm:pt-0', className)} {...props} />;
 }

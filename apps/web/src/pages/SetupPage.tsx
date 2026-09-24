@@ -110,6 +110,7 @@ export function SetupPage() {
           {step === 0 && (
             <FieldGroup
               legend={t('setup.step_terms')}
+              legendClassName="sm:sr-only"
               disabled={busy}
               className="rounded-lg border border-border p-4"
             >
@@ -166,6 +167,7 @@ export function SetupPage() {
           {step === 1 && (
             <FieldGroup
               legend={t('setup.step_administrator')}
+              legendClassName="sm:sr-only"
               disabled={busy}
               className="rounded-lg border border-border p-4"
             >
@@ -203,6 +205,7 @@ export function SetupPage() {
           {step === 2 && (
             <FieldGroup
               legend={t('setup.step_workspace')}
+              legendClassName="sm:sr-only"
               disabled={busy}
               className="rounded-lg border border-border p-4"
             >

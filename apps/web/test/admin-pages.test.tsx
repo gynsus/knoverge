@@ -966,7 +966,7 @@ describe('the settings catalogue', () => {
     renderApp('/settings');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('link', { name: 'Security' }));
-    expect(await screen.findByText('Change password', { selector: 'legend' })).toBeInTheDocument();
+    expect(await screen.findByLabelText('Current password')).toBeInTheDocument();
   });
 });
 
@@ -1084,15 +1084,16 @@ describe('a checkbox is a checkbox', () => {
   });
 });
 
-describe('a subheading stands apart from the fields under it', () => {
-  it('is a real legend, set apart from the first label', async () => {
+describe('a group of fields is named once', () => {
+  it('does not repeat the card title as a legend', async () => {
+    // "Change password" as the card's title and again as the legend directly
+    // under it is the same words twice in a row.
     mockApi({ ...SIGNED_IN, 'GET /v1/account/sessions': () => json({ sessions: [] }) });
     renderApp('/settings/security');
-    const legend = await screen.findByText('Change password', { selector: 'legend' });
-    // A legend takes no part in the grid gap, so its spacing has to be its own.
-    expect(legend.className).toContain('mb-3');
-    // And it reads as a heading rather than as another field label.
-    expect(legend.className).toContain('font-semibold');
+    await screen.findByLabelText('Current password');
+    expect(screen.queryByText('Change password', { selector: 'legend' })).toBeNull();
+    // The fieldset is still a fieldset, and the card still names the section.
+    expect(screen.getByRole('heading', { name: 'Change password' })).toBeInTheDocument();
   });
 });
 

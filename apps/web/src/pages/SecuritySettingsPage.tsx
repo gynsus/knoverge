@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Field, FieldGroup } from '@/components/ui/field';
+import { Field, FieldSet } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import {
   Table,
@@ -66,11 +66,7 @@ export function SecuritySettingsPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={submit} className="grid gap-4">
-            <FieldGroup
-              legend={t('settings.change_password')}
-              disabled={changePassword.isPending}
-              className="max-w-md"
-            >
+            <FieldSet disabled={changePassword.isPending}>
               <Field label={t('settings.current_password')}>
                 <Input
                   type="password"
@@ -90,7 +86,7 @@ export function SecuritySettingsPage() {
                   autoComplete="new-password"
                 />
               </Field>
-            </FieldGroup>
+            </FieldSet>
             <ErrorNotice error={changePassword.error} />
             {changed && (
               <p role="status" className="text-sm text-muted-foreground">

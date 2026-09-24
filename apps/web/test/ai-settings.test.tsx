@@ -217,6 +217,23 @@ describe('the connection wizard', () => {
     });
   });
 
+  it('names each step once, and keeps the name for a screen reader', async () => {
+    // The step indicator shows the labels from `sm` up, so a legend saying the
+    // same words is the same words twice. It stays in the accessibility tree
+    // at every width: a fieldset named only on a phone has no name on a laptop.
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(EMPTY) });
+    const user = userEvent.setup();
+    renderApp('/settings/ai');
+    await user.click(await screen.findByRole('button', { name: /connect a provider/i }));
+    const dialog = await screen.findByRole('dialog');
+    const legend = within(dialog).getByText('Where it is', { selector: 'legend' });
+    expect(legend.className).toContain('sm:sr-only');
+    // A legend takes no part in the grid gap, so its spacing has to be its
+    // own, and it reads as a heading rather than as another field label.
+    expect(legend.className).toContain('mb-3');
+    expect(legend.className).toContain('font-semibold');
+  });
+
   it('shows the provider its own words when nothing answers', async () => {
     mockApi({
       ...SIGNED_IN,

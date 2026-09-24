@@ -136,7 +136,7 @@ export function ProviderWizard({
 
         <form onSubmit={submit} className="grid gap-4">
           {step === 0 ? (
-            <FieldGroup legend={t('ai.wizard.step_where')}>
+            <FieldGroup legend={t('ai.wizard.step_where')} legendClassName="sm:sr-only">
               <Field label={t('ai.wizard.kind')} hint={t('ai.wizard.kind_hint')}>
                 <Select
                   value={kind}
@@ -186,7 +186,7 @@ export function ProviderWizard({
               <ErrorNotice error={check.error} />
             </FieldGroup>
           ) : (
-            <FieldGroup legend={t('ai.wizard.step_model')}>
+            <FieldGroup legend={t('ai.wizard.step_model')} legendClassName="sm:sr-only">
               <Outcome
                 ok
                 text={t('ai.wizard.reached', {
