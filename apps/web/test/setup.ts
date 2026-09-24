@@ -55,6 +55,15 @@ if (typeof globalThis.ResizeObserver !== 'function') {
   } as unknown as typeof ResizeObserver;
 }
 
+/**
+ * jsdom implements no scrolling, and a list that moves under the arrow keys
+ * brings the row it lands on into view. A stub that scrolls nothing is enough:
+ * the tests assert which row is current, and jsdom has no viewport to scroll.
+ */
+if (typeof Element !== 'undefined' && typeof Element.prototype.scrollIntoView !== 'function') {
+  Element.prototype.scrollIntoView = () => undefined;
+}
+
 afterEach(() => {
   cleanup();
 });

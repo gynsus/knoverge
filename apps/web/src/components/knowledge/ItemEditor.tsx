@@ -1,6 +1,6 @@
 import type { KnowledgeItemDetail } from '@knoverge/contracts';
 import { useMutation } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,7 @@ export function ItemEditor({
   mayWrite,
   onChanged,
   onCancel,
+  onDirty,
   categories,
 }: {
   item: KnowledgeItemDetail;
@@ -39,6 +40,14 @@ export function ItemEditor({
   onChanged: () => Promise<void>;
   /** Leaves edit mode. Told whether there is unsaved work. */
   onCancel: (dirty: boolean) => void;
+  /**
+   * Told as the draft moves away from the item.
+   *
+   * The page needs it because the drawer can be closed from outside this
+   * form — the overlay, the close button, Escape — and every one of those
+   * would otherwise drop the work without asking.
+   */
+  onDirty: (dirty: boolean) => void;
   /** Every category path, offered while typing. */
   categories: readonly string[];
 }) {
@@ -49,6 +58,12 @@ export function ItemEditor({
   // it does not carry over to the next one.
   const [reason, setReason] = useState('');
   const dirty = changed(draft, initial);
+  useEffect(() => {
+    onDirty(dirty);
+    // Says so on the way out too: an editor that unmounts still dirty would
+    // leave the page guarding a form that is no longer there.
+    return () => onDirty(false);
+  }, [dirty, onDirty]);
 
   const save = useMutation({
     mutationFn: () =>

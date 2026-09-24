@@ -200,6 +200,20 @@ An irreversible decision is never one keypress. Keyboard shortcuts move
 through the queue and open things; rejecting opens the dialog that asks why,
 because "rejected, no reason given" teaches an agent nothing.
 
+## 2j. A key never does something that cannot be undone
+
+Keyboard shortcuts are worth having on a screen somebody works down. What they
+may do is move, open and start a form; what they may not do is save, approve or
+delete. A single key that writes is a single key somebody presses while
+reading, and a ledger is the wrong place to find out.
+
+Where a key opens something that takes the focus, the key-down that opened it
+is prevented, or the key-up lands on whatever the focus moved to. Enter opening
+a drawer and instantly shutting it again is that bug.
+
+A shortcut nobody is told about is a shortcut nobody uses, so the list of them
+is on the screen behind a control, not only in a document.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a
