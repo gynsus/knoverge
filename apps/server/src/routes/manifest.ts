@@ -90,8 +90,11 @@ export async function workspaceManifest(
       can_write_direct: direct,
       can_approve: may('knowledge.approve'),
       can_manage_taxonomy: may('taxonomy.manage'),
-      // Milestone 6 turns this on with the embedding profiles behind it.
-      semantic_search: false,
+
+      // True only when something is actually embedded here. A provider that
+      // is configured but has not finished its first pass answers nothing,
+      // and a client told otherwise would stop searching lexically.
+      semantic_search: (await services.embeddings.activeProfile(workspaceId)) !== null,
     },
     stats: {
       items: await services.repositories.knowledge.countFor(workspaceId),

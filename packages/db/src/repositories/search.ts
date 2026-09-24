@@ -7,14 +7,14 @@ import type {
   RevisionId,
 } from '@knoverge/contracts';
 import type {
+  SearchCandidate,
   SearchDocumentRecord,
-  SearchHit,
   SearchQuery,
   SearchRepository,
   Tx,
 } from '@knoverge/core';
 import { newId } from '@knoverge/core';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql, type SQL } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import {
@@ -22,6 +22,7 @@ import {
   knowledgeItems,
   knowledgeRevisions,
 } from '../schema/knowledge.ts';
+import { embeddings } from '../schema/embeddings.ts';
 import { searchChunks } from '../schema/search.ts';
 import { asTx } from '../unit-of-work.ts';
 
@@ -114,121 +115,171 @@ export function createSearchRepository(db: Database): SearchRepository {
       return result;
     },
 
-    async search(query: SearchQuery): Promise<SearchHit[]> {
+    async lexical(query: SearchQuery, limit: number): Promise<SearchCandidate[]> {
       const text = query.text.trim();
       if (text === '') return [];
-
-      const language = query.languages?.[0] ?? query.defaultLanguage ?? 'simple';
-      // The query is parsed twice. The language one matches inflected forms in
-      // the language the caller named, or the workspace's own. The simple one
-      // matches the exact word — an identifier, a product name — whatever
-      // language either side is in. Neither crosses languages, which is the
-      // decision ADR 0020 records rather than a gap in this query.
-      //
-      // `websearch_to_tsquery` takes what a person types — quoted phrases, a
-      // leading minus — rather than requiring an operator expression. A query
-      // that parses to nothing matches nothing, which is the right answer.
-      const tsquery = sql`websearch_to_tsquery(${configFor(language)}, unaccent(${text}))`;
-      const simpleQuery = sql`websearch_to_tsquery('simple', unaccent(${text}))`;
+      const { tsquery, simpleQuery } = queriesFor(query);
       const rank = sql<number>`
         ts_rank_cd(${WEIGHTS}::float4[], ${searchChunks.documentTsv}, ${tsquery})
         + ${SIMPLE_WEIGHT}
           * ts_rank_cd(${WEIGHTS}::float4[], ${searchChunks.simpleTsv}, ${simpleQuery})`;
 
-      const where = [
-        eq(searchChunks.workspaceId, query.workspaceId),
-        sql`(${searchChunks.documentTsv} @@ ${tsquery}
-             OR ${searchChunks.simpleTsv} @@ ${simpleQuery})`,
-      ];
-      // Filters narrow what is ranked, never what a ranking produced: filtering
-      // afterwards would return fewer than the limit for no stated reason.
-      if (query.types?.length) where.push(inArray(knowledgeItems.type, [...query.types]));
-      if (query.statuses?.length) where.push(inArray(knowledgeItems.status, [...query.statuses]));
-      if (query.languages?.length) {
-        where.push(inArray(searchChunks.language, [...query.languages]));
-      }
-      if (query.reviewStates?.length) {
-        where.push(inArray(knowledgeItems.reviewState, [...query.reviewStates]));
-      }
-      if (query.includeDisputed === false) where.push(eq(knowledgeItems.disputed, false));
-      if (query.categoryIds?.length) {
-        const ids = db
-          .select({ id: knowledgeItemCategories.knowledgeItemId })
-          .from(knowledgeItemCategories)
-          .where(inArray(knowledgeItemCategories.categoryId, [...query.categoryIds]));
-        where.push(inArray(knowledgeItems.id, ids));
-      }
-
-      // An item is as good as its best chunk, not as good as the sum of them:
-      // scoring by the sum would hand every query to the longest document,
-      // which has more chances to contain the words by having more words.
-      const best = db
-        .selectDistinctOn([searchChunks.knowledgeItemId], {
-          itemId: searchChunks.knowledgeItemId,
-          title: searchChunks.title,
-          language: searchChunks.language,
-          ordinal: searchChunks.ordinal,
-          updatedAt: searchChunks.updatedAt,
-          type: knowledgeItems.type,
-          status: knowledgeItems.status,
-          reviewState: knowledgeItems.reviewState,
-          evidenceState: knowledgeItems.evidenceState,
-          disputed: knowledgeItems.disputed,
-          revisionId: knowledgeRevisions.id,
-          contentHash: knowledgeRevisions.contentHash,
-          score: sql<number>`${rank}`.as('score'),
-          titleScore: sql<number>`ts_rank_cd(
-            ${TITLE_ONLY}::float4[], ${searchChunks.documentTsv}, ${tsquery})`.as('title_score'),
-          // Built from the unstemmed query, so a hit the language query did
-          // not make still gets a passage: `ts_headline` marks nothing when
-          // the query it is given does not match the text it is given.
-          snippet: (query.includeSnippets
-            ? sql<string>`ts_headline(
-                'simple',
-                ${searchChunks.text},
-                ${simpleQuery},
-                ${`MaxWords=${SNIPPET_WORDS}, MinWords=10, ShortWord=2, MaxFragments=1`}
-              )`
-            : sql<string | null>`null`
-          ).as('snippet'),
-        })
+      const rows = await db
+        .select(columns(query, rank, tsquery, simpleQuery))
         .from(searchChunks)
         .innerJoin(knowledgeItems, eq(knowledgeItems.id, searchChunks.knowledgeItemId))
         .innerJoin(knowledgeRevisions, eq(knowledgeRevisions.id, searchChunks.revisionId))
-        .where(and(...where))
-        // DISTINCT ON keeps the first row of each item, so the item's order
-        // has to come first and the rank decides which chunk that is.
-        .orderBy(searchChunks.knowledgeItemId, sql`${rank} DESC`)
-        .as('best');
+        .where(
+          and(
+            ...filters(db, query),
+            sql`(${searchChunks.documentTsv} @@ ${tsquery}
+                 OR ${searchChunks.simpleTsv} @@ ${simpleQuery})`,
+          ),
+        )
+        .orderBy(sql`${rank} DESC`)
+        .limit(limit);
+      return rows.map(toCandidate);
+    },
+
+    async semantic(query, vector, profileId, limit): Promise<SearchCandidate[]> {
+      const { tsquery, simpleQuery } = queriesFor(query);
+      const literal = `[${vector.join(',')}]`;
+      // Cosine distance, which is what a normalised embedding is compared
+      // with. Turned into a similarity so the component reads the way the
+      // lexical one does: larger is nearer.
+      const similarity = sql<number>`1 - (${embeddings.vector} <=> ${literal}::vector)`;
 
       const rows = await db
-        .select()
-        .from(best)
-        .orderBy(sql`${best.score} DESC`)
-        .limit(Math.min(query.limit ?? 20, 100));
-
-      // The best score in this result set is 1 and the rest are relative to
-      // it. `ts_rank_cd` has no ceiling, so an absolute number would mean
-      // nothing to a caller and would move as the corpus grew.
-      const top = Math.max(...rows.map((r) => Number(r.score)), Number.EPSILON);
-      return rows.map((row) => ({
-        itemId: row.itemId as KnowledgeItemId,
-        title: row.title,
-        type: row.type as ItemType,
-        status: row.status as ItemStatus,
-        language: row.language,
-        reviewState: row.reviewState as ReviewState,
-        evidenceState: row.evidenceState as EvidenceState,
-        disputed: row.disputed,
-        revisionId: row.revisionId as RevisionId,
-        contentHash: row.contentHash,
-        updatedAt: row.updatedAt,
-        score: Number(row.score) / top,
-        components: { lexical: Number(row.score), title: Number(row.titleScore) },
-        chunkOrdinal: row.ordinal,
-        snippet: row.snippet ?? null,
-      }));
+        .select(columns(query, similarity, tsquery, simpleQuery))
+        .from(searchChunks)
+        .innerJoin(embeddings, eq(embeddings.chunkId, searchChunks.id))
+        .innerJoin(knowledgeItems, eq(knowledgeItems.id, searchChunks.knowledgeItemId))
+        .innerJoin(knowledgeRevisions, eq(knowledgeRevisions.id, searchChunks.revisionId))
+        .where(and(...filters(db, query), eq(embeddings.profileId, profileId)))
+        .orderBy(sql`${embeddings.vector} <=> ${literal}::vector`)
+        .limit(limit);
+      return rows.map(toCandidate);
     },
+  };
+}
+
+/** The two parsings of the query text, which both rankings carry. */
+function queriesFor(query: SearchQuery) {
+  const text = query.text.trim();
+  const language = query.languages?.[0] ?? query.defaultLanguage ?? 'simple';
+  // The language one matches inflected forms in the language the caller named,
+  // or the workspace's own. The simple one matches the exact word — an
+  // identifier, a product name — whatever language either side is in. Neither
+  // crosses languages, which ADR 0020 decides rather than leaves undone.
+  //
+  // `websearch_to_tsquery` takes what a person types — quoted phrases, a
+  // leading minus — rather than requiring an operator expression. A query that
+  // parses to nothing matches nothing, which is the right answer.
+  return {
+    tsquery: sql`websearch_to_tsquery(${configFor(language)}, unaccent(${text}))`,
+    simpleQuery: sql`websearch_to_tsquery('simple', unaccent(${text}))`,
+  };
+}
+
+/**
+ * What narrows a search, whichever ranking is asking.
+ *
+ * Filters narrow what is ranked, never what a ranking produced: filtering
+ * afterwards would return fewer than the limit for no stated reason.
+ */
+function filters(db: Database, query: SearchQuery): SQL[] {
+  const where: SQL[] = [eq(searchChunks.workspaceId, query.workspaceId) as SQL];
+  if (query.types?.length) where.push(inArray(knowledgeItems.type, [...query.types]) as SQL);
+  if (query.statuses?.length) {
+    where.push(inArray(knowledgeItems.status, [...query.statuses]) as SQL);
+  }
+  if (query.languages?.length) {
+    where.push(inArray(searchChunks.language, [...query.languages]) as SQL);
+  }
+  if (query.reviewStates?.length) {
+    where.push(inArray(knowledgeItems.reviewState, [...query.reviewStates]) as SQL);
+  }
+  if (query.includeDisputed === false) where.push(eq(knowledgeItems.disputed, false) as SQL);
+  if (query.categoryIds?.length) {
+    const ids = db
+      .select({ id: knowledgeItemCategories.knowledgeItemId })
+      .from(knowledgeItemCategories)
+      .where(inArray(knowledgeItemCategories.categoryId, [...query.categoryIds]));
+    where.push(inArray(knowledgeItems.id, ids) as SQL);
+  }
+  return where;
+}
+
+/** The same columns from either ranking, so the two can be compared. */
+function columns(query: SearchQuery, score: SQL<number>, tsquery: SQL, simpleQuery: SQL) {
+  return {
+    chunkId: searchChunks.id,
+    itemId: searchChunks.knowledgeItemId,
+    title: searchChunks.title,
+    language: searchChunks.language,
+    ordinal: searchChunks.ordinal,
+    updatedAt: searchChunks.updatedAt,
+    type: knowledgeItems.type,
+    status: knowledgeItems.status,
+    reviewState: knowledgeItems.reviewState,
+    evidenceState: knowledgeItems.evidenceState,
+    disputed: knowledgeItems.disputed,
+    revisionId: knowledgeRevisions.id,
+    contentHash: knowledgeRevisions.contentHash,
+    score,
+    titleScore: sql<number>`ts_rank_cd(
+      ${TITLE_ONLY}::float4[], ${searchChunks.documentTsv}, ${tsquery})`,
+    // Built from the unstemmed query, so a hit the language query did not make
+    // still gets a passage: `ts_headline` marks nothing when the query it is
+    // given does not match the text it is given.
+    snippet: query.includeSnippets
+      ? sql<string>`ts_headline(
+          'simple',
+          ${searchChunks.text},
+          ${simpleQuery},
+          ${`MaxWords=${SNIPPET_WORDS}, MinWords=10, ShortWord=2, MaxFragments=1`}
+        )`
+      : sql<string | null>`null`,
+  };
+}
+
+function toCandidate(row: {
+  chunkId: string;
+  itemId: string;
+  title: string;
+  language: string;
+  ordinal: number;
+  updatedAt: Date;
+  type: string;
+  status: string;
+  reviewState: string;
+  evidenceState: string;
+  disputed: boolean;
+  revisionId: string;
+  contentHash: string;
+  score: number;
+  titleScore: number;
+  snippet: string | null;
+}): SearchCandidate {
+  return {
+    chunkId: row.chunkId,
+    itemId: row.itemId as KnowledgeItemId,
+    title: row.title,
+    type: row.type as ItemType,
+    status: row.status as ItemStatus,
+    language: row.language,
+    reviewState: row.reviewState as ReviewState,
+    evidenceState: row.evidenceState as EvidenceState,
+    disputed: row.disputed,
+    revisionId: row.revisionId as RevisionId,
+    contentHash: row.contentHash,
+    updatedAt: row.updatedAt,
+    // Filled by whoever fuses the two rankings; a position in one list is not
+    // a score anybody outside can use.
+    score: 0,
+    components: { lexical: Number(row.score), title: Number(row.titleScore) },
+    chunkOrdinal: row.ordinal,
+    snippet: row.snippet ?? null,
   };
 }
 

@@ -211,12 +211,27 @@ Otherwise policy decides as it does for knowledge (rule 14): a rule may let this
 
 #### `knowledge_search`
 
-Lexical until Milestone 6: PostgreSQL full-text search with a trigram pass over
-titles. It does not cross languages — a Russian query does not find an English
-item that says the same thing — because a lexical index matches words, and
-those are different words. That is the gap the semantic step in Milestone 6
-closes; until then `workspace_manifest` reports `semantic_search: false` and a
-client searching a bilingual workspace should search in both.
+Two rankings, fused. The lexical one is PostgreSQL full-text search over
+chunks, exact and brittle: it finds the words or it does not. The semantic one
+is nearest-neighbour over embeddings, approximate and never empty. They are
+combined by position rather than by score — reciprocal rank fusion — because
+`ts_rank_cd` has no ceiling and moves with the corpus while cosine similarity
+is bounded and moves with the model, so adding them would quietly make the
+weighting depend on how many results came back.
+
+The semantic half is optional and answers only when an embedding provider is
+configured and a profile is active; `workspace_manifest` reports
+`semantic_search` accordingly. When the provider is unavailable the search is
+the lexical one rather than an error: a search that failed because an optional
+feature was down would make the feature mandatory.
+
+Neither half crosses languages. A Russian query does not find an English item
+that says the same thing, because the lexical index matches words and the
+embedding model is not chosen for it (ADR 0020). A workspace holding two
+languages is searched twice.
+
+An item is ranked by its best passage and returned once, with `chunk_ordinal`
+saying which passage answered.
 
 Input:
 

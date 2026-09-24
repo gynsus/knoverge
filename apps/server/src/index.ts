@@ -51,6 +51,13 @@ async function main(): Promise<void> {
     // An idle connection dying is the operator's business, not a caller's, and
     // must not end the process.
     onPoolError: (error) => logger.warn({ err: error }, 'a pooled connection failed while idle'),
+    // The provider being down costs the semantic half of a search, not the
+    // search. An operator has to be able to see that it happened.
+    onSemanticFailure: (workspaceId, error) =>
+      logger.warn(
+        { err: error, workspaceId },
+        'semantic search is unavailable; answering lexically',
+      ),
     databaseUrl: config.databaseUrl,
     ledgerKey: config.ledgerKey,
     tokenPepper: config.tokenPepper,

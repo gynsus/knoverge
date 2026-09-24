@@ -5,3 +5,12 @@
 // decides how text becomes searchable and how two opinions about relevance
 // become one number (ADR 0020).
 export { MAX_CHUNK_CHARS, TARGET_CHUNK_CHARS, chunkBody, type Chunk } from './chunk.ts';
+export {
+  LEXICAL_WEIGHT,
+  RRF_K,
+  SEMANTIC_WEIGHT,
+  bestPerItem,
+  fuse,
+  type Fused,
+  type Ranking,
+} from './fuse.ts';

@@ -50,7 +50,10 @@ export type {
   EmbeddingRepository,
   PendingChunk,
 } from './embeddings/repository.ts';
+export { CANDIDATE_POOL, SearchService, type SearchServiceOptions } from './search/service.ts';
 export type {
+  SearchCandidate,
+  SearchChunkRecord,
   SearchDocumentRecord,
   SearchHit,
   SearchQuery,
