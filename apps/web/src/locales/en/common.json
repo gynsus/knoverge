@@ -54,10 +54,12 @@
     "actions": "Actions",
     "back": "Back",
     "cancel": "Cancel",
+    "change": "Change",
     "close": "Close",
     "dismiss": "Dismiss",
     "load_more": "Show more",
     "loading": "Loading...",
+    "more": "More",
     "next": "Next",
     "remove_entry": "Remove {{entry}}",
     "working": "Working..."
@@ -316,15 +318,47 @@
     "current_password": "Current password",
     "email_changed": "Email changed. Other sessions were signed out.",
     "email_hint": "This is the address you sign in with. Nothing is sent to confirm it, so check it before saving.",
+    "group_instance": "This installation",
+    "group_personal": "Yours",
+    "identity": "Identity",
+    "intro": "Your account, and this installation of Knoverge.",
     "language_hint": "Remembered in this browser. Choosing it in your profile arrives with profile editing.",
     "new_email": "New email",
     "new_password": "New password",
+    "not_yet": "Not yet",
     "password_changed": "Password changed. Other sessions were signed out.",
     "revoke": "Sign out",
+    "sections": {
+      "account": {
+        "title": "Account",
+        "description": "Name, address and the language you read in."
+      },
+      "security": {
+        "title": "Security",
+        "description": "Password, and where this account is signed in."
+      },
+      "ai": {
+        "title": "AI and models",
+        "description": "Ollama, OpenAI and which model does what."
+      },
+      "storage": {
+        "title": "Data and storage",
+        "description": "Git repositories, attachments and backups."
+      },
+      "network": {
+        "title": "Network and API",
+        "description": "Public URL, the MCP endpoint and the HTTP API."
+      },
+      "system": {
+        "title": "System",
+        "description": "Version, health and diagnostics to paste into an issue."
+      }
+    },
     "session_actions": "Actions",
     "sessions": "Sessions",
     "started": "Started",
     "this_session": "this device",
+    "title": "Settings",
     "unknown_client": "Unknown",
     "your_password": "Your password"
   },

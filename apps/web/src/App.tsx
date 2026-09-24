@@ -8,7 +8,9 @@ import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
-import { SettingsPage } from './pages/SettingsPage.tsx';
+import { AccountSettingsPage } from './pages/AccountSettingsPage.tsx';
+import { SecuritySettingsPage } from './pages/SecuritySettingsPage.tsx';
+import { SettingsIndexPage } from './pages/SettingsIndexPage.tsx';
 import { SyncPage } from './pages/SyncPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
 import { TaxonomyPage } from './pages/TaxonomyPage.tsx';
@@ -48,7 +50,9 @@ export function App() {
               over a rename. */}
           <Route path="/workspace" element={<Navigate to="/workspaces" replace />} />
           <Route path="/workspace/new" element={<Navigate to="/workspaces?new" replace />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<SettingsIndexPage />} />
+          <Route path="/settings/account" element={<AccountSettingsPage />} />
+          <Route path="/settings/security" element={<SecuritySettingsPage />} />
         </Route>
       </Route>
     </Routes>

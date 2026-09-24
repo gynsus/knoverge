@@ -366,7 +366,8 @@ describe('settings page', () => {
               id: ME.session.id,
               created_at: '2026-09-19T00:00:00.000Z',
               expires_at: '2026-10-19T00:00:00.000Z',
-              user_agent: 'Firefox',
+              user_agent:
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Gecko/20100101 Firefox/130.0',
               ip: '127.0.0.1',
               current: true,
             },
@@ -374,8 +375,10 @@ describe('settings page', () => {
         }),
       'POST /v1/auth/password': () => json({ ok: true }),
     });
-    renderApp('/settings');
-    expect(await screen.findByText('Firefox')).toBeInTheDocument();
+    renderApp('/settings/security');
+    // The raw user agent is the truth and not the answer: somebody reading
+    // their own sessions is asking which of these is the laptop.
+    expect(await screen.findByText(/Firefox 130/)).toBeInTheDocument();
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText('Current password'), 'correct horse battery');
@@ -937,13 +940,43 @@ describe('the navigation rail', () => {
   });
 });
 
+describe('the settings catalogue', () => {
+  it('separates what is yours from what is the installation\u2019s', async () => {
+    // One long canvas is how a settings page becomes unreadable. The split is
+    // by whose settings they are, which is also the boundary that matters:
+    // one of them is the same on every workspace and the other is not.
+    mockApi(SIGNED_IN);
+    renderApp('/settings');
+    expect(await screen.findByText('Yours')).toBeInTheDocument();
+    expect(screen.getByText('This installation')).toBeInTheDocument();
+  });
+
+  it('shows a section that does not exist yet, and does not pretend it does', async () => {
+    // Hiding it would let somebody looking for backups conclude they are in
+    // the wrong place. A card that says "Not yet" answers the question.
+    mockApi(SIGNED_IN);
+    renderApp('/settings');
+    const card = (await screen.findByText('Data and storage')).closest('li') as HTMLElement;
+    expect(within(card).getByText('Not yet')).toBeInTheDocument();
+    expect(within(card).queryByRole('link')).toBeNull();
+  });
+
+  it('goes to a section that does', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/account/sessions': () => json({ sessions: [] }) });
+    renderApp('/settings');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('link', { name: 'Security' }));
+    expect(await screen.findByText('Change password', { selector: 'legend' })).toBeInTheDocument();
+  });
+});
+
 describe('where the language is chosen', () => {
   it('is on the settings page, not in the chrome of every page', async () => {
     mockApi({
       ...SIGNED_IN,
       'GET /v1/account/sessions': () => json({ sessions: [] }),
     });
-    renderApp('/settings');
+    renderApp('/settings/account');
     expect(await screen.findByRole('combobox', { name: 'Language' })).toBeInTheDocument();
   });
 
@@ -1054,7 +1087,7 @@ describe('a checkbox is a checkbox', () => {
 describe('a subheading stands apart from the fields under it', () => {
   it('is a real legend, set apart from the first label', async () => {
     mockApi({ ...SIGNED_IN, 'GET /v1/account/sessions': () => json({ sessions: [] }) });
-    renderApp('/settings');
+    renderApp('/settings/security');
     const legend = await screen.findByText('Change password', { selector: 'legend' });
     // A legend takes no part in the grid gap, so its spacing has to be its own.
     expect(legend.className).toContain('mb-3');
