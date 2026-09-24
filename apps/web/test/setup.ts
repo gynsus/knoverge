@@ -15,14 +15,20 @@ import { afterEach } from 'vitest';
 configure({ asyncUtilTimeout: 5000 });
 
 /**
- * jsdom implements no media queries, and the sidebar asks whether the viewport
- * is a phone. The stub answers from the window width jsdom does report, which
- * is 1024 by default, so tests see the wide layout unless they say otherwise.
+ * jsdom implements no media queries, and the interface asks both whether the
+ * viewport is a phone and whether it is wide enough for two columns. The stub
+ * answers from the window width jsdom does report, which is 1024 by default,
+ * so tests see the wide layout unless they say otherwise.
  */
 if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
   window.matchMedia = (query: string): MediaQueryList => {
     const max = /max-width:\s*(\d+)px/.exec(query);
-    const matches = max ? window.innerWidth <= Number(max[1]) : false;
+    const min = /min-width:\s*(\d+)px/.exec(query);
+    const matches = max
+      ? window.innerWidth <= Number(max[1])
+      : min
+        ? window.innerWidth >= Number(min[1])
+        : false;
     return {
       matches,
       media: query,
