@@ -51,6 +51,16 @@ export interface SearchQuery {
   includeSnippets?: boolean | undefined;
 }
 
+/**
+ * One chunk that answered, before the two opinions are put together.
+ *
+ * Chunk-level rather than item-level: fusing has to compare passages, and
+ * folding to items before it would throw away the thing being compared.
+ */
+export interface SearchCandidate extends SearchHit {
+  chunkId: string;
+}
+
 /** One result, with enough of the item to decide whether to read it. */
 export interface SearchHit {
   itemId: KnowledgeItemId;
@@ -77,12 +87,30 @@ export interface SearchHit {
 }
 
 export interface SearchRepository {
+  /**
+   * Chunks whose text matches, best first.
+   *
+   * Exact and brittle: it finds the words or it does not. The score it carries
+   * is `ts_rank_cd`, which has no ceiling and moves with the corpus, so it is
+   * a position in this list and nothing more.
+   */
+  lexical(query: SearchQuery, limit: number): Promise<SearchCandidate[]>;
+  /**
+   * Chunks whose meaning is nearest, closest first.
+   *
+   * Approximate and never empty: it always has an opinion, including when it
+   * has no business having one. That is why the two are fused by position.
+   */
+  semantic(
+    query: SearchQuery,
+    vector: readonly number[],
+    profileId: string,
+    limit: number,
+  ): Promise<SearchCandidate[]>;
   /** Writes or replaces every chunk of one item, with its revision. */
   upsert(tx: Tx, document: SearchDocumentRecord): Promise<void>;
   /** Removes the chunks, for an item that left the index. */
   remove(tx: Tx, itemId: KnowledgeItemId): Promise<void>;
-  /** Best first. Filters are applied before ranking, never after. */
-  search(query: SearchQuery): Promise<SearchHit[]>;
   /** For `knoverge db reindex`: what the index currently holds. */
   countFor(workspaceId: WorkspaceId): Promise<number>;
   /** Which items the index already holds, so startup fills only the gaps. */

@@ -16,6 +16,7 @@ import {
   BootstrapService,
   EmbeddingService,
   EventLedger,
+  SearchService,
   CrossStoreWriter,
   DuplicateMatcher,
   IdempotencyService,
@@ -79,6 +80,14 @@ export interface ServicesConfig {
    * configured it (rule 12).
    */
   embeddings?: EmbeddingSettings | null;
+  /**
+   * Told when the semantic half of a search failed.
+   *
+   * Logged rather than raised: the provider is somebody else's server, and a
+   * search that failed because an optional feature was unavailable would make
+   * the feature mandatory.
+   */
+  onSemanticFailure?: (workspaceId: WorkspaceId, error: unknown) => void;
 }
 
 /**
@@ -283,6 +292,12 @@ export function createServices(config: ServicesConfig) {
     embeddings: repositories.embeddings,
     provider: embeddingProvider,
   });
+  const search = new SearchService({
+    search: repositories.search,
+    embeddings,
+    provider: embeddingProvider,
+    ...(config.onSemanticFailure ? { onSemanticFailure: config.onSemanticFailure } : {}),
+  });
   const sync = new SyncService({
     uow,
     sync: repositories.sync,
@@ -315,6 +330,7 @@ export function createServices(config: ServicesConfig) {
     proposals,
     taxonomy,
     sync,
+    search,
     embeddings,
     enqueueRefine: config.enqueueRefine ?? (async () => undefined),
     users,

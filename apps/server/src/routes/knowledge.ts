@@ -424,7 +424,7 @@ export async function knowledgeSearch(
   // The workspace's own language parses the query when the caller names none:
   // a query parsed as `simple` never meets a stemmed vector.
   const workspace = await services.repositories.workspaces.findById(workspaceId);
-  const hits = await services.repositories.search.search({
+  const hits = await services.search.find({
     workspaceId,
     text: input.query,
     ...(workspace ? { defaultLanguage: workspace.defaultLanguage } : {}),

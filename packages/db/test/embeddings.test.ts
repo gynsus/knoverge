@@ -98,6 +98,19 @@ beforeAll(async () => {
      from actors a where a.workspace_id = $2::varchar limit 1`,
     ['kn_01M2XEMBEDEMBEDEMBEDEMBED1', workspaceId],
   );
+  // The ranking joins the revision a chunk was built from, because a hit
+  // carries what it takes to fetch the canonical item and see whether it has
+  // moved on (rule 8).
+  await handle.pool.query(
+    `insert into knowledge_revisions (id, knowledge_item_id, workspace_id, revision_number,
+       content_hash, frontmatter_hash, git_commit_hash, title, markdown_path, frontmatter,
+       change_kind, created_by_actor_id, created_at, operation_id)
+     select $1, $2, $3::varchar, 1, 'sha256:a', 'sha256:b', 'c', 'Embedded item',
+       'knowledge/_uncategorised/embedded-item.md', '{}'::json, 'create', a.id, now(),
+       'op_01M2XEMBEDEMBEDEMBEDEMBED1'
+     from actors a where a.workspace_id = $3::varchar limit 1`,
+    ['rev_01M2XEMBEDEMBEDEMBEDEMBED1', 'kn_01M2XEMBEDEMBEDEMBEDEMBED1', workspaceId],
+  );
 }, 180_000);
 
 afterAll(async () => {
@@ -152,6 +165,49 @@ describe('filling a workspace', () => {
     expect(await service.fill(workspaceId)).toMatchObject({ embedded: 2, remaining: 0 });
     const rows = await handle.pool.query('select count(*)::int as n from embeddings');
     expect(rows.rows[0].n).toBe(2);
+  });
+});
+
+describe('the semantic ranking', () => {
+  it('answers by nearness, closest first', async () => {
+    await chunksFor(3);
+    const { provider } = stubProvider('first-model', 4);
+    const service = new EmbeddingService({
+      uow,
+      embeddings: repositories.embeddings,
+      provider,
+    });
+    await service.fill(workspaceId);
+    const profile = await service.activeProfile(workspaceId);
+    expect(profile).not.toBeNull();
+
+    // The stub gives chunk i the vector [i, i+1, i+2, i+3] / 100, so asking
+    // for the first one's vector should put it first.
+    const near = await repositories.search.semantic(
+      { workspaceId, text: 'anything' },
+      [0, 0.01, 0.02, 0.03],
+      (profile as { id: string }).id,
+      10,
+    );
+    expect(near.length).toBeGreaterThan(1);
+    expect(near[0]?.chunkOrdinal).toBe(0);
+    // Every candidate carries what it takes to fetch the canonical item.
+    expect(near[0]?.revisionId).toBeTruthy();
+    expect(near[0]?.contentHash).toBeTruthy();
+  });
+
+  it('sees only the profile it was asked about', async () => {
+    const profile = await repositories.embeddings.active(workspaceId);
+    const other = await repositories.search.semantic(
+      { workspaceId, text: 'anything' },
+      [0, 0, 0, 0],
+      'eprof_01M2XNOTHINGNOTHINGNOTH1',
+      10,
+    );
+    expect(profile).not.toBeNull();
+    // Vectors from two models are not comparable, so a query that mixed them
+    // would be ranking against a scale that does not exist.
+    expect(other).toEqual([]);
   });
 });
 
