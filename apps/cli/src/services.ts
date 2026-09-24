@@ -90,6 +90,7 @@ export function createServices() {
         sessions: repositories.sessions,
         uow,
         users: repositories.users,
+        actors: repositories.actors,
         passwords: { hash: hashPassword, verify: verifyPassword, dummyHash: dummyPasswordHash },
       }),
   );

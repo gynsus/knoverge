@@ -51,6 +51,7 @@ export interface UserRepository {
   ): Promise<number>;
   recordLoginSuccess(tx: Tx, id: UserId, at: Date): Promise<void>;
   updatePassword(tx: Tx, id: UserId, passwordHash: string, at: Date): Promise<void>;
+  updateDisplayName(tx: Tx, id: UserId, displayName: string): Promise<void>;
   /**
    * Changes the address the account signs in with.
    *

@@ -6,6 +6,7 @@ import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { Tx, UnitOfWork } from '../ports/unit-of-work.ts';
 import type { PasswordHasher } from './ports.ts';
+import type { ActorRepository } from '../workspace/repository.ts';
 import type { SessionRepository, UserRecord, UserRepository } from './repository.ts';
 
 export const MAX_FAILED_LOGINS = 10;
@@ -30,6 +31,14 @@ export interface UserServiceOptions {
    * one, in the same transaction that changed it.
    */
   sessions: SessionRepository;
+  /**
+   * Where a person's name is copied to.
+   *
+   * One actor per workspace carries the name the account had when the
+   * membership was made, so a rename has to reach them or the old name stays
+   * against everything that person has done.
+   */
+  actors: Pick<ActorRepository, 'renameForUser'>;
   passwords: PasswordHasher;
   clock?: Clock;
 }
@@ -47,6 +56,7 @@ export class UserService {
   private readonly uow: UnitOfWork;
   private readonly users: UserRepository;
   private readonly sessions: SessionRepository;
+  private readonly actors: Pick<ActorRepository, 'renameForUser'>;
   private readonly passwords: PasswordHasher;
   private readonly clock: Clock;
 
@@ -54,6 +64,7 @@ export class UserService {
     this.uow = options.uow;
     this.users = options.users;
     this.sessions = options.sessions;
+    this.actors = options.actors;
     this.passwords = options.passwords;
     this.clock = options.clock ?? systemClock;
   }
@@ -202,6 +213,34 @@ export class UserService {
     }
     await this.uow.run((tx) => this.users.updateEmail(tx, userId, email));
     return email;
+  }
+
+  /**
+   * Changes the name shown next to what this account did.
+   *
+   * No password: a display name is a label rather than a credential, and
+   * nothing about the account can be taken over with it. No session is revoked
+   * for the same reason — the identity has not moved, only its label.
+   *
+   * The actors go with it. Each workspace holds an actor carrying a copy of
+   * the name, so a change that stopped at the user row would let somebody
+   * correct their name and still see the old one against everything they had
+   * ever done. Both writes are one transaction, because a rename that took in
+   * one place and not the other is the state this exists to avoid.
+   */
+  async changeDisplayName(userId: UserId, displayName: string): Promise<string> {
+    const parsed = DisplayName.safeParse(displayName);
+    if (!parsed.success) {
+      throw new DomainError('VALIDATION_ERROR', 'a display name is 1 to 120 characters');
+    }
+    const user = await this.users.findById(userId);
+    if (!user) throw new DomainError('NOT_FOUND', 'user not found');
+    if (parsed.data === user.displayName) return user.displayName;
+    await this.uow.run(async (tx) => {
+      await this.users.updateDisplayName(tx, userId, parsed.data);
+      await this.actors.renameForUser(tx, userId, parsed.data);
+    });
+    return parsed.data;
   }
 
   /**

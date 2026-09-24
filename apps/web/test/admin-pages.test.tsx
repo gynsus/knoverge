@@ -732,6 +732,22 @@ describe('policy page', () => {
     );
   });
 
+  it('keeps deleting out of reach of an accidental click', async () => {
+    // A destructive control standing beside every row is pressed by accident
+    // eventually. It lives in the menu, and the menu has to be opened.
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/policy.rules': () => json({ rules: [RULE] }) });
+    renderApp('/policy');
+    const user = userEvent.setup();
+    await screen.findByRole('button', { name: 'Trust tier: Trusted' });
+    expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Actions for the rule that applies to Trust tier: Trusted',
+      }),
+    );
+    expect(await screen.findByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+  });
+
   it('edits an existing rule by its id', async () => {
     const calls = mockApi({
       ...SIGNED_IN,
@@ -740,7 +756,9 @@ describe('policy page', () => {
     });
     renderApp('/policy');
     const user = userEvent.setup();
-    await user.click(await screen.findByRole('button', { name: 'Edit' }));
+    // The card itself opens the rule: the whole card is the control, and the
+    // menu beside it is for the things that are not "look at this".
+    await user.click(await screen.findByRole('button', { name: 'Trust tier: Trusted' }));
     await user.click(await screen.findByRole('button', { name: 'Save rule' }));
     await waitFor(() =>
       expect(calls.find((c) => c.url === '/v1/admin/policy.rules.upsert')?.body).toMatchObject({
@@ -1081,6 +1099,34 @@ describe('a checkbox is a checkbox', () => {
     const user = userEvent.setup();
     await user.click(enabled);
     expect(enabled).not.toBeChecked();
+  });
+});
+
+describe('changing your own name', () => {
+  it('changes in place and asks for no password', async () => {
+    // A display name is a label, not a credential. Asking for a secret to
+    // correct a typo in your own name would buy nothing.
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/account/sessions': () => json({ sessions: [] }),
+      'POST /v1/auth/profile': () =>
+        json({ ...ME, user: { ...ME.user, display_name: 'Grigory F.' } }),
+    });
+    renderApp('/settings/account');
+    const user = userEvent.setup();
+    // Named for what it changes: two buttons reading "Change" are the same
+    // word twice to anyone who hears them rather than sees the row.
+    await user.click(await screen.findByRole('button', { name: 'Change name' }));
+    const field = screen.getByLabelText('Your name');
+    expect(screen.queryByLabelText('Your password')).not.toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, 'Grigory F.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/auth/profile')?.body).toEqual({
+        display_name: 'Grigory F.',
+      }),
+    );
   });
 });
 

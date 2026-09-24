@@ -139,6 +139,22 @@ The button that performs the action is not a repetition. "Change password" as a
 card's title and on the button under the form is a heading and a verb, and the
 reader needs both.
 
+## 2h. A frame around a list of frames separates nothing
+
+A card whose contents are already framed objects draws a line that carries no
+meaning: the objects are separated from each other by their own borders, and
+the outer one only makes the page look like a box inside a box. Where a section
+holds framed objects — a list of providers, a grid of workspaces, a queue of
+rules — its heading and intro are plain text on the page, and the objects carry
+the frames.
+
+A card is right where the card *is* the object. One of anything, or a block of
+prose with nothing framed inside it, is a card.
+
+A dashed border means "nothing here yet", and means it in both directions: an
+empty list and a section that exists in the plan and not yet in the product get
+the same treatment, because a reader is asking the same question of both.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

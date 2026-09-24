@@ -80,6 +80,7 @@ beforeAll(async () => {
     sessions: repositories.sessions,
     uow,
     users: repositories.users,
+    actors: repositories.actors,
     passwords: {
       // Deliberately slow, so the read-modify-write window is wide enough to
       // see. The real hash is argon2, which is slower still.

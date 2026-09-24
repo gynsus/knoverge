@@ -282,6 +282,7 @@ describe('bootstrap concurrency', () => {
       uow,
       users: repositories.users,
       sessions: repositories.sessions,
+      actors: repositories.actors,
       passwords,
     });
     const bootstrap = new BootstrapService({
