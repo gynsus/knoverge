@@ -24,6 +24,20 @@ import { RevisionDiff } from './RevisionDiff.tsx';
 import { RelationList } from './RelationList.tsx';
 import { SourceList } from './SourceList.tsx';
 
+/** Which of the three references was copied. */
+type CopyKind = 'link' | 'id' | 'path';
+
+/** How long a tick means "just now" before it becomes part of the menu. */
+const COPY_SHOWS_FOR_MS = 2000;
+
+function CopyIcon({ done }: { done: boolean }) {
+  return done ? (
+    <Check aria-hidden="true" className="size-4" />
+  ) : (
+    <Copy aria-hidden="true" className="size-4" />
+  );
+}
+
 /**
  * One item, read rather than edited.
  *
@@ -57,8 +71,23 @@ export function ItemDetails({
   error: unknown;
 }) {
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  /**
+   * Which of the three copies last succeeded, or `refused` when the browser
+   * would not give up the clipboard.
+   *
+   * One value rather than a flag per item: three ticks that can all be lit at
+   * once say nothing about which one was pressed.
+   */
+  const [copied, setCopied] = useState<CopyKind | 'refused' | null>(null);
   const [confirming, setConfirming] = useState(false);
+
+  const copy = (kind: CopyKind, text: string) => {
+    void copyToClipboard(text).then((ok) => {
+      setCopied(ok ? kind : 'refused');
+      // The tick means "just now". Left lit it becomes part of the menu.
+      setTimeout(() => setCopied(null), COPY_SHOWS_FOR_MS);
+    });
+  };
 
   const revisions = useQuery({
     queryKey: ['knowledge', 'items', item.id, 'revisions'],
@@ -96,16 +125,26 @@ export function ItemDetails({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              {/* Three ways to refer to one item, and they are for three
+                  different readers: a person, an agent, and Git. */}
               <DropdownMenuItem
-                onSelect={() => {
-                  void copyToClipboard(item.markdown_path).then(setCopied);
-                }}
+                onSelect={() =>
+                  // The address this browser is at. A link is only ever as
+                  // good as the address the person following it can reach,
+                  // and this is the one that is known to work for at least
+                  // the person copying it.
+                  copy('link', `${window.location.origin}/knowledge?item=${item.id}`)
+                }
               >
-                {copied ? (
-                  <Check aria-hidden="true" className="size-4" />
-                ) : (
-                  <Copy aria-hidden="true" className="size-4" />
-                )}
+                <CopyIcon done={copied === 'link'} />
+                {t('knowledge.copy_link')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => copy('id', item.id)}>
+                <CopyIcon done={copied === 'id'} />
+                {t('knowledge.copy_id')}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => copy('path', item.markdown_path)}>
+                <CopyIcon done={copied === 'path'} />
                 {t('knowledge.copy_path')}
               </DropdownMenuItem>
               {mayWrite && item.status === 'deleted' && (
@@ -137,6 +176,14 @@ export function ItemDetails({
         </div>
       </div>
 
+      {/* The helper says failure is ordinary — a browser may simply refuse
+          the clipboard outside a secure context — so it is said rather than
+          left as a menu item that appears to do nothing. */}
+      {copied === 'refused' && (
+        <p role="status" className="text-sm text-destructive">
+          {t('knowledge.copy_refused')}
+        </p>
+      )}
       {truncated && <p role="alert">{t('knowledge.truncated')}</p>}
       <ErrorNotice error={error} />
 
@@ -210,6 +257,10 @@ export function ItemDetails({
                   <span>{t('knowledge.no_tags')}</span>
                 )}
               </dd>
+              {/* What an agent calls this item, and what `knowledge_get`
+                  takes. Nothing else on the screen says it. */}
+              <dt>{t('knowledge.identifier')}</dt>
+              <dd className="font-mono text-xs break-all text-foreground">{item.id}</dd>
               <dt>{t('knowledge.file')}</dt>
               <dd className="font-mono text-xs break-all text-foreground">{item.markdown_path}</dd>
             </dl>
