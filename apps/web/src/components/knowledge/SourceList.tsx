@@ -6,7 +6,9 @@ import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { ExternalLink } from '@/components/ui/external-link';
 import { Select } from '@/components/ui/select';
+import { isOpenable } from '@/lib/external-url';
 import { describeSource } from './source-text.ts';
 
 /**
@@ -29,7 +31,13 @@ export function SourceList({ sources }: { sources: readonly FrontmatterSource[] 
             <Badge variant="outline" className="font-normal">
               {t(`knowledge.source_types.${source.type}`)}
             </Badge>
-            {detail ? (
+            {/* A source worth citing is one somebody can go and read, so
+                where it is reachable it is reachable from here. What is not
+                a web address — a repository path, a ticket, a session — is
+                text, which is what it was. */}
+            {isOpenable(source.uri) ? (
+              <ExternalLink href={source.uri}>{source.uri}</ExternalLink>
+            ) : detail ? (
               <span className="min-w-0 break-all">{detail}</span>
             ) : (
               <span className="text-muted-foreground">{t('knowledge.source_unnamed')}</span>

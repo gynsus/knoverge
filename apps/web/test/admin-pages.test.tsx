@@ -1432,9 +1432,45 @@ describe('knowledge page', () => {
     });
     renderApp(`/knowledge?item=${ITEM.id}`);
     const drawer = await screen.findByRole('dialog');
-    expect(await within(drawer).findByText('https://example.com/adr-4')).toBeInTheDocument();
+    // A source worth citing is one somebody can go and read, so it is
+    // reachable from here — in a tab of its own, with no handle on this one.
+    const link = await within(drawer).findByRole('link', {
+      name: /https:\/\/example\.com\/adr-4/,
+    });
+    expect(link).toHaveAttribute('href', 'https://example.com/adr-4');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('rel')).toContain('noopener');
+    // Leaving the application is announced, not only drawn.
+    expect(link.textContent).toContain('Opens in a new tab');
     // The role is what makes a source evidence rather than a link.
     expect(within(drawer).getByText('Supporting')).toBeInTheDocument();
+  });
+
+  it('refuses to make a link out of anything but http', async () => {
+    // These addresses are written by agents. A `javascript:` href is a script
+    // somebody else wrote running on this page, which is the same reason
+    // knowledge is rendered and never becomes HTML.
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({
+          item: {
+            ...DETAIL,
+            sources: [
+              // eslint-disable-next-line no-script-url
+              { type: 'web_url', role: 'primary', uri: 'javascript:alert(1)' },
+              { type: 'file', role: 'primary', uri: 'docs/ARCHITECTURE.md' },
+            ],
+          },
+        }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    await within(drawer).findByText('javascript:alert(1)');
+    // Both are readable, and neither is a link: one is dangerous, and the
+    // other is a path with nothing to open it against.
+    expect(within(drawer).queryByRole('link')).toBeNull();
+    expect(within(drawer).getByText('docs/ARCHITECTURE.md')).toBeInTheDocument();
   });
 
   it('names the items a connection points at, rather than printing ids', async () => {

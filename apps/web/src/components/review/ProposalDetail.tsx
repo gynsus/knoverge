@@ -14,6 +14,7 @@ import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { Markdown } from '../knowledge/Markdown.tsx';
+import { SourceList } from '../knowledge/SourceList.tsx';
 import { Diff, ListDiff } from './Diff.tsx';
 import { RejectDialog } from './RejectDialog.tsx';
 import { contentOf, queueReasons, ruledOutDuplicates, type Content } from './proposal.ts';
@@ -218,27 +219,10 @@ export function ProposalDetail({
           absence is stated rather than left as a section that is not there. */}
       <section className="grid gap-2">
         <h4 className="text-sm font-medium">{t('review.sources')}</h4>
-        {sources.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('review.no_sources')}</p>
-        ) : (
-          <ul className="grid gap-1 text-sm">
-            {sources.map((source, index) => (
-              <li key={index} className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className="font-normal">
-                  {source.type}
-                </Badge>
-                <span className="min-w-0 break-all text-muted-foreground">
-                  {[source.client, source.uri, source.external_key, source.session_id]
-                    .filter(Boolean)
-                    .join(' · ') || t('review.source_unnamed')}
-                </span>
-                <Badge variant="outline" className="font-normal text-muted-foreground">
-                  {t(`knowledge.evidence_roles.${source.role}`, { defaultValue: source.role })}
-                </Badge>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* The same list the item itself shows. A reviewer and a reader are
+            asking the same question of the same field, and two renderings of
+            it are two places for one of them to fall behind. */}
+        <SourceList sources={sources} />
       </section>
 
       <ErrorNotice error={approve.error} />
