@@ -27,8 +27,19 @@ function DialogClose({ ...props }: React.ComponentProps<typeof DialogPrimitive.C
 function DialogContent({
   className,
   children,
+  dismissable = true,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  /**
+   * Whether the corner cross is offered.
+   *
+   * False for the rare dialog somebody must leave deliberately — one showing
+   * a secret that will never be shown again. A cross that is there and
+   * refuses is worse than no cross: it reads as broken rather than as closed
+   * on purpose.
+   */
+  dismissable?: boolean;
+}) {
   const { t } = useTranslation();
   return (
     <DialogPrimitive.Portal>
@@ -44,12 +55,14 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close
-          aria-label={t('common.close')}
-          className="absolute top-3 right-3 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-        >
-          <X className="size-4" aria-hidden="true" />
-        </DialogPrimitive.Close>
+        {dismissable && (
+          <DialogPrimitive.Close
+            aria-label={t('common.close')}
+            className="absolute top-3 right-3 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );

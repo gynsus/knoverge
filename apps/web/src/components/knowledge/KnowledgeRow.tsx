@@ -62,9 +62,15 @@ export function KnowledgeRow({
         if (atCursor) node?.scrollIntoView({ block: 'nearest' });
       }}
       aria-current={atCursor ? 'true' : undefined}
-      className={cn('group relative border-b border-border last:border-0', atCursor && 'bg-accent')}
+      className={cn(
+        'group relative border-b border-border transition-colors last:border-0',
+        // The row is the control — the title stretches a button over all of
+        // it — so the whole row answers the pointer. Without that a list of
+        // fifty gives no sign that any of it can be pressed.
+        atCursor ? 'bg-accent' : 'hover:bg-muted/60',
+      )}
     >
-      <div className="grid gap-1 py-3">
+      <div className="grid gap-1 px-2 py-3">
         <div className="flex items-start justify-between gap-3">
           <button
             type="button"

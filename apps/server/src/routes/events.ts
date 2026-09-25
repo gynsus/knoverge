@@ -78,6 +78,11 @@ export async function eventsList(
     }
   }
 
+  // Whose events. A caller who may only read their own is narrowed to
+  // themselves whatever they asked for, so naming somebody else is not a way
+  // of reading about an actor they cannot see.
+  const actorId = all.allowed ? input.actor_id : actor.context.actorId;
+
   const events = await services.repositories.events.listFeed(workspaceId, {
     afterSequence: input.after_sequence,
     // One more than asked for, so `has_more` is answered by looking rather
@@ -85,7 +90,8 @@ export async function eventsList(
     limit: input.limit + 1,
     ...(input.event_types.length ? { eventTypes: input.event_types } : {}),
     ...(categoryIds.length ? { categoryIds } : {}),
-    ...(all.allowed ? {} : { actorId: actor.context.actorId }),
+    ...(actorId ? { actorId } : {}),
+    ...(input.newest_first ? { newestFirst: true } : {}),
   });
   const page = events.slice(0, input.limit);
   return {

@@ -368,6 +368,39 @@ That is not an optimisation: `EmbeddingProvider` learns its dimension from the
 model's first answer, and a fresh instance per call would report zero for ever,
 which is how a profile fails to be recognised.
 
+## Agents in the browser
+
+`apps/web/src/pages/AgentsPage.tsx` is access management, not a token list. The
+columns are the questions asked of a list of agents: who is this, what may it
+do, what is it, is it working, when did it last do anything.
+
+**Registered and never connected is not the same as working**, and both used to
+read `active`. `components/agents/connection.ts` draws the three states the
+list actually needs, because the question after issuing a credential is whether
+the agent got in.
+
+The interface says **access**, not trust tier. `trusted` is the name of a tier
+and not a promise: it says the workspace policy may let this agent write
+without review, and until a policy rule says so it does not. The hint under the
+control says exactly that, because "trusted" reads as "may do anything".
+
+`components/agents/AgentDetails.tsx` is four tabs — overview, access,
+credentials, activity. Narrowing an agent to certain categories is in the model
+already, since a permission grant names a category and whether it reaches what
+is under it; there is no screen for it, so the access tab says so rather than
+leaving somebody to assume an agent is narrower than it is.
+
+A credential is issued with a name and a lifetime, and the screen that shows
+its token has no corner cross: it is the only copy there will ever be, and a
+cross that refuses reads as broken. It also carries the MCP configuration for
+this installation with the token in it, so registering an agent and connecting
+one are the same minute rather than a trip to the documentation.
+
+The activity tab is the ledger narrowed to one actor, newest first —
+`events_list` takes `actor_id` for a caller holding `events.read_all`, and
+narrows to the caller's own for anybody else, so naming an actor is not a way
+of reading about one you cannot see.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into
