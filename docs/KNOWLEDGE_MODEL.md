@@ -390,7 +390,15 @@ external_system
 other_knowledge_item
 ```
 
-The source record stores identifiers and hashes where possible.
+The source record stores identifiers and hashes where possible, and the
+difference matters: a source with a locator or a hash is something somebody
+else can go and check, and a source with neither is an assertion about where
+something came from. Only the first makes an item `source_backed`.
+
+Naming the agent is not a source. Who wrote an item is already recorded three
+times — on the revision, in the ledger, and in the commit trailers — and
+repeating it under `sources` would add a fourth copy of a fact while answering
+nothing about what the claim rests on.
 
 Sources are stored in PostgreSQL and mirrored into frontmatter. They are attached to the **revision** rather than to the item: which sources were cited is part of what a revision said, so an older revision keeps its own after the item moves on.
 

@@ -145,9 +145,17 @@ describe('the MCP endpoint', () => {
       expect(get.inputSchema.properties).toHaveProperty('item_id');
       // A write tool says so, which is what a client uses to decide whether
       // to ask a person first.
-      expect(
-        tools.find((t) => t.name === 'knowledge_propose_create')!.annotations?.readOnlyHint,
-      ).toBe(false);
+      const propose = tools.find((t) => t.name === 'knowledge_propose_create')!;
+      expect(propose.annotations?.readOnlyHint).toBe(false);
+      // Fields carry their own descriptions, or an agent sees names and types
+      // and nothing about what they are for. Provenance is the one that
+      // suffers: every item seeded into the first real workspace arrived
+      // without a source, because nothing ever asked for one.
+      const sources = (propose.inputSchema.properties as Record<string, { description?: string }>)[
+        'sources'
+      ];
+      expect(sources?.description).toMatch(/source-backed/);
+      expect(propose.description).toMatch(/sources/);
     } finally {
       await client.close();
     }
