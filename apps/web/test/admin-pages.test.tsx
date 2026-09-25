@@ -1562,6 +1562,40 @@ describe('knowledge page', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('offers a reference for each of the three readers of one item', async () => {
+    // A person follows a link, an agent takes the id, Git takes the path.
+    // Only the last of the three used to be offered, and it is the one the
+    // fewest people can use.
+    mockApi(ROUTES);
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await within(drawer).findByRole('button', { name: 'Edit' });
+
+    await user.click(within(drawer).getByRole('button', { name: 'Actions for this item' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Copy a link to it' }));
+    // Read back from the clipboard userEvent installs, rather than from a
+    // stub of our own: `setup()` replaces it, so a stub put there first is
+    // the thing that never gets written to.
+    await waitFor(async () =>
+      expect(await navigator.clipboard.readText()).toContain(`/knowledge?item=${ITEM.id}`),
+    );
+
+    await user.click(within(drawer).getByRole('button', { name: 'Actions for this item' }));
+    await user.click(await screen.findByRole('menuitem', { name: /id an agent uses/ }));
+    await waitFor(async () => expect(await navigator.clipboard.readText()).toBe(ITEM.id));
+
+    await user.click(within(drawer).getByRole('button', { name: 'Actions for this item' }));
+    await user.click(await screen.findByRole('menuitem', { name: /path in Git/ }));
+    await waitFor(async () =>
+      expect(await navigator.clipboard.readText()).toBe(ITEM.markdown_path),
+    );
+
+    // And the id is on the screen, not only on the clipboard: nothing else
+    // said what an agent calls this item.
+    expect(within(drawer).getByText(ITEM.id)).toBeInTheDocument();
+  });
+
   it('shows what a reader needs and not the file path', async () => {
     // The path was the widest thing in every row and the least useful: at
     // seventy items it was most of what the eye had to skip past.

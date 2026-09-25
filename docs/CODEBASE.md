@@ -340,6 +340,14 @@ The open item is in the address. Rule 2's test is whether somebody else may
 need to arrive at the same thing, and "here is what we decided: <link>" is the
 most likely sentence anybody writes about one.
 
+One item has three references, and the menu offers all three because they are
+for three different readers. A **link** is for a person and is what the address
+made possible. The **id** is what an agent calls it and what `knowledge_get`
+takes; it is on screen as well as on the clipboard, because nothing else said
+it. The **path in Git** is for a shell: `git log --follow` on it gives an
+item's whole history across the category moves that rename it, which is rule 1
+holding — the knowledge is readable, and checkable, without the application.
+
 ## Connecting a provider
 
 `apps/web/src/pages/AiSettingsPage.tsx` and `components/settings/
