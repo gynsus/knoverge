@@ -129,12 +129,42 @@ const Instant = z.iso.datetime({ offset: true });
 export const FrontmatterSource = z
   .object({
     type: SourceType,
-    uri: z.string().max(2048).optional(),
-    client: z.string().max(64).optional(),
-    session_id: z.string().max(200).optional(),
-    external_key: z.string().max(512).optional(),
-    content_hash: z.string().max(80).optional(),
-    role: EvidenceRole.default('primary'),
+    uri: z
+      .string()
+      .max(2048)
+      .optional()
+      .describe(
+        'Where to go and read it: a URL, a repository path, a commit. This is what makes a source evidence rather than a note about where something came from.',
+      ),
+    client: z
+      .string()
+      .max(64)
+      .optional()
+      .describe('The client this came through, when it came through one.'),
+    session_id: z
+      .string()
+      .max(200)
+      .optional()
+      .describe(
+        'The conversation or run it came out of. Provenance, not evidence: it is not a locator unless somebody else can open it.',
+      ),
+    external_key: z
+      .string()
+      .max(512)
+      .optional()
+      .describe(
+        'How the system it came from identifies it, when that system is not addressable by URL.',
+      ),
+    content_hash: z
+      .string()
+      .max(80)
+      .optional()
+      .describe(
+        'A fingerprint of the source as it read. It proves the source has not changed since, not that the claim is true.',
+      ),
+    role: EvidenceRole.default('primary').describe(
+      'What this source is to the claim. `contradicting` is a real answer and is worth recording.',
+    ),
   })
   .strict();
 export type FrontmatterSource = z.infer<typeof FrontmatterSource>;
@@ -352,8 +382,13 @@ export const CreateKnowledgeRequest = z.object({
   valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
   observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
   external: FrontmatterExternal.optional(),
-  /** Where the knowledge came from. One with a locator makes it source-backed. */
-  sources: z.array(FrontmatterSource).max(50).default([]),
+  sources: z
+    .array(FrontmatterSource)
+    .max(50)
+    .default([])
+    .describe(
+      'Where this came from: the file, commit, page or item it was read out of. Give at least one with a `uri` or a `content_hash` — that is what makes the item source-backed rather than an assertion. Naming yourself is not a source: who wrote this is already recorded.',
+    ),
   /** How it connects to other items. Replaced whole, like tags. */
   relations: z.array(FrontmatterRelation).max(50).default([]),
   request_id: z.string().max(128).optional(),
@@ -622,7 +657,13 @@ export const UpdateKnowledgeRequest = z.object({
   valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
   valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
   observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
-  sources: z.array(FrontmatterSource).max(50).optional(),
+  sources: z
+    .array(FrontmatterSource)
+    .max(50)
+    .optional()
+    .describe(
+      'Replaces the whole list when given. Where this came from: the file, commit, page or item it was read out of. One with a `uri` or a `content_hash` is what makes the item source-backed.',
+    ),
   relations: z.array(FrontmatterRelation).max(50).optional(),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),

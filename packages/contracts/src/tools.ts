@@ -174,7 +174,7 @@ export const TOOLS: readonly ToolContract[] = [
   {
     name: 'knowledge_propose_create',
     description:
-      'Propose recording something the workspace does not know yet. Answers with a pending proposal unless a policy rule allows the write directly, and refuses when the workspace may already hold it.',
+      'Propose recording something the workspace does not know yet. Answers with a pending proposal unless a policy rule allows the write directly, and refuses when the workspace may already hold it. Cite what it rests on in `sources`: a reviewer judges a proposal on what somebody else could go and check, and an item with nothing behind it is recorded as unsourced.',
     input: ProposeCreateRequest,
     output: ProposalResult,
     readOnly: false,
@@ -182,7 +182,7 @@ export const TOOLS: readonly ToolContract[] = [
   {
     name: 'knowledge_propose_update',
     description:
-      'Propose changing an item. Carries the revision and content hash the caller read; a mismatch is a conflict, never an overwrite.',
+      'Propose changing an item. Carries the revision and content hash the caller read; a mismatch is a conflict, never an overwrite. `sources` replaces the whole list, so send what the item rests on after the change, not only what is new.',
     input: ProposeUpdateRequest,
     output: ProposalResult,
     readOnly: false,
