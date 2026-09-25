@@ -116,6 +116,7 @@
     "loading": "Loading...",
     "more": "More",
     "next": "Next",
+    "opens_elsewhere": "Opens in a new tab",
     "remove_entry": "Remove {{entry}}",
     "working": "Working..."
   },
@@ -465,7 +466,6 @@
     "no_category": "Nowhere — no category was chosen",
     "no_category_short": "No category",
     "no_content": "This proposal carries no text of its own.",
-    "no_sources": "None given. Nothing here says where this came from.",
     "note": "Note",
     "note_hint": "Why you decided as you did. Kept with the proposal.",
     "postpone": "Postpone",
@@ -535,7 +535,6 @@
     "sort": "Order",
     "sort_newest": "Newest first",
     "sort_oldest": "Longest waiting first",
-    "source_unnamed": "Unnamed",
     "sources": "Sources",
     "statuses": {
       "pending": "Waiting",

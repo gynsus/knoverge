@@ -214,6 +214,28 @@ a drawer and instantly shutting it again is that bug.
 A shortcut nobody is told about is a shortcut nobody uses, so the list of them
 is on the screen behind a control, not only in a document.
 
+## 2k. An address somebody could open is a link, and only if it is safe to be one
+
+Where a screen shows something a browser can fetch — a source, a document, a
+page — it is a link. A citation nobody can follow is a citation that has to be
+selected, copied and pasted to be worth anything, and the whole point of
+recording where knowledge came from is that somebody can go and read it.
+
+`http` and `https` and nothing else. These addresses are written by agents, and
+a `javascript:` or `data:` href is a script somebody else wrote running on this
+page — the same reason knowledge is rendered and never becomes HTML. Anything
+that is not one of the two stays text, which is still readable and still
+copyable: a repository path and a ticket number are not less useful for failing
+to be links, they were never links.
+
+`target="_blank"` always comes with `rel="noopener noreferrer nofollow"`.
+Without `noopener` the page that opens gets a handle on this one and can
+navigate it; `nofollow` because a knowledge base is not a place to lend
+authority from.
+
+Leaving the application is said, not only drawn. An icon announces it to people
+who can see it, and the text beside it announces it to everybody else.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a
