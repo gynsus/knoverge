@@ -257,18 +257,95 @@ describe('agents page', () => {
     renderApp('/agents');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
-    await user.click(await screen.findByRole('button', { name: 'Issue token' }));
+    await user.click(await screen.findByRole('tab', { name: /Credentials/ }));
+    await user.click(screen.getByRole('button', { name: 'Issue token' }));
+    // Asked what to call it and how long it lives, rather than issued blind.
+    const form = await screen.findByRole('dialog');
+    await user.type(within(form).getByLabelText('Name'), 'Claude Code — MacBook');
+    await user.click(within(form).getByRole('button', { name: 'Issue token' }));
 
-    // The instruction is announced; the secret itself is deliberately outside
-    // the live region, so a screen reader does not read the token aloud.
-    const announced = await screen.findByRole('status');
-    expect(announced).toHaveTextContent('shown once');
-    expect(within(announced).queryByText(token)).not.toBeInTheDocument();
-    expect(screen.getByText(token)).toBeInTheDocument();
+    // The instruction is the dialog's own description, so opening it reads
+    // the instruction out; the secret sits outside, so it is not read aloud.
+    const shown = await screen.findByRole('dialog');
+    expect(shown).toHaveAccessibleDescription(/cannot be shown again/);
+    expect(await within(shown).findByText(token)).toBeInTheDocument();
+    // And the configuration a client needs, with the token already in it.
+    expect(shown.textContent).toContain('"mcpServers"');
+    expect(shown.textContent).toContain('/mcp');
 
-    expect(screen.getByText('01J8Z3M4Q9V0')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Hide token' }));
+    // The only copy there will ever be, so leaving is deliberate.
+    const close = within(shown).getByRole('button', { name: 'Close' });
+    expect(close).toBeDisabled();
+    await user.click(within(shown).getByRole('checkbox'));
+    expect(close).toBeEnabled();
+    await user.click(close);
+
+    // The listing knows the prefix and never the secret.
+    expect(await screen.findByText('01J8Z3M4Q9V0')).toBeInTheDocument();
     expect(screen.queryByText(token)).not.toBeInTheDocument();
+  });
+
+  it('sends the label and the expiry it was given', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/agents.list': () => json({ agents: [AGENT] }),
+      [`GET /v1/admin/agents.credentials?agent_id=${AGENT.id}`]: () => json({ credentials: [] }),
+      'POST /v1/admin/agents.credentials.issue': () =>
+        json({
+          credential: {
+            id: 'cred_1',
+            agent_id: AGENT.id,
+            token_prefix: '01J8Z3M4Q9V0',
+            label: 'CI runner',
+            created_at: '2026-09-19T00:00:00.000Z',
+            expires_at: null,
+            revoked_at: null,
+            last_used_at: null,
+          },
+          token: 'knv_x',
+        }),
+    });
+    renderApp('/agents');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
+    await user.click(await screen.findByRole('tab', { name: /Credentials/ }));
+    await user.click(screen.getByRole('button', { name: 'Issue token' }));
+    const form = await screen.findByRole('dialog');
+    await user.type(within(form).getByLabelText('Name'), 'CI runner');
+    await user.selectOptions(within(form).getByLabelText('Expires'), '90');
+    await user.click(within(form).getByRole('button', { name: 'Issue token' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.url === '/v1/admin/agents.credentials.issue')?.body).toMatchObject(
+        { label: 'CI runner', expires_in_days: 90 },
+      ),
+    );
+  });
+
+  it('tells a registered agent apart from a working one', async () => {
+    // "Registered and never connected" is not "working", and both used to be
+    // `active`. After issuing a token the question is whether the agent got
+    // in, and only this answers it.
+    const working = {
+      ...AGENT,
+      id: 'ag_01J8Z3M4Q9V0X7K2B5N6P8R1T5',
+      name: 'Seeder',
+      trust_tier: 'trusted',
+      last_seen_at: '2026-09-19T00:00:00.000Z',
+      active_credentials: 1,
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/agents.list': () => json({ agents: [AGENT, working] }),
+    });
+    renderApp('/agents');
+    const user = userEvent.setup();
+    const rows = await screen.findByRole('table');
+    expect(within(rows).getByText('Never connected')).toBeInTheDocument();
+    expect(within(rows).getByText('Connected')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Filter by state'), 'never');
+    expect(screen.queryByRole('button', { name: 'Seeder' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Claude Code' })).toBeInTheDocument();
   });
 
   it('reports a refused request through the catalogue', async () => {
@@ -1078,6 +1155,7 @@ describe('managing an agent', () => {
     renderApp('/agents');
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
+    await user.click(await screen.findByRole('tab', { name: 'Access' }));
     // A disabled agent could never be brought back from the browser.
     await user.click(screen.getByRole('button', { name: 'Enable agent' }));
     await waitFor(() =>
@@ -1457,7 +1535,6 @@ describe('knowledge page', () => {
           item: {
             ...DETAIL,
             sources: [
-              // eslint-disable-next-line no-script-url
               { type: 'web_url', role: 'primary', uri: 'javascript:alert(1)' },
               { type: 'file', role: 'primary', uri: 'docs/ARCHITECTURE.md' },
             ],

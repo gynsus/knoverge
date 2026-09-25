@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ActorId } from './ids.ts';
 import { CategoryPath } from './taxonomy.ts';
 
 /**
@@ -91,9 +92,21 @@ export const EventsListInput = z.object({
   after_sequence: z.number().int().nonnegative().default(0),
   event_types: z.array(EventType).max(40).default([]),
   category_paths: z.array(CategoryPath).max(20).default([]),
+  /**
+   * One actor's events, for the question "what has this agent been doing".
+   *
+   * Needs `events.read_all`: a caller who may only read their own is already
+   * narrowed to themselves, and letting them name somebody else would be a
+   * way of asking about an actor they cannot see.
+   */
+  actor_id: ActorId.optional(),
+  /** Newest first, for a caller that wants the last few rather than the first page. */
+  newest_first: z.boolean().default(false),
   limit: z.number().int().min(1).max(500).default(200),
 });
 export type EventsListInput = z.infer<typeof EventsListInput>;
+/** The query as a caller writes it, before the schema fills in its defaults. */
+export type EventsListQuery = z.input<typeof EventsListInput>;
 
 /**
  * One event as the feed shows it.

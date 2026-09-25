@@ -21,6 +21,8 @@ import type {
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
   CredentialsResponse,
+  EventsListQuery,
+  EventsListResponse,
   DeleteKnowledgeRequest,
   IssueCredentialRequest,
   IssueCredentialResponse,
@@ -70,6 +72,10 @@ export const adminApi = {
     unassign: (body: UnassignAiModelRequest) =>
       apiPost<AiSettingsResponse>('/v1/admin/ai.unassign', body),
     test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
+  },
+  events: {
+    // A tool, so it is `POST /v1/<tool_name>` like every other one (rule 11).
+    list: (input: EventsListQuery) => apiPost<EventsListResponse>('/v1/events_list', input),
   },
   agents: {
     list: (signal?: AbortSignal) => apiGet<AgentsResponse>('/v1/admin/agents.list', signal),
