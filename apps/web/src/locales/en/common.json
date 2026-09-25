@@ -47,7 +47,6 @@
     "filter_access": "Filter by access",
     "filter_client": "Filter by client",
     "filter_status": "Filter by state",
-    "hide_token": "Hide token",
     "intro": "The AI agents allowed into this workspace. Manage what they may do, the credentials they connect with, and what they have been doing.",
     "issue_intro": "The token is shown once, when it is made, and stored only as a hash.",
     "issue_title": "Issue credentials",
@@ -61,7 +60,6 @@
       "365": "In a year",
       "never": "Never"
     },
-    "manage": "Manage",
     "name": "Name",
     "never_connected_hint": "This agent has never connected. Issue a credential and give the configuration to the client.",
     "never_seen": "Never",
@@ -82,16 +80,11 @@
       "expired": "Expired"
     },
     "status": "Status",
-    "statuses": {
-      "active": "Active",
-      "disabled": "Disabled"
-    },
     "stopping": "Stopping this agent",
     "tab_access": "Access",
     "tab_activity": "Activity",
     "tab_credentials": "Credentials",
     "tab_overview": "Overview",
-    "tier_change_hint": "Changes what a new or existing token may do.",
     "tier_hints": {
       "read_only": "Reads and searches. Proposes nothing.",
       "propose": "Reads, and proposes changes. Every write waits for a reviewer.",
@@ -307,7 +300,6 @@
     "found_one": "{{count}} match",
     "found_other": "{{count}} matches",
     "hide_changes": "Hide what changed",
-    "history": "History",
     "identifier": "Id",
     "intro": "What this workspace knows. Every change is a revision and a commit.",
     "item_title": "Title",
@@ -408,9 +400,6 @@
     "sourced": "Has sources",
     "sources": "Sources",
     "sources_hint": "Where this came from. A claim nothing backs is a claim somebody has to take on trust.",
-    "state_agent_reviewed": "Reviewed by an agent",
-    "state_human_reviewed": "Reviewed by a person",
-    "state_unreviewed": "Not reviewed",
     "statuses": {
       "draft": "Draft",
       "active": "Active",

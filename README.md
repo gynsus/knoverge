@@ -10,15 +10,21 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is under development and already runs. As of Milestone 4:
+Knoverge is under development and already runs. Milestones 0 to 6 are
+complete, and Milestone 7 is partly done:
 
-- **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, diff, logical delete and restore, and supersession as one atomic operation.
-- **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-one tools at `POST /v1/<tool_name>`, from one contract. Per-credential rate limits, request size and concurrency limits.
-- **Review** — agents propose, policy decides, and a person approves, edits and approves, rejects or withdraws, with a diff of what would change. Nothing an agent writes becomes canonical without a rule that says so.
-- **Finding things** — lexical search with per-language stemming, a compact index for reconciliation, a briefing that fits a budget, an audit feed and a change feed.
+- **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
+- **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-six tools at `POST /v1/<tool_name>`, from one contract. Per-credential rate limits, request size and concurrency limits.
+- **Review** — agents propose, policy decides, and a person approves, edits and approves, rejects or withdraws. The review screen is a queue: it says why each proposal is waiting, what it would change against what the item says now, and what it rests on. Nothing an agent writes becomes canonical without a rule that says so.
+- **Reconciliation** — a connecting agent finds out what the workspace already knows before it writes: a session, candidates matched by hash, external key and then meaning, and a run a reviewer can read as a run.
+- **Finding things** — hybrid search over a chunked index: language-aware full text, trigrams, and optional embeddings fused by reciprocal rank. A compact index for reconciliation, a briefing that fits a budget, an audit feed and a change feed.
+- **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers only the models that can embed, and reports what one returns before it is chosen. Everything above works with none configured.
 - **Operating it** — one container plus PostgreSQL, a `knoverge` command line, backups with a restore drill, and recovery for a write that reached Git and no further.
 
-Not yet: the reconciliation protocol (Milestone 5), semantic search (6), summaries and digests with an LLM (8), OAuth for hosted connectors (10), attachments and media (11-12).
+Not yet: contradiction handling and the temporal questions of Milestone 7 (the
+fields are stored, nothing sets `disputed` and nothing queries validity),
+summaries and digests with an LLM (8), OAuth for hosted connectors (10),
+attachments and media (11-12).
 
 ## Trying it
 
