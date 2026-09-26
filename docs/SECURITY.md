@@ -360,6 +360,10 @@ An agent cannot expand its own ACL by writing an instruction that says it may do
 
 Briefings, search results and change feeds are wrapped in a clearly delimited data envelope; MCP prompts remind agents that item content is untrusted input.
 
+The same boundary holds when the server itself asks a model something. Knowledge goes to a generation provider as the user message and the product's instruction as the system message, never concatenated, and each source is titled and fenced so one cannot run into the next. A passage that says "ignore your instructions" then says it in the voice of somebody being quoted rather than in the voice of the instructions.
+
+Nothing a model writes is ever committed by the call that produced it. A draft comes back to a person, who reads it and saves it through the ordinary write, where provenance, review and Git already apply. A path that generated knowledge and committed it in one step would be a way for a model — and for whatever it read — to put words in the ledger that nobody read.
+
 ## 11. Audit
 
 All material writes are recorded in the keyed hash-chained event ledger (ADR 0007).

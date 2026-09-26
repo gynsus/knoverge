@@ -1289,6 +1289,18 @@ describe('summaries', () => {
     expect(demoted.stale).toBe(false);
   });
 
+  it('says what to do about drafting one when no model is configured', async () => {
+    // Nothing configured is the ordinary state of this product (rule 9), so this
+    // is not an internal error and the answer says what the options are.
+    const source = await fact('Something worth summarising');
+    const res = await admin.post('/v1/admin/knowledge.draft_summary', {
+      item_ids: [source.id],
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    expect(res.json().message).toMatch(/no model is configured/);
+  });
+
   it('refuses a source the workspace does not have', async () => {
     const res = await admin.post('/v1/admin/knowledge.create', {
       title: 'Points at nothing',

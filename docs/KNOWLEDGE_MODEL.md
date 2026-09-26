@@ -437,6 +437,11 @@ marks a summary stale and none that clears it: writing the summary again, naming
 what is current, is the only statement there is — and it is the honest one,
 because it means somebody read them.
 
+A summary may be drafted by a model and is never written by one. The draft comes
+back to a person, who reads it and saves it through the ordinary write — where
+provenance, review and Git already apply. A summary written by hand is the same
+item by the same route, and works with no provider configured at all (rule 9).
+
 A summary must never be the only surviving representation of source knowledge.
 
 ## 13. Structure returned to agents

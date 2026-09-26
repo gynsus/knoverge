@@ -1,6 +1,8 @@
 import {
   CreateKnowledgeRequest,
   DeleteKnowledgeRequest,
+  DraftSummaryRequest,
+  DraftSummaryResponse,
   KnowledgeDiffInput,
   KnowledgeDiffResponse,
   KnowledgeItemId,
@@ -182,6 +184,32 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
   );
 
   r.post(
+    '/v1/admin/knowledge.draft_summary',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: DraftSummaryRequest, response: { 200: DraftSummaryResponse } },
+    },
+    async (request) => {
+      // `knowledge.write`, because the only thing worth doing with a draft is
+      // saving it, and offering one to somebody who cannot save is a dead end.
+      // Not a tool: an agent has its own model, and rule 5 says an agent's
+      // contribution arrives as a proposal rather than through the server's.
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      assertHuman(actor.context.actorType);
+      const draft = await services.summaryDrafter.draft(
+        actor.context.workspaceId,
+        request.body.item_ids,
+      );
+      return {
+        body: draft.body,
+        summary_of: draft.summaryOf,
+        model: draft.model,
+        truncated: draft.truncated,
+      };
+    },
+  );
+
+  r.post(
     '/v1/admin/knowledge.update',
     {
       onRequest: csrfUnlessBearer(app),
@@ -273,6 +301,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
                 observedAt: body.new_item.observed_at,
                 relations: body.new_item.relations,
                 sources: body.new_item.sources,
+                summaryOf: body.new_item.summary_of,
                 external: body.new_item.external,
               },
             }

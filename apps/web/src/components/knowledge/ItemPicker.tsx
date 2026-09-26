@@ -63,8 +63,11 @@ export function ItemPicker({
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            aria-label={t('knowledge.search')}
-            placeholder={t('knowledge.search')}
+            // Its own label, not the list's: both search boxes are on the
+            // screen at once, and a reader told "Search knowledge" twice has
+            // been told nothing (WEB_UI.md rule 2g).
+            aria-label={t('knowledge.pick_search')}
+            placeholder={t('knowledge.pick_search')}
             className="border-0 pl-9 shadow-none focus-visible:outline-none"
           />
         </div>

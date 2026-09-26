@@ -28,6 +28,14 @@ export interface Draft {
   validUntil: string;
   /** When it was seen to be true, which is not when it was written down. */
   observedAt: string;
+  /**
+   * Only for a summary: `<item>@<revision>` for each source.
+   *
+   * The refs, not the item ids, because the revision is the part that matters
+   * and a picker only knows the item. Choosing a source therefore reads which
+   * revision it is at now (ADR 0024).
+   */
+  summaryOf: string[];
 }
 
 export const emptyDraft: Draft = {
@@ -41,6 +49,7 @@ export const emptyDraft: Draft = {
   validFrom: '',
   validUntil: '',
   observedAt: '',
+  summaryOf: [],
 };
 
 /**
@@ -66,6 +75,7 @@ export const draftOf = (item: KnowledgeItemDetail): Draft => ({
   validFrom: asDateInput(item.valid_from),
   validUntil: asDateInput(item.valid_until),
   observedAt: asDateInput(item.observed_at),
+  summaryOf: [...item.summary_of],
 });
 
 /** Whether anything in the form differs from the item it started at. */
@@ -82,4 +92,5 @@ export const changed = (draft: Draft, from: Draft): boolean =>
   // field-by-field comparison here would be a second definition of what a
   // source is, drifting from the first one.
   JSON.stringify(draft.sources) !== JSON.stringify(from.sources) ||
-  JSON.stringify(draft.relations) !== JSON.stringify(from.relations);
+  JSON.stringify(draft.relations) !== JSON.stringify(from.relations) ||
+  JSON.stringify(draft.summaryOf) !== JSON.stringify(from.summaryOf);

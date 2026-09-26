@@ -167,6 +167,7 @@ POST /v1/admin/knowledge.update             requires base_revision_id and base_c
 POST /v1/admin/knowledge.delete             logical: the file leaves the tree, the history keeps it
 POST /v1/admin/knowledge.restore            brings a deleted item back from its last revision
 POST /v1/admin/knowledge.supersede          one commit, two revisions: the old item stops being
+POST /v1/admin/knowledge.draft_summary      drafts the text of a summary with a model; writes nothing
                                             current, the new one says what it replaced; the
                                             replacement is written now (new_item) or is one the
                                             workspace already holds (existing_item)

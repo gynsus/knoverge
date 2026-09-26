@@ -20,6 +20,8 @@ import type {
   CreateAgentRequest,
   CreateCategoryRequest,
   CreateKnowledgeRequest,
+  DraftSummaryRequest,
+  DraftSummaryResponse,
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
   CredentialsResponse,
@@ -156,6 +158,8 @@ export const adminApi = {
      * Narrowing here rather than in the browser because the list is paged, and
      * filtering what happens to be loaded answers a question nobody asked.
      */
+    draftSummary: (body: DraftSummaryRequest) =>
+      apiPost<DraftSummaryResponse>('/v1/admin/knowledge.draft_summary', body),
     list: (
       filters: {
         cursor?: string | undefined;
