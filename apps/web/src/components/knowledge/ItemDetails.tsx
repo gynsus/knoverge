@@ -21,7 +21,7 @@ import { ErrorNotice } from '../ErrorNotice.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Markdown } from './Markdown.tsx';
 import { RevisionDiff } from './RevisionDiff.tsx';
-import { RelationList } from './RelationList.tsx';
+import { DisputedBy, RelationList } from './RelationList.tsx';
 import { SourceList } from './SourceList.tsx';
 
 /** Which of the three references was copied. */
@@ -221,9 +221,9 @@ export function ItemDetails({
           </TabsTrigger>
           <TabsTrigger value="relations">
             {t('knowledge.tab_relations')}
-            {item.relations.length > 0 && (
+            {item.relations.length + item.disputed_by.length > 0 && (
               <span className="ml-1.5 font-mono text-xs text-muted-foreground">
-                {item.relations.length}
+                {item.relations.length + item.disputed_by.length}
               </span>
             )}
           </TabsTrigger>
@@ -282,7 +282,10 @@ export function ItemDetails({
         </TabsContent>
 
         <TabsContent value="relations">
-          <RelationList relations={item.relations} onOpen={onOpenItem} />
+          <div className="grid gap-3">
+            <DisputedBy itemIds={item.disputed_by} onOpen={onOpenItem} />
+            <RelationList relations={item.relations} onOpen={onOpenItem} />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

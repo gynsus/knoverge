@@ -774,6 +774,262 @@ describe('sources and relations', () => {
   });
 });
 
+describe('contradictions', () => {
+  /** An item, since every one of these needs two or three. */
+  async function item(title: string, extra: Record<string, unknown> = {}) {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: `${title}.\n`,
+      type: 'fact',
+      ...extra,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  /** The item as it is now, which is the only way to see a verdict move. */
+  async function reread(id: string) {
+    const res = await admin.get(`/v1/knowledge.get?item_id=${id}`);
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  function fileOf(workspaceId: string, path: string) {
+    return readFile(join(dataDir, 'repositories', workspaceId, path), 'utf8');
+  }
+
+  it('marks both items, in one commit, when one reports a contradiction', async () => {
+    const held = await item('Deploys happen on Thursdays');
+    const reporter = await item('Deploys happen on Tuesdays', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+
+    // The reporter is disputed as well. Reporting a disagreement is not a way
+    // to put somebody else's claim in doubt while keeping your own clean.
+    expect(reporter.disputed).toBe(true);
+    expect(reporter.disputed_by).toEqual([]);
+
+    // And the other end, which holds no relation of its own, knows who.
+    const marked = await reread(held.id);
+    expect(marked.disputed).toBe(true);
+    expect(marked.disputed_by).toEqual([reporter.id]);
+    // A new revision, because its file changed (rule 1).
+    expect(marked.revision_number).toBe(held.revision_number + 1);
+
+    // Both files say so, so the repository answers without the application.
+    expect(await fileOf(reporter.workspace_id, reporter.markdown_path)).toContain('disputed: true');
+    const other = await fileOf(marked.workspace_id, marked.markdown_path);
+    expect(other).toContain('disputed: true');
+    expect(other).toContain(`disputed_by:\n  - ${reporter.id}`);
+
+    // One commit for both, carrying a change trailer per revision, exactly as
+    // a supersession does.
+    const repository = join(dataDir, 'repositories', reporter.workspace_id);
+    const log = await gitIn(repository, ['log', '-1', '--format=%s%n%b', '--name-only']);
+    expect(log).toContain(`Knoverge-Change: ${reporter.id}@${reporter.current_revision_id} create`);
+    expect(log).toContain(`Knoverge-Change: ${marked.id}@${marked.current_revision_id} metadata`);
+    expect(log).toContain(marked.markdown_path);
+  });
+
+  it('clears both when the contradiction is withdrawn', async () => {
+    const held = await item('Retention is thirty days');
+    let reporter = await item('Retention is ninety days', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    expect((await reread(held.id)).disputed).toBe(true);
+
+    reporter = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: reporter.id,
+          base_revision_id: reporter.current_revision_id,
+          base_content_hash: reporter.content_hash,
+          relations: [],
+        })
+      ).json(),
+    ).item;
+    expect(reporter.disputed).toBe(false);
+
+    const cleared = await reread(held.id);
+    expect(cleared.disputed).toBe(false);
+    expect(cleared.disputed_by).toEqual([]);
+    // Absent rather than an empty list: nobody disputes it is one statement.
+    expect(await fileOf(cleared.workspace_id, cleared.markdown_path)).not.toContain('disputed_by');
+  });
+
+  it('ends the dispute when the contradicted item is superseded', async () => {
+    const held = await item('The office is in Brisbane');
+    const reporter = await item('The office is in Sydney', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    expect(reporter.disputed).toBe(true);
+
+    // Re-read: being contradicted gave it a revision, and rule 6 wants the one
+    // the caller actually holds.
+    const current = await reread(held.id);
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: held.id,
+      old_base_revision_id: current.current_revision_id,
+      old_base_content_hash: current.content_hash,
+      new_item: {
+        title: 'The office moved to Sydney',
+        body: 'It is in Sydney now.\n',
+        type: 'fact',
+      },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    // Nothing was said about the reporter, and it stopped being disputed:
+    // there is no longer an active claim on the other side of it.
+    const after = await reread(reporter.id);
+    expect(after.disputed).toBe(false);
+    expect(await fileOf(after.workspace_id, after.markdown_path)).toContain('disputed: false');
+  });
+
+  it('hands a dispute from the item it supersedes to the one that replaces it', async () => {
+    // The case that needs both changed items weighed at once: the old one
+    // leaves the active set while the new one arrives contradicting the same
+    // third item, so the third item gets one revision and stays disputed.
+    const held = await item('Charges are billed in arrears');
+    const first = await item('Charges are billed up front', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    const marked = await reread(held.id);
+    expect(marked.disputed_by).toEqual([first.id]);
+
+    const res = await admin.post('/v1/admin/knowledge.supersede', {
+      old_item_id: first.id,
+      old_base_revision_id: first.current_revision_id,
+      old_base_content_hash: first.content_hash,
+      new_item: {
+        title: 'Charges are billed on the tenth',
+        body: 'They go out on the tenth.\n',
+        type: 'fact',
+        relations: [{ type: 'contradicts', target: held.id }],
+      },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const replacement = SupersedeResponse.parse(res.json()).item;
+
+    const after = await reread(held.id);
+    expect(after.disputed).toBe(true);
+    // The new reporter, not the old one, and not both: the superseded item is
+    // no longer making a claim.
+    expect(after.disputed_by).toEqual([replacement.id]);
+    // One revision from the supersession, not one per changed item.
+    expect(after.revision_number).toBe(marked.revision_number + 1);
+    expect((await reread(first.id)).disputed).toBe(false);
+  });
+
+  it('is no dispute when the two claims are given different periods', async () => {
+    // The third resolution KNOWLEDGE_LIFECYCLE.md section 6 names: accept both
+    // and say when each one held. Two claims that were never true at the same
+    // instant do not disagree.
+    const held = await item('The rate is five per cent', {
+      valid_until: '2026-06-01T00:00:00Z',
+    });
+    const reporter = await item('The rate is seven per cent', {
+      valid_from: '2026-06-01T00:00:00Z',
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    expect(reporter.disputed).toBe(false);
+    const other = await reread(held.id);
+    expect(other.disputed).toBe(false);
+    // And the relation is still on record: they do disagree, in the sense that
+    // one replaced the other's answer.
+    expect(reporter.relations).toEqual([{ type: 'contradicts', target: held.id }]);
+    // Nothing changed on the other item, so it got no revision for nothing.
+    expect(other.revision_number).toBe(held.revision_number);
+  });
+
+  it('lets a window that opens later reopen a dispute', async () => {
+    const held = await item('Support closes at five', {
+      valid_until: '2026-06-01T00:00:00Z',
+    });
+    const reporter = await item('Support closes at seven', {
+      valid_from: '2026-06-01T00:00:00Z',
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    expect(reporter.disputed).toBe(false);
+
+    // Widening the reporter's period back over the other one's makes the
+    // disagreement live again, without anybody touching a flag.
+    const widened = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: reporter.id,
+          base_revision_id: reporter.current_revision_id,
+          base_content_hash: reporter.content_hash,
+          valid_from: null,
+        })
+      ).json(),
+    ).item;
+    expect(widened.disputed).toBe(true);
+    expect((await reread(held.id)).disputed_by).toEqual([reporter.id]);
+  });
+
+  it('ends the dispute on delete and brings it back on restore', async () => {
+    const held = await item('Invoices are monthly');
+    const reporter = await item('Invoices are quarterly', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    expect((await reread(held.id)).disputed).toBe(true);
+
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.delete', {
+          item_id: reporter.id,
+          base_revision_id: reporter.current_revision_id,
+          base_content_hash: reporter.content_hash,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const quiet = await reread(held.id);
+    expect(quiet.disputed).toBe(false);
+    expect(quiet.disputed_by).toEqual([]);
+
+    expect(
+      (await admin.post('/v1/admin/knowledge.restore', { item_id: reporter.id })).statusCode,
+    ).toBe(200);
+    // The relation was kept through the delete, so the disagreement is back
+    // rather than quietly lost.
+    const loud = await reread(held.id);
+    expect(loud.disputed).toBe(true);
+    expect(loud.disputed_by).toEqual([reporter.id]);
+    expect((await reread(reporter.id)).disputed).toBe(true);
+  });
+
+  it('names every item that disputes one, sorted', async () => {
+    const held = await item('We use one queue');
+    const first = await item('We use two queues', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    const second = await item('We use three queues', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    const marked = await reread(held.id);
+    expect(marked.disputed_by).toEqual([first.id, second.id].sort());
+  });
+
+  it('shows the pile of disputed items on its own', async () => {
+    const held = await item('Logs are kept for a week');
+    await item('Logs are kept for a year', {
+      relations: [{ type: 'contradicts', target: held.id }],
+    });
+    const res = await admin.get('/v1/knowledge.list?disputed=true&limit=100');
+    expect(res.statusCode, res.body).toBe(200);
+    const ids = KnowledgeListResponse.parse(res.json()).items.map((i) => i.id);
+    expect(ids).toContain(held.id);
+
+    // And the count over the pile is the size of the list it opens, which is
+    // the whole point of offering a number.
+    const counts = KnowledgeCountsResponse.parse(
+      (await admin.get('/v1/knowledge.counts')).json(),
+    ).counts;
+    expect(counts.disputed).toBe(ids.length);
+  });
+});
+
 describe('comparing two revisions', () => {
   it('shows the text that changed and the fields that changed', async () => {
     const item = KnowledgeResponse.parse(

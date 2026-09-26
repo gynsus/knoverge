@@ -107,6 +107,8 @@ export interface KnowledgePiles {
   unreviewed: number;
   /** Nothing says where it came from. */
   unsourced: number;
+  /** A live contradiction touches it (ADR 0022). */
+  disputed: number;
 }
 
 export interface KnowledgeRepository {

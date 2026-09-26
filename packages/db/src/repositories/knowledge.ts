@@ -260,8 +260,8 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
     },
 
     async pileSizes(workspaceId) {
-      // One query, three numbers. Three queries would be three scans of the
-      // same rows to draw one row of buttons.
+      // One query, four numbers. Four queries would be four scans of the same
+      // rows to draw one row of buttons.
       const [row] = await db
         .select({
           total: count(),
@@ -271,12 +271,15 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
           unsourced: sql<number>`count(*) filter (
             where ${knowledgeItems.evidenceState} = 'none'
           )::int`,
+          disputed: sql<number>`count(*) filter (
+            where ${knowledgeItems.disputed}
+          )::int`,
         })
         .from(knowledgeItems)
         .where(
           and(eq(knowledgeItems.workspaceId, workspaceId), eq(knowledgeItems.status, 'active')),
         );
-      return row ?? { total: 0, unreviewed: 0, unsourced: 0 };
+      return row ?? { total: 0, unreviewed: 0, unsourced: 0, disputed: 0 };
     },
 
     async titlesOf(workspaceId, itemIds) {
