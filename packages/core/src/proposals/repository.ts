@@ -86,4 +86,11 @@ export interface ProposalRepository {
    * what kind of change, when, and what was decided is the review trail.
    */
   redactResolvedBefore(tx: Tx, before: Date): Promise<number>;
+  /**
+   * How many proposals, at any status, name this category as their target.
+   *
+   * Asked before a category is deleted. The foreign key cascades, so without
+   * this the database would remove them without a word (ADR 0025).
+   */
+  countForCategory(workspaceId: WorkspaceId, categoryId: CategoryId): Promise<number>;
 }

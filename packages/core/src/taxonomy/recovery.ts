@@ -21,7 +21,8 @@ import type {
 import type { TaxonomyChangeKind } from './service.ts';
 
 /** `Knoverge-Category: cat_... <kind>` */
-const CATEGORY = /^(cat_[0-9A-HJKMNP-TV-Z]{26})\s+(create|update|move|archive|restore|merge)$/;
+const CATEGORY =
+  /^(cat_[0-9A-HJKMNP-TV-Z]{26})\s+(create|update|move|archive|restore|merge|delete)$/;
 
 /** One category as `taxonomy.yaml` carries it. */
 export interface TaxonomyFileCategory {
@@ -119,6 +120,12 @@ export class TaxonomyRecovery {
     const path = operation.objectIds['path'];
     if (typeof path !== 'string') return false;
     const entry = parsed.categories.find((c) => c.path === path);
+    if (kind === 'delete') {
+      // The one change whose evidence is an absence: the file must *not* have
+      // the path, and finding it there means this is not that commit.
+      if (entry) return false;
+      return this.completeDelete(operation, categoryId, path, version, commitHash);
+    }
     // Archive and restore leave the path alone; create, update and move put
     // the category at the path the operation recorded. Either way the file
     // must have it, or the commit is not the one this operation made.
@@ -231,6 +238,43 @@ export class TaxonomyRecovery {
     if (!intoId) return null;
     const target = await this.o.categories.findById(operation.workspaceId, intoId, tx);
     return target?.path ?? null;
+  }
+
+  /**
+   * Finishes a delete whose commit landed and whose rows did not.
+   *
+   * Nothing to relocate and nothing to write: the category is gone from the file
+   * and has to go from the index. Its absence from the committed taxonomy is
+   * what the caller has already checked (ADR 0025).
+   */
+  private async completeDelete(
+    operation: OperationRecord,
+    categoryId: CategoryId,
+    path: string,
+    version: number,
+    commitHash: string,
+  ): Promise<boolean> {
+    const now = this.clock.now();
+    const actor = this.actorOf(operation);
+    await this.o.uow.run(async (tx) => {
+      // Idempotent: the row may already be gone, because recovery runs at every
+      // startup and the version gate above lets one pass through once.
+      await this.o.categories.remove(tx, operation.workspaceId, categoryId);
+      await this.o.versions.bump(tx, operation.workspaceId, now, version, commitHash);
+      await this.o.ledger.append(tx, operation.workspaceId, actor, {
+        eventType: 'category.deleted',
+        objectType: 'category',
+        objectId: categoryId,
+        categoryIds: [categoryId],
+        metadata: {
+          path,
+          taxonomy_version: version,
+          git_commit: commitHash,
+          recovered: true,
+        },
+      });
+    });
+    return true;
   }
 
   private async insert(

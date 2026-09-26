@@ -308,6 +308,157 @@ describe('updating and moving', () => {
   });
 });
 
+describe('deleting a category that never meant anything', () => {
+  it('removes the row and the entry in the file, and moves the version', async () => {
+    const before = TaxonomyListResponse.parse((await admin.get('/v1/taxonomy.list')).json());
+    const made = await create({ name: 'Typo category' });
+    const res = await admin.post('/v1/admin/taxonomy.delete', {
+      category_id: made.category.id,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    // What was removed, because there is no row to read back and saying
+    // nothing would be less use.
+    expect(CategoryResponse.parse(res.json()).category.name).toBe('Typo category');
+
+    const after = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    expect(after.categories.map((c) => c.path)).not.toContain('typo-category');
+    // A real delete: no status, because there is no row to have one.
+    expect(after.taxonomy_version).toBeGreaterThan(before.taxonomy_version);
+
+    // And the file, which is the canonical copy.
+    const workspaces = await services.repositories.workspaces.list();
+    const file = await readFile(
+      join(dataDir, 'repositories', workspaces[0]!.id, 'taxonomy.yaml'),
+      'utf8',
+    );
+    expect(file).not.toContain('typo-category');
+  });
+
+  it('keeps a record that it existed, even though the row is gone', async () => {
+    // Rule 4 asks for what happened to be on record, not for the object to
+    // survive it.
+    const made = await create({ name: 'Briefly here' });
+    expect(
+      (await admin.post('/v1/admin/taxonomy.delete', { category_id: made.category.id })).statusCode,
+    ).toBe(200);
+    const workspaces = await services.repositories.workspaces.list();
+    const events = await services.repositories.events.listAfter(workspaces[0]!.id, 0, 500);
+    const deleted = events.find(
+      (e) => e.eventType === 'category.deleted' && e.objectId === made.category.id,
+    );
+    expect(deleted?.metadata).toMatchObject({ path: 'briefly-here', name: 'Briefly here' });
+  });
+
+  it('refuses one with a category under it', async () => {
+    const root = await create({ name: 'Has a child' });
+    await create({ name: 'The child', parent_path: root.category.path });
+    const res = await admin.post('/v1/admin/taxonomy.delete', { category_id: root.category.id });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().code).toBe('CATEGORY_CONFLICT');
+    expect(res.json().message).toMatch(/under this one/);
+  });
+
+  it('refuses one that holds knowledge, and says to merge instead', async () => {
+    // The foreign key is `restrict` and would refuse anyway. The check exists
+    // so the answer is a sentence rather than a constraint violation.
+    const made = await create({ name: 'Holds something' });
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Filed under it',
+          body: 'Body.\n',
+          type: 'fact',
+          categories: [made.category.path],
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/taxonomy.delete', { category_id: made.category.id });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().message).toMatch(/merge this category into another/);
+  });
+
+  it('refuses one that answers to an alias, because somebody recorded it', async () => {
+    const made = await create({ name: 'Has an alias' });
+    expect(
+      (
+        await admin.post('/v1/admin/taxonomy.update', {
+          category_id: made.category.id,
+          aliases: ['The old name'],
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/taxonomy.delete', { category_id: made.category.id });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().message).toMatch(/answers to/);
+  });
+
+  it('refuses one a policy rule is scoped to, which nothing in the database would', async () => {
+    // Grants and rules keep the scope as JSON with no foreign key, so without
+    // this check the rule would be left pointing at nothing.
+    const made = await create({ name: 'Scoped by a rule' });
+    const rule = await admin.post('/v1/admin/policy.rules.upsert', {
+      priority: 500,
+      subject: { trust_tier: 'trusted' },
+      action: 'knowledge.create',
+      scope: { categories: [{ category_id: made.category.id, include_descendants: false }] },
+      effect: 'allow_direct',
+      enabled: true,
+    });
+    expect(rule.statusCode, rule.body).toBe(200);
+    const res = await admin.post('/v1/admin/taxonomy.delete', { category_id: made.category.id });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().message).toMatch(/policy rule is scoped/);
+  });
+
+  it('refuses one that was merged, because its path is an alias of the survivor', async () => {
+    const closing = await create({ name: 'Folded away' });
+    const survivor = await create({ name: 'The survivor' });
+    expect(
+      (
+        await admin.post('/v1/admin/taxonomy.merge', {
+          category_id: closing.category.id,
+          into_category_id: survivor.category.id,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/taxonomy.delete', {
+      category_id: closing.category.id,
+    });
+    expect(res.statusCode, res.body).toBe(409);
+    expect(res.json().message).toMatch(/alias of the survivor/);
+  });
+
+  it('deletes one that was archived because it was a mistake', async () => {
+    // The case this exists for: archiving hid it, and `archived` says "we used
+    // to use this", which was never true.
+    const made = await create({ name: 'Archived by mistake' });
+    expect(
+      (await admin.post('/v1/admin/taxonomy.archive', { category_id: made.category.id }))
+        .statusCode,
+    ).toBe(200);
+    const res = await admin.post('/v1/admin/taxonomy.delete', { category_id: made.category.id });
+    expect(res.statusCode, res.body).toBe(200);
+    const all = TaxonomyListResponse.parse(
+      (await admin.get('/v1/taxonomy.list?include_archived=true')).json(),
+    );
+    expect(all.categories.map((c) => c.path)).not.toContain('archived-by-mistake');
+  });
+
+  it('is not something an unauthenticated caller may do', async () => {
+    // `taxonomy.manage`, like every other write here. Who holds it is
+    // authorization.test.ts's question; that it is required is this one's.
+    const made = await create({ name: 'Needs a permission' });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/taxonomy.delete',
+      payload: { category_id: made.category.id },
+    });
+    expect([401, 403]).toContain(res.statusCode);
+  });
+});
+
 describe('archiving and listing', () => {
   it('archives a subtree and hides it by default', async () => {
     const root = await create({ name: 'Archive root' });

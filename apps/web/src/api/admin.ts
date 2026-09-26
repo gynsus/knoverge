@@ -119,6 +119,8 @@ export const adminApi = {
       apiPost<CategoryResponse>('/v1/admin/taxonomy.restore', { category_id: categoryId }),
     archive: (categoryId: string) =>
       apiPost<CategoryResponse>('/v1/admin/taxonomy.archive', { category_id: categoryId }),
+    delete: (categoryId: string) =>
+      apiPost<CategoryResponse>('/v1/admin/taxonomy.delete', { category_id: categoryId }),
   },
   policy: {
     rules: (signal?: AbortSignal) => apiGet<PolicyRulesResponse>('/v1/admin/policy.rules', signal),

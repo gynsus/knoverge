@@ -350,6 +350,28 @@ export function createServices(config: ServicesConfig) {
       },
     },
     actors: repositories.actors,
+    /**
+     * What outside the taxonomy still refers to a category (ADR 0025).
+     *
+     * Grants and policy rules keep their scope as JSON with no foreign key, so
+     * nothing in the database would object to deleting a category out from
+     * under one. They are few per workspace, so listing them is cheaper than
+     * an index nothing else would use.
+     */
+    references: async (workspaceId, categoryId) => {
+      const names = (scope: { categories: readonly { category_id: string }[] }) =>
+        scope.categories.some((c) => c.category_id === categoryId);
+      const [proposalCount, grants, rules] = await Promise.all([
+        repositories.proposals.countForCategory(workspaceId, categoryId),
+        repositories.grants.list(workspaceId),
+        repositories.policyRules.list(workspaceId),
+      ]);
+      return {
+        proposals: proposalCount,
+        grants: grants.filter((grant) => names(grant.scope)).length,
+        policyRules: rules.filter((rule) => names(rule.scope)).length,
+      };
+    },
   });
   const members = new MemberService({
     sessions: repositories.sessions,

@@ -153,6 +153,18 @@ export const MergeCategoryRequest = z.object({
 export type MergeCategoryRequest = z.infer<typeof MergeCategoryRequest>;
 
 export const ArchiveCategoryRequest = z.object({ category_id: CategoryId });
+
+/**
+ * Removing a category that never meant anything.
+ *
+ * A real deletion, and refused unless nothing has ever depended on it: no
+ * descendants, no items, no aliases, no proposal targeting it, no grant or policy
+ * rule naming it, and not `merged`. For a category that was used, merge is the
+ * operation — it moves the items, the children and the aliases, and keeps the old
+ * path resolving. See ADR 0025.
+ */
+export const DeleteCategoryRequest = z.object({ category_id: CategoryId });
+export type DeleteCategoryRequest = z.infer<typeof DeleteCategoryRequest>;
 export type ArchiveCategoryRequest = z.infer<typeof ArchiveCategoryRequest>;
 
 /**

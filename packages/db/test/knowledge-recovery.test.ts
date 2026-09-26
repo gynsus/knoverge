@@ -178,6 +178,7 @@ beforeAll(async () => {
     git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
+    references: async () => ({ proposals: 0, grants: 0, policyRules: 0 }),
     items: repositories.knowledge,
     parseItem,
     renderItem,
@@ -360,6 +361,16 @@ describe('a taxonomy change that reached Git and no further', () => {
       },
       { name: 'archive', run: () => crashingTaxonomy.archive(actor, root.id) },
       { name: 'restore', run: () => crashingTaxonomy.restore(actor, root.id) },
+      {
+        // The one change whose evidence in the commit is an absence: the
+        // category is not in the file, and recovery has to read that as the
+        // delete having happened rather than as the wrong commit (ADR 0025).
+        name: 'delete',
+        run: async () => {
+          const doomed = (await taxonomy.create(actor, { name: 'Deleted by a crash' })).category;
+          return crashingTaxonomy.delete(actor, doomed.id);
+        },
+      },
     ];
 
     for (const { name, run } of cases) {

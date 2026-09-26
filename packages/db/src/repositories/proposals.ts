@@ -13,7 +13,7 @@ import type {
   ProposalRepository,
   Tx,
 } from '@knoverge/core';
-import { and, asc, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import { proposals } from '../schema/proposals.ts';
@@ -108,6 +108,18 @@ export function createProposalRepository(db: Database): ProposalRepository {
         )
         .returning({ id: proposals.id });
       return rows.length;
+    },
+
+    async countForCategory(workspaceId, categoryId) {
+      // Any status. A resolved proposal is a decision somebody made, and the
+      // foreign key would cascade it away as readily as a pending one.
+      const [row] = await db
+        .select({ total: count() })
+        .from(proposals)
+        .where(
+          and(eq(proposals.workspaceId, workspaceId), eq(proposals.targetCategoryId, categoryId)),
+        );
+      return row?.total ?? 0;
     },
   };
 }

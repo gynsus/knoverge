@@ -395,6 +395,51 @@ describe('taxonomy page', () => {
     });
   });
 
+  it('deletes a category nothing depends on, and says to merge one that holds knowledge', async () => {
+    // "Delete" on this screen means something narrower than it does anywhere
+    // else, so the dialog carries the whole argument (ADR 0025).
+    const empty = { ...CATEGORY, id: 'cat_empty', slug: 'typo', path: 'typo', name: 'Typo' };
+    const used = {
+      ...CATEGORY,
+      id: 'cat_used',
+      slug: 'in-use',
+      path: 'in-use',
+      name: 'In use',
+      item_count: 12,
+    };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 2, categories: [empty, used] }),
+      'POST /v1/admin/taxonomy.delete': () => json({ taxonomy_version: 3, category: empty }),
+    });
+    const user = userEvent.setup();
+    renderApp('/taxonomy');
+
+    // One that holds knowledge: the dialog says so and will not let it happen.
+    await user.click(await screen.findByRole('button', { name: 'Actions for In use' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    const refusing = await screen.findByRole('dialog');
+    expect(within(refusing).getByText(/12 knowledge items/)).toBeInTheDocument();
+    expect(within(refusing).getByText(/Merge it into another category/)).toBeInTheDocument();
+    expect(within(refusing).getByRole('button', { name: 'Delete' })).toBeDisabled();
+    await user.click(within(refusing).getByRole('button', { name: 'Cancel' }));
+    // Nothing was sent: the refusal happened before the request, not after it.
+    expect(calls.some((c) => c.url.includes('taxonomy.delete'))).toBe(false);
+
+    // One that holds nothing: it goes.
+    await user.click(await screen.findByRole('button', { name: 'Actions for Typo' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+    const confirming = await screen.findByRole('dialog');
+    expect(within(confirming).getByText(/nothing to lose/)).toBeInTheDocument();
+    await user.click(within(confirming).getByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('taxonomy.delete'))).toBe(true));
+    expect(calls.find((c) => c.url.includes('taxonomy.delete'))?.body).toEqual({
+      category_id: 'cat_empty',
+    });
+  });
+
   it('searches names, paths, aliases and descriptions, and keeps the ancestors', async () => {
     const parent = {
       ...CATEGORY,

@@ -29,7 +29,7 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { CategoryDetails } from '../components/taxonomy/CategoryDetails.tsx';
 import { CategorySheet } from '../components/taxonomy/CategorySheet.tsx';
 import { CategoryTree } from '../components/taxonomy/CategoryTree.tsx';
-import { MergeDialog, MoveDialog } from '../components/taxonomy/TaxonomyDialogs.tsx';
+import { DeleteDialog, MergeDialog, MoveDialog } from '../components/taxonomy/TaxonomyDialogs.tsx';
 import { ProposedCategory } from '../components/taxonomy/ProposedCategory.tsx';
 import { TaxonomyHistory } from '../components/taxonomy/TaxonomyHistory.tsx';
 
@@ -63,6 +63,7 @@ export function TaxonomyPage() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [moving, setMoving] = useState<CategorySummary | null>(null);
   const [merging, setMerging] = useState<CategorySummary | null>(null);
+  const [deleting, setDeleting] = useState<CategorySummary | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   /** Which proposed category is open, when one is instead of a real one. */
@@ -221,6 +222,14 @@ export function TaxonomyPage() {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (category: CategorySummary) => adminApi.taxonomy.delete(category.id),
+    onSuccess: (result) => {
+      setDeleting(null);
+      done(t('taxonomy.deleted', { name: result.category.name }));
+    },
+  });
+
   const archive = useMutation({
     mutationFn: (category: CategorySummary) => adminApi.taxonomy.archive(category.id),
     onSuccess: async () => {
@@ -255,6 +264,10 @@ export function TaxonomyPage() {
     onMove: setMoving,
     onMerge: setMerging,
     onArchive: (category: CategorySummary) => archive.mutate(category),
+    onDelete: (category: CategorySummary) => {
+      remove.reset();
+      setDeleting(category);
+    },
     onRestore: (category: CategorySummary) => restore.mutate(category),
   };
 
@@ -534,6 +547,14 @@ export function TaxonomyPage() {
         onConfirm={(intoId) => merge.mutate(intoId)}
         busy={merge.isPending}
         error={merge.error}
+      />
+      <DeleteDialog
+        category={deleting}
+        categories={all}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => deleting && remove.mutate(deleting)}
+        busy={remove.isPending}
+        error={remove.error}
       />
       <TaxonomyHistory
         open={historyOpen}
