@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { CategoryId, KnowledgeItemId, WorkspaceId } from '@knoverge/contracts';
 
-import { DuplicateMatcher, type NearestMatch } from '../src/knowledge/duplicates.ts';
+import {
+  DuplicateMatcher,
+  SEMANTIC_SIMILARITY_THRESHOLD,
+  type NearestMatch,
+} from '../src/knowledge/duplicates.ts';
 import { DomainError } from '../src/errors.ts';
 import { SyncService, type SyncServiceOptions } from '../src/sync/service.ts';
 import type { SyncCandidateRecord } from '../src/sync/repository.ts';
@@ -61,7 +65,10 @@ describe('the semantic step of the duplicate check', () => {
 
   it('ignores a passage that is merely related', async () => {
     // A false positive refuses a write somebody meant to make, and the only
-    // way past it is acknowledging a candidate that was never a duplicate.
+    // way past it is acknowledging a candidate that was never a duplicate. At
+    // 0.7 the measurement in ADR 0023 found related passages and same-meaning
+    // ones mixed together, so this screen stops above them and reconciliation
+    // is what catches the rest.
     const matcher = new DuplicateMatcher({
       items: emptyItems,
       contentHash: () => 'sha256:x',
@@ -186,9 +193,35 @@ describe('step E of reconciliation', () => {
     });
   });
 
-  it('ignores one that is merely related', async () => {
+  it('ignores one that has nothing to do with it', async () => {
+    // 0.5 is where the measurement in ADR 0023 found unrelated subjects: on
+    // eighty items nothing unrelated reached 0.5306, and nothing that said the
+    // same thing fell below 0.6585.
     const { service, written } = serviceWith(async () => [{ itemId, similarity: 0.5 }]);
     await service.refine(session, async (ids) => new Set(ids), { threshold: 0.6, limit: 5 });
     expect(written[0]?.[0]).toMatchObject({ classification: 'new_candidate' });
+  });
+
+  it('offers what the duplicate screen would refuse to raise', async () => {
+    // The two thresholds diverge on purpose (ADR 0023). A passage near enough
+    // to be worth a glance is not near enough to refuse a write over, and the
+    // gap between them is where a rewritten copy is caught: here, before the
+    // write, rather than there, by refusing it.
+    const between = 0.68;
+    expect(between).toBeLessThan(SEMANTIC_SIMILARITY_THRESHOLD);
+
+    const { service, written } = serviceWith(async () => [{ itemId, similarity: between }]);
+    await service.refine(session, async (ids) => new Set(ids), { threshold: 0.6, limit: 5 });
+    expect(written[0]?.[0]).toMatchObject({
+      classification: 'likely_match',
+      matchReason: 'semantic',
+    });
+
+    const matcher = new DuplicateMatcher({
+      items: emptyItems,
+      contentHash: () => 'sha256:x',
+      nearest: async () => near(between),
+    });
+    expect(await matcher.candidates(query)).toEqual([]);
   });
 });
