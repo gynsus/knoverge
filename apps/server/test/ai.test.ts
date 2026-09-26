@@ -6,10 +6,11 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  ActivityDigestResponse,
   AiSettingsResponse,
   CheckAiProviderResponse,
-  TERMS_VERSION,
   DraftSummaryResponse,
+  TERMS_VERSION,
   TestAiGenerationResponse,
   TestAiModelResponse,
 } from '@knoverge/contracts';
@@ -436,6 +437,28 @@ describe('once a model is at work', () => {
       items: unknown[];
     };
     expect(listed.items).toEqual([]);
+  });
+
+  it('describes a period in prose, from the tally and not from the knowledge', async () => {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const res = await admin.post('/v1/activity_digest', { since, include_narrative: true });
+    expect(res.statusCode, res.body).toBe(200);
+    const digest = ActivityDigestResponse.parse(res.json());
+    expect(digest.narrative?.model).toBe('gpt-oss:120b');
+    // The fake echoes the first message's role and the second message's
+    // content, so this says the tally arrived as the material — and that what
+    // the model was given is a tally of titles and counts rather than the text
+    // of the knowledge itself.
+    expect(digest.narrative?.text).toContain('system:');
+    expect(digest.narrative?.text).toContain('knowledge.created:');
+    expect(digest.narrative?.text).not.toContain('Backups are kept for ninety days.');
+
+    // And without asking, no call and no prose.
+    const plain = ActivityDigestResponse.parse(
+      (await admin.post('/v1/activity_digest', { since })).json(),
+    );
+    expect(plain.narrative).toBeNull();
+    expect(plain.counts.length).toBeGreaterThan(0);
   });
 
   it('is not something an agent may ask for', async () => {

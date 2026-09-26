@@ -28,6 +28,7 @@ import {
   RecoveryService,
   MemberService,
   KnowledgeRecovery,
+  DigestNarrator,
   KnowledgeService,
   SummaryDrafter,
   ProposalService,
@@ -399,6 +400,13 @@ export function createServices(config: ServicesConfig) {
     },
     generation: ai.generationSource,
   });
+  /**
+   * The optional prose on top of a digest.
+   *
+   * Written from the digest's own numbers and titles, never from knowledge text:
+   * a digest says what happened in a workspace, not what the workspace knows.
+   */
+  const digestNarrator = new DigestNarrator(ai.generationSource);
   const bootstrap = new BootstrapService({
     uow,
     users,
@@ -415,6 +423,7 @@ export function createServices(config: ServicesConfig) {
     ledger,
     agents: agentService,
     summaryDrafter,
+    digestNarrator,
     authorization,
     authorizationAdmin,
     idempotency,

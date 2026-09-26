@@ -644,14 +644,16 @@ Input:
 
 Returns an activity summary for a period.
 
-Milestone 4: grouped counts by event type and a plain list of changed items and resolved proposals.
+Grouped counts by event type, and lists of the items that changed and the proposals that were decided.
 
-Milestone 8: optional generated narrative on top of the same data.
+Every entry leads somewhere. A changed item carries the revision the last of its changes produced, and a resolved proposal carries the item it was about and the revision an approval wrote, so `knowledge_get` and `knowledge_diff` are one call away rather than a reconstruction.
+
+`include_narrative` also asks a model to describe the period in two or three sentences. It is off by default, because it costs a call and the counts are the answer. The narrative is written from the digest's own numbers and titles and never from knowledge text: a digest says what happened in a workspace, not what the workspace knows. It answers `null` when nothing is configured to write one — an absent optional feature does not make a missing digest (rule 9).
 
 Input:
 
 ```json
-{ "since": "2026-09-18T00:00:00Z", "until": "2026-09-19T00:00:00Z", "category_paths": [] }
+{ "since": "2026-09-18T00:00:00Z", "until": "2026-09-19T00:00:00Z", "category_paths": [], "include_narrative": false }
 ```
 
 ### Reconciliation

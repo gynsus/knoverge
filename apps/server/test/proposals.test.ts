@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
+  ActivityDigestResponse,
   TERMS_VERSION,
   KnowledgeResponse,
   ProposalResult,
@@ -353,6 +354,25 @@ describe('reviewing a proposal', () => {
     expect(item.item.title).toBe('Proposed by Approved proposer');
     // A person approved it, so the revision says a person reviewed it.
     expect(item.item.review_state).toBe('human_reviewed');
+  });
+
+  it('appears in the digest with the item and revision it produced', async () => {
+    // A digest that lists a decision and stops there makes a reader guess what
+    // it was about. The decision leads to the knowledge, in one more call.
+    const { proposal } = await pending('Digested proposer');
+    const approved = ProposalResult.parse(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).json(),
+    );
+    const digest = ActivityDigestResponse.parse(
+      (
+        await admin.post('/v1/activity_digest', {
+          since: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        })
+      ).json(),
+    );
+    const resolved = digest.resolved_proposals.find((p) => p.proposal_id === proposal.id);
+    expect(resolved).toMatchObject({ status: 'approved', item_id: approved.item_id });
+    expect(resolved?.revision_id).toBe(approved.proposal.result_revision_ids[0]);
   });
 
   it('records the proposal on the commit that applied it', async () => {

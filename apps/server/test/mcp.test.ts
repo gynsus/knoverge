@@ -641,7 +641,7 @@ describe('starting a working session', () => {
     }
   });
 
-  it('digests a period into counts and lists, with no narrative', async () => {
+  it('digests a period into counts and lists, and leads back to the revisions', async () => {
     const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
     const digest = ActivityDigestResponse.parse(
       (await admin.post('/v1/activity_digest', { since })).json(),
@@ -653,8 +653,30 @@ describe('starting a working session', () => {
     );
     expect(digest.changed_items.length).toBeGreaterThan(0);
     expect(digest.changed_items[0]!.change_kinds.length).toBeGreaterThan(0);
-    // Rule 9: counts and lists, which need no provider at all.
-    expect(Object.keys(digest)).not.toContain('narrative');
+    // Every entry leads somewhere: the revision the change produced, so the
+    // next call is `knowledge_get` rather than a reconstruction.
+    const changed = digest.changed_items[0]!;
+    expect(changed.revision_id).toMatch(/^rev_/);
+    const read = await admin.get(
+      `/v1/knowledge.get?item_id=${changed.item_id}&revision_id=${changed.revision_id}`,
+    );
+    expect(read.statusCode, read.body).toBe(200);
+
+    // Rule 9: counts and lists need no provider at all, and nothing asked for
+    // prose, so there is none rather than an error about not having any.
+    expect(digest.narrative).toBeNull();
+  });
+
+  it('describes the period in prose when asked and a model can write it', async () => {
+    // Off by default: it costs a call and the counts are the answer. And null
+    // rather than a refusal when nothing is configured — an absent optional
+    // feature does not make a missing digest.
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const withoutModel = ActivityDigestResponse.parse(
+      (await admin.post('/v1/activity_digest', { since, include_narrative: true })).json(),
+    );
+    expect(withoutModel.narrative).toBeNull();
+    expect(withoutModel.counts.length).toBeGreaterThan(0);
   });
 });
 
