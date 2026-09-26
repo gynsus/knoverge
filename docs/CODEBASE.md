@@ -330,6 +330,26 @@ transaction, because a caller may legitimately name an older revision — you
 summarise what you read, and it may have moved on while you were writing — so a
 write cannot assume its answer is no.
 
+## What a digest says, and what it will not invent
+
+`activity_digest` counts a period and lists what changed in it, and every entry
+leads somewhere: a changed item carries the revision its last change produced, a
+resolved proposal carries the item it was about and the revision an approval
+wrote. Without those, a digest is a wall — a reader has to fetch the item and work
+out which revision was meant.
+
+`packages/core/src/ledger/narrative.ts` is the optional paragraph on top, and
+what it is *given* is the point. It gets the digest's own tally: counts, titles,
+change kinds, how many proposals went each way. It never gets knowledge text. A
+digest says what happened in a workspace, not what the workspace knows, and a
+model handed the knowledge would write the second one.
+
+The instruction tells it not to guess why anything happened, not to judge it and
+not to say what should be done — a digest that invents a reason is worse than a
+list. It is off by default, because it costs a call and the counts are the
+answer, and it answers null rather than refusing when nothing is configured: an
+absent optional feature does not make a missing digest (rule 9).
+
 ## Drafting a summary, and never writing one
 
 `packages/core/src/knowledge/drafting.ts` reads the named items at whatever

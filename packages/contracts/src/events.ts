@@ -146,11 +146,19 @@ export const EventsListResponse = z.object({
 });
 export type EventsListResponse = z.infer<typeof EventsListResponse>;
 
-/** What happened in a period, counted rather than narrated. */
+/** What happened in a period: counted always, narrated only if asked. */
 export const ActivityDigestInput = z.object({
   since: z.iso.datetime({ offset: true }),
   until: z.iso.datetime({ offset: true }).nullable().default(null),
   category_paths: z.array(CategoryPath).max(20).default([]),
+  /**
+   * Whether to also ask a model to describe the period in prose.
+   *
+   * Off by default, because it costs a call and the counts are the answer. It is
+   * written from the digest's own numbers and titles and never from knowledge
+   * text: a digest describes what happened, not what the workspace knows.
+   */
+  include_narrative: z.boolean().default(false),
 });
 export type ActivityDigestInput = z.infer<typeof ActivityDigestInput>;
 
@@ -165,6 +173,14 @@ export const ActivityDigestResponse = z.object({
       title: z.string().nullable(),
       change_kinds: z.array(z.string()),
       last_changed_at: z.iso.datetime({ offset: true }),
+      /**
+       * The revision the last of those changes produced, when the event said.
+       *
+       * What makes the digest a way in rather than a wall: with it a reader goes
+       * straight to what changed, through `knowledge_get` or `knowledge_diff`,
+       * instead of fetching the item and working out which revision was meant.
+       */
+      revision_id: z.string().nullable(),
     }),
   ),
   resolved_proposals: z.array(
@@ -172,7 +188,25 @@ export const ActivityDigestResponse = z.object({
       proposal_id: z.string(),
       status: z.string(),
       resolved_at: z.iso.datetime({ offset: true }),
+      /** The item it was about, so the decision leads to the knowledge. */
+      item_id: z.string().nullable(),
+      /** The revision an approval produced. Null for anything that wrote nothing. */
+      revision_id: z.string().nullable(),
     }),
   ),
+  /**
+   * The period in prose, when it was asked for and something could write it.
+   *
+   * Null when `include_narrative` was false, and null when it was true and no
+   * model is configured: the counts are the digest and an optional feature being
+   * absent does not make one (rule 9).
+   */
+  narrative: z
+    .object({
+      text: z.string(),
+      /** Which model wrote it, so a reader knows what they are reading. */
+      model: z.string(),
+    })
+    .nullable(),
 });
 export type ActivityDigestResponse = z.infer<typeof ActivityDigestResponse>;

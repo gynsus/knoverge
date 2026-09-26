@@ -311,13 +311,26 @@ export async function activityDigest(
   });
 
   const counts = new Map<EventType, number>();
-  const items = new Map<string, { kinds: Set<string>; at: Date }>();
-  const proposals = new Map<string, { status: string; at: Date }>();
+  const items = new Map<string, { kinds: Set<string>; at: Date; revisionId: string | null }>();
+  const proposals = new Map<
+    string,
+    { status: string; at: Date; itemId: string | null; revisionId: string | null }
+  >();
   for (const event of events) {
     counts.set(event.eventType, (counts.get(event.eventType) ?? 0) + 1);
     if (event.objectType === 'knowledge_item') {
-      const entry = items.get(event.objectId) ?? { kinds: new Set<string>(), at: event.createdAt };
+      const entry = items.get(event.objectId) ?? {
+        kinds: new Set<string>(),
+        at: event.createdAt,
+        revisionId: null,
+      };
       entry.kinds.add(event.eventType.replace('knowledge.', ''));
+      // The newest event's revision, because that is what "changed" means here
+      // and it is what a reader would fetch next. The feed arrives newest first,
+      // so the first one to mention this item is the one to keep.
+      if (entry.revisionId === null) {
+        entry.revisionId = revisionOf(event.metadata) ?? event.afterRevisionId;
+      }
       if (event.createdAt > entry.at) entry.at = event.createdAt;
       items.set(event.objectId, entry);
     }
@@ -325,6 +338,10 @@ export async function activityDigest(
       proposals.set(event.objectId, {
         status: event.eventType.replace('proposal.', ''),
         at: event.createdAt,
+        // An approval says which item it was about and which revisions it wrote,
+        // so the decision leads to the knowledge rather than stopping at itself.
+        itemId: asText(event.metadata, 'knowledge_item'),
+        revisionId: asText(event.metadata, 'revisions')?.split(' ')[0] ?? null,
       });
     }
   }
@@ -333,7 +350,7 @@ export async function activityDigest(
     ...items.keys(),
   ] as never);
 
-  return {
+  const tally = {
     since: since.toISOString(),
     until: until.toISOString(),
     counts: [...counts]
@@ -345,12 +362,50 @@ export async function activityDigest(
         title: titles.get(item_id as never) ?? null,
         change_kinds: [...entry.kinds].sort(),
         last_changed_at: entry.at.toISOString(),
+        revision_id: entry.revisionId,
       }))
       .sort((a, b) => b.last_changed_at.localeCompare(a.last_changed_at)),
     resolved_proposals: [...proposals].map(([proposal_id, entry]) => ({
       proposal_id,
       status: entry.status,
       resolved_at: entry.at.toISOString(),
+      item_id: entry.itemId,
+      revision_id: entry.revisionId,
     })),
+  };
+
+  return {
+    ...tally,
+    // Asked for, and only then: it costs a call and the counts are the answer.
+    // Null when nothing is configured to write it, because an absent optional
+    // feature does not make a missing digest (rule 9).
+    narrative: input.include_narrative
+      ? await services.digestNarrator.describe({
+          since: tally.since,
+          until: tally.until,
+          counts: tally.counts.map((c) => ({ eventType: c.event_type, count: c.count })),
+          changed: tally.changed_items.map((i) => ({
+            title: i.title,
+            changeKinds: i.change_kinds,
+          })),
+          resolvedProposals: tally.resolved_proposals.map((p) => ({ status: p.status })),
+        })
+      : null,
   } as ActivityDigestResponse;
+}
+
+/** A string from event metadata, or null when it is not one. */
+function asText(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === 'string' ? value : null;
+}
+
+/**
+ * The revision an event produced.
+ *
+ * `metadata.revision` first and the column second: knowledge writes record it in
+ * the metadata, and the column is there for whatever does not.
+ */
+function revisionOf(metadata: Record<string, unknown>): string | null {
+  return asText(metadata, 'revision');
 }

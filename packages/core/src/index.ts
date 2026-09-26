@@ -39,6 +39,12 @@ export {
   type MatchReason,
 } from './knowledge/duplicates.ts';
 export {
+  DigestNarrator,
+  NARRATIVE_INSTRUCTION,
+  type DigestFacts,
+  type DigestNarrative,
+} from './ledger/narrative.ts';
+export {
   MAX_DRAFT_SOURCES,
   SUMMARY_INSTRUCTION,
   SummaryDrafter,

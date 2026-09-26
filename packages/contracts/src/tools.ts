@@ -277,7 +277,7 @@ export const TOOLS: readonly ToolContract[] = [
   {
     name: 'activity_digest',
     description:
-      'What happened in a period: how many events of each kind, which items changed, and which proposals were decided. Counts and lists, with no narrative.',
+      'What happened in a period: how many events of each kind, which items changed and at which revision, and which proposals were decided and about what. Counts and lists. `include_narrative` also asks a model to describe the period in two or three sentences, which answers null when no model is configured.',
     input: ActivityDigestInput,
     output: ActivityDigestResponse,
     readOnly: true,
