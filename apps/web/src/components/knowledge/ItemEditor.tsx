@@ -12,6 +12,8 @@ import { changed, draftOf, listOf, type Draft } from './draft.ts';
 import { ItemFields } from './ItemFields.tsx';
 import { RelationEditor } from './RelationList.tsx';
 import { SourceEditor } from './SourceList.tsx';
+import { ValidityFields } from './Validity.tsx';
+import { asInstant } from './validity.ts';
 
 /**
  * Changing one item.
@@ -81,6 +83,18 @@ export function ItemEditor({
         // finish; sending it would be refused, and dropping it silently is
         // what "cancel" already means for an empty row.
         relations: draft.relations.filter((relation) => relation.target !== ''),
+        // Only what was touched. A date left alone is left alone: the contract
+        // takes instants, the form offers days, and sending an untouched field
+        // back would round whatever time it held down to midnight.
+        ...(draft.validFrom === initial.validFrom
+          ? {}
+          : { valid_from: asInstant(draft.validFrom) }),
+        ...(draft.validUntil === initial.validUntil
+          ? {}
+          : { valid_until: asInstant(draft.validUntil) }),
+        ...(draft.observedAt === initial.observedAt
+          ? {}
+          : { observed_at: asInstant(draft.observedAt) }),
         ...(reason.trim() ? { reason: reason.trim() } : {}),
       }),
     onSuccess: onChanged,
@@ -104,6 +118,7 @@ export function ItemEditor({
             onChange={(relations) => setDraft({ ...draft, relations })}
           />
         </Field>
+        <ValidityFields draft={draft} onChange={setDraft} />
         {/* Every change here is a revision and a Git commit. The history can
             say who and when without this; only this says why. */}
         <Field label={t('knowledge.reason')} hint={t('knowledge.reason_hint')}>

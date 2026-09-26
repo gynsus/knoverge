@@ -254,6 +254,24 @@ This is what keeps a flag from becoming decoration. A field the product carries
 everywhere and never explains is one somebody learns to ignore, and then it may
 as well not be there.
 
+## 2m. A form offers the granularity somebody states, and sends back only what they touched
+
+Where the stored value is finer than the answer a person has, the control asks
+for the answer they have. When a claim started holding is a day, not an instant:
+a date field is the honest control, and a datetime field invites somebody to
+make up a time.
+
+What follows is that an untouched field is never sent. A day widened back into an
+instant is midnight, so a form that submits every field it drew would round
+`09:14:32` down to `00:00:00` for somebody who came to fix a typo in the title.
+Nothing on the screen would say it happened. The rule is the same one behind
+sending a base revision with an edit: a write says what it changes, and says
+nothing about what it does not.
+
+A value the server will refuse is refused on the screen first. Both have to
+check — the API is public and the browser is not the only caller — but nobody
+should have to press Save to be told what was already visible.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

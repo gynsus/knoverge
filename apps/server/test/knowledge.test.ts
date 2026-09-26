@@ -1030,6 +1030,86 @@ describe('contradictions', () => {
   });
 });
 
+describe('when a claim holds', () => {
+  it('keeps the period a write states, and says what it means', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'The backend is MySQL',
+      body: 'It was MySQL.\n',
+      type: 'fact',
+      valid_from: '2026-01-01T00:00:00Z',
+      valid_until: '2026-09-18T00:00:00Z',
+      observed_at: '2026-09-17T00:00:00Z',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = KnowledgeResponse.parse(res.json()).item;
+    expect(item.valid_from).toBe('2026-01-01T00:00:00.000Z');
+    expect(item.valid_until).toBe('2026-09-18T00:00:00.000Z');
+    expect(item.observed_at).toBe('2026-09-17T00:00:00.000Z');
+    // And the file carries them, because the repository is the canonical copy.
+    const file = await readFile(
+      join(dataDir, 'repositories', item.workspace_id, item.markdown_path),
+      'utf8',
+    );
+    expect(file).toMatch(/valid_from: .*2026-01-01T00:00:00/u);
+    expect(file).toMatch(/valid_until: .*2026-09-18T00:00:00/u);
+  });
+
+  it('refuses a period that ends before it starts', async () => {
+    // It reads as a claim nothing was ever true in, and since ADR 0022 it would
+    // quietly close a contradiction rather than declare one.
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Backwards in time',
+      body: 'Body.\n',
+      type: 'fact',
+      valid_from: '2026-09-18T00:00:00Z',
+      valid_until: '2026-01-01T00:00:00Z',
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+    expect(res.json().message).toMatch(/valid_until is earlier than valid_from/);
+  });
+
+  it('refuses one an update would create, against the dates already there', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Starts in June',
+          body: 'Body.\n',
+          type: 'fact',
+          valid_from: '2026-06-01T00:00:00Z',
+        })
+      ).json(),
+    ).item;
+    // Only the end is sent, so the start is the one already on the item: the
+    // check is against what the write leaves behind, not against what it says.
+    const res = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      valid_until: '2026-01-01T00:00:00Z',
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().code).toBe('VALIDATION_ERROR');
+  });
+
+  it('allows a claim replaced the instant it was made', async () => {
+    // A zero-length period is not a typo: it is what an item superseded at the
+    // moment it was written actually held for.
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Held for no time at all',
+          body: 'Body.\n',
+          type: 'fact',
+          valid_from: '2026-06-01T00:00:00Z',
+          valid_until: '2026-06-01T00:00:00Z',
+        })
+      ).json(),
+    ).item;
+    expect(item.valid_from).toBe(item.valid_until);
+  });
+});
+
 describe('comparing two revisions', () => {
   it('shows the text that changed and the fields that changed', async () => {
     const item = KnowledgeResponse.parse(

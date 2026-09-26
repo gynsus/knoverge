@@ -5,6 +5,8 @@ import type {
   KnowledgeItemDetail,
 } from '@knoverge/contracts';
 
+import { asDateInput } from './validity.ts';
+
 /** The fields a person edits. Everything else follows from them. */
 export interface Draft {
   title: string;
@@ -15,6 +17,17 @@ export interface Draft {
   /** Where this came from, and how it connects to the rest. */
   sources: FrontmatterSource[];
   relations: FrontmatterRelation[];
+  /**
+   * When the claim holds, as `YYYY-MM-DD` or empty.
+   *
+   * Dates rather than instants, because that is how somebody states a period.
+   * An untouched field is not sent, so an instant a supersession recorded is
+   * not rounded to midnight by an edit that was about the title.
+   */
+  validFrom: string;
+  validUntil: string;
+  /** When it was seen to be true, which is not when it was written down. */
+  observedAt: string;
 }
 
 export const emptyDraft: Draft = {
@@ -25,6 +38,9 @@ export const emptyDraft: Draft = {
   tags: '',
   sources: [],
   relations: [],
+  validFrom: '',
+  validUntil: '',
+  observedAt: '',
 };
 
 /**
@@ -47,6 +63,9 @@ export const draftOf = (item: KnowledgeItemDetail): Draft => ({
   tags: item.tags.join(', '),
   sources: [...item.sources],
   relations: [...item.relations],
+  validFrom: asDateInput(item.valid_from),
+  validUntil: asDateInput(item.valid_until),
+  observedAt: asDateInput(item.observed_at),
 });
 
 /** Whether anything in the form differs from the item it started at. */
@@ -56,6 +75,9 @@ export const changed = (draft: Draft, from: Draft): boolean =>
   draft.type !== from.type ||
   draft.categories !== from.categories ||
   draft.tags !== from.tags ||
+  draft.validFrom !== from.validFrom ||
+  draft.validUntil !== from.validUntil ||
+  draft.observedAt !== from.observedAt ||
   // Compared as JSON: these are small, ordered lists of plain values, and a
   // field-by-field comparison here would be a second definition of what a
   // source is, drifting from the first one.
