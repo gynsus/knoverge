@@ -335,6 +335,32 @@ describe('narrowing the list', () => {
     );
   });
 
+  it('lists what the workspace asserts, not what it used to', async () => {
+    // A list that mixes a superseded item in with the current ones answers a
+    // question nobody asked, and the row gives no sign which is which. It
+    // also made browsing and searching disagree: search has always asked for
+    // active only.
+    const before = await list('limit=200');
+    const doomed = before[0];
+    expect(doomed).toBeTruthy();
+    const gone = await admin.post('/v1/admin/knowledge.delete', {
+      item_id: doomed?.id,
+      base_revision_id: doomed?.current_revision_id,
+      base_content_hash: (
+        (await admin.get(`/v1/knowledge.get?item_id=${doomed?.id}`)).json() as {
+          item: { content_hash: string };
+        }
+      ).item.content_hash,
+    });
+    expect(gone.statusCode, gone.body).toBe(200);
+
+    const after = await list('limit=200');
+    expect(after.map((i) => i.id)).not.toContain(doomed?.id);
+    expect(after.length).toBe(before.length - 1);
+    // And still reachable by asking for it, which is what the parameter is for.
+    expect((await list('status=deleted&limit=200')).map((i) => i.id)).toContain(doomed?.id);
+  });
+
   it('counts the piles over the workspace, not over a page', async () => {
     // A number describing the fifty rows that happen to be loaded, while
     // claiming to describe the workspace, is worse than no number.
@@ -617,9 +643,15 @@ describe('changing an item', () => {
     expect(await gitIn(repository, ['show', `HEAD~1:${item.markdown_path}`])).toContain(
       'Nightly, kept for thirty days.',
     );
-    // And gone from the list a reader sees.
+    // And gone from the list a reader sees, which is what that sentence
+    // used to say while the assertion under it checked the opposite.
     const list = KnowledgeListResponse.parse((await admin.get('/v1/knowledge.list')).json());
-    expect(list.items.find((i) => i.id === item.id)?.status).toBe('deleted');
+    expect(list.items.find((i) => i.id === item.id)).toBeUndefined();
+    // Still there for somebody who asks for it.
+    const removed = KnowledgeListResponse.parse(
+      (await admin.get('/v1/knowledge.list?status=deleted')).json(),
+    );
+    expect(removed.items.find((i) => i.id === item.id)?.status).toBe('deleted');
 
     const restored = KnowledgeResponse.parse(
       (await admin.post('/v1/admin/knowledge.restore', { item_id: item.id })).json(),

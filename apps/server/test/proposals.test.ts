@@ -739,11 +739,16 @@ describe('proposing a change to an item that exists', () => {
       proposal_id: proposed.proposal.id,
     });
     expect(approved.statusCode, approved.body).toBe(200);
+    // Logical: the file leaves the tree and the history keeps it. It leaves
+    // the list a reader sees too, and is still there for somebody who asks.
     const listed = (await admin.get('/v1/knowledge.list')).json() as {
       items: { id: string; status: string }[];
     };
-    // Logical: the file leaves the tree and the history keeps it.
-    expect(listed.items.find((i) => i.id === item.id)?.status).toBe('deleted');
+    expect(listed.items.find((i) => i.id === item.id)).toBeUndefined();
+    const removed = (await admin.get('/v1/knowledge.list?status=deleted')).json() as {
+      items: { id: string; status: string }[];
+    };
+    expect(removed.items.find((i) => i.id === item.id)?.status).toBe('deleted');
   });
 
   it('refuses to edit a delete proposal, which carries nothing to edit', async () => {
@@ -850,7 +855,13 @@ describe('proposing a supersession', () => {
     const after = (await admin.get('/v1/knowledge.list')).json() as {
       items: { id: string; title: string; status: string }[];
     };
-    expect(after.items.find((i) => i.id === old.id)?.status).toBe('superseded');
+    // The replaced item is not what the workspace asserts any more, so it is
+    // not in the list; asking for it by status still finds it.
+    expect(after.items.find((i) => i.id === old.id)).toBeUndefined();
+    const replaced = (await admin.get('/v1/knowledge.list?status=superseded')).json() as {
+      items: { id: string; status: string }[];
+    };
+    expect(replaced.items.find((i) => i.id === old.id)?.status).toBe('superseded');
     const replacement = after.items.find((i) => i.title === 'Cache layer' && i.status === 'active');
     expect(replacement).toBeDefined();
   });

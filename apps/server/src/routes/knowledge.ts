@@ -342,7 +342,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         ...(query.types.length > 0 ? { types: query.types } : {}),
         ...(query.review_states.length > 0 ? { reviewStates: query.review_states } : {}),
         ...(query.evidence_states.length > 0 ? { evidenceStates: query.evidence_states } : {}),
-        ...(query.status ? { status: query.status } : {}),
+        status: query.status,
       });
       const page = items.slice(0, query.limit);
       return {
