@@ -1515,7 +1515,12 @@ export class KnowledgeService {
             categories_after: p.chosen.map((c) => c.id),
           },
         });
-        const back = { ...item, status: 'active' as const, currentRevisionId: revisionId, deletedAt: null };
+        const back = {
+          ...item,
+          status: 'active' as const,
+          currentRevisionId: revisionId,
+          deletedAt: null,
+        };
         return {
           item: back,
           revision,

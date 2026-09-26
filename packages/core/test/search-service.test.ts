@@ -22,7 +22,7 @@ function candidate(chunkId: string, itemId: string, lexical = 1): SearchCandidat
     reviewState: 'unreviewed',
     evidenceState: 'none',
     disputed: false,
-  stale: false,
+    stale: false,
     revisionId: 'rev_01M2XSEARCHSEARCHSEARCH01' as SearchCandidate['revisionId'],
     contentHash: 'sha256:x',
     updatedAt: new Date(),
