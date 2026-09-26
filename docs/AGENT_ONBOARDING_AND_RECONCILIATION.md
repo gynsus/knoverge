@@ -258,11 +258,19 @@ evidence than a passage that means something alike, so a candidate already
 matched lexically is not embedded again — the answer is already had, and the
 call is not free.
 
-The threshold is 0.8, lower than the duplicate check's 0.88. The two decide
+The threshold is 0.6, far below the duplicate check's 0.75. The two decide
 different things: this offers a candidate to read, and an agent that looks and
 disagrees has lost a glance; that refuses a write, and the only way past a
 false one is acknowledging a candidate that was never a duplicate, which
 teaches a proposer to acknowledge everything.
+
+Both numbers are measured rather than chosen, and ADR 0023 records how. The one
+here is set where nothing unrelated reaches and everything that says the same
+thing does, so a rewritten copy of knowledge the workspace already holds is
+answered as a suspected match rather than as new — which is the one job this
+step has. It also catches a different assertion about the same thing, and that
+is wanted: an agent about to write a third version of something should be shown
+the other two.
 
 A match outside the caller's read scope is not a match it hears about, here as
 everywhere: the candidate is classified as though nothing matched (section 19).

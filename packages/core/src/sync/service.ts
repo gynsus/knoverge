@@ -33,12 +33,19 @@ const REFINE_BATCH = 100;
 /**
  * How near a passage must be before step E calls it a match.
  *
- * Lower than the duplicate check's, on purpose. This one offers a candidate to
- * read; that one refuses a write. An agent told "this might be the same
- * knowledge" can look and disagree at no cost, so the cost of being wrong here
- * is a glance rather than a refusal somebody has to argue with.
+ * Much lower than the duplicate check's, on purpose. This one offers a
+ * candidate to read; that one refuses a write. An agent told "this might be the
+ * same knowledge" can look and disagree at no cost, so the cost of being wrong
+ * here is a glance rather than a refusal somebody has to argue with.
+ *
+ * Measured: on eighty items with `bge-m3`, nothing unrelated reached 0.5306 and
+ * nothing that said the same thing fell below 0.6585, so this sits in the empty
+ * band between them. It also admits a different assertion about the same thing,
+ * which during reconciliation is the point rather than a mistake — an agent
+ * about to write a third version of something should see the other two. ADR
+ * 0023 has the numbers.
  */
-const SEMANTIC_MATCH_THRESHOLD = 0.8;
+const SEMANTIC_MATCH_THRESHOLD = 0.6;
 
 /** At most this many items are offered as meaning nearly the same thing. */
 const SEMANTIC_MATCHES = 3;

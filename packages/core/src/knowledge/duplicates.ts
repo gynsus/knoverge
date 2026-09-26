@@ -19,17 +19,20 @@ export const MAX_LEXICAL_CANDIDATES = 5;
 /**
  * How near two passages must be before this calls them possibly the same.
  *
- * Deliberately high. A false positive refuses a write somebody meant to make,
- * and the only way past it is acknowledging a candidate that was never a
- * duplicate — which teaches a proposer to acknowledge everything. A missed
- * one is caught by the same check on approval, and by a reviewer reading the
- * text.
+ * Set for precision, because a false positive refuses a write somebody meant
+ * to make, and the only way past it is acknowledging a candidate that was
+ * never a duplicate — which teaches a proposer to acknowledge everything. A
+ * missed one is caught by the same check on approval, by a reviewer reading
+ * the text, and, before any of that, by reconciliation, whose threshold is set
+ * to catch all of them because being wrong there costs a glance.
  *
- * It is a starting point rather than a measured value: tuning it needs a
- * corpus, an embedding model and somebody's judgement about pairs, and until
- * all three exist the conservative number is the honest one.
+ * Measured rather than guessed, which the 0.88 this replaces was not: on
+ * eighty items with `bge-m3`, 0.88 admitted one of the seventeen pairs that
+ * said the same thing, and this admits twelve of them against one pair that
+ * was merely related. ADR 0023 has the method and the numbers, and says why
+ * whole-passage similarity is not a duplicate detector on a corpus like this.
  */
-export const SEMANTIC_SIMILARITY_THRESHOLD = 0.88;
+export const SEMANTIC_SIMILARITY_THRESHOLD = 0.75;
 
 /** At most this many semantic candidates. */
 export const MAX_SEMANTIC_CANDIDATES = 3;
