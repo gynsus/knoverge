@@ -1410,6 +1410,7 @@ describe('knowledge page', () => {
     review_state: 'human_reviewed',
     evidence_state: 'none',
     disputed: false,
+    stale: false,
     categories: ['architecture'],
     tags: ['auth'],
     valid_from: null,
@@ -1424,6 +1425,7 @@ describe('knowledge page', () => {
     sources: [],
     relations: [],
     disputed_by: [],
+    summary_of: [],
     content_hash: 'sha256:' + 'a'.repeat(64),
     frontmatter_hash: 'sha256:' + 'b'.repeat(64),
     revision_number: 1,
@@ -1444,7 +1446,7 @@ describe('knowledge page', () => {
   const ROUTES = {
     ...SIGNED_IN,
     'GET /v1/knowledge.counts': () =>
-      json({ counts: { total: 1, unreviewed: 0, unsourced: 1, disputed: 0 } }),
+      json({ counts: { total: 1, unreviewed: 0, unsourced: 1, disputed: 0, stale: 0 } }),
     'GET /v1/knowledge.list': () => json({ items: [ITEM], next_cursor: null }),
     [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: DETAIL }),
     [`GET /v1/knowledge.revisions?item_id=${ITEM.id}`]: () =>
@@ -1478,7 +1480,9 @@ describe('knowledge page', () => {
     const calls = mockApi({
       ...ROUTES,
       'GET /v1/knowledge.counts': () =>
-        json({ counts: { total: 186, unreviewed: 12, unsourced: 31, disputed: 2 } }),
+        json({
+          counts: { total: 186, unreviewed: 12, unsourced: 31, disputed: 2, stale: 4 },
+        }),
     });
     renderApp('/knowledge');
     const user = userEvent.setup();
@@ -1497,6 +1501,11 @@ describe('knowledge page', () => {
     expect(contested.textContent).toContain('2');
     await user.click(contested);
     await waitFor(() => expect(calls.some((c) => c.url.includes('disputed=true'))).toBe(true));
+
+    const behind = screen.getByRole('button', { name: /Out of date/ });
+    expect(behind.textContent).toContain('4');
+    await user.click(behind);
+    await waitFor(() => expect(calls.some((c) => c.url.includes('stale=true'))).toBe(true));
   });
 
   it('says where an item came from, and says it when nothing did', async () => {
@@ -1651,6 +1660,63 @@ describe('knowledge page', () => {
     await user.type(within(drawer).getByLabelText('Holds until'), '2026-01-01');
     // The server refuses it too; nobody should have to press Save to find out.
     expect(await within(drawer).findByRole('alert')).toHaveTextContent(/before its start/);
+  });
+
+  it('names what a summary was made from, and which of it has changed', async () => {
+    // The list of ids alone is not the useful question. Which of them moved on
+    // is, because those are the ones somebody has to read again (ADR 0024).
+    const fresh = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TB',
+      title: 'Deploys are on Thursdays',
+    };
+    const moved = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TC',
+      title: 'Releases are cut on Wednesdays',
+      current_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1TZ',
+    };
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({
+          item: {
+            ...DETAIL,
+            type: 'summary',
+            stale: true,
+            summary_of: [
+              `${fresh.id}@${fresh.current_revision_id}`,
+              // The revision the summary read is not the one the item is at now.
+              `${moved.id}@rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3`,
+            ],
+          },
+        }),
+      [`GET /v1/knowledge.get?item_id=${fresh.id}`]: () => json({ item: fresh }),
+      [`GET /v1/knowledge.get?item_id=${moved.id}`]: () => json({ item: moved }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByText('Made from')).toBeInTheDocument();
+    expect(
+      await within(drawer).findByRole('button', { name: 'Deploys are on Thursdays' }),
+    ).toBeVisible();
+    // One marker, on the one that moved.
+    const marks = await within(drawer).findAllByText('changed since');
+    expect(marks).toHaveLength(1);
+  });
+
+  it('says in the list that a summary is behind what it summarises', async () => {
+    mockApi({
+      ...ROUTES,
+      'GET /v1/knowledge.list': () =>
+        json({
+          items: [{ ...ITEM, type: 'summary', title: 'How releases work', stale: true }],
+          next_cursor: null,
+        }),
+    });
+    renderApp('/knowledge');
+    // Not an error: a stale summary is not wrong, it is behind.
+    expect(await screen.findByText('Out of date')).toBeInTheDocument();
   });
 
   it('names who contradicts an item, which its own connections cannot say', async () => {
@@ -2014,6 +2080,7 @@ const ITEM = {
   review_state: 'human_reviewed' as const,
   evidence_state: 'none' as const,
   disputed: false,
+  stale: false,
   categories: [],
   tags: [],
   valid_from: null,
@@ -2025,6 +2092,7 @@ const ITEM = {
   sources: [],
   relations: [],
   disputed_by: [],
+  summary_of: [],
   content_hash: 'sha256:abc',
   frontmatter_hash: 'sha256:def',
   revision_number: 1,

@@ -424,9 +424,18 @@ A summary is a knowledge item with:
 ```text
 type = summary
 summary_of = item id @ revision id list
-generation metadata
-stale boolean
 ```
+
+The revision, not just the item. "This summarises these five facts" is not the
+claim; "this summarises these five facts as they read at these five revisions"
+is, and only the second one can go out of date.
+
+Staleness is not a field. A summary is stale when any revision it names is no
+longer the current revision of the item it names, which is computed on the way
+out rather than stored and maintained (ADR 0024). There is no operation that
+marks a summary stale and none that clears it: writing the summary again, naming
+what is current, is the only statement there is — and it is the honest one,
+because it means somebody read them.
 
 A summary must never be the only surviving representation of source knowledge.
 

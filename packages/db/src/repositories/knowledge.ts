@@ -29,6 +29,7 @@ import {
   knowledgeRevisions,
   tags,
 } from '../schema/knowledge.ts';
+import { isStale } from './summaries.ts';
 import { asTx } from '../unit-of-work.ts';
 
 function toItem(row: typeof knowledgeItems.$inferSelect): KnowledgeItemRecord {
@@ -118,6 +119,9 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       }
       if (options.disputed !== undefined) {
         where.push(eq(knowledgeItems.disputed, options.disputed));
+      }
+      if (options.stale !== undefined) {
+        where.push(options.stale ? isStale() : sql`not ${isStale()}`);
       }
       if (options.updatedAfter) where.push(gt(knowledgeItems.updatedAt, options.updatedAfter));
       // Ids are ULIDs, so ordering by id is ordering by creation time and the
@@ -274,12 +278,13 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
           disputed: sql<number>`count(*) filter (
             where ${knowledgeItems.disputed}
           )::int`,
+          stale: sql<number>`count(*) filter (where ${isStale()})::int`,
         })
         .from(knowledgeItems)
         .where(
           and(eq(knowledgeItems.workspaceId, workspaceId), eq(knowledgeItems.status, 'active')),
         );
-      return row ?? { total: 0, unreviewed: 0, unsourced: 0, disputed: 0 };
+      return row ?? { total: 0, unreviewed: 0, unsourced: 0, disputed: 0, stale: 0 };
     },
 
     async titlesOf(workspaceId, itemIds) {

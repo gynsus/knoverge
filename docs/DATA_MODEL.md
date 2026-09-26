@@ -598,7 +598,6 @@ sync.started
 sync.completed
 sync.expired
 summary.generated
-summary.marked_stale
 attachment.uploaded
 attachment.extracted
 webhook.changed
@@ -737,11 +736,24 @@ Deterministic steps produce `final` classifications immediately. Lexical/semanti
 ```text
 SummaryDependency
 - summary_item_id
-- source_item_id
+- source_item_id             (one row per source: primary key with the summary)
 - source_revision_id
+- position                   (the order the summary named them in)
 ```
 
-Any new canonical revision of a dependency item marks related summaries stale.
+Nothing marks a summary stale. It is stale when any `source_revision_id` here is
+no longer the `current_revision_id` of the item beside it, computed where it is
+asked rather than stored (ADR 0024). A new canonical revision of a source
+therefore makes every summary that named the old one stale the instant it lands,
+with no job in between and no flag to be wrong in the meantime.
+
+The rows are replaced whole when a summary is written, the way relations and tags
+are. What an older revision named is kept by that revision's own frontmatter.
+
+`source_item_id` cascades nothing and restricts instead: a source disappearing
+would leave a summary that silently forgets what it was made from, and rule 7
+says the dependency is explicit. Deletion is logical, so this is only reachable by
+a hard delete, which the product does not do.
 
 ## 28. Search document and search chunk
 

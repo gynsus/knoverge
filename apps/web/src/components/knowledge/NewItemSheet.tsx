@@ -43,6 +43,7 @@ export function NewItemSheet({
         tags: listOf(draft.tags),
         sources: [],
         relations: [],
+        summary_of: [],
       }),
     onSuccess: async () => {
       setDraft(emptyDraft);

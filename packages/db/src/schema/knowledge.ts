@@ -218,3 +218,37 @@ export const knowledgeRelations = pgTable(
   },
   (t) => [index('knowledge_relations_to_idx').on(t.toItemId, t.relationType)],
 );
+
+/**
+ * What a summary was made from: the item and the revision of it.
+ *
+ * The revision, not just the item. "This summarises these five facts" is not
+ * the claim; "this summarises these five facts as they read at these five
+ * revisions" is, and only the second one can go out of date. Staleness is
+ * computed from these against the items' current revisions rather than stored
+ * as a flag (ADR 0024).
+ */
+export const summaryDependencies = pgTable(
+  'summary_dependencies',
+  {
+    summaryItemId: id('summary_item_id')
+      .notNull()
+      .references(() => knowledgeItems.id, { onDelete: 'cascade' }),
+    // Restricted rather than cascaded: a source disappearing would leave a
+    // summary that silently forgets what it was made from.
+    sourceItemId: id('source_item_id')
+      .notNull()
+      .references(() => knowledgeItems.id, { onDelete: 'restrict' }),
+    sourceRevisionId: id('source_revision_id')
+      .notNull()
+      .references(() => knowledgeRevisions.id, { onDelete: 'restrict' }),
+    position: integer('position').notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'summary_dependencies_pkey',
+      columns: [t.summaryItemId, t.sourceItemId],
+    }),
+    index('summary_dependencies_source_idx').on(t.sourceItemId),
+  ],
+);

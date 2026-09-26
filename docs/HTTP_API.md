@@ -297,13 +297,14 @@ records nothing. See ADR 0018.
 
 `GET /v1/knowledge.list` pages in creation order and narrows on the server:
 `category_path` (the whole branch, resolved to ids at the boundary per rule
-13), repeatable `types`, `review_states` and `evidence_states`, `disputed`, and
-`status`. A path that names no category is `NOT_FOUND` rather than an empty page
+13), repeatable `types`, `review_states` and `evidence_states`, `disputed`,
+`stale`, and `status`. A path that names no category is `NOT_FOUND` rather than an empty page
 — silence and "there is nothing there" are different answers.
 
-`GET /v1/knowledge.counts` answers how big four piles are across the workspace:
-everything active, what nobody has checked, what nothing backs, and what a live
-contradiction touches.
+`GET /v1/knowledge.counts` answers how big five piles are across the workspace:
+everything active, what nobody has checked, what nothing backs, what a live
+contradiction touches, and which summaries have fallen behind what they
+summarise.
 Each number counts exactly what the matching filter returns, because a count
 that does not match the list it opens is read as a fact and is wrong. It exists
 because a list that pages cannot say how much there is, and "31 items have no

@@ -84,6 +84,7 @@ export function KnowledgePage() {
   const viewState = view === 'unreviewed' ? 'unreviewed' : '';
   const viewEvidence = view === 'unsourced' ? 'none' : '';
   const viewDisputed = view === 'disputed';
+  const viewStale = view === 'stale';
   const narrowed = query !== '' || category !== '' || type !== '' || state !== '' || view !== 'all';
 
   // Typed here, committed to the address after a pause: a round trip per
@@ -148,6 +149,7 @@ export function KnowledgePage() {
     state: viewState || state,
     evidence: viewEvidence,
     disputed: viewDisputed,
+    stale: viewStale,
   });
 
   // The sizes of the piles, over the workspace rather than over the page.

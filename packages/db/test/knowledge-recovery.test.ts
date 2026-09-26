@@ -138,6 +138,7 @@ beforeAll(async () => {
     revisions: repositories.revisions,
     sources: repositories.sources,
     relations: repositories.relations,
+    summaries: repositories.summaries,
     search: repositories.search,
     categories: repositories.categories,
     versions: repositories.taxonomyVersions,
@@ -199,6 +200,7 @@ beforeAll(async () => {
         revisions: repositories.revisions,
         categories: repositories.categories,
         relations: repositories.relations,
+        summaries: repositories.summaries,
         search: repositories.search,
         ledger,
         git,
@@ -276,6 +278,37 @@ describe('a create that reached Git and no further', () => {
     await expect(
       knowledge.create(actor, { title: 'Unblocked', body: 'Body.', type: 'fact' }),
     ).resolves.toBeTruthy();
+  });
+
+  it('rebuilds what a summary was made from, which only the file knew', async () => {
+    // The dependency index is a projection of the frontmatter, like relations
+    // and tags. A recovered summary with no dependency rows reads as one that
+    // can never go stale (ADR 0024), which is a lie the file does not tell.
+    const source = await knowledge.create(actor, {
+      title: 'A source for a recovered summary',
+      body: 'Something to summarise.',
+      type: 'fact',
+    });
+    await expect(
+      crashing.create(actor, {
+        title: 'A summary that survives a crash',
+        body: 'It says what the source says.',
+        type: 'summary',
+        summaryOf: [`${source.item.id}@${source.revision.id}`],
+      }),
+    ).rejects.toThrow('the process stops here');
+
+    const [unfinished] = await repositories.operations.listUnfinished(workspaceId);
+    const summaryId = unfinished!.objectIds['knowledge_item'] as string;
+    expect(await recovery.recover(workspaceId)).toMatchObject({ recovered: [unfinished!.id] });
+
+    expect(
+      await repositories.summaries.listForSummary(workspaceId, summaryId as never),
+    ).toMatchObject([{ sourceItemId: source.item.id, sourceRevisionId: source.revision.id }]);
+    // Which is what makes the answer to "is it stale" a real answer.
+    expect(await repositories.summaries.staleAmong(workspaceId, [summaryId as never])).toEqual(
+      new Set(),
+    );
   });
 
   it('is safe to run twice', async () => {

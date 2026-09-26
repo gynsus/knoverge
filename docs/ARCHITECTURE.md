@@ -375,7 +375,6 @@ Jobs:
 - embedding generation and profile rebuild;
 - semantic matching for sync candidates;
 - summary generation;
-- stale-summary detection;
 - taxonomy duplicate checks;
 - digest generation;
 - webhook delivery;

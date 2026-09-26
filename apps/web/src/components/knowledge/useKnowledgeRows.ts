@@ -16,6 +16,8 @@ export interface Narrowing {
   evidence: string;
   /** Only what a live contradiction touches (ADR 0022). */
   disputed: boolean;
+  /** Only summaries out of step with what they summarise (ADR 0024). */
+  stale: boolean;
 }
 
 /**
@@ -28,9 +30,17 @@ export interface Narrowing {
  * Both answers become the same shape, because the reader is asking the same
  * question either way: which of these do I want to read.
  */
-export function useKnowledgeRows({ query, category, type, state, evidence, disputed }: Narrowing) {
+export function useKnowledgeRows({
+  query,
+  category,
+  type,
+  state,
+  evidence,
+  disputed,
+  stale,
+}: Narrowing) {
   const browse = useInfiniteQuery({
-    queryKey: [...ITEMS_KEY, category, type, state, evidence, disputed],
+    queryKey: [...ITEMS_KEY, category, type, state, evidence, disputed, stale],
     queryFn: ({ pageParam, signal }) =>
       adminApi.knowledge.list(
         {
@@ -40,6 +50,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence, dispu
           reviewState: state || undefined,
           evidenceState: evidence || undefined,
           disputed: disputed || undefined,
+          stale: stale || undefined,
         },
         signal,
       ),
@@ -49,7 +60,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence, dispu
   });
 
   const found = useQuery({
-    queryKey: [...ITEMS_KEY, 'search', query, category, type, state, evidence, disputed],
+    queryKey: [...ITEMS_KEY, 'search', query, category, type, state, evidence, disputed, stale],
     queryFn: () =>
       adminApi.knowledge.search({
         query,
@@ -74,7 +85,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence, dispu
           // best hits and `include_disputed` says whether they may appear, not
           // that nothing else may. The flag comes back on every hit, so the pile
           // is exact — it is the ranked page it is taken from, as always.
-          .filter((hit) => !disputed || hit.disputed)
+          .filter((hit) => (!disputed || hit.disputed) && (!stale || hit.stale))
           .map((hit) => ({
             id: hit.item_id,
             title: hit.title,
@@ -83,6 +94,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence, dispu
             reviewState: hit.review_state,
             evidenceState: hit.evidence_state,
             disputed: hit.disputed,
+            stale: hit.stale,
             updatedAt: hit.updated_at,
             ...(hit.snippet ? { snippet: hit.snippet } : {}),
           }))
@@ -96,10 +108,11 @@ export function useKnowledgeRows({ query, category, type, state, evidence, dispu
       reviewState: entry.review_state,
       evidenceState: entry.evidence_state,
       disputed: entry.disputed,
+      stale: entry.stale,
       updatedAt: entry.updated_at,
       revisionNumber: entry.revision_number,
     }));
-  }, [query, found.data, browse.data, disputed]);
+  }, [query, found.data, browse.data, disputed, stale]);
 
   return {
     rows,

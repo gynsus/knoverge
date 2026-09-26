@@ -310,6 +310,26 @@ The fan-out is one level deep, and that is the property that makes this safe to
 put in five operations: a verdict is decided by status and validity windows, and
 recomputing a verdict changes neither. There is no cascade to bound.
 
+## A summary is stale by arithmetic
+
+`summary_dependencies` stores what a summary was made from as pairs of item and
+revision, and `packages/db/src/repositories/summaries.ts` holds `isStale()` — the
+one SQL expression that decides whether a summary has fallen behind. The filter
+on the list, the count behind the pile and the flag on a search hit all call it,
+because three copies of that rule would be three chances to write it differently
+and only one of them would be noticed.
+
+There is no flag and no job (ADR 0024). A source is written, and every summary
+that named its old revision is stale in the same instant — nothing has to catch
+up, so nothing can be wrong while it does. Writing the summary again, naming what
+is current, is the only way out, and it is the honest one: it means somebody read
+them.
+
+`KnowledgeService.staleAfter` answers the same question inside a write's own
+transaction, because a caller may legitimately name an older revision — you
+summarise what you read, and it may have moved on while you were writing — so a
+write cannot assume its answer is no.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes
