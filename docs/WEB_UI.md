@@ -236,6 +236,24 @@ authority from.
 Leaving the application is said, not only drawn. An icon announces it to people
 who can see it, and the text beside it announces it to everybody else.
 
+## 2l. A state a row asserts is a state the drawer can explain
+
+A badge is a claim about an item, so opening the item has to say what the claim
+rests on. "Disputed" with nothing beside it tells a reader that somewhere in the
+workspace something disagrees with what they are reading, and leaves them to
+find it.
+
+Where the reason lives on another object, it is fetched and named. A
+contradiction is recorded on the item that reported it, so the item it was
+reported against has nothing of its own to show — its drawer names the other
+items, by title, as things to open. The same rule already governs sources:
+provenance is stated even when there is none, because "no sources given" is a
+finding and an absent section is not.
+
+This is what keeps a flag from becoming decoration. A field the product carries
+everywhere and never explains is one somebody learns to ignore, and then it may
+as well not be there.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

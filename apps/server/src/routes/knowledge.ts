@@ -101,7 +101,11 @@ function detail(result: ItemResult): KnowledgeItemDetail {
     current_revision_id: revision.id,
     review_state: item.reviewState,
     evidence_state: item.evidenceState,
-    disputed: item.disputed,
+    // From the revision, not the row, so that the two dispute fields cannot
+    // disagree inside one answer and a read of an older revision says what
+    // that revision said rather than what is true now.
+    disputed: revision.frontmatter.disputed,
+    disputed_by: revision.frontmatter.disputed_by ?? [],
     categories: result.categories,
     tags: result.tags,
     valid_from: item.validFrom?.toISOString() ?? null,
@@ -300,7 +304,12 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
       const actor = await requirePermission(services, request, 'knowledge.read');
       const piles = await services.knowledge.pileSizes(actor.context);
       return {
-        counts: { total: piles.total, unreviewed: piles.unreviewed, unsourced: piles.unsourced },
+        counts: {
+          total: piles.total,
+          unreviewed: piles.unreviewed,
+          unsourced: piles.unsourced,
+          disputed: piles.disputed,
+        },
       };
     },
   );
@@ -342,6 +351,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         ...(query.types.length > 0 ? { types: query.types } : {}),
         ...(query.review_states.length > 0 ? { reviewStates: query.review_states } : {}),
         ...(query.evidence_states.length > 0 ? { evidenceStates: query.evidence_states } : {}),
+        ...(query.disputed === undefined ? {} : { disputed: query.disputed }),
         status: query.status,
       });
       const page = items.slice(0, query.limit);
@@ -403,7 +413,11 @@ export async function knowledgeGet(
     item: {
       ...item,
       ...(input.include_provenance ? {} : { sources: [] }),
-      ...(input.include_relations ? {} : { relations: [] }),
+      // `disputed_by` goes with them: it is the other end of a relation, and a
+      // caller that asked for no relations gets no list of them. The `disputed`
+      // flag stays either way — rule 8 says dispute state is retrievable — so
+      // an agent that sees it can ask again for who.
+      ...(input.include_relations ? {} : { relations: [], disputed_by: [] }),
     },
     total_chars: whole.length,
     truncated: input.offset > 0 || slice.length < whole.length,

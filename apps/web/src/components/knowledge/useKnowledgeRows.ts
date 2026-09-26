@@ -14,6 +14,8 @@ export interface Narrowing {
   state: string;
   /** `none` is the pile with nothing saying where it came from. */
   evidence: string;
+  /** Only what a live contradiction touches (ADR 0022). */
+  disputed: boolean;
 }
 
 /**
@@ -26,9 +28,9 @@ export interface Narrowing {
  * Both answers become the same shape, because the reader is asking the same
  * question either way: which of these do I want to read.
  */
-export function useKnowledgeRows({ query, category, type, state, evidence }: Narrowing) {
+export function useKnowledgeRows({ query, category, type, state, evidence, disputed }: Narrowing) {
   const browse = useInfiniteQuery({
-    queryKey: [...ITEMS_KEY, category, type, state, evidence],
+    queryKey: [...ITEMS_KEY, category, type, state, evidence, disputed],
     queryFn: ({ pageParam, signal }) =>
       adminApi.knowledge.list(
         {
@@ -37,6 +39,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence }: Nar
           type: type || undefined,
           reviewState: state || undefined,
           evidenceState: evidence || undefined,
+          disputed: disputed || undefined,
         },
         signal,
       ),
@@ -46,7 +49,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence }: Nar
   });
 
   const found = useQuery({
-    queryKey: [...ITEMS_KEY, 'search', query, category, type, state, evidence],
+    queryKey: [...ITEMS_KEY, 'search', query, category, type, state, evidence, disputed],
     queryFn: () =>
       adminApi.knowledge.search({
         query,
@@ -65,17 +68,25 @@ export function useKnowledgeRows({ query, category, type, state, evidence }: Nar
 
   const rows: RowItem[] = useMemo(() => {
     if (query !== '') {
-      return (found.data?.results ?? []).map((hit) => ({
-        id: hit.item_id,
-        title: hit.title,
-        type: hit.type,
-        categories: hit.category_paths,
-        reviewState: hit.review_state,
-        evidenceState: hit.evidence_state,
-        disputed: hit.disputed,
-        updatedAt: hit.updated_at,
-        ...(hit.snippet ? { snippet: hit.snippet } : {}),
-      }));
+      return (
+        (found.data?.results ?? [])
+          // Narrowed here rather than in the request: search ranks a page of the
+          // best hits and `include_disputed` says whether they may appear, not
+          // that nothing else may. The flag comes back on every hit, so the pile
+          // is exact — it is the ranked page it is taken from, as always.
+          .filter((hit) => !disputed || hit.disputed)
+          .map((hit) => ({
+            id: hit.item_id,
+            title: hit.title,
+            type: hit.type,
+            categories: hit.category_paths,
+            reviewState: hit.review_state,
+            evidenceState: hit.evidence_state,
+            disputed: hit.disputed,
+            updatedAt: hit.updated_at,
+            ...(hit.snippet ? { snippet: hit.snippet } : {}),
+          }))
+      );
     }
     return (browse.data?.pages.flatMap((page) => page.items) ?? []).map((entry) => ({
       id: entry.id,
@@ -88,7 +99,7 @@ export function useKnowledgeRows({ query, category, type, state, evidence }: Nar
       updatedAt: entry.updated_at,
       revisionNumber: entry.revision_number,
     }));
-  }, [query, found.data, browse.data]);
+  }, [query, found.data, browse.data, disputed]);
 
   return {
     rows,

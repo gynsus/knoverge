@@ -11,6 +11,15 @@ import {
 } from '@knoverge/contracts';
 
 import { chunksFor } from './chunks.ts';
+import {
+  applyVerdict,
+  contradictionTargets,
+  sameVerdict,
+  verdict,
+  type DisputeSide,
+  type ValidityWindow,
+  type Verdict,
+} from './disputes.ts';
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -39,6 +48,15 @@ import type {
 } from './types.ts';
 
 export { compareFrontmatter, evidenceFrom, type MetadataChange } from './frontmatter.ts';
+export {
+  applyVerdict,
+  contradictionTargets,
+  disputes,
+  sameVerdict,
+  verdict,
+  windowsOverlap,
+} from './disputes.ts';
+export type { DisputeSide, ValidityWindow, Verdict } from './disputes.ts';
 export type {
   CreateItemInput,
   DeleteItemInput,
@@ -86,6 +104,7 @@ export class KnowledgeService {
     const itemId = newId('kn') as KnowledgeItemId;
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedItem | undefined;
+    let disputed: PlannedDisputes | undefined;
 
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'create',
@@ -112,7 +131,7 @@ export class KnowledgeService {
         // hard-coded 'en' made every item in a Russian workspace claim to be
         // English, which drives the full-text search configuration.
         const language = input.language ?? workspace.defaultLanguage;
-        const frontmatter: Frontmatter = {
+        const draft: Frontmatter = {
           id: itemId,
           title,
           type: input.type,
@@ -133,11 +152,28 @@ export class KnowledgeService {
           ...(input.external ? { external: input.external } : {}),
         } as Frontmatter;
 
-        await this.assertRelationTargets(actor.workspaceId, itemId, frontmatter.relations);
+        await this.assertRelationTargets(actor.workspaceId, itemId, draft.relations);
+        // A new item that reports a contradiction marks the item it
+        // contradicts in the same commit, and is marked itself (ADR 0022).
+        const dispute = (disputed = await this.planDisputes(
+          actor.workspaceId,
+          [
+            {
+              side: { itemId, status: 'active', window: windowOf(draft) },
+              relations: draft.relations,
+            },
+          ],
+          now,
+        ));
+        const frontmatter = applyVerdict(draft, verdictOf(dispute, itemId), now);
         const rendered = this.o.renderItem({ frontmatter, body });
-        await this.o.git.write(actor.workspaceId, [{ path: markdownPath, content: rendered }]);
+        const also = disputeWrites(dispute.partners);
+        await this.o.git.write(actor.workspaceId, [
+          { path: markdownPath, content: rendered },
+          ...also.files,
+        ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [markdownPath],
+          paths: [markdownPath, ...also.paths],
           subject: `create(${input.type}): ${title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -150,6 +186,7 @@ export class KnowledgeService {
             // What recovery needs to rebuild the PostgreSQL side from the
             // commit alone: which item, which revision, and what happened.
             ['Knoverge-Change', `${itemId}@${revisionId} create`],
+            ...also.trailers,
           ],
           author,
           at: now,
@@ -158,11 +195,14 @@ export class KnowledgeService {
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the item was written but produced no commit');
         }
+        sealDisputes(dispute.partners, commitHash);
         planned = { frontmatter, body, slug, markdownPath, chosen, rendered, now, commitHash };
         return { commitHash, objectIds: { knowledge_item: itemId, path: markdownPath } };
       },
       record: async (tx, operation) => {
-        if (!planned) throw new DomainError('INTERNAL_ERROR', 'the item was never planned');
+        if (!planned || !disputed) {
+          throw new DomainError('INTERNAL_ERROR', 'the item was never planned');
+        }
         const p = planned;
         const item: KnowledgeItemRecord = {
           id: itemId,
@@ -175,7 +215,7 @@ export class KnowledgeService {
           currentRevisionId: revisionId,
           reviewState: p.frontmatter.review,
           evidenceState: p.frontmatter.evidence,
-          disputed: false,
+          disputed: p.frontmatter.disputed,
           validFrom: p.frontmatter.valid_from ? new Date(p.frontmatter.valid_from) : null,
           validUntil: p.frontmatter.valid_until ? new Date(p.frontmatter.valid_until) : null,
           observedAt: p.frontmatter.observed_at ? new Date(p.frontmatter.observed_at) : null,
@@ -223,6 +263,7 @@ export class KnowledgeService {
         await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
         await this.writeRelations(tx, actor, itemId, p.frontmatter.relations, p.now);
         await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, p.body, p.now);
+        await this.recordDisputes(tx, actor, disputed.partners, operation.id);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.created',
           objectType: 'knowledge_item',
@@ -299,6 +340,7 @@ export class KnowledgeService {
   async update(actor: ActorContext, input: UpdateItemInput): Promise<ItemResult> {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
+    let disputed: PlannedDisputes | undefined;
     // Read inside the commit step, which holds the workspace lock, and used by
     // the record step afterwards. See currentFor().
     let current: ItemResult | undefined;
@@ -345,7 +387,7 @@ export class KnowledgeService {
         // trailing newline normalisation adds, and comparing against it
         // unmodified made every metadata change look like a text change.
         const bodyChanged = body !== current.body.trim();
-        const frontmatter: Frontmatter = {
+        const draft: Frontmatter = {
           ...previous,
           title,
           type: input.type ?? previous.type,
@@ -366,13 +408,34 @@ export class KnowledgeService {
           updated_at: now.toISOString(),
         } as Frontmatter;
 
-        await this.assertRelationTargets(actor.workspaceId, input.itemId, frontmatter.relations);
+        await this.assertRelationTargets(actor.workspaceId, input.itemId, draft.relations);
+        // Both a changed relations list and a changed validity window can open
+        // or close a contradiction, and this write may be either (ADR 0022).
+        const dispute = (disputed = await this.planDisputes(
+          actor.workspaceId,
+          [
+            {
+              side: {
+                itemId: input.itemId,
+                status: current.item.status,
+                window: windowOf(draft),
+              },
+              relations: draft.relations,
+            },
+          ],
+          now,
+        ));
+        const frontmatter = applyVerdict(draft, verdictOf(dispute, input.itemId), now);
         const rendered = this.o.renderItem({ frontmatter, body });
         if (moved) await this.o.git.remove(actor.workspaceId, [previousPath]);
-        await this.o.git.write(actor.workspaceId, [{ path: markdownPath, content: rendered }]);
+        const also = disputeWrites(dispute.partners);
+        await this.o.git.write(actor.workspaceId, [
+          { path: markdownPath, content: rendered },
+          ...also.files,
+        ]);
         const kind = moved ? 'move' : bodyChanged ? 'update' : 'metadata';
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: moved ? [previousPath, markdownPath] : [markdownPath],
+          paths: [...(moved ? [previousPath] : []), markdownPath, ...also.paths],
           subject: `${moved ? 'move' : 'update'}(${frontmatter.type}): ${title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -383,6 +446,7 @@ export class KnowledgeService {
               ? ([['Knoverge-Proposal', input.proposalId]] as [string, string][])
               : []),
             ['Knoverge-Change', `${input.itemId}@${revisionId} ${kind}`],
+            ...also.trailers,
           ],
           author,
           at: now,
@@ -391,6 +455,7 @@ export class KnowledgeService {
         if (commitHash === null) {
           throw new DomainError('VALIDATION_ERROR', 'this change would alter nothing');
         }
+        sealDisputes(dispute.partners, commitHash);
         planned = {
           frontmatter,
           body,
@@ -405,7 +470,7 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: input.itemId, path: markdownPath } };
       },
       record: async (tx, operation) => {
-        if (!planned || !current) {
+        if (!planned || !current || !disputed) {
           throw new DomainError('INTERNAL_ERROR', 'the change was never planned');
         }
         const p = planned;
@@ -425,6 +490,7 @@ export class KnowledgeService {
           currentRevisionId: revisionId,
           reviewState: p.frontmatter.review,
           evidenceState: p.frontmatter.evidence,
+          disputed: p.frontmatter.disputed,
           validFrom: p.frontmatter.valid_from ? new Date(p.frontmatter.valid_from) : null,
           validUntil: p.frontmatter.valid_until ? new Date(p.frontmatter.valid_until) : null,
           observedAt: p.frontmatter.observed_at ? new Date(p.frontmatter.observed_at) : null,
@@ -459,6 +525,7 @@ export class KnowledgeService {
           p.body,
           p.now,
         );
+        await this.recordDisputes(tx, actor, disputed.partners, operation.id);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: p.kind === 'move' ? 'knowledge.moved' : 'knowledge.updated',
           objectType: 'knowledge_item',
@@ -550,6 +617,7 @@ export class KnowledgeService {
     // Both read inside the commit step, under the workspace lock, and used by
     // the record step afterwards. See currentFor().
     let superseded: ItemResult | undefined;
+    let disputed: PlannedDisputes | undefined;
     // The replacement, when it is something the workspace already holds. It
     // gets a revision of its own, so rule 6 applies to it too.
     let replacement: ItemResult | null = null;
@@ -640,7 +708,7 @@ export class KnowledgeService {
           ),
           { type: 'supersedes', target: input.oldItemId },
         ];
-        const newFrontmatter: Frontmatter = replacement
+        const newDraft: Frontmatter = replacement
           ? ({
               ...replacement.revision.frontmatter,
               // What changes on an item that already exists: when it took
@@ -679,7 +747,7 @@ export class KnowledgeService {
 
         // The old item keeps its text. What changes is that it is no longer
         // current, when it stopped being current, and what replaced it.
-        const oldFrontmatter: Frontmatter = {
+        const oldDraft: Frontmatter = {
           ...old.revision.frontmatter,
           status: 'superseded',
           valid_until: changeover,
@@ -687,17 +755,47 @@ export class KnowledgeService {
           updated_at: now.toISOString(),
         } as Frontmatter;
 
+        // Both items at once, because each one's verdict can depend on the
+        // other's new state, and the old one leaving the active set is itself
+        // a way a contradiction ends (ADR 0022).
+        const dispute = (disputed = await this.planDisputes(
+          actor.workspaceId,
+          [
+            {
+              side: {
+                itemId: newItemId,
+                status: 'active',
+                window: windowOf(newDraft),
+              },
+              relations,
+            },
+            {
+              side: {
+                itemId: input.oldItemId,
+                status: 'superseded',
+                window: windowOf(oldDraft),
+              },
+              relations: oldDraft.relations,
+            },
+          ],
+          now,
+        ));
+        const newFrontmatter = applyVerdict(newDraft, verdictOf(dispute, newItemId), now);
+        const oldFrontmatter = applyVerdict(oldDraft, verdictOf(dispute, input.oldItemId), now);
+
         const newRendered = this.o.renderItem({ frontmatter: newFrontmatter, body });
         const oldRendered = this.o.renderItem({
           frontmatter: oldFrontmatter,
           body: old.body,
         });
+        const also = disputeWrites(dispute.partners);
         await this.o.git.write(actor.workspaceId, [
           { path: newPath, content: newRendered },
           { path: old.item.markdownPath, content: oldRendered },
+          ...also.files,
         ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [newPath, old.item.markdownPath],
+          paths: [newPath, old.item.markdownPath, ...also.paths],
           subject: `supersede(${newFrontmatter.type}): ${title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -714,6 +812,7 @@ export class KnowledgeService {
               `${newItemId}@${newRevisionId} ${replacement ? 'supersede' : 'create'}`,
             ],
             ['Knoverge-Change', `${input.oldItemId}@${oldRevisionId} superseded_by`],
+            ...also.trailers,
           ],
           author,
           at: now,
@@ -722,6 +821,7 @@ export class KnowledgeService {
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the supersession produced no commit');
         }
+        sealDisputes(dispute.partners, commitHash);
         plannedNew = {
           frontmatter: newFrontmatter,
           body,
@@ -755,7 +855,7 @@ export class KnowledgeService {
         };
       },
       record: async (tx, operation) => {
-        if (!plannedNew || !plannedOld || !superseded) {
+        if (!plannedNew || !plannedOld || !superseded || !disputed) {
           throw new DomainError('INTERNAL_ERROR', 'the supersession was never planned');
         }
         const pNew = plannedNew;
@@ -774,6 +874,7 @@ export class KnowledgeService {
           await this.o.items.update(tx, newItemId, {
             currentRevisionId: newRevisionId,
             reviewState: pNew.frontmatter.review,
+            disputed: pNew.frontmatter.disputed,
             validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
             updatedAt: pNew.now,
           });
@@ -790,7 +891,7 @@ export class KnowledgeService {
             currentRevisionId: newRevisionId,
             reviewState: pNew.frontmatter.review,
             evidenceState: pNew.frontmatter.evidence,
-            disputed: false,
+            disputed: pNew.frontmatter.disputed,
             validFrom: pNew.frontmatter.valid_from ? new Date(pNew.frontmatter.valid_from) : null,
             validUntil: null,
             observedAt: pNew.frontmatter.observed_at
@@ -822,6 +923,7 @@ export class KnowledgeService {
         );
         // One relation row, on the new item, pointing at what it replaced.
         await this.writeRelations(tx, actor, newItemId, pNew.frontmatter.relations, pNew.now);
+        await this.recordDisputes(tx, actor, disputed.partners, operation.id);
         await this.index(
           tx,
           actor.workspaceId,
@@ -858,6 +960,9 @@ export class KnowledgeService {
         await this.o.items.update(tx, input.oldItemId, {
           status: 'superseded',
           currentRevisionId: oldRevisionId,
+          // A superseded item is not in the running any more, so nothing it
+          // disagreed with is a live contradiction (ADR 0022).
+          disputed: pOld.frontmatter.disputed,
           validUntil: pOld.frontmatter.valid_until ? new Date(pOld.frontmatter.valid_until) : null,
           updatedAt: pOld.now,
         });
@@ -1123,6 +1228,7 @@ export class KnowledgeService {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
     let current: ItemResult | undefined;
+    let disputed: PlannedDisputes | undefined;
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'delete',
       objectIds: { knowledge_item: itemId },
@@ -1131,14 +1237,30 @@ export class KnowledgeService {
         const author = await this.authorOf(actor);
         const now = this.clock.now();
         await this.assertRepositoryIsOurs(actor.workspaceId);
-        const frontmatter: Frontmatter = {
+        const draft: Frontmatter = {
           ...item.revision.frontmatter,
           status: 'deleted',
           updated_at: now.toISOString(),
         } as Frontmatter;
+        // A deleted item disputes nothing and is disputed by nothing, so
+        // deleting one side of a contradiction ends it (ADR 0022). Its own
+        // relations stay on record; a restore reopens the dispute.
+        const dispute = (disputed = await this.planDisputes(
+          actor.workspaceId,
+          [
+            {
+              side: { itemId, status: 'deleted', window: windowOf(draft) },
+              relations: draft.relations,
+            },
+          ],
+          now,
+        ));
+        const frontmatter = applyVerdict(draft, verdictOf(dispute, itemId), now);
         await this.o.git.remove(actor.workspaceId, [item.item.markdownPath]);
+        const also = disputeWrites(dispute.partners);
+        if (also.files.length > 0) await this.o.git.write(actor.workspaceId, also.files);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [item.item.markdownPath],
+          paths: [item.item.markdownPath, ...also.paths],
           subject: `delete(${frontmatter.type}): ${item.revision.title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -1147,6 +1269,7 @@ export class KnowledgeService {
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
             ...(proposalId ? ([['Knoverge-Proposal', proposalId]] as [string, string][]) : []),
             ['Knoverge-Change', `${itemId}@${revisionId} ${kind}`],
+            ...also.trailers,
           ],
           author,
           at: now,
@@ -1155,6 +1278,7 @@ export class KnowledgeService {
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the file was already gone from the tree');
         }
+        sealDisputes(dispute.partners, commitHash);
         planned = {
           frontmatter,
           body: item.body,
@@ -1171,7 +1295,7 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: itemId } };
       },
       record: async (tx, operation) => {
-        if (!planned || !current) {
+        if (!planned || !current || !disputed) {
           throw new DomainError('INTERNAL_ERROR', 'the delete was never planned');
         }
         const p = planned;
@@ -1188,10 +1312,12 @@ export class KnowledgeService {
         await this.o.items.update(tx, itemId, {
           status: 'deleted',
           currentRevisionId: revisionId,
+          disputed: p.frontmatter.disputed,
           deletedAt: p.now,
           updatedAt: p.now,
         });
         await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, '', p.now);
+        await this.recordDisputes(tx, actor, disputed.partners, operation.id);
         const gone = (await this.o.items.categoriesOf(actor.workspaceId, [itemId])).map(
           (row) => row.categoryId as string,
         );
@@ -1226,6 +1352,7 @@ export class KnowledgeService {
     const revisionId = newId('rev') as RevisionId;
     let planned: PlannedUpdate | undefined;
     let source: RestoreSource | undefined;
+    let disputed: PlannedDisputes | undefined;
     return this.o.crossStore.run<ItemResult>(actor, {
       type: 'restore',
       objectIds: { knowledge_item: itemId },
@@ -1238,17 +1365,32 @@ export class KnowledgeService {
         // The categories the item had. One archived since is refused rather
         // than quietly dropped: where the item belongs is part of the item.
         const chosen = this.resolveCategories(tree, previous.frontmatter.categories);
-        const frontmatter: Frontmatter = {
+        const draft: Frontmatter = {
           ...previous.frontmatter,
           status: 'active',
           updated_at: now.toISOString(),
         } as Frontmatter;
+        // Back among the active, so whatever it contradicted is contradicted
+        // again: the relations were kept through the delete.
+        const dispute = (disputed = await this.planDisputes(
+          actor.workspaceId,
+          [
+            {
+              side: { itemId: item.id, status: 'active', window: windowOf(draft) },
+              relations: draft.relations,
+            },
+          ],
+          now,
+        ));
+        const frontmatter = applyVerdict(draft, verdictOf(dispute, item.id), now);
         const rendered = this.o.renderItem({ frontmatter, body });
+        const also = disputeWrites(dispute.partners);
         await this.o.git.write(actor.workspaceId, [
           { path: previous.markdownPath, content: rendered },
+          ...also.files,
         ]);
         const commitHash = await this.o.git.commit(actor.workspaceId, {
-          paths: [previous.markdownPath],
+          paths: [previous.markdownPath, ...also.paths],
           subject: `restore(${frontmatter.type}): ${previous.title}`,
           trailers: [
             ['Knoverge-Operation', operation.id],
@@ -1256,6 +1398,7 @@ export class KnowledgeService {
             ['Knoverge-Actor', actor.actorId],
             ...(actor.agentId ? ([['Knoverge-Agent', actor.agentId]] as [string, string][]) : []),
             ['Knoverge-Change', `${item.id}@${revisionId} restore`],
+            ...also.trailers,
           ],
           author,
           at: now,
@@ -1263,6 +1406,7 @@ export class KnowledgeService {
         if (commitHash === null) {
           throw new DomainError('INTERNAL_ERROR', 'the restore produced no commit');
         }
+        sealDisputes(dispute.partners, commitHash);
         planned = {
           frontmatter,
           body,
@@ -1276,7 +1420,7 @@ export class KnowledgeService {
         return { commitHash, objectIds: { knowledge_item: item.id } };
       },
       record: async (tx, operation) => {
-        if (!planned || !source) {
+        if (!planned || !source || !disputed) {
           throw new DomainError('INTERNAL_ERROR', 'the restore was never planned');
         }
         const p = planned;
@@ -1294,6 +1438,7 @@ export class KnowledgeService {
           status: 'active',
           markdownPath: p.markdownPath,
           currentRevisionId: revisionId,
+          disputed: p.frontmatter.disputed,
           deletedAt: null,
           updatedAt: p.now,
         });
@@ -1308,6 +1453,7 @@ export class KnowledgeService {
           })),
         );
         await this.index(tx, actor.workspaceId, item.id, revisionId, p.frontmatter, p.body, p.now);
+        await this.recordDisputes(tx, actor, disputed.partners, operation.id);
         await this.o.ledger.append(tx, actor.workspaceId, actor, {
           eventType: 'knowledge.restored',
           objectType: 'knowledge_item',
@@ -1539,6 +1685,197 @@ export class KnowledgeService {
     );
   }
 
+  /**
+   * The dispute verdicts for the items a write changes, and the partner files
+   * the write flips.
+   *
+   * A contradiction has two ends and only one of them carries the relation, so
+   * a write that opens or closes one changes somebody else's file as well
+   * (ADR 0022). The fan-out is one level deep: a verdict is decided by status
+   * and validity windows, and recomputing a verdict changes neither.
+   *
+   * Takes every item the write touches at once, because a supersession touches
+   * two and each one's verdict may depend on the other's new state. Called
+   * from the commit step, which holds the workspace lock, so what it reads is
+   * what it writes against.
+   */
+  private async planDisputes(
+    workspaceId: WorkspaceId,
+    /** Each item this write changes, as it will be once the write lands. */
+    changes: readonly DisputeChange[],
+    now: Date,
+  ): Promise<PlannedDisputes> {
+    const changing = new Map(changes.map((change) => [change.side.itemId, change]));
+    const known = new Map<KnowledgeItemId, KnowledgeItemRecord>();
+
+    /** An array so that a missing row contributes nothing rather than a hole. */
+    const sideOf = async (id: KnowledgeItemId): Promise<DisputeSide[]> => {
+      const changed = changing.get(id);
+      if (changed) return [changed.side];
+      let item = known.get(id);
+      if (!item) {
+        // The relation's foreign key says the row is there. A missing one is
+        // not worth refusing a write over, so it simply disputes nothing.
+        const found = await this.o.items.findById(workspaceId, id);
+        if (!found) return [];
+        known.set(id, (item = found));
+      }
+      return [sideFrom(item)];
+    };
+
+    const storedOutgoing = async (id: KnowledgeItemId): Promise<KnowledgeItemId[]> =>
+      (await this.o.relations.listForItem(workspaceId, id))
+        .filter((relation) => relation.relationType === 'contradicts')
+        .map((relation) => relation.toItemId);
+
+    /** What an item will contradict: its own new list, or the stored one. */
+    const outgoingOf = async (id: KnowledgeItemId): Promise<KnowledgeItemId[]> => {
+      const changed = changing.get(id);
+      return changed ? contradictionTargets(changed.relations) : storedOutgoing(id);
+    };
+
+    /**
+     * What will contradict an item: the stored rows, with this write's own
+     * answer substituted, because the rows are still the ones from before it.
+     */
+    const incomingOf = async (id: KnowledgeItemId): Promise<KnowledgeItemId[]> => {
+      const stored = (await this.o.relations.listPointingAt(workspaceId, id))
+        .filter((relation) => relation.relationType === 'contradicts')
+        .map((relation) => relation.fromItemId)
+        .filter((from) => !changing.has(from));
+      const fresh = [...changing.values()]
+        .filter((change) => contradictionTargets(change.relations).includes(id))
+        .map((change) => change.side.itemId);
+      return [...new Set([...stored, ...fresh])].filter((from) => from !== id);
+    };
+
+    const verdicts = new Map<KnowledgeItemId, Verdict>();
+    const candidates = new Set<KnowledgeItemId>();
+    for (const change of changes) {
+      const id = change.side.itemId;
+      const outgoing = await outgoingOf(id);
+      const incoming = await incomingOf(id);
+      // What it pointed at before this write as well as after it: a withdrawn
+      // contradiction leaves a partner whose verdict has to be recomputed, and
+      // once the write lands there is nothing left naming it.
+      for (const other of [...outgoing, ...incoming, ...(await storedOutgoing(id))]) {
+        if (other !== id && !changing.has(other)) candidates.add(other);
+      }
+      verdicts.set(
+        id,
+        verdict(
+          change.side,
+          (await Promise.all(outgoing.map(sideOf))).flat(),
+          (await Promise.all(incoming.map(sideOf))).flat(),
+        ),
+      );
+    }
+
+    const partners: PlannedDispute[] = [];
+    for (const id of candidates) {
+      const [side] = await sideOf(id);
+      const partner = known.get(id);
+      if (!side || !partner) continue;
+      // A deleted item is never disputed and has no file in the tree to say so
+      // in. Deleting an item clears its own flag, so this is not a way for one
+      // to keep a stale `disputed: true`.
+      if (partner.status === 'deleted') continue;
+      const theirs = verdict(
+        side,
+        (await Promise.all((await outgoingOf(id)).map(sideOf))).flat(),
+        (await Promise.all((await incomingOf(id)).map(sideOf))).flat(),
+      );
+      const revision = partner.currentRevisionId
+        ? await this.o.revisions.findById(workspaceId, partner.currentRevisionId)
+        : null;
+      if (!revision || sameVerdict(revision.frontmatter, theirs)) continue;
+      const file = await this.o.git.read(workspaceId, partner.markdownPath);
+      if (file === null) {
+        throw new DomainError(
+          'INTERNAL_ERROR',
+          'the repository does not contain the file a contradicted item names; restore it from a backup',
+          { objectIds: { knowledge_item: id, path: partner.markdownPath } },
+        );
+      }
+      const body = this.o.parseItem(file).body;
+      const frontmatter = applyVerdict(revision.frontmatter, theirs, now);
+      partners.push({
+        itemId: id,
+        revisionId: newId('rev') as RevisionId,
+        revisionNumber: revision.revisionNumber + 1,
+        disputed: theirs.disputed,
+        planned: {
+          frontmatter,
+          body,
+          markdownPath: partner.markdownPath,
+          chosen: [],
+          rendered: this.o.renderItem({ frontmatter, body }),
+          now,
+          // Filled in once the commit exists: one commit carries the write and
+          // every verdict it moved.
+          commitHash: '',
+          kind: 'metadata',
+        },
+      });
+    }
+    return { verdicts, partners };
+  }
+
+  /**
+   * Writes the partner revisions a verdict change produced.
+   *
+   * Each is a revision like any other: a file changed, so `KNOWLEDGE_MODEL.md`
+   * section 8 and rule 1 both say it is recorded, indexed and in the ledger.
+   */
+  private async recordDisputes(
+    tx: Tx,
+    actor: ActorContext,
+    partners: readonly PlannedDispute[],
+    operationId: string,
+  ): Promise<void> {
+    for (const partner of partners) {
+      const revision = this.revisionOf(
+        actor,
+        partner.itemId,
+        partner.revisionId,
+        partner.revisionNumber,
+        partner.planned,
+        operationId,
+      );
+      await this.o.revisions.insert(tx, revision);
+      await this.o.items.update(tx, partner.itemId, {
+        currentRevisionId: partner.revisionId,
+        disputed: partner.disputed,
+        updatedAt: partner.planned.now,
+      });
+      await this.index(
+        tx,
+        actor.workspaceId,
+        partner.itemId,
+        partner.revisionId,
+        partner.planned.frontmatter,
+        partner.planned.body,
+        partner.planned.now,
+      );
+      await this.o.ledger.append(tx, actor.workspaceId, actor, {
+        eventType: 'knowledge.updated',
+        objectType: 'knowledge_item',
+        objectId: partner.itemId,
+        categoryIds: (await this.o.items.categoriesOf(actor.workspaceId, [partner.itemId])).map(
+          (row) => row.categoryId as string,
+        ),
+        metadata: {
+          revision: partner.revisionId,
+          content_hash: revision.contentHash,
+          frontmatter_hash: revision.frontmatterHash,
+          git_commit: partner.planned.commitHash,
+          change_kind: 'metadata',
+          disputed: partner.disputed,
+        },
+      });
+    }
+  }
+
   /** One revision row from a planned change, so create and update agree. */
   private revisionOf(
     actor: ActorContext,
@@ -1668,6 +2005,79 @@ interface RestoreSource {
   /** The revision before that, whose commit still holds the text. */
   previous: RevisionRecord;
   body: string;
+}
+
+/** The validity window and status of an item, as a stored row states them. */
+function sideFrom(item: KnowledgeItemRecord): DisputeSide {
+  return {
+    itemId: item.id,
+    status: item.status,
+    window: {
+      from: item.validFrom ? item.validFrom.toISOString() : null,
+      until: item.validUntil ? item.validUntil.toISOString() : null,
+    },
+  };
+}
+
+/** The window a frontmatter states, for an item that is not written yet. */
+function windowOf(frontmatter: Pick<Frontmatter, 'valid_from' | 'valid_until'>): ValidityWindow {
+  return { from: frontmatter.valid_from, until: frontmatter.valid_until };
+}
+
+/**
+ * The extra files and trailers a commit carries for the verdicts it moved.
+ *
+ * One commit, one operation: a contradiction that marks two items marks them
+ * together or not at all, exactly as a supersession writes two files at once.
+ */
+function disputeWrites(partners: readonly PlannedDispute[]): {
+  files: { path: string; content: string }[];
+  paths: string[];
+  trailers: [string, string][];
+} {
+  return {
+    files: partners.map((p) => ({ path: p.planned.markdownPath, content: p.planned.rendered })),
+    paths: partners.map((p) => p.planned.markdownPath),
+    trailers: partners.map((p) => ['Knoverge-Change', `${p.itemId}@${p.revisionId} metadata`]),
+  };
+}
+
+/** Stamps the commit that happened onto the partner revisions it carried. */
+function sealDisputes(partners: readonly PlannedDispute[], commitHash: string): void {
+  for (const partner of partners) partner.planned.commitHash = commitHash;
+}
+
+/** One item a write changes, as the dispute verdict needs to see it. */
+interface DisputeChange {
+  side: DisputeSide;
+  /** What its relations will say once written. */
+  relations: readonly FrontmatterRelation[];
+}
+
+/** What a write has to do about disputes: its own verdicts, and everyone else's. */
+interface PlannedDisputes {
+  /** By item id, for each item the write itself changes. */
+  verdicts: Map<KnowledgeItemId, Verdict>;
+  partners: PlannedDispute[];
+}
+
+/**
+ * The verdict for one item the write changes.
+ *
+ * Absent means nothing found a contradiction, which is the same answer as one
+ * that found none.
+ */
+function verdictOf(plan: PlannedDisputes, itemId: KnowledgeItemId): Verdict {
+  return plan.verdicts.get(itemId) ?? { disputed: false, disputedBy: [] };
+}
+
+/** Another item whose verdict this write moved, as its own revision. */
+interface PlannedDispute {
+  itemId: KnowledgeItemId;
+  revisionId: RevisionId;
+  revisionNumber: number;
+  disputed: boolean;
+  planned: PlannedUpdate;
 }
 
 interface PlannedUpdate {

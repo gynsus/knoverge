@@ -159,6 +159,7 @@ export const adminApi = {
         type?: string | undefined;
         reviewState?: string | undefined;
         evidenceState?: string | undefined;
+        disputed?: boolean | undefined;
       },
       signal?: AbortSignal,
     ) => {
@@ -168,6 +169,7 @@ export const adminApi = {
       if (filters.type) query.set('types', filters.type);
       if (filters.reviewState) query.set('review_states', filters.reviewState);
       if (filters.evidenceState) query.set('evidence_states', filters.evidenceState);
+      if (filters.disputed) query.set('disputed', 'true');
       const suffix = query.size > 0 ? `?${query.toString()}` : '';
       return apiGet<KnowledgeListResponse>(`/v1/knowledge.list${suffix}`, signal);
     },

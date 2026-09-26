@@ -28,6 +28,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pino from 'pino';
 
 import { buildApp } from '../src/app.ts';
+import { DEFAULT_AGENT_LIMITS } from '../src/plugins/agent-limits.ts';
 import { createServices, type Services } from '../src/services.ts';
 
 const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
@@ -96,6 +97,11 @@ beforeAll(async () => {
     probes: { database: async () => ok, dataDir: async () => ok },
     services,
     security: { sessionSecret: 'f6'.repeat(32), cookieSecure: false },
+    // Every MCP call is a POST to one route, and this file makes dozens of them
+    // inside a minute. The default budget is a product decision tested in
+    // limits.test.ts; borrowing it here would make the next MCP test somebody
+    // adds fail somewhere else, as a rate limit rather than as a mistake.
+    agentBudgets: { ...DEFAULT_AGENT_LIMITS, readsPerMinute: 100_000, writesPerMinute: 100_000 },
   });
   // A real socket, because the MCP client speaks HTTP rather than inject().
   await app.listen({ host: '127.0.0.1', port: 0 });
@@ -215,6 +221,81 @@ describe('the MCP endpoint', () => {
       expect(inbox.proposals.find((p) => p.id === outcome.proposal.id)?.title).toBe(
         'Proposed over MCP',
       );
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('marks both items when an agent reports a contradiction, once a human approves', async () => {
+    // What an honest agent does when the workspace already holds the opposite:
+    // it says so rather than overwriting, and the proposal is what a reviewer
+    // acts on (rule 5). Nothing is marked until they do.
+    const held = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'The gateway is in Frankfurt',
+        body: 'It runs in Frankfurt.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string; disputed: boolean } };
+
+    const client = await connect(agentToken);
+    try {
+      const proposed = ProposalResult.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_propose_create',
+            arguments: {
+              title: 'The gateway is in Dublin',
+              body: 'It runs in Dublin.',
+              type: 'fact',
+              relations: [{ type: 'contradicts', target: held.item.id }],
+              reason: 'The console shows Dublin.',
+            },
+          })
+        ).structuredContent,
+      );
+      expect(proposed.proposal.status).toBe('pending');
+
+      // Still nothing: a pending proposal is not an assertion, so it cannot
+      // put an item the workspace holds into doubt on its own.
+      const untouched = (
+        await client.callTool({ name: 'knowledge_get', arguments: { item_id: held.item.id } })
+      ).structuredContent as { item: { disputed: boolean } };
+      expect(untouched.item.disputed).toBe(false);
+
+      const approved = await admin.post('/v1/proposal_approve', {
+        proposal_id: proposed.proposal.id,
+      });
+      expect(approved.statusCode, approved.body).toBe(200);
+
+      // Now both ends, over MCP, which is where the agent will read it back.
+      const marked = (
+        await client.callTool({ name: 'knowledge_get', arguments: { item_id: held.item.id } })
+      ).structuredContent as { item: { disputed: boolean; disputed_by: string[] } };
+      expect(marked.item.disputed).toBe(true);
+      expect(marked.item.disputed_by).toHaveLength(1);
+
+      const reporter = (
+        await client.callTool({
+          name: 'knowledge_get',
+          arguments: { item_id: marked.item.disputed_by[0] },
+        })
+      ).structuredContent as {
+        item: { disputed: boolean; relations: { type: string; target: string }[] };
+      };
+      expect(reporter.item.disputed).toBe(true);
+      expect(reporter.item.relations).toEqual([{ type: 'contradicts', target: held.item.id }]);
+
+      // An agent that asked for no relations gets no list of them, and still
+      // learns that the item is contested (rule 8).
+      const bare = (
+        await client.callTool({
+          name: 'knowledge_get',
+          arguments: { item_id: held.item.id, include_relations: false },
+        })
+      ).structuredContent as { item: { disputed: boolean; disputed_by: string[] } };
+      expect(bare.item.disputed).toBe(true);
+      expect(bare.item.disputed_by).toEqual([]);
     } finally {
       await client.close();
     }

@@ -11,9 +11,9 @@ import { Select } from '@/components/ui/select';
 import { adminApi } from '../../api/admin.ts';
 import { ItemPicker } from './ItemPicker.tsx';
 
-/** The titles of the items a set of relations points at. */
-function useTargetTitles(relations: readonly FrontmatterRelation[]): Map<string, string> {
-  const ids = [...new Set(relations.map((relation) => relation.target as string))];
+/** The titles of a set of items, so a list of ids can be read. */
+function useItemTitles(wanted: readonly string[]): Map<string, string> {
+  const ids = [...new Set(wanted)];
   const answers = useQueries({
     queries: ids.map((id) => ({
       queryKey: ['knowledge', 'items', id],
@@ -43,7 +43,7 @@ export function RelationList({
   onOpen: (itemId: string) => void;
 }) {
   const { t } = useTranslation();
-  const titles = useTargetTitles(relations);
+  const titles = useItemTitles(relations.map((relation) => relation.target));
   if (relations.length === 0)
     return <p className="text-sm text-muted-foreground">{t('knowledge.no_relations')}</p>;
   return (
@@ -66,6 +66,45 @@ export function RelationList({
   );
 }
 
+/**
+ * Which items contradict this one.
+ *
+ * The other end of a contradiction, which the relations list cannot show: the
+ * relation is recorded on the item that reported it, and this item's file
+ * carries `disputed_by` instead (ADR 0022). Without it, the disputed badge
+ * appears with nothing to read next to it.
+ */
+export function DisputedBy({
+  itemIds,
+  onOpen,
+}: {
+  itemIds: readonly string[];
+  onOpen: (itemId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const titles = useItemTitles(itemIds);
+  if (itemIds.length === 0) return null;
+  return (
+    <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3">
+      <p className="text-sm font-medium">{t('knowledge.disputed_by')}</p>
+      <ul className="grid gap-1.5 text-sm">
+        {itemIds.map((id) => (
+          <li key={id} className="flex min-w-0">
+            <button
+              type="button"
+              onClick={() => onOpen(id)}
+              className="min-w-0 truncate text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              {titles.get(id) ?? id}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted-foreground">{t('knowledge.disputed_explainer')}</p>
+    </div>
+  );
+}
+
 /** Adding and removing relations. */
 export function RelationEditor({
   relations,
@@ -78,7 +117,7 @@ export function RelationEditor({
   selfId: string;
 }) {
   const { t } = useTranslation();
-  const titles = useTargetTitles(relations);
+  const titles = useItemTitles(relations.map((relation) => relation.target));
   const [picked, setPicked] = useState<Map<number, string>>(new Map());
 
   const replace = (index: number, patch: Partial<FrontmatterRelation>) =>

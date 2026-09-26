@@ -277,6 +277,8 @@
     "delete_hint": "The file leaves the working tree; every commit that had it keeps it.",
     "discard": "You have changes that are not saved. Discard them?",
     "disputed": "Disputed",
+    "disputed_by": "Contradicted by",
+    "disputed_explainer": "A contradiction stays open until one side is superseded, deleted, or both are given the period they hold for.",
     "edit": "Edit",
     "empty": "Nothing here yet.",
     "empty_filtered": "Nothing matches",
@@ -434,7 +436,8 @@
     "views": {
       "all": "Everything",
       "unreviewed": "Not checked yet",
-      "unsourced": "No sources"
+      "unsourced": "No sources",
+      "disputed": "Contradictions"
     }
   },
   "language": {

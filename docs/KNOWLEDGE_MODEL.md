@@ -284,6 +284,11 @@ sources: []
 relations: []
 ```
 
+Two more fields appear only when they have something to say: `superseded_by`,
+on an item that was replaced, and `disputed_by`, on an item something
+contradicts. Both are projections of a relation recorded on the other item, so
+that a file read on its own answers the question it raises.
+
 The Markdown body contains knowledge intended for human reading.
 
 ## 7. Lifecycle status
@@ -316,7 +321,9 @@ disputed: true | false
 
 - `review`: strongest review the current revision received. A new revision resets it to `unreviewed` unless a human committed it.
 - `evidence`: `source_backed` when at least one source reference with a locator or hash exists; `corroborated` when two or more independent sources or agents support the claim. A stored hash proves the source bytes are unchanged, not that the claim is true.
-- `disputed`: true while an unresolved `contradicts` relation or explicit human doubt exists.
+- `disputed`: derived, never set. True while a live `contradicts` relation connects the item to another item — in either direction — that is still `active` and whose validity window overlaps this one's. There is no operation that sets it and none that clears it: a dispute ends when one side is superseded or deleted, when the relation is withdrawn, or when both claims are accepted and given the period each one holds for. ADR 0022 records why, and `KNOWLEDGE_LIFECYCLE.md` section 6 gives the mechanics.
+
+Explicit human doubt is recorded as an item. Somebody who doubts a claim writes down what they doubt and relates it with `contradicts`, which says what the objection is, who made it and when — a boolean says none of that, and rule 15 already asks for one assertion per item.
 
 Confidence is separate: a claim-level estimate from a source or agent, stored on proposals and source references.
 
@@ -366,7 +373,9 @@ relates_to
 
 `superseded_by` is not one of them: it is `supersedes` read from the other end,
 and storing both directions gives two rows that can disagree. A reader wanting
-that view asks for relations pointing at the item.
+that view asks for relations pointing at the item. `disputed_by` is absent for
+the same reason and carried the same way: as a frontmatter projection of the
+`contradicts` relations pointing at an item (ADR 0015 and ADR 0022).
 
 Relations are replaced whole, like tags, and removal is logical: a relation that
 was once true is part of the history of both items. An item may not relate to

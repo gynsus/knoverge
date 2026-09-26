@@ -319,7 +319,7 @@ KnowledgeItem
 - current_revision_id
 - review_state: unreviewed | agent_reviewed | human_reviewed
 - evidence_state: none | source_backed | corroborated
-- disputed: boolean
+- disputed: boolean           (derived from contradiction relations; ADR 0022)
 - valid_from nullable
 - valid_until nullable
 - observed_at nullable

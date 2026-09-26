@@ -1423,6 +1423,7 @@ describe('knowledge page', () => {
     body: 'Passwordless login uses a six-digit email code.\n',
     sources: [],
     relations: [],
+    disputed_by: [],
     content_hash: 'sha256:' + 'a'.repeat(64),
     frontmatter_hash: 'sha256:' + 'b'.repeat(64),
     revision_number: 1,
@@ -1442,7 +1443,8 @@ describe('knowledge page', () => {
   };
   const ROUTES = {
     ...SIGNED_IN,
-    'GET /v1/knowledge.counts': () => json({ counts: { total: 1, unreviewed: 0, unsourced: 1 } }),
+    'GET /v1/knowledge.counts': () =>
+      json({ counts: { total: 1, unreviewed: 0, unsourced: 1, disputed: 0 } }),
     'GET /v1/knowledge.list': () => json({ items: [ITEM], next_cursor: null }),
     [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: DETAIL }),
     [`GET /v1/knowledge.revisions?item_id=${ITEM.id}`]: () =>
@@ -1476,7 +1478,7 @@ describe('knowledge page', () => {
     const calls = mockApi({
       ...ROUTES,
       'GET /v1/knowledge.counts': () =>
-        json({ counts: { total: 186, unreviewed: 12, unsourced: 31 } }),
+        json({ counts: { total: 186, unreviewed: 12, unsourced: 31, disputed: 2 } }),
     });
     renderApp('/knowledge');
     const user = userEvent.setup();
@@ -1490,6 +1492,11 @@ describe('knowledge page', () => {
     await waitFor(() =>
       expect(calls.some((c) => c.url.includes('evidence_states=none'))).toBe(true),
     );
+
+    const contested = screen.getByRole('button', { name: /Contradictions/ });
+    expect(contested.textContent).toContain('2');
+    await user.click(contested);
+    await waitFor(() => expect(calls.some((c) => c.url.includes('disputed=true'))).toBe(true));
   });
 
   it('says where an item came from, and says it when nothing did', async () => {
@@ -1570,6 +1577,31 @@ describe('knowledge page', () => {
     // "supersedes kn_01J8..." tells a reader nothing they can act on.
     expect(await within(drawer).findByRole('button', { name: 'The older decision' })).toBeVisible();
     expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
+  });
+
+  it('names who contradicts an item, which its own connections cannot say', async () => {
+    // A contradiction is recorded on the item that reported it, so on the item
+    // it was reported against the relations list is empty and the disputed
+    // badge would otherwise appear with nothing to read (ADR 0022).
+    const other = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TA',
+      title: 'Deploys are on Tuesdays',
+    };
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, disputed: true, disputed_by: [other.id] } }),
+      [`GET /v1/knowledge.get?item_id=${other.id}`]: () => json({ item: other }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('tab', { name: /Connections/ }));
+    expect(within(drawer).getByText('Contradicted by')).toBeInTheDocument();
+    expect(
+      await within(drawer).findByRole('button', { name: 'Deploys are on Tuesdays' }),
+    ).toBeVisible();
   });
 
   it('sends the sources a reviewer added, and drops a connection left empty', async () => {
@@ -1918,6 +1950,7 @@ const ITEM = {
   body: 'We release on Thursdays.\n',
   sources: [],
   relations: [],
+  disputed_by: [],
   content_hash: 'sha256:abc',
   frontmatter_hash: 'sha256:def',
   revision_number: 1,

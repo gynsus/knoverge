@@ -83,6 +83,7 @@ export function KnowledgePage() {
     : 'all';
   const viewState = view === 'unreviewed' ? 'unreviewed' : '';
   const viewEvidence = view === 'unsourced' ? 'none' : '';
+  const viewDisputed = view === 'disputed';
   const narrowed = query !== '' || category !== '' || type !== '' || state !== '' || view !== 'all';
 
   // Typed here, committed to the address after a pause: a round trip per
@@ -146,6 +147,7 @@ export function KnowledgePage() {
     // pressed, and the filter is the one they left behind.
     state: viewState || state,
     evidence: viewEvidence,
+    disputed: viewDisputed,
   });
 
   // The sizes of the piles, over the workspace rather than over the page.

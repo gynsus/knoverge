@@ -291,6 +291,25 @@ A read inside one of these writes takes the transaction. Through the pool it
 would need a connection the write is already holding, and it could not see what
 the transaction has written either.
 
+## A contradiction has two ends
+
+`packages/core/src/knowledge/disputes.ts` holds the whole rule for `disputed`,
+which is derived and which nothing sets (ADR 0022): an item is disputed while a
+live `contradicts` relation connects it to another item, in either direction,
+that is still active and whose validity window overlaps its own.
+
+The relation lives on the item that reported it, so marking the other one means
+writing the other one's file — a second revision in the same commit, exactly as
+a supersession writes two. `KnowledgeService.planDisputes` computes the verdicts
+for the items a write changes together with the partner files it flips, and
+`recordDisputes` writes those partner revisions. It takes every changed item at
+once because a supersession changes two and each one's verdict can depend on the
+other's new state.
+
+The fan-out is one level deep, and that is the property that makes this safe to
+put in five operations: a verdict is decided by status and validity windows, and
+recomputing a verdict changes neither. There is no cascade to bound.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes
@@ -311,13 +330,14 @@ there may be thousands of items, so scanning and narrowing beat browsing. The
 Git path is deliberately not in a row — it was the widest thing in every one
 and the least useful — and lives in the drawer where somebody asks for it.
 
-Three piles across the top say how big they are and open exactly what they
-counted: everything, what nobody has checked, what nothing backs. The counts
-come from `GET /v1/knowledge.counts` because a list that pages cannot say how
-much there is, and a number describing the fifty rows that happen to be loaded
-while claiming to describe the workspace is worse than no number. Each one
-counts what its filter returns; a count that opens a different list is read as
-a fact and is wrong.
+Four piles across the top say how big they are and open exactly what they
+counted: everything, what nobody has checked, what nothing backs, what the
+workspace contradicts itself about. The counts come from
+`GET /v1/knowledge.counts` because a list that pages cannot say how much there
+is, and a number describing the fifty rows that happen to be loaded while
+claiming to describe the workspace is worse than no number. Each one counts what
+its filter returns; a count that opens a different list is read as a fact and is
+wrong.
 
 `components/knowledge/ItemDetails.tsx` opens as the item and not as a form,
 because reading knowledge and changing it are different acts and a ledger is

@@ -166,6 +166,39 @@ Contradictions are expressed through the `relations` list of `knowledge_propose_
 
 Do not let an LLM automatically delete one side merely due to confidence.
 
+### How the flag gets there
+
+`disputed` is derived and nothing sets it (ADR 0022):
+
+```text
+disputed(X) = a live `contradicts` relation connects X to Y, either direction,
+              and Y is active, and the validity windows of X and Y overlap
+```
+
+The relation is recorded once, on the item that reported the contradiction, and
+written twice: that item carries it in `relations`, and the item it names gains
+`disputed_by` in its frontmatter. So both files say they are disputed, and both
+say by what, without a second relation row to disagree with the first.
+
+Marking the other item changes its file, so it is a new revision and part of the
+same commit — one commit, two revisions, like a supersession. Five operations
+can move a verdict, because five of them can change a relation, a status or a
+validity window: `create`, `update`, `supersede`, `delete` and `restore`. Each
+writes the other items it marks or unmarks into its own commit.
+
+Every resolution this section names falls out of the rule rather than needing an
+operation of its own:
+
+| Resolution | Why the flag clears |
+| --- | --- |
+| Supersession | The superseded side is no longer `active`. |
+| Rejection | The relation was never recorded. |
+| Accepting both with temporal validity | The windows no longer overlap, so the two claims were never true at once. |
+| Withdrawing the relation | The contradiction was reported in error. |
+
+A deleted item is never disputed: it is out of the active answer either way, and
+its relations are kept, so a restore reopens the dispute rather than losing it.
+
 ## 7. Delete
 
 Deletion means remove from normal active retrieval.

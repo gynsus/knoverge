@@ -54,9 +54,10 @@ export type EvidenceRole = z.infer<typeof EvidenceRole>;
 /**
  * How one item connects to another.
  *
- * The set is the one the specifications use. `superseded_by` is deliberately
- * absent: it is `supersedes` read from the other end, and storing both
- * directions gives two rows that can disagree.
+ * The set is the one the specifications use. `superseded_by` and `disputed_by`
+ * are deliberately absent: each is another type read from the other end, and
+ * storing both directions gives two rows that can disagree. Both live in the
+ * frontmatter as projections instead. See ADR 0015 and ADR 0022.
  */
 export const RelationType = z.enum([
   'supersedes',
@@ -239,6 +240,14 @@ export const Frontmatter = z
     tags: z.array(Tag).max(50).default([]),
     review: ReviewState,
     evidence: EvidenceState,
+    /**
+     * Whether a live contradiction touches this item right now.
+     *
+     * Derived, never set: true exactly when `relations` holds a `contradicts`
+     * aimed at an active item whose validity window overlaps this one's, or
+     * `disputed_by` is not empty. ADR 0022 records why there is no operation
+     * that sets it and no operation that clears it.
+     */
     disputed: z.boolean(),
     valid_from: Instant.nullable().default(null),
     valid_until: Instant.nullable().default(null),
@@ -256,6 +265,17 @@ export const Frontmatter = z
      * its own says both that it was replaced and by what.
      */
     superseded_by: KnowledgeItemId.nullable().optional(),
+    /**
+     * Which items currently contradict this one, on the item contradicted.
+     *
+     * A projection of the `contradicts` relations pointing here, in the same
+     * sense `superseded_by` projects the one `supersedes` relation: recorded
+     * once, on the item that reported the contradiction, and written twice so
+     * that a file read on its own says it is disputed and by what. Only live
+     * disputes are listed, so an entry here and `disputed: true` mean the same
+     * thing. Absent means nobody contradicts it. See ADR 0022.
+     */
+    disputed_by: z.array(KnowledgeItemId).max(50).optional(),
     external: FrontmatterExternal.optional(),
     /** Only for `type: summary`: the revisions the summary was made from. */
     summary_of: z
@@ -300,6 +320,7 @@ export const FRONTMATTER_KEY_ORDER = [
   'sources',
   'relations',
   'superseded_by',
+  'disputed_by',
   'external',
   'summary_of',
 ] as const satisfies readonly (keyof Frontmatter)[];
@@ -358,6 +379,12 @@ export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
   body: z.string(),
   sources: z.array(FrontmatterSource),
   relations: z.array(FrontmatterRelation),
+  /**
+   * Which items contradict this one, which `relations` cannot say: a
+   * contradiction is recorded on the item that reported it, and this is the
+   * other end of it. Empty unless `disputed` is true. See ADR 0022.
+   */
+  disputed_by: z.array(KnowledgeItemId),
   content_hash: z.string(),
   frontmatter_hash: z.string(),
 });
@@ -601,6 +628,11 @@ export const KnowledgeListQuery = z.object({
     .optional()
     .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
   /**
+   * Only the items a live contradiction touches, which is a pile of its own: a
+   * workspace disagreeing with itself is the first thing a reviewer wants.
+   */
+  disputed: z.stringbool().optional(),
+  /**
    * Active by default: what the workspace currently asserts.
    *
    * A list that mixes what is asserted with what used to be — a superseded
@@ -636,6 +668,8 @@ export const KnowledgeCounts = z.object({
   unreviewed: z.number().int().nonnegative(),
   /** Nothing says where it came from. */
   unsourced: z.number().int().nonnegative(),
+  /** A live contradiction touches it, so the workspace disagrees with itself. */
+  disputed: z.number().int().nonnegative(),
 });
 export type KnowledgeCounts = z.infer<typeof KnowledgeCounts>;
 
