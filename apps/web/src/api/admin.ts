@@ -6,6 +6,8 @@ import type {
   CheckAiProviderResponse,
   RemoveAiProviderRequest,
   SaveAiProviderRequest,
+  TestAiGenerationRequest,
+  TestAiGenerationResponse,
   TestAiModelRequest,
   TestAiModelResponse,
   UnassignAiModelRequest,
@@ -72,6 +74,8 @@ export const adminApi = {
     unassign: (body: UnassignAiModelRequest) =>
       apiPost<AiSettingsResponse>('/v1/admin/ai.unassign', body),
     test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
+    testGeneration: (body: TestAiGenerationRequest) =>
+      apiPost<TestAiGenerationResponse>('/v1/admin/ai.test_generation', body),
   },
   events: {
     // A tool, so it is `POST /v1/<tool_name>` like every other one (rule 11).

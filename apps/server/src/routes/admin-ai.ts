@@ -5,6 +5,8 @@ import {
   CheckAiProviderResponse,
   RemoveAiProviderRequest,
   SaveAiProviderRequest,
+  TestAiGenerationRequest,
+  TestAiGenerationResponse,
   TestAiModelRequest,
   TestAiModelResponse,
   UnassignAiModelRequest,
@@ -43,6 +45,7 @@ function settings(view: AiSettingsView): AiSettings {
       updated_at: assignment.updatedAt.toISOString(),
     })),
     embeddings_enabled: view.embeddingsEnabled,
+    generation_enabled: view.generationEnabled,
   };
 }
 
@@ -188,6 +191,32 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
       return {
         ok: outcome.ok,
         dimensions: outcome.dimensions,
+        latency_ms: outcome.latencyMs,
+        error: outcome.error,
+      };
+    },
+  );
+
+  r.post(
+    '/v1/admin/ai.test_generation',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: TestAiGenerationRequest, response: { 200: TestAiGenerationResponse } },
+    },
+    async (request) => {
+      await requirePermission(services, request, 'workspace.admin');
+      // A separate route rather than a flag on `ai.test`: the two answer
+      // different things — one a dimension, one a sentence — and a response
+      // whose shape depends on an input field is one a caller has to guess at.
+      const outcome = await services.ai.testGeneration({
+        kind: request.body.kind,
+        baseUrl: request.body.base_url,
+        model: request.body.model,
+        text: request.body.text,
+      });
+      return {
+        ok: outcome.ok,
+        text: outcome.text,
         latency_ms: outcome.latencyMs,
         error: outcome.error,
       };

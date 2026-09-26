@@ -1,4 +1,4 @@
-import type { AiProviderSummary } from '@knoverge/contracts';
+import type { AiAssignment, AiProviderSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plug, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
@@ -11,7 +11,11 @@ import { adminApi } from '../api/admin.ts';
 import { relativeTime } from '@/lib/relative-time';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { SettingsHeader } from '../components/settings/SettingsHeader.tsx';
-import { ProviderWizard, type WizardResult } from '../components/settings/ProviderWizard.tsx';
+import {
+  ProviderWizard,
+  type WizardPurpose,
+  type WizardResult,
+} from '../components/settings/ProviderWizard.tsx';
 
 /**
  * AI and models: what the installation is connected to, and what it uses it for.
@@ -23,7 +27,10 @@ import { ProviderWizard, type WizardResult } from '../components/settings/Provid
 export function AiSettingsPage() {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const [wizard, setWizard] = useState<{ existing?: AiProviderSummary } | null>(null);
+  const [wizard, setWizard] = useState<{
+    existing?: AiProviderSummary;
+    purpose: WizardPurpose;
+  } | null>(null);
 
   const settings = useQuery({
     queryKey: AI_SETTINGS_KEY,
@@ -35,7 +42,7 @@ export function AiSettingsPage() {
   };
 
   const connect = useMutation({
-    mutationFn: async (result: WizardResult) => {
+    mutationFn: async ({ result, purpose }: { result: WizardResult; purpose: WizardPurpose }) => {
       const saved = await adminApi.ai.save({
         ...(result.providerId ? { provider_id: result.providerId as never } : {}),
         kind: result.kind,
@@ -44,16 +51,17 @@ export function AiSettingsPage() {
       });
       const provider = saved.ai.providers.find((p) => p.base_url === trimSlashes(result.baseUrl));
       if (!provider) return saved;
-      return adminApi.ai.assign({
-        purpose: 'embedding',
-        provider_id: provider.id,
-        model: result.model,
-      });
+      return adminApi.ai.assign({ purpose, provider_id: provider.id, model: result.model });
     },
     onSuccess: (answer) => {
       refresh(answer);
       setWizard(null);
     },
+  });
+
+  const stop = useMutation({
+    mutationFn: (purpose: WizardPurpose) => adminApi.ai.unassign({ purpose }),
+    onSuccess: refresh,
   });
 
   const remove = useMutation({
@@ -69,13 +77,18 @@ export function AiSettingsPage() {
 
   const ai = settings.data?.ai;
   const embedding = ai?.assignments.find((a) => a.purpose === 'embedding');
+  const generation = ai?.assignments.find((a) => a.purpose === 'generation');
   const providers = ai?.providers ?? [];
+  /** The provider the generation model lives at, when it is still configured. */
+  const generatingAt = providers.find((p) => p.id === generation?.provider_id);
+  /** Where a purpose row's wizard starts: the only provider, when there is one. */
+  const only = providers.length === 1 ? providers[0] : undefined;
 
   return (
     <div className="grid gap-8">
       <SettingsHeader title={t('settings.sections.ai.title')} intro={t('ai.intro')} />
 
-      <ErrorNotice error={settings.error ?? connect.error ?? remove.error} />
+      <ErrorNotice error={settings.error ?? connect.error ?? remove.error ?? stop.error} />
 
       {/* No card around these. Each provider is already a framed object, and
           a frame around a list of frames is a line that separates nothing
@@ -93,7 +106,7 @@ export function AiSettingsPage() {
             {t('common.loading')}
           </p>
         ) : providers.length === 0 ? (
-          <EmptyState onConnect={() => setWizard({})} />
+          <EmptyState onConnect={() => setWizard({ purpose: 'embedding' })} />
         ) : (
           <ul className="grid gap-3">
             {providers.map((provider) => (
@@ -101,7 +114,7 @@ export function AiSettingsPage() {
                 <ProviderRow
                   provider={provider}
                   model={embedding?.provider_id === provider.id ? embedding.model : null}
-                  onChange={() => setWizard({ existing: provider })}
+                  onChange={() => setWizard({ existing: provider, purpose: 'embedding' })}
                   onRemove={() => remove.mutate(provider.id)}
                   onRecheck={() => recheck.mutate(provider)}
                   busy={remove.isPending || recheck.isPending}
@@ -112,22 +125,75 @@ export function AiSettingsPage() {
         )}
       </section>
 
-      {/* In the plan, not in the product. Shown so that somebody looking for
-          where summaries are configured learns the answer is "not yet". The
-          dashed border is the same one an empty list gets, and means the same
-          thing: there is nothing here yet. */}
+      {/* A purpose of its own rather than another column on a provider row.
+          What writes text and what measures it are different questions, and an
+          operator asks them one at a time. */}
       <section aria-labelledby="generation-title" className="grid gap-4">
         <div className="grid gap-1.5">
-          <h3 id="generation-title" className="flex items-center gap-2 text-lg font-semibold">
+          <h3 id="generation-title" className="text-lg font-semibold">
             {t('ai.generation.title')}
-            <Badge variant="outline" className="font-normal text-muted-foreground">
-              {t('settings.not_yet')}
-            </Badge>
           </h3>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            {t('ai.generation.description')}
+          </p>
         </div>
-        <p className="rounded-lg border border-dashed border-border px-4 py-6 text-sm text-muted-foreground">
-          {t('ai.generation.description')}
-        </p>
+
+        {settings.isPending ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {t('common.loading')}
+          </p>
+        ) : generation ? (
+          <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:items-start">
+            <div className="grid min-w-0 gap-1">
+              <p className="text-sm">{t('ai.generation.in_use', { model: generation.model })}</p>
+              <p className="truncate font-mono text-xs text-muted-foreground">
+                {generatingAt?.base_url ?? t('ai.generation.provider_gone')}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setWizard({
+                    purpose: 'generation',
+                    ...(generatingAt ? { existing: generatingAt } : {}),
+                  })
+                }
+              >
+                {t('ai.change')}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => stop.mutate('generation')}
+                disabled={stop.isPending}
+              >
+                {t('ai.generation.stop')}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Dashed, like an empty list, and meaning the same thing: there is
+             nothing here yet. The difference from before is that there is now
+             something to press. */
+          <div className="grid gap-3 rounded-lg border border-dashed border-border px-4 py-6">
+            <p className="text-sm text-muted-foreground">{t('ai.generation.none')}</p>
+            <Button
+              className="w-fit"
+              disabled={providers.length === 0}
+              onClick={() =>
+                setWizard({ purpose: 'generation', ...(only ? { existing: only } : {}) })
+              }
+            >
+              <Plug aria-hidden="true" className="size-4" />
+              {t('ai.generation.choose')}
+            </Button>
+            {providers.length === 0 && (
+              <p className="text-xs text-muted-foreground">{t('ai.generation.connect_first')}</p>
+            )}
+          </div>
+        )}
       </section>
 
       {wizard && (
@@ -135,12 +201,9 @@ export function AiSettingsPage() {
           open
           onOpenChange={(next) => !next && setWizard(null)}
           existing={wizard.existing}
-          currentModel={
-            wizard.existing && embedding?.provider_id === wizard.existing.id
-              ? embedding.model
-              : undefined
-          }
-          onFinish={(result) => connect.mutate(result)}
+          purpose={wizard.purpose}
+          currentModel={currentModelFor(wizard, embedding, generation)}
+          onFinish={(result) => connect.mutate({ result, purpose: wizard.purpose })}
           saving={connect.isPending}
           error={connect.error}
         />
@@ -236,4 +299,20 @@ function EmptyState({ onConnect }: { onConnect: () => void }) {
 
 function trimSlashes(url: string): string {
   return url.replace(/\/+$/u, '');
+}
+
+/**
+ * The model the wizard should open on.
+ *
+ * The one already doing that job at that provider, so reopening starts where
+ * things are rather than at an empty select.
+ */
+function currentModelFor(
+  wizard: { existing?: AiProviderSummary; purpose: WizardPurpose },
+  embedding: AiAssignment | undefined,
+  generation: AiAssignment | undefined,
+): string | undefined {
+  const assignment = wizard.purpose === 'generation' ? generation : embedding;
+  if (!assignment || !wizard.existing) return undefined;
+  return assignment.provider_id === wizard.existing.id ? assignment.model : undefined;
 }

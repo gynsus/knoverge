@@ -389,14 +389,32 @@ iteration, and each one used to need a container restart.
 Both checks run against the address in the field rather than a saved row. A
 form that can only test what has already been stored teaches people to store
 things that do not work. The model list is filtered by the capabilities the
-provider reports, so a generative model cannot be chosen to make vectors, and
-"test this model" reports the dimension — the number the whole index hangs from
-and the one nobody configures.
+provider reports, so a generative model cannot be chosen to make vectors nor an
+embedding model to write text.
 
-`packages/core/src/ai/service.ts` holds the built provider between calls.
-That is not an optimisation: `EmbeddingProvider` learns its dimension from the
-model's first answer, and a fresh instance per call would report zero for ever,
-which is how a profile fails to be recognised.
+There are two purposes and they are chosen separately, because they are separate
+questions. `embedding` feeds the vector half of search and the semantic steps of
+duplicate detection and reconciliation; `generation` writes summaries and the
+optional narrative on a digest. One provider can hold both, and stopping one
+leaves the other alone.
+
+The second check differs by purpose because there is no one answer for both. For
+an embedding model it reports the dimension — the number the whole index hangs
+from and the one nobody configures. For a generation model it reports the
+sentence the model actually wrote, because a model that answers in a hundred
+milliseconds and says nothing useful has not worked, and a tick would say it
+had.
+
+`packages/intelligence/src/generation.ts` keeps the instruction and the material
+in separate messages: one is the product's instruction and the other is
+knowledge somebody else wrote, and concatenating them is how material saying
+"ignore your instructions" gets to say it in the same voice as the instructions.
+
+`packages/core/src/ai/service.ts` holds the built embedding provider between
+calls. That is not an optimisation: `EmbeddingProvider` learns its dimension from
+the model's first answer, and a fresh instance per call would report zero for
+ever, which is how a profile fails to be recognised. The generation provider is
+built fresh every time, because it learns nothing and so has nothing to lose.
 
 ## Agents in the browser
 

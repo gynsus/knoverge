@@ -9,6 +9,7 @@ import {
   AiSettingsResponse,
   CheckAiProviderResponse,
   TERMS_VERSION,
+  TestAiGenerationResponse,
   TestAiModelResponse,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
@@ -95,6 +96,35 @@ function startOllama(): Promise<{ server: Server; url: string }> {
           embeddings: parsed.input.map((_, i) =>
             Array.from({ length: DIMENSIONS }, (_, d) => (i + d) / 10_000),
           ),
+        });
+      });
+      return;
+    }
+    if (url === '/api/chat' && request.method === 'POST') {
+      let body = '';
+      request.on('data', (chunk) => (body += chunk));
+      request.on('end', () => {
+        const parsed = JSON.parse(body) as {
+          model: string;
+          messages: { role: string; content: string }[];
+        };
+        // An embedding model asked to chat is what Ollama refuses, and the
+        // point of being able to run a model before assigning it.
+        if (parsed.model.startsWith('bge-m3')) {
+          response.writeHead(400, { 'content-type': 'application/json' });
+          response.end(JSON.stringify({ error: 'does not support chat' }));
+          return;
+        }
+        send({
+          message: {
+            role: 'assistant',
+            // Quotes the instruction back, so a test can see the two arrived
+            // as separate messages rather than concatenated into one.
+            content: `${parsed.messages[0]?.role}:${parsed.messages[1]?.content ?? ''}`,
+          },
+          done_reason: 'stop',
+          prompt_eval_count: 12,
+          eval_count: 5,
         });
       });
       return;
@@ -288,6 +318,48 @@ describe('the wizard, in the order somebody uses it', () => {
     expect(assigned.ai.assignments[0]?.model).toBe('bge-m3:latest');
   });
 
+  it('runs a model that writes before it is chosen, and shows what it said', async () => {
+    // The only proof a generation model works is reading one answer from it.
+    // A dimension proves an embedding model; there is nothing equivalent here.
+    const res = await admin.post('/v1/admin/ai.test_generation', {
+      kind: 'ollama',
+      base_url: ollamaUrl,
+      model: 'gpt-oss:120b',
+      text: 'The ledger only grows.',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const outcome = TestAiGenerationResponse.parse(res.json());
+    expect(outcome.ok).toBe(true);
+    expect(outcome.latency_ms).not.toBeNull();
+    // The fake answers with the first message's role and the second message's
+    // content, so this says the instruction and the material arrived apart.
+    expect(outcome.text).toBe('system:The ledger only grows.');
+  });
+
+  it('fails a model that cannot write, which is what asking first is for', async () => {
+    const res = await admin.post('/v1/admin/ai.test_generation', {
+      kind: 'ollama',
+      base_url: ollamaUrl,
+      model: 'bge-m3:latest',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const outcome = TestAiGenerationResponse.parse(res.json());
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toBeTruthy();
+    // The provider's body may quote the prompt, and the prompt is knowledge.
+    expect(outcome.error).not.toContain('does not support chat');
+  });
+
+  it('is not something an agent may run', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/ai.test_generation',
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { kind: 'ollama', base_url: ollamaUrl, model: 'gpt-oss:120b' },
+    });
+    expect([401, 403]).toContain(res.statusCode);
+  });
+
   it('refuses a second provider at the same address', async () => {
     const res = await admin.post('/v1/admin/ai.providers.save', {
       kind: 'ollama',
@@ -318,6 +390,33 @@ describe('once a model is at work', () => {
 
     const profile = await services.embeddings.activeProfile(workspaceId as never);
     expect(profile).toMatchObject({ model: 'bge-m3:latest', dimensions: DIMENSIONS });
+  });
+
+  it('puts a second model to work without disturbing the first', async () => {
+    // Two purposes, two assignments. Choosing what writes must not disturb
+    // what measures, and both live at the same address here.
+    const settings = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    const providerId = settings.ai.providers[0]?.id;
+    expect(providerId, 'the provider from the wizard test').toBeTruthy();
+
+    const assigned = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.assign', {
+          purpose: 'generation',
+          provider_id: providerId,
+          model: 'gpt-oss:120b',
+        })
+      ).json(),
+    );
+    expect(assigned.ai.generation_enabled).toBe(true);
+    expect(assigned.ai.embeddings_enabled).toBe(true);
+    expect(assigned.ai.assignments).toHaveLength(2);
+
+    const stopped = AiSettingsResponse.parse(
+      (await admin.post('/v1/admin/ai.unassign', { purpose: 'generation' })).json(),
+    );
+    expect(stopped.ai.generation_enabled).toBe(false);
+    expect(stopped.ai.embeddings_enabled).toBe(true);
   });
 
   it('stops embedding when the provider is disconnected, and says so', async () => {

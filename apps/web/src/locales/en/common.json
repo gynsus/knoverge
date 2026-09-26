@@ -124,8 +124,14 @@
       "not_in_use": "Connected, and not used for anything."
     },
     "generation": {
-      "title": "Summaries and suggestions",
-      "description": "Summarising a set of items, proposing categories and spotting contradictions. Nothing here reads a generation model yet."
+      "choose": "Choose a model",
+      "connect_first": "Connect a provider above first.",
+      "description": "A model that writes: summaries of a set of items, and the optional narrative on an activity digest. Nothing needs it — a summary can be written by hand and a digest counts what happened either way.",
+      "in_use": "Writing with {{model}}.",
+      "none": "No model is writing anything.",
+      "provider_gone": "The provider it named is no longer configured.",
+      "stop": "Stop using it",
+      "title": "Generation"
     },
     "wizard": {
       "address": "Address",
@@ -139,12 +145,16 @@
       "kind_hint": "How the product talks to it. OpenAI-compatible means the /v1/embeddings shape, whoever is behind it.",
       "model": "Embedding model",
       "model_failed": "The model did not return a vector.",
+      "model_generation": "Generation model",
+      "model_generation_hint": "Only models the provider says can complete text. Changing it later changes nothing already written; a summary keeps the model it was made with.",
       "model_hint": "Only models the provider says can embed. Changing this later re-embeds the workspace; the old model keeps answering until it is done.",
       "model_placeholder": "Choose a model",
       "model_works": "{{dimensions}} numbers per vector, in {{ms}} ms.",
+      "model_wrote": "Answered in {{ms}} ms: “{{text}}”",
       "name": "Name",
       "name_hint": "What you call this machine, so a list of providers reads as places rather than addresses.",
       "no_models": "This provider holds no model that can embed. Pull one — bge-m3 and nomic-embed-text are the usual choices — and check again.",
+      "no_models_generation": "This provider holds no model that can write. Pull one and check again.",
       "no_version": "unknown",
       "reached": "Answered — version {{version}}, {{count}} models.",
       "step_model": "Which model",

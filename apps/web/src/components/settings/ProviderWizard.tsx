@@ -3,6 +3,7 @@ import type {
   AiProviderSummary,
   CatalogueModel,
   CheckAiProviderResponse,
+  TestAiGenerationResponse,
   TestAiModelResponse,
 } from '@knoverge/contracts';
 import { useMutation } from '@tanstack/react-query';
@@ -35,6 +36,9 @@ export interface WizardResult {
   model: string;
 }
 
+/** Which job the model is being chosen for. */
+export type WizardPurpose = 'embedding' | 'generation';
+
 /**
  * Connecting a provider, in the order somebody actually does it.
  *
@@ -44,16 +48,18 @@ export interface WizardResult {
  * (ADR 0021).
  *
  * The two checks are different questions and are asked separately. The first
- * is whether anything is there. The second is whether *this model* returns
- * vectors, and how many numbers are in one — the number the whole index hangs
- * from, which nobody configures and which is therefore worth seeing before
- * committing to it.
+ * is whether anything is there. The second is whether *this model* does the job
+ * it is being chosen for, and it answers differently for each: for embeddings,
+ * how many numbers are in one vector — the number the whole index hangs from,
+ * which nobody configures; for generation, the sentence the model actually
+ * wrote, because that is the only thing that shows it works.
  */
 export function ProviderWizard({
   open,
   onOpenChange,
   existing,
   currentModel,
+  purpose = 'embedding',
   onFinish,
   saving,
   error,
@@ -64,6 +70,8 @@ export function ProviderWizard({
   existing?: AiProviderSummary | undefined;
   /** The model in use, so reopening the wizard starts where things are. */
   currentModel?: string | undefined;
+  /** Which job the model is for. Decides what is offered and how it is tested. */
+  purpose?: WizardPurpose;
   onFinish: (result: WizardResult) => void;
   saving: boolean;
   error: unknown;
@@ -76,6 +84,7 @@ export function ProviderWizard({
   const [model, setModel] = useState(currentModel ?? '');
   const [catalogue, setCatalogue] = useState<CheckAiProviderResponse | null>(null);
   const [tested, setTested] = useState<TestAiModelResponse | null>(null);
+  const [wrote, setWrote] = useState<TestAiGenerationResponse | null>(null);
 
   const check = useMutation({
     mutationFn: () => adminApi.ai.check({ kind, base_url: baseUrl }),
@@ -83,8 +92,8 @@ export function ProviderWizard({
       setCatalogue(answer);
       if (answer.reachable) {
         // Pre-select when there is only one thing it could be: an operator
-        // with one embedding model should not have to choose it.
-        const usable = embeddingModels(answer.models);
+        // with one usable model should not have to choose it.
+        const usable = modelsFor(purpose, answer.models);
         if (!model && usable.length === 1) setModel(usable[0]?.name ?? '');
         setStep(1);
       }
@@ -92,8 +101,13 @@ export function ProviderWizard({
   });
 
   const test = useMutation({
-    mutationFn: () => adminApi.ai.test({ kind, base_url: baseUrl, model }),
-    onSuccess: setTested,
+    mutationFn: async () => {
+      if (purpose === 'generation') {
+        setWrote(await adminApi.ai.testGeneration({ kind, base_url: baseUrl, model }));
+        return;
+      }
+      setTested(await adminApi.ai.test({ kind, base_url: baseUrl, model }));
+    },
   });
 
   const reset = (next: boolean) => {
@@ -101,13 +115,33 @@ export function ProviderWizard({
       setStep(0);
       setCatalogue(null);
       setTested(null);
+      setWrote(null);
       check.reset();
       test.reset();
     }
     onOpenChange(next);
   };
 
-  const usable = embeddingModels(catalogue?.models ?? []);
+  const usable = modelsFor(purpose, catalogue?.models ?? []);
+  const outcome =
+    purpose === 'generation'
+      ? wrote && {
+          ok: wrote.ok,
+          // What it said, not a tick. A model that answers in a hundred
+          // milliseconds and says nothing useful is one to see before using.
+          text: wrote.ok
+            ? t('ai.wizard.model_wrote', { text: wrote.text ?? '', ms: wrote.latency_ms ?? 0 })
+            : (wrote.error ?? t('ai.wizard.model_failed')),
+        }
+      : tested && {
+          ok: tested.ok,
+          text: tested.ok
+            ? t('ai.wizard.model_works', {
+                dimensions: tested.dimensions ?? 0,
+                ms: tested.latency_ms ?? 0,
+              })
+            : (tested.error ?? t('ai.wizard.model_failed')),
+        };
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -194,12 +228,22 @@ export function ProviderWizard({
                   count: catalogue?.models.length ?? 0,
                 })}
               />
-              <Field label={t('ai.wizard.model')} hint={t('ai.wizard.model_hint')}>
+              <Field
+                label={t(
+                  purpose === 'generation' ? 'ai.wizard.model_generation' : 'ai.wizard.model',
+                )}
+                hint={t(
+                  purpose === 'generation'
+                    ? 'ai.wizard.model_generation_hint'
+                    : 'ai.wizard.model_hint',
+                )}
+              >
                 <Select
                   value={model}
                   onChange={(e) => {
                     setModel(e.target.value);
                     setTested(null);
+                    setWrote(null);
                   }}
                   required
                 >
@@ -215,7 +259,13 @@ export function ProviderWizard({
                 </Select>
               </Field>
               {usable.length === 0 && (
-                <p className="text-sm text-muted-foreground">{t('ai.wizard.no_models')}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t(
+                    purpose === 'generation'
+                      ? 'ai.wizard.no_models_generation'
+                      : 'ai.wizard.no_models',
+                  )}
+                </p>
               )}
               <div className="flex flex-wrap items-center gap-3">
                 <Button
@@ -228,19 +278,7 @@ export function ProviderWizard({
                   {test.isPending && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
                   {t('ai.wizard.test_model')}
                 </Button>
-                {tested && (
-                  <Outcome
-                    ok={tested.ok}
-                    text={
-                      tested.ok
-                        ? t('ai.wizard.model_works', {
-                            dimensions: tested.dimensions ?? 0,
-                            ms: tested.latency_ms ?? 0,
-                          })
-                        : (tested.error ?? t('ai.wizard.model_failed'))
-                    }
-                  />
-                )}
+                {outcome && <Outcome ok={outcome.ok} text={outcome.text} />}
               </div>
               <ErrorNotice error={test.error} />
               <ErrorNotice error={error} />
@@ -267,17 +305,22 @@ export function ProviderWizard({
 }
 
 /**
- * The models worth offering for embeddings.
+ * The models worth offering for a purpose.
  *
  * A provider that says what its models are for is taken at its word, and one
  * that says nothing offers everything: hiding every model from a server which
  * does not report capabilities would offer nothing at all.
+ *
+ * `completion` is what Ollama calls a model that writes. A model that reports
+ * only `embedding` is excluded from generation and the other way round, because
+ * offering one for the other job is offering a test that cannot pass.
  */
-function embeddingModels(models: readonly CatalogueModel[]): CatalogueModel[] {
+function modelsFor(purpose: WizardPurpose, models: readonly CatalogueModel[]): CatalogueModel[] {
+  const wanted = purpose === 'generation' ? 'completion' : 'embedding';
   const declared = models.filter((model) => model.capabilities.length > 0);
   if (declared.length === 0) return [...models];
   return models.filter(
-    (model) => model.capabilities.length === 0 || model.capabilities.includes('embedding'),
+    (model) => model.capabilities.length === 0 || model.capabilities.includes(wanted),
   );
 }
 
