@@ -600,8 +600,14 @@ export const KnowledgeListQuery = z.object({
     .union([EvidenceState, z.array(EvidenceState)])
     .optional()
     .transform((v) => (v === undefined ? [] : Array.isArray(v) ? v : [v])),
-  /** Active by default: what the workspace currently asserts. */
-  status: ItemStatus.optional(),
+  /**
+   * Active by default: what the workspace currently asserts.
+   *
+   * A list that mixes what is asserted with what used to be — a superseded
+   * item, a deleted one — answers a question nobody asked, and gives no sign
+   * in the row which is which. Ask for another status to see it.
+   */
+  status: ItemStatus.default('active'),
 });
 export type KnowledgeListQuery = z.infer<typeof KnowledgeListQuery>;
 
