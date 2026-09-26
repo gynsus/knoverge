@@ -125,6 +125,14 @@ export interface CategoryRepository {
     change: { from: CategoryStatus; to: CategoryStatus },
     at: Date,
   ): Promise<CategoryId[]>;
+  /**
+   * Removes a category outright.
+   *
+   * A real delete, for a category nothing ever depended on (ADR 0025). The
+   * service decides whether that is true; this only does it. Answers whether
+   * there was a row to remove, so a second attempt is not mistaken for a first.
+   */
+  remove(tx: Tx, workspaceId: WorkspaceId, id: CategoryId): Promise<boolean>;
 }
 
 export interface AliasRecord {

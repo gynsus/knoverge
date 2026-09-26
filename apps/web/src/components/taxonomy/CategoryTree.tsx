@@ -22,6 +22,7 @@ export interface TreeActions {
   onMove: (category: CategorySummary) => void;
   onMerge: (category: CategorySummary) => void;
   onArchive: (category: CategorySummary) => void;
+  onDelete: (category: CategorySummary) => void;
   onRestore: (category: CategorySummary) => void;
   /** False for somebody who may read the taxonomy and not change it. */
   canManage: boolean;
@@ -174,16 +175,37 @@ function TreeNode({
                     <DropdownMenuItem onSelect={() => props.onMerge(category)}>
                       {t('taxonomy.merge')}
                     </DropdownMenuItem>
-                    {/* Archive rather than delete: a category holds knowledge,
-                        and nothing here should be able to take it with it. */}
+                    {/* Archive and merge are what removal means for a category
+                        that was used: one hides it with its knowledge, the other
+                        moves the knowledge somewhere real. Delete is only for one
+                        that never held anything (ADR 0025). */}
                     <DropdownMenuItem onSelect={() => props.onArchive(category)}>
                       {t('taxonomy.archive')}
                     </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onSelect={() => props.onDelete(category)}
+                    >
+                      {t('taxonomy.delete')}
+                    </DropdownMenuItem>
                   </>
                 ) : (
-                  <DropdownMenuItem disabled={merged} onSelect={() => props.onRestore(category)}>
-                    {t('taxonomy.restore')}
-                  </DropdownMenuItem>
+                  <>
+                    <DropdownMenuItem disabled={merged} onSelect={() => props.onRestore(category)}>
+                      {t('taxonomy.restore')}
+                    </DropdownMenuItem>
+                    {/* A category archived because it was a mistake is the case
+                        delete exists for, so it is offered here too. A merged one
+                        is not: its path is an alias of the survivor. */}
+                    {!merged && (
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onSelect={() => props.onDelete(category)}
+                      >
+                        {t('taxonomy.delete')}
+                      </DropdownMenuItem>
+                    )}
+                  </>
                 )}
               </DropdownMenuContent>
             </DropdownMenu>

@@ -575,6 +575,7 @@ category.updated
 category.moved
 category.merged
 category.archived
+category.deleted
 category.restored
 knowledge.proposed_create
 knowledge.proposed_update

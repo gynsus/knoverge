@@ -126,6 +126,18 @@ export function createCategoryRepository(db: Database): CategoryRepository {
         .returning({ id: categories.id });
       return rows.map((r) => r.id as CategoryId);
     },
+
+    async remove(tx: Tx, workspaceId: WorkspaceId, id: CategoryId) {
+      const t = asTx(tx);
+      // Scoped by workspace like every other write: an id from one workspace
+      // must not be able to delete a row in another.
+      const rows = await t
+        .delete(categories)
+        .where(and(eq(categories.workspaceId, workspaceId), eq(categories.id, id)))
+        .returning({ id: categories.id });
+      return rows.length > 0;
+    },
+
     async itemCounts(workspaceId: WorkspaceId) {
       // One statement for the whole workspace. A count per category would be
       // a query per row of the tree, and the tree is what asks for them.

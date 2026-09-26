@@ -30,6 +30,13 @@ export const EventType = z.enum([
   'category.merged',
   'category.archived',
   'category.restored',
+  /**
+   * A category that never meant anything, removed (ADR 0025).
+   *
+   * The row is gone and the event is not: rule 4 asks for what happened to be on
+   * record, not for the object to survive.
+   */
+  'category.deleted',
   'knowledge.proposed_create',
   'knowledge.proposed_update',
   'knowledge.proposed_delete',

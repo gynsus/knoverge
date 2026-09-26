@@ -174,6 +174,12 @@ export function createServices() {
         git: git(),
         renderTaxonomy,
         taxonomyPath: TAXONOMY_PATH,
+        // The command line never deletes a category, so nothing here has to
+        // answer what refers to one. A stub claiming "nothing does" would be a
+        // wrong answer waiting for somebody to add the command.
+        references: () => {
+          throw new Error('deleting a category is not something the command line does');
+        },
         items: repositories.knowledge,
         parseItem,
         renderItem,

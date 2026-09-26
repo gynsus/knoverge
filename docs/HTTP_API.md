@@ -175,6 +175,7 @@ POST /v1/admin/taxonomy.create
 POST /v1/admin/taxonomy.update
 POST /v1/admin/taxonomy.move
 POST /v1/admin/taxonomy.archive
+POST /v1/admin/taxonomy.delete              removes a category nothing has ever depended on
 POST /v1/admin/taxonomy.restore
 POST /v1/admin/taxonomy.merge               folds one category into another
 

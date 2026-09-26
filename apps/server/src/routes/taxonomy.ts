@@ -1,5 +1,6 @@
 import {
   ArchiveCategoryRequest,
+  DeleteCategoryRequest,
   CategoryResponse,
   CreateCategoryRequest,
   MergeCategoryRequest,
@@ -239,6 +240,26 @@ export function registerTaxonomyRoutes(app: FastifyInstance, services: Services)
         categoryIds: await subtreeOf(services, actor.context.workspaceId, request.body.category_id),
       });
       const result = await services.taxonomy.archive(actor.context, request.body.category_id);
+      return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/taxonomy.delete',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: DeleteCategoryRequest, response: { 200: CategoryResponse } },
+    },
+    async (request) => {
+      // Only the category itself: a delete that had a subtree would be refused
+      // before it got here, so there is no subtree to be authorised over.
+      const actor = await resolveWorkspaceActor(services, request);
+      await services.authorization.require(actor.context, actor.standing, 'taxonomy.manage', {
+        categoryIds: [request.body.category_id],
+      });
+      const result = await services.taxonomy.delete(actor.context, request.body.category_id);
+      // The category as it last was. There is no row to read back, and saying
+      // what was removed is more use than saying nothing.
       return { taxonomy_version: result.taxonomyVersion, category: summary(result.category) };
     },
   );

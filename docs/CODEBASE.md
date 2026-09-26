@@ -243,6 +243,37 @@ category, what would go in it, where it would hang — and none of that is on
 this screen. The queue says how many are waiting there rather than dropping
 them silently.
 
+## Removing a category
+
+Three operations, and only one of them is a delete.
+
+**Merge** is what removal means for a category people used. It moves the items,
+the direct children and the aliases to the survivor, leaves the closed category
+in the tree with status `merged` and a pointer to where its contents went, and
+turns its old path into an alias of the survivor so an agent that recorded that
+path still resolves. **Archive** hides a category and its subtree without
+touching either.
+
+**Delete** is for a category that never meant anything: created by mistake, never
+filed under, and archiving it would describe it for ever as something the
+workspace used to use. `TaxonomyService.assertNothingDependsOn` refuses unless
+every condition holds and says which one failed — descendants, items, aliases,
+proposals, grants and policy rules, and a `merged` status. Each is something that
+would otherwise break quietly, and two of them are worth naming: the items key is
+`restrict`, so the check exists to answer in words rather than in a constraint
+violation; the proposals key is `cascade`, so that is the case where the database
+would say nothing and the loss would be real (ADR 0025).
+
+Grants and policy rules keep their category scope as JSON with no foreign key, so
+nothing in the database would object to deleting a category out from under one.
+The service asks through a `references` port rather than learning their shape:
+the list of things that may name a category grows.
+
+Recovery has its one special case here. Every other taxonomy change leaves the
+category in the committed file and is rebuilt from it; a delete is the change
+whose evidence is an absence, so recovery reads a *missing* entry as the delete
+having happened and removes the row.
+
 ## Working with the taxonomy in the browser
 
 `apps/web/src/pages/TaxonomyPage.tsx` is a tree beside a panel, not a list with

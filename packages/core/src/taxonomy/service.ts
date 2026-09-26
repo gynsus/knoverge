@@ -66,6 +66,24 @@ export const MAX_CATEGORIES_PER_WORKSPACE = 2_000;
  */
 export const MAX_TAXONOMY_BYTES = 1024 * 1024;
 
+/**
+ * What outside the taxonomy still refers to a category.
+ *
+ * A port rather than the repositories themselves: the list of things that may
+ * name a category grows, and the taxonomy should not have to learn each one's
+ * shape to know it must not delete a row out from under it (ADR 0025).
+ */
+export interface CategoryReferences {
+  /** Proposals whose target is this category. The foreign key cascades, so this
+   * is the one case where the database would not object and the loss would be
+   * real. */
+  proposals: number;
+  /** Permission grants naming it in a scope. Stored as JSON, with no key. */
+  grants: number;
+  /** Policy rules naming it in a scope. The same, and the same reason. */
+  policyRules: number;
+}
+
 export interface TaxonomyServiceOptions {
   uow: UnitOfWork;
   categories: CategoryRepository;
@@ -81,6 +99,8 @@ export interface TaxonomyServiceOptions {
   /** Where the file lives in the repository. */
   taxonomyPath: string;
   workspaces: WorkspaceLookup;
+  /** What outside the taxonomy refers to a category, for `delete` (ADR 0025). */
+  references: (workspaceId: WorkspaceId, categoryId: CategoryId) => Promise<CategoryReferences>;
   /**
    * Knowledge files live under category paths, so a path that moves takes
    * them with it (ADR 0016). This is the only thing the taxonomy asks of the
@@ -134,7 +154,8 @@ export interface TaxonomyFileEntry {
  * has to be computed rather than read back.
  */
 /** What a taxonomy commit did, so recovery can rebuild the row it never wrote. */
-export type TaxonomyChangeKind = 'create' | 'update' | 'move' | 'archive' | 'restore' | 'merge';
+export type TaxonomyChangeKind =
+  'create' | 'update' | 'move' | 'archive' | 'restore' | 'merge' | 'delete';
 
 interface PlannedChange {
   subject: string;
@@ -795,6 +816,127 @@ export class TaxonomyService {
         },
       };
     });
+  }
+
+  /**
+   * Removes a category that never meant anything.
+   *
+   * A real delete: the row goes, the category leaves `taxonomy.yaml`, and there
+   * is no `deleted` status because there is nothing left to have one. Refused
+   * unless nothing has ever depended on it, and the refusal says which thing did
+   * (ADR 0025).
+   *
+   * For a category that was used, merge is the operation. It moves the items,
+   * the children and the aliases to the survivor and leaves the old path
+   * resolving, which is what removal means for something people relied on.
+   */
+  async delete(actor: ActorContext, categoryId: CategoryId): Promise<TaxonomyResult> {
+    const now = this.clock.now();
+    return this.change(actor, async () => {
+      const tree = await this.tree(actor.workspaceId);
+      const category = this.requireIn(tree.categories, categoryId);
+      await this.assertNothingDependsOn(actor.workspaceId, category, tree);
+      return {
+        subject: `taxonomy: delete ${category.path}`,
+        kind: 'delete',
+        objectIds: { category: category.id, path: category.path },
+        // The tree without it, which is what the file will say. A delete is the
+        // one change whose evidence in the commit is an absence.
+        categories: tree.categories.filter((c) => c.id !== category.id),
+        aliases: tree.aliases,
+        apply: async (tx, version, commitHash) => {
+          const removed = await this.o.categories.remove(tx, actor.workspaceId, category.id);
+          if (!removed) {
+            throw new DomainError('NOT_FOUND', 'no such category', {
+              objectIds: { category_id: category.id },
+            });
+          }
+          await this.o.versions.bump(tx, actor.workspaceId, now, version, commitHash);
+          await this.o.ledger.append(tx, actor.workspaceId, actor, {
+            eventType: 'category.deleted',
+            objectType: 'category',
+            objectId: category.id,
+            // Its own id, for the last time: the event outlives the row, which
+            // is what rule 4 asks for.
+            categoryIds: [category.id],
+            metadata: {
+              path: category.path,
+              name: category.name,
+              taxonomy_version: version,
+              git_commit: commitHash,
+            },
+          });
+          return {
+            // The category as it last was. There is no row to read back, and
+            // answering with what was removed is more use than answering with
+            // nothing. The counts are zero by construction: that is what made
+            // the delete allowed in the first place.
+            category: {
+              ...category,
+              aliases: tree.aliases.get(category.id) ?? [],
+              itemCount: 0,
+              subtreeItemCount: 0,
+            },
+            taxonomyVersion: version,
+          };
+        },
+      };
+    });
+  }
+
+  /**
+   * Refuses to delete a category anything still depends on, naming what.
+   *
+   * Every condition here is something that would otherwise break quietly. The
+   * item key is `restrict` and would refuse anyway, so that check exists to say
+   * so in words; the proposal key is `cascade`, so that one is the case where
+   * the database would say nothing and the loss would be real.
+   */
+  private async assertNothingDependsOn(
+    workspaceId: WorkspaceId,
+    category: CategoryRecord,
+    tree: { categories: CategoryRecord[]; aliases: Map<string, string[]> },
+  ): Promise<void> {
+    const refuse = (message: string): never => {
+      throw new DomainError('CATEGORY_CONFLICT', message, {
+        objectIds: { category_id: category.id, path: category.path },
+      });
+    };
+
+    if (category.status === 'merged') {
+      refuse(
+        'this category was merged into another and its path is an alias of the survivor; deleting it would stop that path resolving',
+      );
+    }
+    const children = tree.categories.filter((c) => c.parentId === category.id);
+    if (children.length > 0) {
+      refuse(
+        `${children.length} ${children.length === 1 ? 'category is' : 'categories are'} under this one; move or delete them first`,
+      );
+    }
+    const counts = (await this.o.categories.itemCounts(workspaceId)).get(category.id);
+    if (counts && counts.direct > 0) {
+      refuse(
+        `${counts.direct} ${counts.direct === 1 ? 'item is' : 'items are'} filed here; merge this category into another instead, which moves them and keeps the old path resolving`,
+      );
+    }
+    const aliases = tree.aliases.get(category.id) ?? [];
+    if (aliases.length > 0) {
+      refuse(
+        `this category answers to ${aliases.join(', ')}; an alias is a path somebody recorded, so remove them first if they are no longer wanted`,
+      );
+    }
+    const references = await this.o.references(workspaceId, category.id);
+    if (references.proposals > 0) {
+      refuse(
+        `${references.proposals} ${references.proposals === 1 ? 'proposal names' : 'proposals name'} this category; decide them first`,
+      );
+    }
+    if (references.grants > 0 || references.policyRules > 0) {
+      refuse(
+        'a permission grant or a policy rule is scoped to this category; change them first, or they would be left pointing at nothing',
+      );
+    }
   }
 
   /** Brings an archived category and its descendants back into the active tree. */

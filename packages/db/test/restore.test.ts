@@ -130,6 +130,7 @@ beforeAll(async () => {
     git,
     renderTaxonomy,
     taxonomyPath: TAXONOMY_PATH,
+    references: async () => ({ proposals: 0, grants: 0, policyRules: 0 }),
     items: repositories.knowledge,
     parseItem,
     renderItem,

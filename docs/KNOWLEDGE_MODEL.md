@@ -214,6 +214,15 @@ archived
 rejected
 ```
 
+There is no `deleted`, and a category that was used is never removed: merge moves
+its items, its children and its aliases to another and leaves the old path
+resolving, and archive hides it with its contents. A category **nothing has ever
+depended on** may be deleted outright — no descendants, no items, no aliases, no
+proposal naming it, no grant or policy rule scoped to it, and not `merged`. That
+is for a category created by mistake, which archiving would otherwise describe
+for ever as something the workspace used to use. ADR 0025 records why the
+conditions are what they are.
+
 Renaming a slug or moving a category moves every item file under it in one commit.
 
 ## 5. Category creation rules
