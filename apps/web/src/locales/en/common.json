@@ -402,6 +402,7 @@
     },
     "shortcuts": "Keys",
     "show_changes": "See what changed",
+    "source_moved": "changed since",
     "source_role": "What it is to this item",
     "source_type": "Kind of source",
     "source_types": {
@@ -421,6 +422,7 @@
     "sourced": "Has sources",
     "sources": "Sources",
     "sources_hint": "Where this came from. A claim nothing backs is a claim somebody has to take on trust.",
+    "stale": "Out of date",
     "statuses": {
       "draft": "Draft",
       "active": "Active",
@@ -428,6 +430,8 @@
       "archived": "Archived",
       "deleted": "Deleted"
     },
+    "summary_of": "Made from",
+    "summary_of_hint": "The exact revisions this was written from. When one of them moves on, the summary is out of date until somebody writes it again.",
     "tab_content": "The item",
     "tab_history": "History",
     "tab_relations": "Connections",
@@ -460,7 +464,8 @@
       "all": "Everything",
       "unreviewed": "Not checked yet",
       "unsourced": "No sources",
-      "disputed": "Contradictions"
+      "disputed": "Contradictions",
+      "stale": "Out of date"
     }
   },
   "language": {

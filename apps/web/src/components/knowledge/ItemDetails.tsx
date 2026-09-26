@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Markdown } from './Markdown.tsx';
 import { RevisionDiff } from './RevisionDiff.tsx';
 import { DisputedBy, RelationList } from './RelationList.tsx';
+import { SummaryOf } from './SummaryOf.tsx';
 import { Validity } from './Validity.tsx';
 import { SourceList } from './SourceList.tsx';
 
@@ -291,6 +292,15 @@ export function ItemDetails({
             <h4 className="text-sm font-medium">{t('knowledge.sources')}</h4>
             <SourceList sources={item.sources} />
           </section>
+
+          {/* Only a summary has them, and for a summary they are the item: what
+              it was made from is the first thing a reader needs. */}
+          {item.summary_of.length > 0 && (
+            <>
+              <Separator />
+              <SummaryOf refs={item.summary_of} onOpen={onOpenItem} />
+            </>
+          )}
         </TabsContent>
 
         <TabsContent value="history">

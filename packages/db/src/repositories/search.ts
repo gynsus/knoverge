@@ -24,6 +24,7 @@ import {
 } from '../schema/knowledge.ts';
 import { embeddings } from '../schema/embeddings.ts';
 import { searchChunks } from '../schema/search.ts';
+import { isStale } from './summaries.ts';
 import { asTx } from '../unit-of-work.ts';
 
 /** How many words of body a snippet may run to. */
@@ -237,6 +238,10 @@ function columns(query: SearchQuery, score: SQL<number>, tsquery: SQL, simpleQue
     reviewState: knowledgeItems.reviewState,
     evidenceState: knowledgeItems.evidenceState,
     disputed: knowledgeItems.disputed,
+    // The same one definition the list and the count use (ADR 0024). A summary
+    // is stale whether somebody found it by searching or by browsing, and a
+    // badge that appears in one and not the other is a badge nobody trusts.
+    stale: isStale(),
     revisionId: knowledgeRevisions.id,
     contentHash: knowledgeRevisions.contentHash,
     score,
@@ -269,6 +274,7 @@ function toCandidate(row: {
   reviewState: string;
   evidenceState: string;
   disputed: boolean;
+  stale: boolean;
   revisionId: string;
   contentHash: string;
   score: number;
@@ -286,6 +292,7 @@ function toCandidate(row: {
     reviewState: row.reviewState as ReviewState,
     evidenceState: row.evidenceState as EvidenceState,
     disputed: row.disputed,
+    stale: row.stale,
     revisionId: row.revisionId as RevisionId,
     contentHash: row.contentHash,
     updatedAt: row.updatedAt,

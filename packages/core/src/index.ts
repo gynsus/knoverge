@@ -84,6 +84,8 @@ export type {
   ListItemsOptions,
   RelationRecord,
   RelationRepository,
+  SummaryDependencyRecord,
+  SummaryRepository,
   RevisionRecord,
   RevisionRepository,
   RevisionSourceRecord,

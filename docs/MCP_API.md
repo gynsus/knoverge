@@ -292,6 +292,12 @@ The bound is the point: a `document` may run to two hundred kilobytes, and an ag
 
 `revision_id` reads a revision the item used to have, from the commit that wrote it — PostgreSQL keeps the frontmatter of every revision and the text of none.
 
+A `summary` carries `summary_of` — the items and the exact revisions it was made
+from — and `stale`, which is true when any of those revisions is no longer the
+item's current one. Neither is affected by `include_relations`: what a summary was
+made from is what it is, not a relation to something else, and an agent reading a
+summary needs to know whether it has fallen behind (ADR 0024).
+
 The answer carries `disputed` and, alongside `relations`, `disputed_by`: the items whose `contradicts` relation points at this one. A contradiction is recorded on the item that reported it, so without the second list an agent reading the item it was reported against would see `disputed: true` and nothing to look at. `include_relations: false` leaves out both lists and keeps the flag — rule 8 says dispute state is retrievable, so an agent that sees it can ask again for who (ADR 0022).
 
 The browser's `GET /v1/knowledge.get` asks for the whole body rather than a slice, because the editor writes back what it was given and a slice would be saved over the rest.

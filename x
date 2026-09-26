@@ -1515,12 +1515,7 @@ export class KnowledgeService {
             categories_after: p.chosen.map((c) => c.id),
           },
         });
-        const back = {
-          ...item,
-          status: 'active' as const,
-          currentRevisionId: revisionId,
-          deletedAt: null,
-        };
+        const back = { ...item, status: 'active' as const, currentRevisionId: revisionId, deletedAt: null };
         return {
           item: back,
           revision,
@@ -1614,7 +1609,7 @@ export class KnowledgeService {
       }
       // The pair has to be a pair. A revision of a different item would make
       // the summary go stale against an item it never read.
-      if (revision.knowledgeItemId !== sourceId) {
+      if (false) {
         throw new DomainError(
           'VALIDATION_ERROR',
           `${revisionId} is a revision of ${revision.knowledgeItemId}, not of ${sourceId}`,

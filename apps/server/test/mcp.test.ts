@@ -796,6 +796,74 @@ describe('reading one item', () => {
     expect(inBrowser.item.body.length).toBe(inBrowser.total_chars);
   });
 
+  it('tells an agent what a summary was made from, and whether it has fallen behind', async () => {
+    const source = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'The queue is RabbitMQ',
+        body: 'It is RabbitMQ.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string; current_revision_id: string; content_hash: string } };
+    const summary = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'How messages move',
+        body: 'Through RabbitMQ.',
+        type: 'summary',
+        summary_of: [`${source.item.id}@${source.item.current_revision_id}`],
+      })
+    ).json() as { item: { id: string } };
+
+    const client = await connect(agentToken);
+    try {
+      const before = KnowledgeResponse.parse(
+        (await client.callTool({ name: 'knowledge_get', arguments: { item_id: summary.item.id } }))
+          .structuredContent,
+      );
+      expect(before.item.summary_of).toEqual([
+        `${source.item.id}@${source.item.current_revision_id}`,
+      ]);
+      expect(before.item.stale).toBe(false);
+
+      // The source moves on, and nothing touches the summary.
+      expect(
+        (
+          await admin.post('/v1/admin/knowledge.update', {
+            item_id: source.item.id,
+            base_revision_id: source.item.current_revision_id,
+            base_content_hash: source.item.content_hash,
+            body: 'It is Kafka now.',
+          })
+        ).statusCode,
+      ).toBe(200);
+
+      const after = KnowledgeResponse.parse(
+        (await client.callTool({ name: 'knowledge_get', arguments: { item_id: summary.item.id } }))
+          .structuredContent,
+      );
+      expect(after.item.stale).toBe(true);
+      // Still the revision it read, which is the whole point: the summary says
+      // what it was made from, and the answer says that has moved.
+      expect(after.item.summary_of).toEqual([
+        `${source.item.id}@${source.item.current_revision_id}`,
+      ]);
+
+      // `include_relations: false` does not take these away: what a summary was
+      // made from is what it is, not a relation to something else.
+      const bare = KnowledgeResponse.parse(
+        (
+          await client.callTool({
+            name: 'knowledge_get',
+            arguments: { item_id: summary.item.id, include_relations: false },
+          })
+        ).structuredContent,
+      );
+      expect(bare.item.stale).toBe(true);
+      expect(bare.item.summary_of).toHaveLength(1);
+    } finally {
+      await client.close();
+    }
+  });
+
   it('reads a revision the item used to have', async () => {
     const created = (
       await admin.post('/v1/admin/knowledge.create', {

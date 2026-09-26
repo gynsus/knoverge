@@ -1,9 +1,10 @@
-import type {
-  ChangeKind,
-  Frontmatter,
-  KnowledgeItemId,
-  RevisionId,
-  WorkspaceId,
+import {
+  splitDependencyRef,
+  type ChangeKind,
+  type Frontmatter,
+  type KnowledgeItemId,
+  type RevisionId,
+  type WorkspaceId,
 } from '@knoverge/contracts';
 
 import type { ActorContext } from '../actor-context.ts';
@@ -21,9 +22,10 @@ import type {
   ItemCategoryRecord,
   KnowledgeItemRecord,
   KnowledgeRepository,
-  RevisionRecord,
   RelationRepository,
+  RevisionRecord,
   RevisionRepository,
+  SummaryRepository,
 } from './repository.ts';
 
 /** `Knoverge-Change: kn_...@rev_... <kind>` */
@@ -50,6 +52,7 @@ export interface KnowledgeRecoveryOptions {
   revisions: RevisionRepository;
   categories: CategoryRepository;
   relations: RelationRepository;
+  summaries: SummaryRepository;
   search: SearchRepository;
   ledger: EventLedger;
   git: GitStore;
@@ -333,6 +336,17 @@ export class KnowledgeRecovery {
             createdByActorId: operation.actorId,
           })),
           plan.now,
+        );
+        // What a summary was made from, for the same reason: the file carries
+        // the portable copy, and a recovered summary with no dependency rows
+        // reads as one that can never go stale.
+        await this.o.summaries.replaceForSummary(
+          tx,
+          plan.itemId,
+          (f.summary_of ?? []).map((ref, position) => {
+            const { itemId, revisionId } = splitDependencyRef(ref);
+            return { sourceItemId: itemId, sourceRevisionId: revisionId, position };
+          }),
         );
       }
       await this.o.ledger.append(tx, operation.workspaceId, actor, {

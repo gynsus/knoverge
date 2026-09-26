@@ -71,6 +71,7 @@ function summary(entry: ItemSummary): KnowledgeItemSummary {
     review_state: item.reviewState,
     evidence_state: item.evidenceState,
     disputed: item.disputed,
+    stale: entry.stale,
     categories: entry.categories,
     tags: entry.tags,
     valid_from: item.validFrom?.toISOString() ?? null,
@@ -106,6 +107,11 @@ function detail(result: ItemResult): KnowledgeItemDetail {
     // that revision said rather than what is true now.
     disputed: revision.frontmatter.disputed,
     disputed_by: revision.frontmatter.disputed_by ?? [],
+    // From the revision, like the dispute fields: reading an older revision of a
+    // summary should say what that revision was made from, not what the current
+    // one is.
+    summary_of: revision.frontmatter.summary_of ?? [],
+    stale: result.stale,
     categories: result.categories,
     tags: result.tags,
     valid_from: item.validFrom?.toISOString() ?? null,
@@ -167,6 +173,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         observedAt: request.body.observed_at,
         relations: request.body.relations,
         sources: request.body.sources,
+        summaryOf: request.body.summary_of,
         external: request.body.external,
         reason: request.body.reason,
       });
@@ -198,6 +205,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         observedAt: request.body.observed_at,
         sources: request.body.sources,
         relations: request.body.relations,
+        summaryOf: request.body.summary_of,
         reason: request.body.reason,
       });
       return whole(result);
@@ -309,6 +317,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
           unreviewed: piles.unreviewed,
           unsourced: piles.unsourced,
           disputed: piles.disputed,
+          stale: piles.stale,
         },
       };
     },
@@ -352,6 +361,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
         ...(query.review_states.length > 0 ? { reviewStates: query.review_states } : {}),
         ...(query.evidence_states.length > 0 ? { evidenceStates: query.evidence_states } : {}),
         ...(query.disputed === undefined ? {} : { disputed: query.disputed }),
+        ...(query.stale === undefined ? {} : { stale: query.stale }),
         status: query.status,
       });
       const page = items.slice(0, query.limit);
@@ -417,6 +427,9 @@ export async function knowledgeGet(
       // caller that asked for no relations gets no list of them. The `disputed`
       // flag stays either way — rule 8 says dispute state is retrievable — so
       // an agent that sees it can ask again for who.
+      // `summary_of` stays: it is what the summary is, not a relation to
+      // something else, and an agent that asked for no relations still needs to
+      // know a summary is out of step and against what.
       ...(input.include_relations ? {} : { relations: [], disputed_by: [] }),
     },
     total_chars: whole.length,
@@ -509,6 +522,7 @@ export async function knowledgeSearch(
       review_state: hit.reviewState,
       evidence_state: hit.evidenceState,
       disputed: hit.disputed,
+      stale: hit.stale,
       category_paths: byItem.get(hit.itemId)?.paths ?? [],
       revision_id: hit.revisionId,
       content_hash: hit.contentHash,

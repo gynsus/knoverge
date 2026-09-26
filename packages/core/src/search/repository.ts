@@ -73,6 +73,8 @@ export interface SearchHit {
   reviewState: ReviewState;
   evidenceState: EvidenceState;
   disputed: boolean;
+  /** Whether a summary is out of step with what it summarises (ADR 0024). */
+  stale: boolean;
   revisionId: RevisionId;
   contentHash: string;
   updatedAt: Date;

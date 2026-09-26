@@ -65,6 +65,48 @@ export interface RevisionRecord {
   reason: string | null;
 }
 
+/** One thing a summary was made from: an item, at the revision it read. */
+export interface SummaryDependencyRecord {
+  summaryItemId: KnowledgeItemId;
+  sourceItemId: KnowledgeItemId;
+  sourceRevisionId: RevisionId;
+  position: number;
+}
+
+export interface SummaryRepository {
+  /**
+   * Makes the dependencies of a summary exactly this list.
+   *
+   * Replaced whole, like tags and relations: a summary written again names what
+   * it read this time, and what it read last time is kept by the revision that
+   * said so.
+   */
+  replaceForSummary(
+    tx: Tx,
+    summaryItemId: KnowledgeItemId,
+    wanted: readonly Omit<SummaryDependencyRecord, 'summaryItemId'>[],
+  ): Promise<void>;
+  /** What a summary names, in the order it named them. */
+  listForSummary(
+    workspaceId: WorkspaceId,
+    summaryItemId: KnowledgeItemId,
+  ): Promise<SummaryDependencyRecord[]>;
+  /**
+   * Which of these items are summaries out of step with what they summarise.
+   *
+   * One query for a page, because a list of fifty would otherwise be fifty.
+   * Staleness is computed here rather than stored: true when any revision the
+   * summary names is no longer the current revision of the item it names
+   * (ADR 0024).
+   */
+  staleAmong(
+    workspaceId: WorkspaceId,
+    itemIds: readonly KnowledgeItemId[],
+    /** Inside the write that produced the rows, which has not committed yet. */
+    tx?: Tx,
+  ): Promise<Set<KnowledgeItemId>>;
+}
+
 export interface ItemCategoryRecord {
   knowledgeItemId: KnowledgeItemId;
   categoryId: CategoryId;
@@ -86,6 +128,8 @@ export interface ListItemsOptions {
   evidenceStates?: readonly EvidenceState[];
   /** Only items the workspace marks as contested. */
   disputed?: boolean;
+  /** Only summaries out of step with what they summarise (ADR 0024). */
+  stale?: boolean;
   updatedAfter?: Date;
   limit?: number;
   /** The id the previous page ended at; ids sort in creation order. */
@@ -109,6 +153,8 @@ export interface KnowledgePiles {
   unsourced: number;
   /** A live contradiction touches it (ADR 0022). */
   disputed: number;
+  /** A summary whose sources have moved on since it was written (ADR 0024). */
+  stale: number;
 }
 
 export interface KnowledgeRepository {

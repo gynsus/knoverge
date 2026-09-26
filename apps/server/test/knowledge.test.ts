@@ -1030,6 +1030,277 @@ describe('contradictions', () => {
   });
 });
 
+describe('summaries', () => {
+  async function fact(title: string) {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title,
+      body: `${title}.\n`,
+      type: 'fact',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  async function reread(id: string) {
+    const res = await admin.get(`/v1/knowledge.get?item_id=${id}`);
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  /** Any change at all, so a dependency moves on. */
+  async function touch(item: { id: string; current_revision_id: string; content_hash: string }) {
+    const res = await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'Something else entirely.\n',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return KnowledgeResponse.parse(res.json()).item;
+  }
+
+  it('records what it was made from, in the file and as an index', async () => {
+    const one = await fact('Deploys are on Thursdays');
+    const two = await fact('Releases are cut on Wednesdays');
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'How releases work',
+      body: 'Cut on Wednesday, deployed on Thursday.\n',
+      type: 'summary',
+      summary_of: [`${one.id}@${one.current_revision_id}`, `${two.id}@${two.current_revision_id}`],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const summary = KnowledgeResponse.parse(res.json()).item;
+    expect(summary.summary_of).toEqual([
+      `${one.id}@${one.current_revision_id}`,
+      `${two.id}@${two.current_revision_id}`,
+    ]);
+    // Nothing has moved, so it is not out of step with anything.
+    expect(summary.stale).toBe(false);
+
+    // The file carries it, because the repository is the canonical copy.
+    const file = await readFile(
+      join(dataDir, 'repositories', summary.workspace_id, summary.markdown_path),
+      'utf8',
+    );
+    expect(file).toContain('summary_of:');
+    expect(file).toContain(`- ${one.id}@${one.current_revision_id}`);
+  });
+
+  it('is out of date the moment a source moves on, with nothing marking it', async () => {
+    // No job, no flag: staleness is computed from the pairs it stored against
+    // the items' current revisions (ADR 0024), so it is right immediately.
+    const source = await fact('The rate is five per cent');
+    const summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the rates are',
+          body: 'Five per cent.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    expect(summary.stale).toBe(false);
+
+    await touch(source);
+    const after = await reread(summary.id);
+    expect(after.stale).toBe(true);
+    // And the summary itself has not been rewritten: nothing touched it.
+    expect(after.current_revision_id).toBe(summary.current_revision_id);
+    expect(after.revision_number).toBe(summary.revision_number);
+  });
+
+  it('stops being out of date when it is written again from what is current', async () => {
+    const source = await fact('Support closes at five');
+    let summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the hours are',
+          body: 'Until five.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    const moved = await touch(source);
+    expect((await reread(summary.id)).stale).toBe(true);
+
+    summary = await reread(summary.id);
+    const rewritten = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: summary.id,
+          base_revision_id: summary.current_revision_id,
+          base_content_hash: summary.content_hash,
+          body: 'Until seven now.\n',
+          summary_of: [`${moved.id}@${moved.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    // There is no separate step that says "accepted": naming the current
+    // revisions *is* the statement that somebody read them.
+    expect(rewritten.stale).toBe(false);
+  });
+
+  it('answers honestly when it was written from something already out of date', async () => {
+    // Legitimate: you summarise what you read, and it may have moved on while
+    // you were writing. A write cannot assume its sources were current.
+    const source = await fact('Invoices are monthly');
+    const first = source.current_revision_id;
+    await touch(source);
+    const summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the billing is',
+          body: 'Monthly.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${first}`],
+        })
+      ).json(),
+    ).item;
+    expect(summary.stale).toBe(true);
+  });
+
+  it('is out of date when a source is deleted, which is a change like any other', async () => {
+    const source = await fact('The office is in Brisbane');
+    const summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Where the offices are',
+          body: 'Brisbane.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    expect(
+      (
+        await admin.post('/v1/admin/knowledge.delete', {
+          item_id: source.id,
+          base_revision_id: source.current_revision_id,
+          base_content_hash: source.content_hash,
+        })
+      ).statusCode,
+    ).toBe(200);
+    // A summary of something that has left the active index is exactly a
+    // summary somebody should look at.
+    expect((await reread(summary.id)).stale).toBe(true);
+  });
+
+  it('shows the pile of summaries to look at, and counts it', async () => {
+    const res = await admin.get('/v1/knowledge.list?stale=true&limit=100');
+    expect(res.statusCode, res.body).toBe(200);
+    const listed = KnowledgeListResponse.parse(res.json()).items;
+    expect(listed.length).toBeGreaterThan(0);
+    // Everything in the pile is a summary, and every one says so.
+    expect(listed.every((item) => item.type === 'summary' && item.stale)).toBe(true);
+    const counts = KnowledgeCountsResponse.parse(
+      (await admin.get('/v1/knowledge.counts')).json(),
+    ).counts;
+    expect(counts.stale).toBe(listed.length);
+  });
+
+  it('refuses a revision that belongs to a different item', async () => {
+    // The pair has to be a pair. A revision of something else would make the
+    // summary go stale against an item it never read.
+    const one = await fact('One thing');
+    const two = await fact('Another thing');
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'A confused summary',
+      body: 'Body.\n',
+      type: 'summary',
+      summary_of: [`${one.id}@${two.current_revision_id}`],
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/is a revision of/);
+  });
+
+  it('refuses a summary that summarises itself, and one that names a source twice', async () => {
+    const source = await fact('Something to summarise');
+    const twice = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Named twice',
+      body: 'Body.\n',
+      type: 'summary',
+      summary_of: [
+        `${source.id}@${source.current_revision_id}`,
+        `${source.id}@${source.current_revision_id}`,
+      ],
+    });
+    expect(twice.statusCode, twice.body).toBe(400);
+    expect(twice.json().message).toMatch(/named twice/);
+
+    const summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'A summary of something',
+          body: 'Body.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    const itself = await admin.post('/v1/admin/knowledge.update', {
+      item_id: summary.id,
+      base_revision_id: summary.current_revision_id,
+      base_content_hash: summary.content_hash,
+      summary_of: [`${summary.id}@${summary.current_revision_id}`],
+    });
+    expect(itself.statusCode, itself.body).toBe(400);
+    expect(itself.json().message).toMatch(/summarise itself/);
+  });
+
+  it('refuses anything but a summary claiming to summarise things', async () => {
+    const source = await fact('A fact to misuse');
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Not a summary',
+      body: 'Body.\n',
+      type: 'fact',
+      summary_of: [`${source.id}@${source.current_revision_id}`],
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json().message).toMatch(/only an item of type summary/);
+  });
+
+  it('drops the list when the type changes away from summary', async () => {
+    const source = await fact('A source for a demoted summary');
+    const summary = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'About to become a fact',
+          body: 'Body.\n',
+          type: 'summary',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+        })
+      ).json(),
+    ).item;
+    const demoted = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: summary.id,
+          base_revision_id: summary.current_revision_id,
+          base_content_hash: summary.content_hash,
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    // An item that is not a summary claiming to summarise things is a claim the
+    // frontmatter schema refuses outright.
+    expect(demoted.summary_of).toEqual([]);
+    expect(demoted.stale).toBe(false);
+  });
+
+  it('refuses a source the workspace does not have', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Points at nothing',
+      body: 'Body.\n',
+      type: 'summary',
+      summary_of: ['kn_01M2ZZZZZZZZZZZZZZZZZZZZZZ@rev_01M2ZZZZZZZZZZZZZZZZZZZZZZ'],
+    });
+    expect(res.statusCode, res.body).toBe(404);
+    expect(res.json().message).toMatch(/no revision/);
+  });
+});
+
 describe('when a claim holds', () => {
   it('keeps the period a write states, and says what it means', async () => {
     const res = await admin.post('/v1/admin/knowledge.create', {

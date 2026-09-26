@@ -228,6 +228,42 @@ export const ItemSlug = z
   .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/, 'lower-case letters, digits and hyphens');
 export type ItemSlug = z.infer<typeof ItemSlug>;
 
+/**
+ * One thing a summary was made from: an item, at the revision it read.
+ *
+ * The revision, not just the item. "This summarises these five facts" is not the
+ * claim; "this summarises these five facts as they read at these five revisions"
+ * is, and only the second one can go out of date (rule 7, ADR 0024).
+ *
+ * One string rather than a pair of fields, because this is what the frontmatter
+ * carries and the file is the canonical copy. One representation, read the same
+ * way by an agent and by somebody with a text editor.
+ */
+export const SummaryDependencyRef = z
+  .string()
+  .regex(
+    /^kn_[0-9A-HJKMNP-TV-Z]{26}@rev_[0-9A-HJKMNP-TV-Z]{26}$/,
+    'must be <item id>@<revision id>',
+  );
+export type SummaryDependencyRef = z.infer<typeof SummaryDependencyRef>;
+
+/** How many sources one summary may name. A summary of a library is a document. */
+export const MAX_SUMMARY_DEPENDENCIES = 200;
+
+/** The two halves of a dependency reference, for code that needs them apart. */
+export function splitDependencyRef(ref: string): {
+  itemId: KnowledgeItemId;
+  revisionId: RevisionId;
+} {
+  const [itemId, revisionId] = ref.split('@');
+  return { itemId: itemId as KnowledgeItemId, revisionId: revisionId as RevisionId };
+}
+
+/** The reference form, from the two halves. */
+export function dependencyRef(itemId: string, revisionId: string): SummaryDependencyRef {
+  return `${itemId}@${revisionId}`;
+}
+
 export const Frontmatter = z
   .object({
     id: KnowledgeItemId,
@@ -278,10 +314,7 @@ export const Frontmatter = z
     disputed_by: z.array(KnowledgeItemId).max(50).optional(),
     external: FrontmatterExternal.optional(),
     /** Only for `type: summary`: the revisions the summary was made from. */
-    summary_of: z
-      .array(z.string().regex(/^kn_[0-9A-HJKMNP-TV-Z]{26}@rev_[0-9A-HJKMNP-TV-Z]{26}$/))
-      .max(200)
-      .optional(),
+    summary_of: z.array(SummaryDependencyRef).max(MAX_SUMMARY_DEPENDENCIES).optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -363,6 +396,15 @@ export const KnowledgeItemSummary = z.object({
   review_state: ReviewState,
   evidence_state: EvidenceState,
   disputed: z.boolean(),
+  /**
+   * Whether a summary is out of step with what it summarises.
+   *
+   * Computed, never stored: true when any revision the summary names is no
+   * longer the current revision of the item it names. False for everything that
+   * is not a summary, which is honest — an item with no dependencies cannot be
+   * out of step with them. See ADR 0024.
+   */
+  stale: z.boolean(),
   /** Slug paths, primary first, the way the frontmatter carries them. */
   categories: z.array(CategoryPath),
   tags: z.array(Tag),
@@ -379,6 +421,13 @@ export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
   body: z.string(),
   sources: z.array(FrontmatterSource),
   relations: z.array(FrontmatterRelation),
+  /**
+   * What this summary was made from, when it is one. Empty otherwise.
+   *
+   * The same `<item>@<revision>` form the file carries, so what an agent reads
+   * back is what a person with a text editor sees.
+   */
+  summary_of: z.array(SummaryDependencyRef),
   /**
    * Which items contradict this one, which `relations` cannot say: a
    * contradiction is recorded on the item that reported it, and this is the
@@ -418,6 +467,13 @@ export const CreateKnowledgeRequest = z.object({
     ),
   /** How it connects to other items. Replaced whole, like tags. */
   relations: z.array(FrontmatterRelation).max(50).default([]),
+  summary_of: z
+    .array(SummaryDependencyRef)
+    .max(MAX_SUMMARY_DEPENDENCIES)
+    .default([])
+    .describe(
+      'Only for `type: summary`: the items and the exact revisions of them this was made from, as `<item id>@<revision id>`. The revision matters — a summary goes stale when one of them moves on, which is how anybody knows to look at it again.',
+    ),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
   /**
@@ -516,6 +572,8 @@ export const SearchResult = z.object({
   review_state: ReviewState,
   evidence_state: EvidenceState,
   disputed: z.boolean(),
+  /** Whether a summary is out of step with what it summarises (ADR 0024). */
+  stale: z.boolean(),
   category_paths: z.array(CategoryPath),
   revision_id: RevisionId,
   content_hash: z.string(),
@@ -632,6 +690,8 @@ export const KnowledgeListQuery = z.object({
    * workspace disagreeing with itself is the first thing a reviewer wants.
    */
   disputed: z.stringbool().optional(),
+  /** Only summaries that are out of step with what they summarise (ADR 0024). */
+  stale: z.stringbool().optional(),
   /**
    * Active by default: what the workspace currently asserts.
    *
@@ -670,6 +730,8 @@ export const KnowledgeCounts = z.object({
   unsourced: z.number().int().nonnegative(),
   /** A live contradiction touches it, so the workspace disagrees with itself. */
   disputed: z.number().int().nonnegative(),
+  /** Summaries whose sources have moved on since they were written. */
+  stale: z.number().int().nonnegative(),
 });
 export type KnowledgeCounts = z.infer<typeof KnowledgeCounts>;
 
@@ -705,6 +767,13 @@ export const UpdateKnowledgeRequest = z.object({
       'Replaces the whole list when given. Where this came from: the file, commit, page or item it was read out of. One with a `uri` or a `content_hash` is what makes the item source-backed.',
     ),
   relations: z.array(FrontmatterRelation).max(50).optional(),
+  summary_of: z
+    .array(SummaryDependencyRef)
+    .max(MAX_SUMMARY_DEPENDENCIES)
+    .optional()
+    .describe(
+      'Replaces the whole list when given. Only for `type: summary`. Naming the current revisions of the same sources is how a summary stops being stale.',
+    ),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
   /**

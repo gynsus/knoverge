@@ -1,5 +1,5 @@
 import type { EvidenceState, ItemType, ReviewState } from '@knoverge/contracts';
-import { AlertTriangle, Check, FileText, Link2 } from 'lucide-react';
+import { AlertTriangle, Check, FileText, History, Link2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +21,8 @@ export interface RowItem {
   reviewState: ReviewState;
   evidenceState: EvidenceState;
   disputed: boolean;
+  /** Only a summary can be: out of step with what it summarises (ADR 0024). */
+  stale?: boolean;
   updatedAt: string;
   /** How many times it has been written. A ledger's rows say. */
   revisionNumber?: number | undefined;
@@ -106,6 +108,14 @@ export function KnowledgeRow({
             <span className="flex items-center gap-1 text-destructive">
               <AlertTriangle aria-hidden="true" className="size-3.5" />
               {t('knowledge.disputed')}
+            </span>
+          )}
+          {/* Not destructive: a stale summary is not wrong, it is behind. The
+              thing it summarises has moved on, and somebody should look. */}
+          {item.stale && (
+            <span className="flex items-center gap-1">
+              <History aria-hidden="true" className="size-3.5" />
+              {t('knowledge.stale')}
             </span>
           )}
           <span className="ml-auto shrink-0">

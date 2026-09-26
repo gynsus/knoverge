@@ -26,6 +26,7 @@ import type {
   RevisionRecord,
   RevisionRepository,
   SourceRepository,
+  SummaryRepository,
 } from './repository.ts';
 
 /**
@@ -52,6 +53,7 @@ export interface KnowledgeServiceOptions {
   revisions: RevisionRepository;
   sources: SourceRepository;
   relations: RelationRepository;
+  summaries: SummaryRepository;
   /** The lexical index, written with the revision it describes. */
   search: SearchRepository;
   categories: CategoryRepository;
@@ -105,6 +107,8 @@ export interface UpdateItemInput {
   observedAt?: string | null | undefined;
   sources?: readonly FrontmatterSource[] | undefined;
   relations?: readonly FrontmatterRelation[] | undefined;
+  /** See `CreateItemInput`. Replaces the whole list when given. */
+  summaryOf?: readonly string[] | undefined;
   /** See `CreateItemInput`: the proposal this write applies. */
   proposalId?: ProposalId | undefined;
   /** See `CreateItemInput`: set only by the review workflow. */
@@ -135,6 +139,13 @@ export interface CreateItemInput {
   external?: { source_system: string; external_key: string } | undefined;
   sources?: readonly FrontmatterSource[] | undefined;
   relations?: readonly FrontmatterRelation[] | undefined;
+  /**
+   * Only for `type: summary`: what it was made from, as `<item>@<revision>`.
+   *
+   * The revision, not just the item, because a summary goes stale when one of
+   * them moves on and that is how anybody knows to look at it again (ADR 0024).
+   */
+  summaryOf?: readonly string[] | undefined;
   /**
    * The proposal this write applies, recorded on the commit so the repository
    * alone says which decision produced the file.
@@ -207,6 +218,13 @@ export interface ItemSummary {
   revisionNumber: number;
   categories: string[];
   tags: string[];
+  /**
+   * Whether this is a summary out of step with what it summarises.
+   *
+   * Computed, never stored (ADR 0024). False for everything that is not a
+   * summary: an item with no dependencies cannot be out of step with them.
+   */
+  stale: boolean;
 }
 
 export interface ItemResult {
@@ -215,4 +233,13 @@ export interface ItemResult {
   categories: string[];
   tags: string[];
   body: string;
+  /**
+   * Whether this is a summary out of step with what it summarises.
+   *
+   * Always answered, including by a write: naming an old revision is a thing a
+   * caller may legitimately do — you summarise what you read, and it may have
+   * moved on while you were writing — so a write cannot assume otherwise
+   * (ADR 0024).
+   */
+  stale: boolean;
 }
