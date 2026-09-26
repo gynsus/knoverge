@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ModelName } from './ai.ts';
 import { LanguageTag } from './identity.ts';
 import { KnowledgeItemId, RevisionId, WorkspaceId } from './ids.ts';
 import { CategoryPath } from './taxonomy.ts';
@@ -605,6 +606,35 @@ export const SearchResult = z.object({
   snippet: z.string().nullable(),
 });
 export type SearchResult = z.infer<typeof SearchResult>;
+
+/**
+ * Drafting the text of a summary with a model.
+ *
+ * It drafts and it does not write. A person reads it, changes it and saves it
+ * through the ordinary create or update, which is where provenance, review and
+ * Git live. A path that generated knowledge and committed it in one step would
+ * be a way for a model to put words in the ledger that nobody read.
+ */
+export const DraftSummaryRequest = z.object({
+  /** What to summarise, read at whatever revision each one is at now. */
+  item_ids: z.array(KnowledgeItemId).min(1).max(20),
+});
+export type DraftSummaryRequest = z.infer<typeof DraftSummaryRequest>;
+
+export const DraftSummaryResponse = z.object({
+  /** The draft. Nothing has been written; this is for somebody to read. */
+  body: z.string(),
+  /**
+   * The exact revisions it was drafted from, ready to be sent back as
+   * `summary_of` — which is what makes the summary that follows not stale.
+   */
+  summary_of: z.array(SummaryDependencyRef),
+  /** Which model wrote it, so a reviewer knows what they are reading. */
+  model: ModelName,
+  /** Whether the model ran out of room rather than finishing. */
+  truncated: z.boolean(),
+});
+export type DraftSummaryResponse = z.infer<typeof DraftSummaryResponse>;
 
 export const KnowledgeSearchResponse = z.object({ results: z.array(SearchResult) });
 export type KnowledgeSearchResponse = z.infer<typeof KnowledgeSearchResponse>;

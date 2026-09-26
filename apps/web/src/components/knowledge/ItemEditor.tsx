@@ -12,6 +12,7 @@ import { changed, draftOf, listOf, type Draft } from './draft.ts';
 import { ItemFields } from './ItemFields.tsx';
 import { RelationEditor } from './RelationList.tsx';
 import { SourceEditor } from './SourceList.tsx';
+import { SummaryOfEditor } from './SummaryOf.tsx';
 import { ValidityFields } from './Validity.tsx';
 import { asInstant } from './validity.ts';
 
@@ -83,6 +84,9 @@ export function ItemEditor({
         // finish; sending it would be refused, and dropping it silently is
         // what "cancel" already means for an empty row.
         relations: draft.relations.filter((relation) => relation.target !== ''),
+        // Only for a summary, and dropped when it stops being one: the domain
+        // refuses the claim outright, and sending it would be sending a mistake.
+        ...(draft.type === 'summary' ? { summary_of: draft.summaryOf as never } : {}),
         // Only what was touched. A date left alone is left alone: the contract
         // takes instants, the form offers days, and sending an untouched field
         // back would round whatever time it held down to midnight.
@@ -118,6 +122,17 @@ export function ItemEditor({
             onChange={(relations) => setDraft({ ...draft, relations })}
           />
         </Field>
+        {/* Only for a summary: everything else has nothing to be made from, and
+            an empty control asking what it summarises would be a question with
+            no answer. */}
+        {draft.type === 'summary' && (
+          <SummaryOfEditor
+            refs={draft.summaryOf}
+            selfId={item.id}
+            onChange={(summaryOf) => setDraft((current) => ({ ...current, summaryOf }))}
+            onDrafted={(body) => setDraft((current) => ({ ...current, body }))}
+          />
+        )}
         <ValidityFields draft={draft} onChange={setDraft} />
         {/* Every change here is a revision and a Git commit. The history can
             say who and when without this; only this says why. */}

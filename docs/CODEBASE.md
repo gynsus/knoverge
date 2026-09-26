@@ -330,6 +330,27 @@ transaction, because a caller may legitimately name an older revision — you
 summarise what you read, and it may have moved on while you were writing — so a
 write cannot assume its answer is no.
 
+## Drafting a summary, and never writing one
+
+`packages/core/src/knowledge/drafting.ts` reads the named items at whatever
+revision each is at now, sends their bodies to the generation provider and hands
+back a body plus those revisions. It drafts and it does not write: what comes back
+goes through the ordinary create or update, which is where provenance, review and
+Git already live. A path that generated knowledge and committed it in one step
+would be a way for a model to put words in the ledger that nobody read.
+
+Three things the prompt does deliberately. The instruction is the system message
+and the knowledge is the user message, never concatenated, so a passage saying
+"ignore your instructions" says it in the voice of somebody being quoted. Each
+source is titled and fenced, so one cannot run into the next. And the instruction
+asks the model to report a disagreement rather than resolve one, because a summary
+that quietly decides which of two sources was right is worse than no summary.
+
+`POST /v1/admin/knowledge.draft_summary` needs `knowledge.write`, because the only
+thing worth doing with a draft is saving it. It is not a tool: an agent has its
+own model, and rule 5 says an agent's contribution arrives as a proposal rather
+than through the server's.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes

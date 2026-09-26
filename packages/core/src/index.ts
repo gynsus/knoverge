@@ -39,12 +39,22 @@ export {
   type MatchReason,
 } from './knowledge/duplicates.ts';
 export {
+  MAX_DRAFT_SOURCES,
+  SUMMARY_INSTRUCTION,
+  SummaryDrafter,
+  type SourcePassage,
+  type SummaryDraft,
+  type SummaryDrafterOptions,
+} from './knowledge/drafting.ts';
+export {
   AiSettingsService,
   type AiSettingsServiceOptions,
   type AiSettingsView,
   type CatalogueProbe,
   type CheckOutcome,
   type EmbeddingFactory,
+  type GenerationFactory,
+  type GenerationTestOutcome,
   type SaveProviderInput,
   type TestOutcome,
 } from './ai/service.ts';

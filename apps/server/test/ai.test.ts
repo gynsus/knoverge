@@ -9,6 +9,7 @@ import {
   AiSettingsResponse,
   CheckAiProviderResponse,
   TERMS_VERSION,
+  DraftSummaryResponse,
   TestAiGenerationResponse,
   TestAiModelResponse,
 } from '@knoverge/contracts';
@@ -390,6 +391,63 @@ describe('once a model is at work', () => {
 
     const profile = await services.embeddings.activeProfile(workspaceId as never);
     expect(profile).toMatchObject({ model: 'bge-m3:latest', dimensions: DIMENSIONS });
+  });
+
+  it('drafts a summary from what the sources say now, and writes nothing', async () => {
+    const settings = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    const providerId = settings.ai.providers[0]?.id;
+    expect(
+      (
+        await admin.post('/v1/admin/ai.assign', {
+          purpose: 'generation',
+          provider_id: providerId,
+          model: 'gpt-oss:120b',
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    const source = (
+      await admin.post('/v1/admin/knowledge.create', {
+        title: 'Retention is ninety days',
+        body: 'Backups are kept for ninety days.',
+        type: 'fact',
+      })
+    ).json() as { item: { id: string; current_revision_id: string } };
+
+    const res = await admin.post('/v1/admin/knowledge.draft_summary', {
+      item_ids: [source.item.id],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const draft = DraftSummaryResponse.parse(res.json());
+    // The fake answers with the first message's role and the second message's
+    // content, so this says the knowledge arrived as the material and not as
+    // part of the instruction.
+    expect(draft.body).toContain('Backups are kept for ninety days.');
+    expect(draft.body.startsWith('system:')).toBe(true);
+    expect(draft.model).toBe('gpt-oss:120b');
+    // Ready to be sent straight back as `summary_of`, at the revision that was
+    // read — which is what makes the summary that follows not stale.
+    expect(draft.summary_of).toEqual([`${source.item.id}@${source.item.current_revision_id}`]);
+
+    // Nothing was written. A path that generated knowledge and committed it in
+    // one step would be a way for a model to put words nobody read in the
+    // ledger.
+    const listed = (await admin.get('/v1/knowledge.list?types=summary&limit=100')).json() as {
+      items: unknown[];
+    };
+    expect(listed.items).toEqual([]);
+  });
+
+  it('is not something an agent may ask for', async () => {
+    // An agent has its own model, and rule 5 says its contribution arrives as a
+    // proposal rather than through the server's.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/knowledge.draft_summary',
+      headers: { authorization: `Bearer ${agentToken}` },
+      payload: { item_ids: ['kn_01M2ZZZZZZZZZZZZZZZZZZZZZZ'] },
+    });
+    expect([401, 403]).toContain(res.statusCode);
   });
 
   it('puts a second model to work without disturbing the first', async () => {

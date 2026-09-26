@@ -29,6 +29,7 @@ import {
   MemberService,
   KnowledgeRecovery,
   KnowledgeService,
+  SummaryDrafter,
   ProposalService,
   TaxonomyRecovery,
   TaxonomyService,
@@ -378,6 +379,26 @@ export function createServices(config: ServicesConfig) {
         similarity: match.similarity,
       })),
   });
+  /**
+   * Drafting the text of a summary with a model.
+   *
+   * Reads bodies out of Git, because that is where knowledge is. It drafts and
+   * never writes: what comes back goes through the ordinary write, which is
+   * where provenance, review and Git already live.
+   */
+  const summaryDrafter = new SummaryDrafter({
+    items: repositories.knowledge,
+    revisions: repositories.revisions,
+    read: async (workspaceId, itemId) => {
+      const item = await repositories.knowledge.findById(workspaceId, itemId);
+      if (!item?.currentRevisionId) return null;
+      const revision = await repositories.revisions.findById(workspaceId, item.currentRevisionId);
+      const file = await git.read(workspaceId, item.markdownPath);
+      if (!revision || file === null) return null;
+      return { itemId, title: revision.title, body: parseItem(file).body };
+    },
+    generation: ai.generationSource,
+  });
   const bootstrap = new BootstrapService({
     uow,
     users,
@@ -393,6 +414,7 @@ export function createServices(config: ServicesConfig) {
     repositories,
     ledger,
     agents: agentService,
+    summaryDrafter,
     authorization,
     authorizationAdmin,
     idempotency,

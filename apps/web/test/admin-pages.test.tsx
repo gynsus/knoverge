@@ -1719,6 +1719,145 @@ describe('knowledge page', () => {
     expect(await screen.findByText('Out of date')).toBeInTheDocument();
   });
 
+  it('drafts the text of a summary from what its sources say now', async () => {
+    // The draft fills the form and is never saved by itself: a person reads it
+    // and saves it through the ordinary write, which is where provenance,
+    // review and Git live.
+    const source = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TD',
+      title: 'Backups are kept for ninety days',
+      current_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1TD',
+    };
+    const calls = mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, type: 'summary', summary_of: [] } }),
+      [`GET /v1/knowledge.get?item_id=${source.id}`]: () => json({ item: source }),
+      'POST /v1/knowledge_search': () =>
+        json({
+          results: [
+            {
+              item_id: source.id,
+              title: source.title,
+              type: 'fact',
+              status: 'active',
+              language: 'en',
+              review_state: 'human_reviewed',
+              evidence_state: 'none',
+              disputed: false,
+              stale: false,
+              category_paths: [],
+              revision_id: source.current_revision_id,
+              content_hash: source.content_hash,
+              updated_at: source.updated_at,
+              score: 1,
+              components: { lexical: 1, title: 1, semantic: null },
+              chunk_index: 0,
+              snippet: null,
+            },
+          ],
+        }),
+      'POST /v1/admin/knowledge.draft_summary': () =>
+        json({
+          body: 'Backups last ninety days.',
+          summary_of: [`${source.id}@${source.current_revision_id}`],
+          model: 'qwen3',
+          truncated: false,
+        }),
+      'POST /v1/admin/knowledge.update': () => json({ item: DETAIL }),
+    });
+    const user = userEvent.setup();
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+
+    await user.click(within(drawer).getByRole('button', { name: 'Choose a record to summarise' }));
+    await user.type(await screen.findByLabelText('Search for a record'), 'backups');
+    await user.click(await screen.findByRole('option', { name: /ninety days/ }));
+
+    await user.click(within(drawer).getByRole('button', { name: 'Draft the text' }));
+    // Says which model wrote it, because a reviewer has to know what they are
+    // reading before they save it.
+    expect(await within(drawer).findByText(/Drafted by qwen3/)).toBeInTheDocument();
+    expect(within(drawer).getByLabelText('Text')).toHaveValue('Backups last ninety days.');
+
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/knowledge.update'))).toBe(true),
+    );
+    const body = calls.find((c) => c.url.endsWith('/v1/admin/knowledge.update'))!.body as Record<
+      string,
+      unknown
+    >;
+    expect(body['summary_of']).toEqual([`${source.id}@${source.current_revision_id}`]);
+  });
+
+  it('records the revision a chosen source is at, with no model involved', async () => {
+    // A summary written by hand is the whole point of rule 9, and the ref still
+    // has to carry a revision: the picker knows an item, so choosing one reads
+    // which revision it is at now rather than guessing (ADR 0024).
+    const source = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TE',
+      title: 'Support closes at five',
+      current_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1TE',
+    };
+    const calls = mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, type: 'summary', summary_of: [] } }),
+      [`GET /v1/knowledge.get?item_id=${source.id}`]: () => json({ item: source }),
+      'POST /v1/knowledge_search': () =>
+        json({
+          results: [
+            {
+              item_id: source.id,
+              title: source.title,
+              type: 'fact',
+              status: 'active',
+              language: 'en',
+              review_state: 'human_reviewed',
+              evidence_state: 'none',
+              disputed: false,
+              stale: false,
+              category_paths: [],
+              revision_id: source.current_revision_id,
+              content_hash: source.content_hash,
+              updated_at: source.updated_at,
+              score: 1,
+              components: { lexical: 1, title: 1, semantic: null },
+              chunk_index: 0,
+              snippet: null,
+            },
+          ],
+        }),
+      'POST /v1/admin/knowledge.update': () => json({ item: DETAIL }),
+    });
+    const user = userEvent.setup();
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+
+    await user.click(within(drawer).getByRole('button', { name: 'Choose a record to summarise' }));
+    await user.type(await screen.findByLabelText('Search for a record'), 'support');
+    await user.click(await screen.findByRole('option', { name: /closes at five/ }));
+    // In the list by title, not by id: an id tells a reader nothing.
+    expect(await within(drawer).findByText('Support closes at five')).toBeInTheDocument();
+
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/knowledge.update'))).toBe(true),
+    );
+    const body = calls.find((c) => c.url.endsWith('/v1/admin/knowledge.update'))!.body as Record<
+      string,
+      unknown
+    >;
+    expect(body['summary_of']).toEqual([`${source.id}@${source.current_revision_id}`]);
+    // Nothing was drafted, so nothing asked a model for anything.
+    expect(calls.some((c) => c.url.includes('draft_summary'))).toBe(false);
+  });
+
   it('names who contradicts an item, which its own connections cannot say', async () => {
     // A contradiction is recorded on the item that reported it, so on the item
     // it was reported against the relations list is empty and the disputed
