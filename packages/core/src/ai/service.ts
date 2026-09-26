@@ -5,7 +5,12 @@ import {
   type AiPurpose,
   type CatalogueModel,
 } from '@knoverge/contracts';
-import type { EmbeddingProvider, EmbeddingSource } from '@knoverge/intelligence';
+import type {
+  EmbeddingProvider,
+  EmbeddingSource,
+  GenerationProvider,
+  GenerationSource,
+} from '@knoverge/intelligence';
 
 import { DomainError } from '../errors.ts';
 import { newId } from '../ids.ts';
@@ -20,6 +25,13 @@ export type EmbeddingFactory = (spec: {
   model: string;
 }) => EmbeddingProvider;
 
+/** The same, for a model that writes rather than one that measures. */
+export type GenerationFactory = (spec: {
+  kind: AiProviderKind;
+  baseUrl: string;
+  model: string;
+}) => GenerationProvider;
+
 /** How an adapter asks an address what it is and what it holds. */
 export type CatalogueProbe = (spec: { kind: AiProviderKind; baseUrl: string }) => Promise<{
   version?: string;
@@ -30,6 +42,12 @@ export interface AiSettingsServiceOptions {
   repository: AiRepository;
   /** Building a provider is the HTTP adapter's business, not the domain's. */
   embeddings: EmbeddingFactory;
+  /**
+   * Optional, so that an installation built before generation existed still
+   * starts: with nothing here the generation purpose simply cannot be used,
+   * which is the same answer as nothing assigned.
+   */
+  generation?: GenerationFactory;
   probe: CatalogueProbe;
   clock?: Clock;
 }
@@ -39,6 +57,7 @@ export interface AiSettingsView {
   providers: AiProviderRecord[];
   assignments: AiAssignmentRecord[];
   embeddingsEnabled: boolean;
+  generationEnabled: boolean;
 }
 
 export interface SaveProviderInput {
@@ -66,8 +85,34 @@ export interface TestOutcome {
   error: string | null;
 }
 
+/** What one short generation cost and returned. */
+export interface GenerationTestOutcome {
+  ok: boolean;
+  /**
+   * What the model actually said, bounded.
+   *
+   * Shown, because a model that answers quickly and says nothing useful is a
+   * model somebody should see before assigning it. A dimension is a number that
+   * proves an embedding model works; for a generation model the only proof is
+   * reading the answer.
+   */
+  text: string | null;
+  latencyMs: number | null;
+  error: string | null;
+}
+
 /** The phrase a model is tested with when the caller sends none. */
 const TEST_TEXT = 'Knoverge is a knowledge ledger for humans and AI agents.';
+
+/** What a test generation asks for: something short, checkable and dull. */
+const TEST_INSTRUCTION =
+  'Reply with one short sentence describing what the text says. Add nothing else.';
+
+/** A ceiling for the test, so a model that will not stop does not hold the page. */
+const TEST_MAX_TOKENS = 120;
+
+/** How much of a test answer is worth carrying back to a form. */
+const TEST_ANSWER_LIMIT = 500;
 
 /**
  * AI providers, as configuration the product owns.
@@ -107,6 +152,11 @@ export class AiSettingsService {
       providers,
       assignments,
       embeddingsEnabled: assignments.some((a) => a.purpose === 'embedding'),
+      // Both halves: a model assigned and an adapter able to build one. An
+      // installation whose build has no generation factory would otherwise
+      // report the feature as on and refuse every use of it.
+      generationEnabled:
+        this.o.generation !== undefined && assignments.some((a) => a.purpose === 'generation'),
     };
   }
 
@@ -261,6 +311,70 @@ export class AiSettingsService {
       };
     }
   }
+
+  /**
+   * One short generation, timed, with what the model said.
+   *
+   * Takes an address rather than a saved provider for the reason `check` and
+   * `test` do: the wizard tests what was typed and saves what worked. A model
+   * that is not a chat model fails here, which is the point of being able to run
+   * it before assigning it to anything.
+   */
+  async testGeneration(input: {
+    kind: AiProviderKind;
+    baseUrl: string;
+    model: string;
+    text?: string | undefined;
+  }): Promise<GenerationTestOutcome> {
+    const started = this.clock.now().getTime();
+    const since = () => Math.max(0, this.clock.now().getTime() - started);
+    if (!this.o.generation) {
+      return { ok: false, text: null, latencyMs: null, error: 'this build cannot generate text' };
+    }
+    try {
+      const model = this.o.generation({
+        kind: input.kind,
+        baseUrl: input.baseUrl.replace(/\/+$/u, ''),
+        model: input.model,
+      });
+      const answer = await model.generate({
+        instruction: TEST_INSTRUCTION,
+        input: input.text ?? TEST_TEXT,
+        maxOutputTokens: TEST_MAX_TOKENS,
+      });
+      if (answer.text.trim() === '') {
+        return { ok: false, text: null, latencyMs: since(), error: 'the model said nothing' };
+      }
+      return {
+        ok: true,
+        text: answer.text.slice(0, TEST_ANSWER_LIMIT),
+        latencyMs: since(),
+        error: null,
+      };
+    } catch (error) {
+      return { ok: false, text: null, latencyMs: since(), error: oneLine(error) };
+    }
+  }
+
+  /**
+   * What generates now, or null when nothing does.
+   *
+   * Built fresh each time rather than cached, unlike the embedding one: a
+   * generation provider learns nothing from its first answer, so there is no
+   * state to lose and nothing to keep.
+   */
+  readonly generationSource: GenerationSource = async () => {
+    if (!this.o.generation) return null;
+    const assignment = await this.o.repository.assignment('generation');
+    if (!assignment) return null;
+    const provider = await this.o.repository.findProvider(assignment.providerId);
+    if (!provider) return null;
+    return this.o.generation({
+      kind: provider.kind,
+      baseUrl: provider.baseUrl,
+      model: assignment.model,
+    });
+  };
 
   /**
    * What embeds now, or null when nothing does.

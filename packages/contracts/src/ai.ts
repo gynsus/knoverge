@@ -12,7 +12,13 @@ import { AiProviderId } from './ids.ts';
 export const AiProviderKind = z.enum(['ollama', 'openai_compatible']);
 export type AiProviderKind = z.infer<typeof AiProviderKind>;
 
-/** What a provider is asked to do. Only `embedding` has a consumer today. */
+/**
+ * What a provider is asked to do.
+ *
+ * `embedding` powers the vector half of search and the semantic steps of
+ * duplicate detection and reconciliation. `generation` writes text: summaries,
+ * and the optional narrative on a digest. Neither is required (rule 9).
+ */
 export const AiPurpose = z.enum(['embedding', 'generation']);
 export type AiPurpose = z.infer<typeof AiPurpose>;
 
@@ -71,6 +77,14 @@ export const AiSettings = z.object({
    * exists" and "embeddings happen" are not the same claim.
    */
   embeddings_enabled: z.boolean(),
+  /**
+   * Whether anything can write text right now.
+   *
+   * Both halves have to hold: a model assigned, and a build able to talk to
+   * one. Reporting the feature as on where it cannot run would make every use
+   * of it a surprise.
+   */
+  generation_enabled: z.boolean(),
 });
 export type AiSettings = z.infer<typeof AiSettings>;
 
@@ -153,6 +167,30 @@ export const TestAiModelResponse = z.object({
   error: z.string().nullable(),
 });
 export type TestAiModelResponse = z.infer<typeof TestAiModelResponse>;
+
+/**
+ * One short generation, for a model somebody is about to assign.
+ *
+ * The same shape as the embedding test and for the same reason: testing a model
+ * is testing an address and a model together, before either is stored.
+ */
+export const TestAiGenerationRequest = TestAiModelRequest;
+export type TestAiGenerationRequest = z.infer<typeof TestAiGenerationRequest>;
+
+export const TestAiGenerationResponse = z.object({
+  ok: z.boolean(),
+  /**
+   * What the model said, bounded.
+   *
+   * Shown rather than reduced to a tick. An embedding model is proved by the
+   * dimension it returns; the only proof a generation model works is reading
+   * one answer from it.
+   */
+  text: z.string().max(500).nullable(),
+  latency_ms: z.number().int().nonnegative().nullable(),
+  error: z.string().nullable(),
+});
+export type TestAiGenerationResponse = z.infer<typeof TestAiGenerationResponse>;
 
 export const AiSettingsResponse = z.object({ ai: AiSettings });
 export type AiSettingsResponse = z.infer<typeof AiSettingsResponse>;

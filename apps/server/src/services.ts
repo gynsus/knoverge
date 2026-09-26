@@ -1,5 +1,9 @@
 import type { WorkspaceId } from '@knoverge/contracts';
-import { createHttpEmbeddingProvider, probeProvider } from '@knoverge/intelligence';
+import {
+  createHttpEmbeddingProvider,
+  createHttpGenerationProvider,
+  probeProvider,
+} from '@knoverge/intelligence';
 
 import {
   dummyPasswordHash,
@@ -250,6 +254,13 @@ export function createServices(config: ServicesConfig) {
     repository: repositories.ai,
     embeddings: (spec) =>
       createHttpEmbeddingProvider({
+        provider: spec.kind,
+        baseUrl: spec.baseUrl,
+        model: spec.model,
+        apiKey: config.apiKeyFor?.(spec.baseUrl),
+      }),
+    generation: (spec) =>
+      createHttpGenerationProvider({
         provider: spec.kind,
         baseUrl: spec.baseUrl,
         model: spec.model,

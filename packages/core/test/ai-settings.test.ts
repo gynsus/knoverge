@@ -1,5 +1,5 @@
 import type { AiProviderId } from '@knoverge/contracts';
-import type { EmbeddingProvider } from '@knoverge/intelligence';
+import type { EmbeddingProvider, GenerationProvider } from '@knoverge/intelligence';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -53,6 +53,17 @@ function embedder(dimensions: number, fail?: string): EmbeddingProvider {
   };
 }
 
+/** A model that writes, or one that refuses to. */
+function writer(text: string, fail?: string): GenerationProvider {
+  return {
+    profile: { provider: 'ollama', model: 'qwen3' },
+    generate: async () => {
+      if (fail) throw new Error(fail);
+      return { text, usage: { inputTokens: 10, outputTokens: 4 }, truncated: false };
+    },
+  };
+}
+
 function build2(
   repo: AiRepository,
   embeddings: (spec: { kind: string; baseUrl: string; model: string }) => EmbeddingProvider,
@@ -68,10 +79,13 @@ function build(options: {
   repository: AiRepository;
   embeddings?: (spec: { kind: string; baseUrl: string; model: string }) => EmbeddingProvider;
   probe?: () => Promise<{ version?: string; models: { name: string; capabilities: string[] }[] }>;
+  /** Absent on purpose in some tests: a build that cannot generate text. */
+  generation?: (spec: { kind: string; baseUrl: string; model: string }) => GenerationProvider;
 }) {
   return new AiSettingsService({
     repository: options.repository,
     embeddings: options.embeddings ?? (() => embedder(1024)),
+    ...(options.generation ? { generation: options.generation as never } : {}),
     probe: options.probe ?? (async () => ({ version: '0.32.13', models: [] })),
   });
 }
@@ -81,7 +95,143 @@ describe('with nothing configured', () => {
     const ai = service();
     expect(await ai.embeddingSource()).toBeNull();
     const view = await ai.settings();
-    expect(view).toMatchObject({ providers: [], assignments: [], embeddingsEnabled: false });
+    expect(view).toMatchObject({
+      providers: [],
+      assignments: [],
+      embeddingsEnabled: false,
+      generationEnabled: false,
+    });
+  });
+
+  it('generates nothing either', async () => {
+    const ai = service({ generation: () => writer('anything') });
+    expect(await ai.generationSource()).toBeNull();
+  });
+});
+
+describe('a model that writes', () => {
+  /** A provider with a generation model already doing the job. */
+  async function assigned(options: Parameters<typeof service>[0] = {}) {
+    const ai = service(options);
+    const provider = await ai.save({
+      kind: 'ollama',
+      name: 'Ollama',
+      baseUrl: 'http://ollama:11434',
+    });
+    await ai.assign({ purpose: 'generation', providerId: provider.id, model: 'qwen3' });
+    return { ai, provider };
+  }
+
+  it('is reported as on only when a build can talk to one', async () => {
+    // Both halves have to hold. Saying the feature is on where it cannot run
+    // makes every use of it a surprise.
+    const withFactory = await assigned({ generation: () => writer('ok') });
+    expect((await withFactory.ai.settings()).generationEnabled).toBe(true);
+
+    const without = await assigned();
+    expect((await without.ai.settings()).generationEnabled).toBe(false);
+    expect(await without.ai.generationSource()).toBeNull();
+  });
+
+  it('is built from what is assigned, and asked again every time', async () => {
+    // An operator changes the model while the product runs (ADR 0021), so a
+    // provider held since start-up would be the wrong one.
+    const built: string[] = [];
+    const { ai, provider } = await assigned({
+      generation: (spec) => {
+        built.push(spec.model);
+        return writer('ok');
+      },
+    });
+    expect(await ai.generationSource()).not.toBeNull();
+    await ai.assign({ purpose: 'generation', providerId: provider.id, model: 'llama3' });
+    expect(await ai.generationSource()).not.toBeNull();
+    expect(built).toEqual(['qwen3', 'llama3']);
+  });
+
+  it('stops being available when it is unassigned', async () => {
+    const { ai } = await assigned({ generation: () => writer('ok') });
+    await ai.unassign('generation');
+    expect(await ai.generationSource()).toBeNull();
+    expect((await ai.settings()).generationEnabled).toBe(false);
+  });
+
+  it('is gone when the provider it named is deleted', async () => {
+    const { ai, provider } = await assigned({ generation: () => writer('ok') });
+    await ai.remove(provider.id);
+    expect(await ai.generationSource()).toBeNull();
+  });
+
+  it('leaves the embedding model alone', async () => {
+    // Two purposes, two assignments: choosing what writes must not disturb
+    // what measures.
+    const ai = service({ generation: () => writer('ok') });
+    const provider = await ai.save({
+      kind: 'ollama',
+      name: 'Ollama',
+      baseUrl: 'http://ollama:11434',
+    });
+    await ai.assign({ purpose: 'embedding', providerId: provider.id, model: 'bge-m3' });
+    await ai.assign({ purpose: 'generation', providerId: provider.id, model: 'qwen3' });
+    await ai.unassign('generation');
+    expect(await ai.embeddingSource()).not.toBeNull();
+    expect((await ai.settings()).embeddingsEnabled).toBe(true);
+  });
+});
+
+describe('testing a model that writes', () => {
+  const at = { kind: 'ollama' as const, baseUrl: 'http://ollama:11434', model: 'qwen3' };
+
+  it('answers with what the model said', async () => {
+    // The only proof a generation model works is reading one answer from it.
+    // A dimension proves an embedding model; there is no equivalent here.
+    const ai = service({ generation: () => writer('It says the ledger only grows.') });
+    const outcome = await ai.testGeneration(at);
+    expect(outcome).toMatchObject({
+      ok: true,
+      text: 'It says the ledger only grows.',
+      error: null,
+    });
+    expect(outcome.latencyMs).not.toBeNull();
+  });
+
+  it('is a failure when the model says nothing', async () => {
+    // A model that answers in ten milliseconds with an empty string has not
+    // worked, and reporting it as working is how somebody assigns it.
+    const ai = service({ generation: () => writer('   ') });
+    expect(await ai.testGeneration(at)).toMatchObject({ ok: false, text: null });
+  });
+
+  it('reports why it failed rather than throwing', async () => {
+    const ai = service({ generation: () => writer('', 'model "qwen3" not found') });
+    const outcome = await ai.testGeneration(at);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.error).toContain('not found');
+  });
+
+  it('says so when the build cannot generate at all', async () => {
+    const outcome = await service().testGeneration(at);
+    expect(outcome).toMatchObject({ ok: false, error: 'this build cannot generate text' });
+  });
+
+  it('tests the address it was given rather than one that was saved', async () => {
+    // A form that can only test what has already been stored teaches people to
+    // store things that do not work (ADR 0021).
+    const seen: string[] = [];
+    const ai = service({
+      generation: (spec) => {
+        seen.push(spec.baseUrl);
+        return writer('ok');
+      },
+    });
+    await ai.testGeneration({ ...at, baseUrl: 'http://typed-just-now:11434/' });
+    expect(seen).toEqual(['http://typed-just-now:11434']);
+  });
+
+  it('bounds what it carries back', async () => {
+    const ai = service({ generation: () => writer('x'.repeat(4000)) });
+    const outcome = await ai.testGeneration(at);
+    expect(outcome.text?.length).toBeLessThanOrEqual(500);
   });
 });
 

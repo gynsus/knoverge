@@ -100,7 +100,9 @@ const CATALOGUE = {
   ],
 };
 
-const EMPTY = { ai: { providers: [], assignments: [], embeddings_enabled: false } };
+const EMPTY = {
+  ai: { providers: [], assignments: [], embeddings_enabled: false, generation_enabled: false },
+};
 
 const CONNECTED = {
   ai: {
@@ -126,6 +128,24 @@ const CONNECTED = {
       },
     ],
     embeddings_enabled: true,
+    generation_enabled: false,
+  },
+};
+
+/** The same installation, with a model writing as well as one measuring. */
+const GENERATING = {
+  ai: {
+    ...CONNECTED.ai,
+    assignments: [
+      ...CONNECTED.ai.assignments,
+      {
+        purpose: 'generation',
+        provider_id: PROVIDER_ID,
+        model: 'gpt-oss:120b',
+        updated_at: '2026-09-24T00:00:00.000Z',
+      },
+    ],
+    generation_enabled: true,
   },
 };
 
@@ -146,6 +166,7 @@ describe('fixtures match the contracts', () => {
   it('parses both settings shapes', () => {
     expect(() => AiSettingsResponse.parse(EMPTY)).not.toThrow();
     expect(() => AiSettingsResponse.parse(CONNECTED)).not.toThrow();
+    expect(() => AiSettingsResponse.parse(GENERATING)).not.toThrow();
   });
 });
 
@@ -274,5 +295,81 @@ describe('a provider that is connected', () => {
     });
     renderApp('/settings/ai');
     expect(await screen.findByText(/from the environment/i)).toBeInTheDocument();
+  });
+});
+
+describe('choosing a model that writes', () => {
+  it('has nothing to press until a provider exists', async () => {
+    // A control that could only fail is worse than one that says why it is off.
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(EMPTY) });
+    renderApp('/settings/ai');
+    const choose = await screen.findByRole('button', { name: /choose a model/i });
+    expect(choose).toBeDisabled();
+    expect(screen.getByText(/connect a provider above first/i)).toBeInTheDocument();
+  });
+
+  it('tests a model by reading what it wrote, and assigns it to generation', async () => {
+    let settings: unknown = CONNECTED;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () => json(CATALOGUE),
+      'POST /v1/admin/ai.providers.save': () => json(settings),
+      'POST /v1/admin/ai.test_generation': () =>
+        json({ ok: true, text: 'The ledger only grows.', latency_ms: 812, error: null }),
+      'POST /v1/admin/ai.assign': () => {
+        settings = GENERATING;
+        return json(settings);
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: /choose a model/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+
+    const models = await within(dialog).findByLabelText(/generation model/i);
+    // An embedding model asked to write answers nothing, so it is not offered.
+    expect(within(models).queryByRole('option', { name: /bge-m3/i })).toBeNull();
+    await user.selectOptions(models, 'gpt-oss:120b');
+
+    await user.click(within(dialog).getByRole('button', { name: /test this model/i }));
+    // What it said, not a tick: a model that answers quickly and says nothing
+    // useful is one to see before assigning.
+    expect(await within(dialog).findByText(/The ledger only grows/)).toBeInTheDocument();
+    // The embedding test is not the one that ran.
+    expect(calls.some((c) => c.url.endsWith('/v1/admin/ai.test'))).toBe(false);
+
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+    await waitFor(() => expect(screen.getByText(/Writing with gpt-oss/i)).toBeInTheDocument());
+    expect(calls.find((c) => c.url.includes('ai.assign'))?.body).toMatchObject({
+      purpose: 'generation',
+      model: 'gpt-oss:120b',
+    });
+  });
+
+  it('stops using it without touching what measures', async () => {
+    let settings: unknown = GENERATING;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.unassign': () => {
+        settings = CONNECTED;
+        return json(settings);
+      },
+    });
+    const user = userEvent.setup();
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: /stop using it/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/No model is writing anything/i)).toBeInTheDocument(),
+    );
+    expect(calls.find((c) => c.url.includes('ai.unassign'))?.body).toEqual({
+      purpose: 'generation',
+    });
+    // The embedding model is still at work: two purposes, two assignments.
+    expect(screen.getByText(/Embedding with bge-m3/i)).toBeInTheDocument();
   });
 });

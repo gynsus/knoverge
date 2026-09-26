@@ -14,6 +14,17 @@ export {
   type HttpEmbeddingOptions,
 } from './embeddings.ts';
 export {
+  GenerationError,
+  createHttpGenerationProvider,
+  fixedGenerationSource,
+  type GenerationProfile,
+  type GenerationProvider,
+  type GenerationRequest,
+  type GenerationResult,
+  type GenerationSource,
+  type HttpGenerationOptions,
+} from './generation.ts';
+export {
   probeProvider,
   type CatalogueModel,
   type ProbeOptions,

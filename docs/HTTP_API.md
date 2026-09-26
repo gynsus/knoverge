@@ -115,13 +115,14 @@ GET  /v1/admin/agents.credentials?agent_id=ag_...
 POST /v1/admin/agents.credentials.issue     returns the token once
 POST /v1/admin/agents.credentials.revoke
 
-GET  /v1/admin/ai.settings                  providers, what each is used for, whether embeddings happen
+GET  /v1/admin/ai.settings                  providers, what each is used for, whether embedding and generation happen
 POST /v1/admin/ai.providers.save            creates or changes one; absent provider_id creates
 POST /v1/admin/ai.providers.remove          takes its assignments with it
 POST /v1/admin/ai.providers.check           probes an address, saved or not, and answers what it holds
 POST /v1/admin/ai.assign                    puts a model to work for a purpose
 POST /v1/admin/ai.unassign                  stops using one; the vectors already written stay
 POST /v1/admin/ai.test                      one embedding of one short text: dimensions and latency
+POST /v1/admin/ai.test_generation           one short answer from a model that writes: the text and latency
 
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant
