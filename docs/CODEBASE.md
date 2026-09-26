@@ -346,6 +346,16 @@ connections — which is where it stops: three is the number of questions
 somebody has about one item. Sources stay with the item, because reading where
 something came from is part of reading it.
 
+The drawer states when a claim holds even when nothing was said, because
+"always" is an answer and a blank row is not, and it says when a period has
+passed. `components/knowledge/validity.ts` holds the conversions between the
+instants the contract carries and the days the form offers, and
+`Validity.tsx` holds both ends of it: the sentence in the drawer and the three
+date fields in the editor. Until they existed, `valid_from` and `valid_until`
+were settable only through the API — and since ADR 0022 they are how a person
+resolves a contradiction between two claims that were each true in their own
+period, so the browser could state the problem and not the answer.
+
 The history fetches what a revision changed only when asked. Forty revisions
 would otherwise be forty diffs nobody read, each one two files out of Git. What
 changed *about* the item is answered field by field; the patch is for the text.

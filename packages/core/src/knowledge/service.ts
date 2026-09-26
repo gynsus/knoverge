@@ -152,6 +152,7 @@ export class KnowledgeService {
           ...(input.external ? { external: input.external } : {}),
         } as Frontmatter;
 
+        assertPeriod(draft, itemId);
         await this.assertRelationTargets(actor.workspaceId, itemId, draft.relations);
         // A new item that reports a contradiction marks the item it
         // contradicts in the same commit, and is marked itself (ADR 0022).
@@ -408,6 +409,7 @@ export class KnowledgeService {
           updated_at: now.toISOString(),
         } as Frontmatter;
 
+        assertPeriod(draft, input.itemId);
         await this.assertRelationTargets(actor.workspaceId, input.itemId, draft.relations);
         // Both a changed relations list and a changed validity window can open
         // or close a contradiction, and this write may be either (ADR 0022).
@@ -755,6 +757,8 @@ export class KnowledgeService {
           updated_at: now.toISOString(),
         } as Frontmatter;
 
+        assertPeriod(newDraft, newItemId);
+        assertPeriod(oldDraft, input.oldItemId);
         // Both items at once, because each one's verdict can depend on the
         // other's new state, and the old one leaving the active set is itself
         // a way a contradiction ends (ADR 0022).
@@ -2022,6 +2026,28 @@ function sideFrom(item: KnowledgeItemRecord): DisputeSide {
 /** The window a frontmatter states, for an item that is not written yet. */
 function windowOf(frontmatter: Pick<Frontmatter, 'valid_from' | 'valid_until'>): ValidityWindow {
   return { from: frontmatter.valid_from, until: frontmatter.valid_until };
+}
+
+/**
+ * Refuses a period that ends before it starts.
+ *
+ * It reads as a claim that was never true, which is nothing anybody means. It
+ * also matters more than a mistyped date usually does: since ADR 0022, two
+ * claims whose periods do not overlap are not in dispute, so a reversed pair
+ * would quietly close a contradiction rather than declare one.
+ */
+function assertPeriod(
+  frontmatter: Pick<Frontmatter, 'valid_from' | 'valid_until'>,
+  itemId: KnowledgeItemId,
+): void {
+  const { valid_from: from, valid_until: until } = frontmatter;
+  if (!from || !until) return;
+  if (Date.parse(until) >= Date.parse(from)) return;
+  throw new DomainError(
+    'VALIDATION_ERROR',
+    'valid_until is earlier than valid_from, which is a period nothing was ever true in',
+    { objectIds: { knowledge_item: itemId } },
+  );
 }
 
 /**

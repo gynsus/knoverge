@@ -357,7 +357,11 @@ backend = PostgreSQL
 valid_from = 2026-09-18
 ```
 
-Do not destroy historically correct information solely because current state changed.
+Do not destroy historically correct information solely because current state changed. An item whose `valid_until` has passed is still `active` and still true of the period it names. It is not deleted, not superseded by the calendar, and not hidden from a list — a reader is told which period it is about.
+
+`valid_from` is inclusive and `valid_until` is exclusive: the instant a claim stops holding is the instant its replacement starts, which is how a supersession sets the pair. So two claims whose periods meet at one instant do not overlap, and a succession is not read as a disagreement. A period whose end is earlier than its start is refused: it is a period nothing was ever true in, and since ADR 0022 it would quietly close a contradiction rather than declare one.
+
+`observed_at` is when the claim was seen to be true, which is not when it was written down and not the period it holds for. A fact observed in May and recorded in September held before anybody wrote it down.
 
 ### Relation types
 

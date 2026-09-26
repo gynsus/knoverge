@@ -22,6 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Markdown } from './Markdown.tsx';
 import { RevisionDiff } from './RevisionDiff.tsx';
 import { DisputedBy, RelationList } from './RelationList.tsx';
+import { Validity } from './Validity.tsx';
 import { SourceList } from './SourceList.tsx';
 
 /** Which of the three references was copied. */
@@ -70,7 +71,7 @@ export function ItemDetails({
   busy: boolean;
   error: unknown;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   /**
    * Which of the three copies last succeeded, or `refused` when the browser
    * would not give up the clipboard.
@@ -263,6 +264,22 @@ export function ItemDetails({
               <dd className="font-mono text-xs break-all text-foreground">{item.id}</dd>
               <dt>{t('knowledge.file')}</dt>
               <dd className="font-mono text-xs break-all text-foreground">{item.markdown_path}</dd>
+              {/* Stated even when open-ended, because "always" is an answer and
+                  a blank row is not. A claim whose period has passed is still
+                  active and still true of the period it names, so it says that
+                  rather than disappearing (`KNOWLEDGE_MODEL.md` section 10). */}
+              <dt>{t('knowledge.holds')}</dt>
+              <dd className="text-foreground">
+                <Validity item={item} />
+              </dd>
+              {item.observed_at && (
+                <>
+                  <dt>{t('knowledge.observed_at')}</dt>
+                  <dd className="text-foreground">
+                    {new Date(item.observed_at).toLocaleDateString(i18n.language)}
+                  </dd>
+                </>
+              )}
             </dl>
           </section>
 

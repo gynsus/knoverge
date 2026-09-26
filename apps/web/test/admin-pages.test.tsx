@@ -1579,6 +1579,80 @@ describe('knowledge page', () => {
     expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
   });
 
+  it('says a claim always held when nothing said otherwise', async () => {
+    // "Always" is an answer; a blank row is not.
+    mockApi(ROUTES);
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByText('Always')).toBeVisible();
+  });
+
+  it('says a period that has passed no longer holds', async () => {
+    // The item is still active and still true of the period it names, so it
+    // says which — a reader who cannot tell has been given last year's answer
+    // as this year's.
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({
+          item: {
+            ...DETAIL,
+            valid_from: '2026-01-01T00:00:00Z',
+            valid_until: '2026-06-01T00:00:00Z',
+          },
+        }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    expect(await within(drawer).findByText(/2026/)).toBeVisible();
+    expect(within(drawer).getByText('(no longer)')).toBeVisible();
+  });
+
+  it('sends a period somebody typed, and leaves an untouched date alone', async () => {
+    // The form offers days and the contract takes instants, so sending back a
+    // field nobody touched would round 09:14:32 down to midnight.
+    const calls = mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, observed_at: '2026-05-04T09:14:32.000Z' } }),
+      'POST /v1/admin/knowledge.update': () => json({ item: DETAIL }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+
+    await user.type(within(drawer).getByLabelText('Holds until'), '2026-06-01');
+    await user.click(within(drawer).getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/knowledge.update'))).toBe(true),
+    );
+    const body = calls.find((c) => c.url.endsWith('/v1/admin/knowledge.update'))!.body as Record<
+      string,
+      unknown
+    >;
+    expect(body['valid_until']).toBe('2026-06-01T00:00:00.000Z');
+    // Neither of the two nobody touched is in the request at all.
+    expect('valid_from' in body).toBe(false);
+    expect('observed_at' in body).toBe(false);
+  });
+
+  it('says a period is backwards before the request is made', async () => {
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, valid_from: '2026-06-01T00:00:00Z' } }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const user = userEvent.setup();
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Edit' }));
+    await user.type(within(drawer).getByLabelText('Holds until'), '2026-01-01');
+    // The server refuses it too; nobody should have to press Save to find out.
+    expect(await within(drawer).findByRole('alert')).toHaveTextContent(/before its start/);
+  });
+
   it('names who contradicts an item, which its own connections cannot say', async () => {
     // A contradiction is recorded on the item that reported it, so on the item
     // it was reported against the relations list is empty and the disputed
