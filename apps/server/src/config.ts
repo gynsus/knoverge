@@ -91,6 +91,17 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
+/**
+ * The `KNOVERGE_` variables this server reads.
+ *
+ * From the schema rather than written out again, so that `.env.example` can be
+ * checked against what the product actually reads instead of against a list that
+ * has to be remembered.
+ */
+export const ENV_SCHEMA_KEYS: readonly string[] = Object.keys(EnvSchema.shape).filter((key) =>
+  key.startsWith('KNOVERGE_'),
+);
+
 export interface Config {
   port: number;
   host: string;

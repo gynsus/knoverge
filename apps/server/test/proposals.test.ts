@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1199,6 +1199,25 @@ describe('the tool routes', () => {
       expect(operation?.operationId, tool.name).toBe(tool.name);
       expect(operation?.description, tool.name).toBe(tool.description);
     }
+  });
+
+  it('leaves no route out of the HTTP reference', async () => {
+    // Beside the test above because both read the document the server generates
+    // from its own routes, and this one is the reason the reference cannot drift:
+    // `POST /v1/auth/profile` shipped and was written down nowhere.
+    const document = (await admin.get('/v1/openapi.json')).json() as {
+      paths: Record<string, unknown>;
+    };
+    const tools = new Set(TOOLS.map((tool) => `/v1/${tool.name}`));
+    // Documented elsewhere on purpose: `/` is the web bundle, the health routes
+    // are in DEPLOYMENT.md, `/mcp` is MCP_API.md, and a tool route is documented
+    // once as `POST /v1/<tool_name>` rather than 26 times (rule 11).
+    const elsewhere = new Set(['/', '/health/live', '/health/ready', '/mcp']);
+    const reference = await readFile(new URL('../../../docs/HTTP_API.md', import.meta.url), 'utf8');
+    const undocumented = Object.keys(document.paths)
+      .filter((path) => !tools.has(path) && !elsewhere.has(path))
+      .filter((path) => !reference.includes(path));
+    expect(undocumented).toEqual([]);
   });
 
   it('refuses a tool call from an agent that may not make it', async () => {

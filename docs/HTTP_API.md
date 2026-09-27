@@ -77,6 +77,7 @@ POST /v1/bootstrap             first administrator and workspace; only while no 
 POST /v1/auth/login            email + password → knoverge_session cookie; returns user, memberships, session
 POST /v1/auth/logout           revokes the current session
 GET  /v1/auth/me               user, memberships, session
+POST /v1/auth/profile          change the display name; no password, and no session revoked
 POST /v1/auth/password         change password; revokes every other session
 POST /v1/auth/email            change the sign-in address; needs the current password
 GET  /v1/auth/sessions         active sessions of the user
