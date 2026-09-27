@@ -445,6 +445,8 @@ docker compose exec knoverge knoverge agent token revoke --credential cred_01J..
 
 Both steps are recorded in the ledger. There is no single rotate operation: one would have to decide for you when the old token stops working, and an agent holding a token that was revoked before it was given the new one is worse than two live tokens for a minute.
 
+The same two steps are in the browser, on an agent's **Credentials** tab, with the fact that says the second one is safe: a live token with a newer one beside it reads *"not used since NEWPREFIX was issued"* when the agent has moved on, and *"still being used"* with how long ago when something is still presenting it. Revoking asks first and repeats which of the two it is, because finishing a rotation and taking a client offline are the same click otherwise.
+
 Tokens look like `knv_<prefix>_<secret>`. Only a peppered hash is stored, so a lost token cannot be recovered; issue a new one and revoke the old. Disabling an agent revokes all of its credentials.
 
 Connection examples for common MCP clients (Claude Code, Cursor, generic Streamable HTTP client, stdio bridge) are provided after implementation:

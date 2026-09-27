@@ -1,4 +1,4 @@
-import type { AgentId, AgentSummary } from '@knoverge/contracts';
+import type { AgentId, AgentSummary, CredentialSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { KeyRound, Power } from 'lucide-react';
 import { useState } from 'react';
@@ -31,6 +31,7 @@ import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { AgentActivity } from './AgentActivity.tsx';
+import { standingOf, stateOf, type RotationStanding } from './rotation.ts';
 import { connectionOf } from './connection.ts';
 import { IssueCredential } from './IssueCredential.tsx';
 
@@ -196,7 +197,7 @@ export function AgentDetails({ agent }: { agent: AgentSummary }) {
               {t('agents.issue_token')}
             </Button>
           </div>
-          <CredentialList agentId={agent.id} />
+          <CredentialList agentId={agent.id} agentName={agent.name} />
         </TabsContent>
 
         <TabsContent value="activity">
@@ -294,10 +295,11 @@ function ConfirmDisable({
   );
 }
 
-function CredentialList({ agentId }: { agentId: AgentId }) {
+function CredentialList({ agentId, agentName }: { agentId: AgentId; agentName: string }) {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const key = ['admin', 'credentials', agentId] as const;
+  const [revoking, setRevoking] = useState<CredentialSummary | null>(null);
   const query = useQuery({
     queryKey: key,
     queryFn: ({ signal }) => adminApi.agents.credentials(agentId, signal),
@@ -307,6 +309,7 @@ function CredentialList({ agentId }: { agentId: AgentId }) {
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: key });
       await client.invalidateQueries({ queryKey: AGENTS_KEY });
+      setRevoking(null);
     },
   });
 
@@ -331,9 +334,8 @@ function CredentialList({ agentId }: { agentId: AgentId }) {
         </TableHeader>
         <TableBody>
           {query.data.credentials.map((credential) => {
-            const expired =
-              credential.expires_at !== null && new Date(credential.expires_at) <= new Date();
-            const state = credential.revoked_at ? 'revoked' : expired ? 'expired' : 'active';
+            const state = stateOf(credential);
+            const standing = standingOf(credential, query.data.credentials);
             return (
               <TableRow key={credential.id}>
                 <TableCell label={t('agents.credential')}>
@@ -341,6 +343,23 @@ function CredentialList({ agentId }: { agentId: AgentId }) {
                 </TableCell>
                 <TableCell label={t('agents.credential_state')}>
                   {t(`agents.states.${state}`)}
+                  {/* Where this one stands in a rotation, which is the fact that
+                      says whether revoking it is safe. Rotation is issue then
+                      revoke, and nothing was telling an operator when to take the
+                      second step. */}
+                  {standing.kind === 'superseded' && (
+                    <span className="block text-xs text-muted-foreground">
+                      {t('agents.superseded_by', { prefix: standing.by })}
+                    </span>
+                  )}
+                  {standing.kind === 'still_in_use' && (
+                    <span className="block text-xs text-muted-foreground">
+                      {t('agents.still_in_use', {
+                        prefix: standing.by,
+                        when: relativeTime(standing.lastUsedAt, i18n.language),
+                      })}
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell label={t('agents.last_used')}>
                   {credential.last_used_at
@@ -353,7 +372,10 @@ function CredentialList({ agentId }: { agentId: AgentId }) {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => revoke.mutate(credential.id)}
+                      onClick={() => {
+                        revoke.reset();
+                        setRevoking(credential);
+                      }}
                       disabled={revoke.isPending}
                     >
                       {t('agents.revoke')}
@@ -365,6 +387,80 @@ function CredentialList({ agentId }: { agentId: AgentId }) {
           })}
         </TableBody>
       </Table>
+
+      <ConfirmRevoke
+        credential={revoking}
+        standing={revoking ? standingOf(revoking, query.data.credentials) : { kind: 'finished' }}
+        agentName={agentName}
+        onClose={() => setRevoking(null)}
+        onConfirm={() => revoking && revoke.mutate(revoking.id)}
+        busy={revoke.isPending}
+        error={revoke.error}
+      />
     </>
+  );
+}
+
+/**
+ * Revoking a token, with what it costs said first.
+ *
+ * A live token stops working the moment this goes through, and nothing brings it
+ * back — the server keeps only a hash. Where the list can tell that the agent has
+ * moved on to a newer token, the dialog says so, because that is the difference
+ * between finishing a rotation and taking an agent offline (WEB_UI rule 4).
+ */
+function ConfirmRevoke({
+  credential,
+  standing,
+  agentName,
+  onClose,
+  onConfirm,
+  busy,
+  error,
+}: {
+  credential: CredentialSummary | null;
+  standing: RotationStanding;
+  agentName: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  busy: boolean;
+  error: unknown;
+}) {
+  const { t, i18n } = useTranslation();
+  if (!credential) return null;
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('agents.revoke_title')}</DialogTitle>
+          <DialogDescription>
+            {t('agents.revoke_intro', { agent: agentName, prefix: credential.token_prefix })}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          {standing.kind === 'superseded' ? (
+            <p>{t('agents.revoke_superseded', { prefix: standing.by })}</p>
+          ) : standing.kind === 'still_in_use' ? (
+            <p>
+              {t('agents.revoke_still_in_use', {
+                when: relativeTime(standing.lastUsedAt, i18n.language),
+              })}
+            </p>
+          ) : (
+            <p>{t('agents.revoke_current')}</p>
+          )}
+          <p className="text-muted-foreground">{t('agents.revoke_permanent')}</p>
+        </div>
+        <ErrorNotice error={error} />
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="button" variant="destructive" disabled={busy} onClick={onConfirm}>
+            {busy ? t('common.working') : t('agents.revoke')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

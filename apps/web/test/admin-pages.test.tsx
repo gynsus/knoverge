@@ -285,6 +285,102 @@ describe('agents page', () => {
     expect(screen.queryByText(token)).not.toBeInTheDocument();
   });
 
+  it('says which token the agent has moved on from, and asks before revoking', async () => {
+    // Rotation is issue then revoke, deliberately not one operation: something
+    // would have to decide when the old token stops working. What the screen owed
+    // an operator is the fact that says the second step is safe.
+    const older = {
+      id: 'cred_old',
+      agent_id: AGENT.id,
+      token_prefix: 'OLDPREFIX0000',
+      label: 'The one being replaced',
+      created_at: '2026-09-01T00:00:00.000Z',
+      expires_at: null,
+      revoked_at: null,
+      last_used_at: '2026-09-10T00:00:00.000Z',
+    };
+    const newer = {
+      ...older,
+      id: 'cred_new',
+      token_prefix: 'NEWPREFIX0000',
+      label: 'The replacement',
+      created_at: '2026-09-20T00:00:00.000Z',
+      last_used_at: '2026-09-21T00:00:00.000Z',
+    };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/agents.list': () => json({ agents: [AGENT] }),
+      [`GET /v1/admin/agents.credentials?agent_id=${AGENT.id}`]: () =>
+        json({ credentials: [newer, older] }),
+      'POST /v1/admin/agents.credentials.revoke': () => json({ ok: true }),
+    });
+    renderApp('/agents');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
+    await user.click(await screen.findByRole('tab', { name: /Credentials/ }));
+
+    // The old one has not been used since the new one was issued, which is what
+    // makes finishing the rotation safe.
+    expect(await screen.findByText('Not used since NEWPREFIX0000 was issued.')).toBeInTheDocument();
+
+    const rows = screen.getAllByRole('row');
+    const oldRow = rows.find((row) => row.textContent?.includes('OLDPREFIX0000'))!;
+    await user.click(within(oldRow).getByRole('button', { name: 'Revoke' }));
+
+    // Asked first: a live token stops working at once and nothing brings it back.
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('OLDPREFIX0000');
+    expect(dialog.textContent).toContain('Safe to finish the rotation');
+    expect(dialog.textContent).toMatch(/cannot be undone/);
+    // Nothing sent until the operator says so.
+    expect(calls.some((c) => c.url.includes('credentials.revoke'))).toBe(false);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes('credentials.revoke'))).toBe(true));
+    expect(calls.find((c) => c.url.includes('credentials.revoke'))?.body).toEqual({
+      credential_id: 'cred_old',
+    });
+  });
+
+  it('warns when the token being revoked is still being presented', async () => {
+    const older = {
+      id: 'cred_old',
+      agent_id: AGENT.id,
+      token_prefix: 'OLDPREFIX0000',
+      label: null,
+      created_at: '2026-09-01T00:00:00.000Z',
+      expires_at: null,
+      revoked_at: null,
+      // After the replacement was issued: something never learned about the new one.
+      last_used_at: '2026-09-25T00:00:00.000Z',
+    };
+    const newer = {
+      ...older,
+      id: 'cred_new',
+      token_prefix: 'NEWPREFIX0000',
+      created_at: '2026-09-20T00:00:00.000Z',
+      last_used_at: null,
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/agents.list': () => json({ agents: [AGENT] }),
+      [`GET /v1/admin/agents.credentials?agent_id=${AGENT.id}`]: () =>
+        json({ credentials: [newer, older] }),
+    });
+    renderApp('/agents');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Claude Code' }));
+    await user.click(await screen.findByRole('tab', { name: /Credentials/ }));
+
+    expect(await screen.findByText(/Still being used/)).toBeInTheDocument();
+    const rows = screen.getAllByRole('row');
+    const oldRow = rows.find((row) => row.textContent?.includes('OLDPREFIX0000'))!;
+    await user.click(within(oldRow).getByRole('button', { name: 'Revoke' }));
+    const dialog = await screen.findByRole('dialog');
+    // The difference between finishing a rotation and taking a client offline.
+    expect(dialog.textContent).toMatch(/still presenting this token/);
+  });
+
   it('sends the label and the expiry it was given', async () => {
     const calls = mockApi({
       ...SIGNED_IN,
