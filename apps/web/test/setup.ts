@@ -5,14 +5,19 @@ import { afterEach } from 'vitest';
 /**
  * How long a `findBy*` waits for the page to catch up.
  *
- * The default is one second. Every page here renders after at least two
- * rounds of mocked fetch and React Query, and on a loaded CI runner one
- * second is not reliably enough: the setup page failed once that way, with an
- * assertion that was correct and a budget that was not. Five seconds is still
- * far below the test timeout, so a genuinely broken page fails as fast as it
- * ever did.
+ * The default is one second. Every page here renders after at least two rounds
+ * of mocked fetch and React Query, and on a loaded CI runner one second is not
+ * reliably enough: the setup page failed once that way, with an assertion that
+ * was correct and a budget that was not.
+ *
+ * Five was not enough either. The members page — reached through a redirect, and
+ * then three requests deep — spent the whole budget on a runner building
+ * containers for four other packages at the same time, and failed on a form it
+ * would have rendered a moment later. Ten is still well below the twenty-second
+ * test timeout, so a genuinely broken page still fails with a message naming what
+ * was missing rather than with "test timed out".
  */
-configure({ asyncUtilTimeout: 5000 });
+configure({ asyncUtilTimeout: 10_000 });
 
 /**
  * jsdom implements no media queries, and the interface asks both whether the
