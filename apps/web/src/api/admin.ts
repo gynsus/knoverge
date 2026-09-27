@@ -25,6 +25,8 @@ import type {
   CreateWorkspaceRequest,
   CreateWorkspaceResponse,
   CredentialsResponse,
+  ActivityDigestQuery,
+  ActivityDigestResponse,
   EventsListQuery,
   EventsListResponse,
   DeleteKnowledgeRequest,
@@ -82,6 +84,8 @@ export const adminApi = {
   events: {
     // A tool, so it is `POST /v1/<tool_name>` like every other one (rule 11).
     list: (input: EventsListQuery) => apiPost<EventsListResponse>('/v1/events_list', input),
+    digest: (input: ActivityDigestQuery) =>
+      apiPost<ActivityDigestResponse>('/v1/activity_digest', input),
   },
   agents: {
     list: (signal?: AbortSignal) => apiGet<AgentsResponse>('/v1/admin/agents.list', signal),

@@ -59,7 +59,6 @@ export const EventType = z.enum([
   'sync.completed',
   'sync.expired',
   'summary.generated',
-  'summary.marked_stale',
   'attachment.uploaded',
   'attachment.extracted',
   'webhook.changed',
@@ -186,6 +185,8 @@ export const ActivityDigestInput = z.object({
   include_narrative: z.boolean().default(false),
 });
 export type ActivityDigestInput = z.infer<typeof ActivityDigestInput>;
+/** The query as a caller writes it, before the schema fills in its defaults. */
+export type ActivityDigestQuery = z.input<typeof ActivityDigestInput>;
 
 export const ActivityDigestResponse = z.object({
   since: z.iso.datetime({ offset: true }),

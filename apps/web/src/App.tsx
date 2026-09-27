@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell.tsx';
 import { AgentsPage } from './pages/AgentsPage.tsx';
 import { HomePage } from './pages/HomePage.tsx';
 import { KnowledgePage } from './pages/KnowledgePage.tsx';
+import { LedgerPage } from './pages/LedgerPage.tsx';
 import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
@@ -34,6 +35,7 @@ export function App() {
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/sync" element={<SyncPage />} />
           <Route path="/taxonomy" element={<TaxonomyPage />} />
+          <Route path="/ledger" element={<LedgerPage />} />
           <Route path="/agents" element={<AgentsPage />} />
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/workspaces" element={<WorkspacesPage />} />
