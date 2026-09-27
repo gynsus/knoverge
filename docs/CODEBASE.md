@@ -689,6 +689,34 @@ older revision says what that revision said. It survives
 that is no longer current has exactly one thing a reader has to follow, and
 withholding it makes the status unanswerable.
 
+## Pushing a notification out of the installation
+
+`packages/core/src/webhooks/service.ts` is the only place this product calls a host
+it was not asked about, and rule 12 is why the asking is the whole feature.
+
+What leaves is an event and never an object (ADR 0029). The summariser is in the
+domain rather than borrowed from the server's `events_list`, because the rule about
+what may leave belongs where the rule lives, and a webhook is the one door it leaves
+through. A test reads the delivered JSON and asserts the field names exactly, so a
+field added later has to be considered rather than delivered.
+
+Delivery is a cursor, not a queue. Each endpoint holds the last workspace sequence it
+was told about, so a failure leaves it where it was and the next sweep resends — at
+least once and in order, with no table of individual deliveries to grow. The same
+primitive an agent uses through `knowledge_changes` (ADR 0010).
+
+`pg_dump`-style seams again: `post` is injectable, so the test is a real HTTP
+receiver on a loopback port rather than a mocked `fetch`, and it verifies the
+signature by computing the HMAC itself. Calling the product's own `sign` from the
+test would have passed whatever `sign` started doing, including dropping the
+timestamp out of the signed material — which is exactly the break that caught it.
+
+The signing secret is the only recoverable secret here. `packages/auth/src/sealed.ts`
+is AES-256-GCM under `KNOVERGE_ENCRYPTION_KEY`, with a fresh nonce each time so equal
+secrets do not look equal in the column, and an authentication tag so an edited row
+fails to open rather than opening to something else. Without the key a webhook cannot
+be created: refusing beats storing a signing secret an operator believes is encrypted.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

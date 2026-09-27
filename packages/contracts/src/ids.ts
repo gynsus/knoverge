@@ -81,3 +81,6 @@ export type CredentialId = z.infer<typeof CredentialId>;
 
 export const AiProviderId = idSchema('aip');
 export type AiProviderId = z.infer<typeof AiProviderId>;
+
+export const WebhookId = idSchema('hook');
+export type WebhookId = z.infer<typeof WebhookId>;

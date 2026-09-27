@@ -10,11 +10,15 @@ import {
   generateOpaqueToken,
   hashPassword,
   hashToken,
+  open as openSealed,
+  seal,
   verifyPassword,
+  type EncryptionKey,
 } from '@knoverge/auth';
 import {
   AgentService,
   AuthorizationAdminService,
+  DomainError,
   AuthorizationService,
   BootstrapService,
   AiSettingsService,
@@ -35,6 +39,7 @@ import {
   TaxonomyRecovery,
   TaxonomyService,
   SessionService,
+  WebhookService,
   SyncService,
   UserService,
   WorkspaceService,
@@ -73,6 +78,14 @@ export interface ServicesConfig {
   ledgerKey: LedgerKey;
   /** Peppers agent credential hashes so a leaked database cannot be brute-forced offline. */
   tokenPepper: string;
+  /**
+   * Opens and seals the secrets the server has to reuse in clear.
+   *
+   * Only webhook signing secrets today. Absent on an installation that has not
+   * configured one, and a webhook cannot then be created: refusing is better than
+   * storing a signing secret the operator believes is encrypted.
+   */
+  encryptionKey?: EncryptionKey;
   /** Workspace repositories live under this directory. */
   dataDir: string;
   /**
@@ -111,6 +124,17 @@ export interface ServicesConfig {
 /**
  * Composition root: database, repositories, ledger and domain services.
  */
+/** The key, or the reason there is nothing to do without it. */
+function requireEncryptionKey(key: EncryptionKey | undefined): EncryptionKey {
+  if (!key) {
+    throw new DomainError(
+      'VALIDATION_ERROR',
+      'this installation has no KNOVERGE_ENCRYPTION_KEY, so it cannot keep a webhook signing secret',
+    );
+  }
+  return key;
+}
+
 export function createServices(config: ServicesConfig) {
   const database: DatabaseHandle = createDatabase({
     connectionString: config.databaseUrl,
@@ -319,6 +343,18 @@ export function createServices(config: ServicesConfig) {
     }
   };
 
+  const webhooks = new WebhookService({
+    uow,
+    webhooks: repositories.webhooks,
+    events: repositories.events,
+    categories: repositories.categories,
+    // Refusing beats pretending: without a key there is nowhere safe to put a
+    // signing secret, and a webhook whose secret is stored in clear is worse
+    // than one that was never created.
+    seal: (plaintext) => seal(requireEncryptionKey(config.encryptionKey), plaintext),
+    open: (sealed) => openSealed(requireEncryptionKey(config.encryptionKey), sealed),
+    newSecret: () => `whsec_${generateOpaqueToken()}`,
+  });
   const proposals = new ProposalService({
     uow,
     proposals: repositories.proposals,
@@ -463,6 +499,7 @@ export function createServices(config: ServicesConfig) {
     members,
     knowledge,
     proposals,
+    webhooks,
     taxonomy,
     sync,
     search,

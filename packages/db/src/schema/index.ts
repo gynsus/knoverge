@@ -13,4 +13,5 @@ export * from './proposals.ts';
 export * from './search.ts';
 export * from './sync.ts';
 export * from './users.ts';
+export * from './webhooks.ts';
 export * from './workspaces.ts';

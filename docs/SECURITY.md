@@ -468,6 +468,16 @@ Documentation must recommend:
 
 The server contacts external hosts only when the operator configures an AI provider or a webhook. There is no update check, crash reporting, or usage analytics.
 
+### What a webhook carries, and what it does not
+
+A delivery is a batch of event summaries — type, object type and id, actor, sequence, revision ids and hashes, category paths, timestamp — and never a title, a body, a proposal payload or a secret (ADR 0029). A URL is not an actor: it holds no permission grant and no category scope, so delivering content to one would hand an unauthenticated address what no credential in the workspace is guaranteed to be allowed to read. A receiver that wants the knowledge asks for it with a credential of its own and is answered by what that credential may read.
+
+The body is signed with HMAC-SHA256 over `<timestamp>.<body>` in `X-Knoverge-Signature`, with the timestamp in `X-Knoverge-Timestamp`. The timestamp is inside the signed material so a captured body cannot be replayed later. A receiver should compare digests rather than strings, and reject a timestamp far from now.
+
+The signing secret is shown once, when the webhook is created, and encrypted at rest with `KNOVERGE_ENCRYPTION_KEY`. It is never served back; an operator who lost it sets a new one. Without that key a webhook cannot be created at all, which is deliberate: a signing secret stored in clear is worse than a feature that is not configured.
+
+Redirects are refused, because following one would deliver a signed body to a host the operator did not name. Private and loopback addresses are **not** blocked: a self-hosted installation delivering to another service on its own network is the ordinary case here rather than the suspicious one. An installation on a shared network should treat a webhook URL as a decision with the same weight as an outbound firewall rule.
+
 ## 16. Deployment modes
 
 ### Local trusted mode

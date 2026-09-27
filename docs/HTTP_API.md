@@ -182,7 +182,9 @@ POST /v1/admin/taxonomy.merge               folds one category into another
 POST /v1/admin/knowledge.rename_slug        (not scheduled; a slug changes today only by changing
                                             the title, which moves the file)
 POST /v1/admin/embedding_profile.set        (Milestone 6)
-POST /v1/admin/webhooks.upsert              (Milestone 9)
+GET  /v1/admin/webhooks.list                where this workspace pushes notifications
+POST /v1/admin/webhooks.upsert              creates or changes one; the secret is shown once
+POST /v1/admin/webhooks.delete
 POST /v1/admin/integrity.check              (Milestone 9)
 POST /v1/admin/attachments.upload           (multipart, later milestone)
 ```

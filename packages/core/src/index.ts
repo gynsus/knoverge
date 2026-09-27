@@ -1,4 +1,17 @@
 export type { ActorContext } from './actor-context.ts';
+export type { WebhookPatch, WebhookRecord, WebhookRepository } from './webhooks/repository.ts';
+export {
+  DELIVERY_TIMEOUT_MS,
+  MAX_EVENTS_PER_DELIVERY,
+  SIGNATURE_HEADER,
+  TIMESTAMP_HEADER,
+  WebhookService,
+  backoffMs,
+  sign,
+  signatureMatches,
+  type DeliveryOutcome,
+  type WebhookServiceOptions,
+} from './webhooks/service.ts';
 export {
   IntegrityService,
   type Finding,
