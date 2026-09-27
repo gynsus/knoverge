@@ -132,6 +132,19 @@ Rules:
 - secrets the server must reuse in clear (webhook signing secrets) are encrypted with `KNOVERGE_ENCRYPTION_KEY`, never hashed;
 - all four keys are part of the operator's secret backup; losing `KNOVERGE_LEDGER_KEY` makes historical ledger verification impossible, losing `KNOVERGE_ENCRYPTION_KEY` makes stored webhook secrets unrecoverable.
 
+### Rotating the ledger key
+
+A key is retired, never replaced (ADR 0030). Rehashing what is written is the one thing rotation must not mean: the table rejects `UPDATE`, application code never changes an event, and a chain that configuration can rewrite is not a chain.
+
+```text
+KNOVERGE_LEDGER_KEY          signs from now on
+KNOVERGE_LEDGER_KEY_RETIRED  comma separated, verification only
+```
+
+Rotation is: generate a key, move the old value into `KNOVERGE_LEDGER_KEY_RETIRED`, put the new one in `KNOVERGE_LEDGER_KEY`, restart. Nothing is rewritten and nothing stops verifying. Appends use the signing key; verification tries the signing key first and falls back to the retired ones.
+
+Dropping a retired key is a decision with a consequence: the events it signed stop being verifiable. They are still there and still readable — what is lost is the proof that nobody edited them. `knoverge ledger verify` says when a green result depended on a retired key, so an operator can tell before they drop it, and `knoverge ledger keys` shows which keys are in force by fingerprint rather than by value.
+
 ## 7. Permissions
 
 Permissions are per actor and gate whether an action may be attempted at all.

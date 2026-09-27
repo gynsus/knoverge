@@ -4,7 +4,9 @@ import { describe, expect, it } from 'vitest';
 import {
   EventLedger,
   computeEventHash,
+  fingerprint,
   genesisHash,
+  keyring,
   parseLedgerKey,
   type EventRecord,
   type EventFeedOptions,
@@ -120,6 +122,73 @@ describe('EventLedger', () => {
     await appendThree(new EventLedger({ key: otherKey, events }));
     const result = await ledgerWith(events).verify(ws);
     expect(result).toMatchObject({ ok: false, brokenAt: 1 });
+  });
+
+  it('still verifies what a retired key signed', async () => {
+    // Rotation cannot mean rehashing: the table rejects UPDATE and a chain
+    // configuration can rewrite is not a chain. So the old key is kept for
+    // verification and the new one signs from now on (ADR 0030).
+    const events = new MemoryEvents();
+    await appendThree(new EventLedger({ key: otherKey, events }));
+
+    const rotated = new EventLedger({ key: keyring(key, [otherKey]), events });
+    const before = await rotated.verify(ws);
+    // Green, and it says the green depended on a key the operator might drop.
+    expect(before).toMatchObject({ ok: true, count: 3, usedRetiredKey: true });
+
+    // And what is written from here on is signed with the new one.
+    await rotated.append(
+      tx,
+      ws,
+      { actorId: 'act_1' as ActorId, requestId: 'req' },
+      { eventType: 'workspace.updated', objectType: 'workspace', objectId: ws },
+    );
+    const after = await rotated.verify(ws);
+    expect(after).toMatchObject({ ok: true, count: 4, usedRetiredKey: true });
+    // Only the new key: the three the old one signed stop verifying, which is the
+    // consequence of dropping a retired key rather than a defect.
+    const dropped = await new EventLedger({ key, events }).verify(ws);
+    expect(dropped).toMatchObject({ ok: false, brokenAt: 1 });
+
+    // And a workspace that starts after the rotation needs only the new key —
+    // which is what says the retired one verifies and never signs.
+    const fresh = 'ws_01J8Z3M4Q9V0X7K2B5N6P8R1TF' as WorkspaceId;
+    await rotated.append(
+      tx,
+      fresh,
+      { actorId: 'act_1' as ActorId, requestId: 'req' },
+      { eventType: 'workspace.created', objectType: 'workspace', objectId: fresh },
+    );
+    await expect(new EventLedger({ key, events }).verify(fresh)).resolves.toMatchObject({
+      ok: true,
+      count: 1,
+    });
+  });
+
+  it('still verifies when a key is put back as the signing one', async () => {
+    // A rotation an operator undid: the chain starts under the key that signs
+    // again, and the events in the middle were signed by the one now retired. The
+    // genesis says nothing about them, so each event is checked against the ring.
+    const events = new MemoryEvents();
+    await appendThree(new EventLedger({ key, events }));
+    const rotated = new EventLedger({ key: keyring(otherKey, [key]), events });
+    await rotated.append(
+      tx,
+      ws,
+      { actorId: 'act_1' as ActorId, requestId: 'req' },
+      { eventType: 'workspace.updated', objectType: 'workspace', objectId: ws },
+    );
+
+    const reverted = new EventLedger({ key: keyring(key, [otherKey]), events });
+    const result = await reverted.verify(ws);
+    expect(result).toMatchObject({ ok: true, count: 4, usedRetiredKey: true });
+  });
+
+  it('names a key without being one', () => {
+    // An operator checking which key is running should not have to print it.
+    expect(fingerprint(key)).toHaveLength(16);
+    expect(fingerprint(key)).not.toBe(fingerprint(otherKey));
+    expect(fingerprint(key)).not.toContain(key.bytes.toString('hex').slice(0, 8));
   });
 
   it('keeps a separate chain per workspace', async () => {

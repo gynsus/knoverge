@@ -58,7 +58,22 @@ describe('loadConfig', () => {
     );
     expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'zz' })).toThrow(/hex/);
     expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY: 'ab'.repeat(8) })).toThrow(/32 bytes/);
-    expect(loadConfig(base).ledgerKey.bytes).toHaveLength(32);
+    expect(loadConfig(base).ledgerKeys.signing.bytes).toHaveLength(32);
+  });
+
+  it('keeps a retired ledger key for verification, and refuses a malformed one', () => {
+    // A key is retired rather than replaced: the events it signed are still there
+    // and still verify, because rehashing them is what rotation must not mean
+    // here (ADR 0030).
+    const rotated = loadConfig({
+      ...base,
+      KNOVERGE_LEDGER_KEY_RETIRED: `${'cd'.repeat(32)}, ${'ef'.repeat(32)}`,
+    });
+    expect(rotated.ledgerKeys.retired).toHaveLength(2);
+    expect(rotated.ledgerKeys.retired[0]?.bytes).toHaveLength(32);
+    // Nothing configured is one key and no rotation, not an empty entry.
+    expect(loadConfig({ ...base, KNOVERGE_LEDGER_KEY_RETIRED: '' }).ledgerKeys.retired).toEqual([]);
+    expect(() => loadConfig({ ...base, KNOVERGE_LEDGER_KEY_RETIRED: 'zz' })).toThrow(/hex/);
   });
 
   it('requires a session secret and derives cookie security from the base url', () => {

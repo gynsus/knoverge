@@ -1,7 +1,12 @@
 import { resolve } from 'node:path';
 
 import { parseEncryptionKey, type EncryptionKey } from '@knoverge/auth';
-import { DEFAULT_PENDING_PER_ACTOR, parseLedgerKey, type LedgerKey } from '@knoverge/core';
+import {
+  DEFAULT_PENDING_PER_ACTOR,
+  keyring,
+  parseLedgerKey,
+  type LedgerKeyring,
+} from '@knoverge/core';
 import { z } from 'zod';
 
 import type { AgentBudgets } from './plugins/agent-limits.ts';
@@ -19,6 +24,14 @@ const EnvSchema = z.object({
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
   KNOVERGE_LEDGER_KEY: z.string().min(1, 'KNOVERGE_LEDGER_KEY is required'),
+  /**
+   * Keys that verify and no longer sign, comma separated.
+   *
+   * A key is retired rather than replaced: the events it signed are still there
+   * and still verify, because rehashing them is the one thing rotation must not
+   * mean here (ADR 0030).
+   */
+  KNOVERGE_LEDGER_KEY_RETIRED: z.string().optional(),
   /**
    * Encrypts the secrets the server has to reuse in clear.
    *
@@ -76,7 +89,8 @@ export interface Config {
   databaseUrl: string;
   dataDir: string;
   /** HMAC key of the event ledger (ADR 0007). */
-  ledgerKey: LedgerKey;
+  /** The key that signs, and the retired ones that only verify (ADR 0030). */
+  ledgerKeys: LedgerKeyring;
   /** Present when the operator configured one; webhooks need it. */
   encryptionKey?: EncryptionKey;
   /** Signs cookies (CSRF). */
@@ -127,9 +141,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(`Invalid configuration:\n${problems.join('\n')}`);
   }
   const e = result.data;
-  let ledgerKey: LedgerKey;
+  let ledgerKeys: LedgerKeyring;
   try {
-    ledgerKey = parseLedgerKey(e.KNOVERGE_LEDGER_KEY);
+    ledgerKeys = keyring(
+      parseLedgerKey(e.KNOVERGE_LEDGER_KEY),
+      (e.KNOVERGE_LEDGER_KEY_RETIRED ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value !== '')
+        .map(parseLedgerKey),
+    );
   } catch (err) {
     throw new ConfigError(
       `Invalid configuration:\nKNOVERGE_LEDGER_KEY: ${err instanceof Error ? err.message : String(err)}`,
@@ -152,7 +173,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
-    ledgerKey,
+    ledgerKeys,
     ...(encryptionKey ? { encryptionKey } : {}),
     sessionSecret: e.KNOVERGE_SESSION_SECRET,
     tokenPepper: e.KNOVERGE_TOKEN_PEPPER,

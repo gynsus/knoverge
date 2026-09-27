@@ -216,9 +216,13 @@ export {
   HASH_PREFIX,
   MIN_LEDGER_KEY_BYTES,
   computeEventHash,
+  fingerprint,
   genesisHash,
+  keyring,
+  keysOf,
   parseLedgerKey,
   type LedgerKey,
+  type LedgerKeyring,
 } from './ledger/hash.ts';
 export { EventLedger, type LedgerOptions, type VerifyResult } from './ledger/ledger.ts';
 export type { EventRepository, LedgerHead } from './ledger/repository.ts';

@@ -24,6 +24,7 @@ import {
   SessionService,
   UserService,
   WorkspaceService,
+  keyring,
   parseLedgerKey,
 } from '@knoverge/core';
 import { createDatabase, createRepositories, createUnitOfWork } from '@knoverge/db';
@@ -67,6 +68,24 @@ function lazy<T>(build: () => T): () => T {
  * the token pepper; demanding them anyway turned an ordinary listing into a
  * configuration error.
  */
+/**
+ * The keys in force: one that signs, and the retired ones that only verify.
+ *
+ * The same two variables the server reads. `knoverge ledger verify` has to be able
+ * to check events an earlier key signed, or rotating would make the command that
+ * proves the ledger intact report it as broken (ADR 0030).
+ */
+export function ledgerKeyring() {
+  return keyring(
+    parseLedgerKey(required('KNOVERGE_LEDGER_KEY')),
+    (process.env['KNOVERGE_LEDGER_KEY_RETIRED'] ?? '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value !== '')
+      .map(parseLedgerKey),
+  );
+}
+
 export function createServices() {
   const database = createDatabase({
     connectionString: required('KNOVERGE_DATABASE_URL'),
@@ -81,7 +100,7 @@ export function createServices() {
   const ledger = lazy(
     () =>
       new EventLedger({
-        key: parseLedgerKey(required('KNOVERGE_LEDGER_KEY')),
+        key: ledgerKeyring(),
         events: repositories.events,
       }),
   );

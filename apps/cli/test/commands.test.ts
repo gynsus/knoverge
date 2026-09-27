@@ -21,7 +21,7 @@ const EXPECTED: Record<string, string[]> = {
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
   integrity: ['check'],
   mcp: ['check', 'stdio'],
-  ledger: ['verify'],
+  ledger: ['keys', 'verify'],
   permissions: ['list', 'grant', 'revoke'],
   restore: [],
   taxonomy: ['list', 'create', 'move', 'archive', 'restore'],
