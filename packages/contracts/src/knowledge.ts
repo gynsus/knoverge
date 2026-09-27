@@ -504,6 +504,13 @@ export const SupersedeKnowledgeRequest = z
     old_base_content_hash: z.string().min(1).max(80),
     /** When the old item stopped being true, and the new one started. */
     valid_until: z.iso.datetime({ offset: true }).optional(),
+    /**
+     * The replacement, as a create would describe it — except for when it holds.
+     *
+     * Its `valid_from` is the changeover, not whatever is sent here, and it opens
+     * with no `valid_until`: one claim ends where the next begins, and two
+     * overlapping windows would make the pair contradict each other (ADR 0022).
+     */
     new_item: CreateKnowledgeRequest.omit({ request_id: true, idempotency_key: true }).optional(),
     /**
      * An item the workspace already holds, taking over instead. It gets a

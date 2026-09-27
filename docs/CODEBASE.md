@@ -430,6 +430,41 @@ thing worth doing with a draft is saving it. It is not a tool: an agent has its
 own model, and rule 5 says an agent's contribution arrives as a proposal rather
 than through the server's.
 
+## What a proposal carries
+
+A pending proposal is applied from its payload and from nothing else. That makes
+the payload the only copy of what was proposed, and every field it does not carry
+a field that approving the proposal silently drops — no error, nothing on the
+screen, and an item that differs from the one a policy rule would have written
+directly.
+
+It happened three times. An external key went missing and took the
+external-identity half of reconciliation with it. A validity window arrived in
+milestone 7 and reached the request, the file and the direct write, but not the
+payload. A summary's dependencies arrived in milestone 8 and did the same, which
+left a reviewer-approved summary with nothing to go stale against — rule 7, gone
+by omission.
+
+The cause was arithmetic rather than carelessness: the fields of an item were
+written out by hand in six places. The admin create, the admin update, the three
+propose routes and a supersession's replacement each mapped the request onto the
+domain, and the proposal service mapped the domain onto the payload and back.
+Seven lists, no two of them checked against each other.
+
+Two things hold it together now. `packages/contracts` owns the payload's schema,
+so what a proposal may carry is stated once, and `ProposalEdits` is derived from
+it — a field a proposal can carry is a field a reviewer can correct.
+`apps/server/src/routes/knowledge-input.ts` owns the wire-to-domain mapping for
+every route that writes an item. Both use the same guard: the fields are
+destructured and what is left over is passed to a function that accepts only an
+empty object, so the next field added to the contract is a compile error at each
+place that would have forgotten it.
+
+The payload is read back through its schema rather than cast. A stored payload is
+data — written by an older version of the code, possibly edited by a reviewer,
+kept for as long as the proposal waits — and one that cannot be read is refused
+rather than half-applied.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes

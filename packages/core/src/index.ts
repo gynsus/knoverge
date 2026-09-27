@@ -4,6 +4,7 @@ export {
   ProposalService,
   type ProposalOutcome,
   type ProposalServiceOptions,
+  type ProposalEditsInput,
   type ProposeCreateInput,
 } from './proposals/service.ts';
 export type {
@@ -28,6 +29,7 @@ export {
   type MetadataChange,
   type ItemSummary,
   type KnowledgeServiceOptions,
+  type UpdateItemInput,
 } from './knowledge/service.ts';
 export {
   DuplicateMatcher,

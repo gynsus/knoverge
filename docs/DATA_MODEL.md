@@ -502,6 +502,8 @@ Proposals that policy allowed directly are still recorded, with `status = approv
 
 `proposed_payload_json` is the only place outside Git where proposed knowledge text lives. Maintenance empties it 90 days after the proposal was resolved and keeps the row, so the workspace remembers who proposed what kind of change, when, how policy decided and what came of it, without holding the text — including text a reviewer rejected — indefinitely.
 
+Its shape is a contract, not a convention: `ProposedCreatePayload`, `ProposedUpdatePayload` and `ProposedSupersedePayload` in `packages/contracts`, spelled in the same snake_case as everything else on the wire, because the payload is served as `proposed_payload` and read by the review screen. Approving a pending proposal re-applies it from this and from nothing else, so a field the payload does not carry is a field approving the proposal drops. Three were lost that way — an external key, a validity window and a summary's dependencies — each because a request grew a field and one of the places that copied the request by hand did not.
+
 ## 22. Event ledger
 
 ```text

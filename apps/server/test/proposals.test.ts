@@ -842,7 +842,7 @@ describe('proposing a supersession', () => {
     });
 
   it('records it for review, then applies it whole on approval', async () => {
-    const token = await agentToken('propose', 'Superseding agent');
+    const token = await agentToken('propose', 'Survival superseder');
     const old = await anItem('Cache layer', 'We cache in memory.');
     const res = await propose(token, {
       old_item_id: old.id,
@@ -1292,5 +1292,216 @@ describe('a duplicate the proposer cannot see', () => {
     expect(shadowed.statusCode, shadowed.body).toBe(202);
     expect(shadowed.body).not.toContain('closed-branch');
     expect(shadowed.body).not.toContain('Recorded where most people');
+  });
+});
+
+/**
+ * A pending proposal is re-applied from its payload and from nothing else, so
+ * everything the proposer sent has to be in there. Two things were not: the
+ * validity window, and a summary's dependencies. Both arrived in the request, in
+ * the file and in the direct write, and both were dropped the moment a reviewer
+ * approved — silently, which is what makes it the kind of defect that survives.
+ */
+describe('what a proposal carries survives review', () => {
+  const propose = (url: string, token: string, payload: unknown) =>
+    app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: `Bearer ${token}` },
+      payload: payload as Record<string, unknown>,
+    });
+
+  async function pendingCreate(name: string, payload: Record<string, unknown>) {
+    const token = await agentToken('propose', `Survival ${name}`);
+    const res = await propose('/v1/knowledge_propose_create', token, {
+      // Text of its own, because the duplicate check reads this workspace and
+      // would answer DUPLICATE_SUSPECTED before the test got to its question.
+      title: `A claim ${name} made`,
+      body: `Something ${name} read somewhere, in its own words.\n`,
+      type: 'fact',
+      ...payload,
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    return ProposalResult.parse(res.json()).proposal;
+  }
+
+  const read = async (itemId: string | null) =>
+    KnowledgeResponse.parse((await admin.get(`/v1/knowledge.get?item_id=${itemId}`)).json()).item;
+
+  it('keeps the period a claim holds for', async () => {
+    const proposal = await pendingCreate('Dated proposer', {
+      valid_from: '2026-01-01T00:00:00Z',
+      valid_until: '2026-06-30T00:00:00Z',
+      observed_at: '2026-01-05T00:00:00Z',
+    });
+    const approved = ProposalResult.parse(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).json(),
+    );
+    const item = await read(approved.item_id);
+    expect(item.valid_from).toBe('2026-01-01T00:00:00.000Z');
+    expect(item.valid_until).toBe('2026-06-30T00:00:00.000Z');
+    expect(item.observed_at).toBe('2026-01-05T00:00:00.000Z');
+  });
+
+  it('keeps what a summary was made from, so it can go stale', async () => {
+    const source = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Support hours',
+          body: 'Until five.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const proposal = await pendingCreate('Summarising proposer', {
+      title: 'What the hours are',
+      body: 'Until five.\n',
+      type: 'summary',
+      summary_of: [`${source.id}@${source.current_revision_id}`],
+    });
+    const approved = ProposalResult.parse(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).json(),
+    );
+    const summary = await read(approved.item_id);
+    expect(summary.summary_of).toEqual([`${source.id}@${source.current_revision_id}`]);
+    expect(summary.stale).toBe(false);
+
+    // The point of a dependency, and the only way to tell one from an echo in
+    // the file: the source moves, and the summary says it is out of date.
+    await admin.post('/v1/admin/knowledge.update', {
+      item_id: source.id,
+      base_revision_id: source.current_revision_id,
+      base_content_hash: source.content_hash,
+      body: 'Until seven now.\n',
+    });
+    expect((await read(approved.item_id)).stale).toBe(true);
+  });
+
+  it('keeps both on an update', async () => {
+    const token = await agentToken('propose', 'Survival updater');
+    const source = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Opening hours',
+          body: 'Nine to five.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const target = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Hours, summarised',
+          body: 'Nine to five.\n',
+          type: 'summary',
+        })
+      ).json(),
+    ).item;
+    const res = await propose('/v1/knowledge_propose_update', token, {
+      item_id: target.id,
+      base_revision_id: target.current_revision_id,
+      base_content_hash: target.content_hash,
+      body: 'Nine to five, every weekday.\n',
+      valid_from: '2026-02-01T00:00:00Z',
+      summary_of: [`${source.id}@${source.current_revision_id}`],
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposal = ProposalResult.parse(res.json()).proposal;
+    expect(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).statusCode,
+    ).toBe(200);
+
+    const item = await read(target.id);
+    expect(item.valid_from).toBe('2026-02-01T00:00:00.000Z');
+    expect(item.summary_of).toEqual([`${source.id}@${source.current_revision_id}`]);
+  });
+
+  it('keeps what the replacement was made from', async () => {
+    const token = await agentToken('propose', 'Superseding agent');
+    const source = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The interest rate',
+          body: 'Fourteen percent since April.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const old = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The rate, summarised',
+          body: 'Twelve percent.\n',
+          type: 'summary',
+        })
+      ).json(),
+    ).item;
+    // Not the validity window: a supersession decides that itself — the new item
+    // starts where the old one stopped, and the contract says so.
+    const res = await propose('/v1/knowledge_propose_supersede', token, {
+      old_item_id: old.id,
+      old_base_revision_id: old.current_revision_id,
+      old_base_content_hash: old.content_hash,
+      new_item: {
+        title: 'The rate from April',
+        body: 'Fourteen percent.\n',
+        type: 'summary',
+        observed_at: '2026-04-02T00:00:00Z',
+        summary_of: [`${source.id}@${source.current_revision_id}`],
+      },
+    });
+    expect(res.statusCode, res.body).toBe(202);
+    const proposal = ProposalResult.parse(res.json()).proposal;
+    expect(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).statusCode,
+    ).toBe(200);
+
+    // The replacement, by the name it was given: the old item's drawer does not
+    // say what replaced it, which is a gap of its own.
+    const index = (await admin.post('/v1/knowledge_index', { limit: 200 })).json() as {
+      records: { item_id: string; title: string }[];
+    };
+    const replacement = index.records.find((r) => r.title === 'The rate from April');
+    expect(replacement, JSON.stringify(index.records.map((r) => r.title))).toBeDefined();
+    const written = await read(replacement!.item_id);
+    expect(written.summary_of).toEqual([`${source.id}@${source.current_revision_id}`]);
+    expect(written.observed_at).toBe('2026-04-02T00:00:00.000Z');
+    // The changeover, which is the one date a supersession does decide.
+    expect(written.valid_from).toBe((await read(old.id)).valid_until);
+  });
+
+  it('lets a reviewer set the period the proposer left out', async () => {
+    const proposal = await pendingCreate('Undated proposer', {
+      title: 'The office moved to Milton',
+      body: 'Level three, forty-two Baroona Road.\n',
+    });
+    const res = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposal.id,
+      edits: { valid_from: '2026-03-01T00:00:00Z' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    expect(result.proposal.status).toBe('approved_with_edits');
+    expect((await read(result.item_id)).valid_from).toBe('2026-03-01T00:00:00.000Z');
+  });
+
+  it('says which candidates the proposer ruled out', async () => {
+    // Recorded since the first proposal and served to nobody, so the queue could
+    // not say why a second item was proposed rather than the first one edited.
+    const first = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Deployment runs on Fridays',
+          body: 'Every Friday at four.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const proposal = await pendingCreate('Acknowledging proposer', {
+      title: 'Deployment runs on Fridays in Brisbane',
+      body: 'Every Friday at four, Brisbane time.\n',
+      acknowledged_duplicate_ids: [first.id],
+    });
+    expect(proposal.acknowledged_duplicate_ids).toEqual([first.id]);
   });
 });

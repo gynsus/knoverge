@@ -1,57 +1,55 @@
-import type { FrontmatterSource, ProposalDetail, ProposalSummary } from '@knoverge/contracts';
+import {
+  ProposedContent,
+  ProposedSupersedePayload,
+  type ProposalDetail,
+  type ProposalSummary,
+} from '@knoverge/contracts';
 
 /**
  * What a proposal carries, whichever kind it is.
  *
- * Only the fields it actually proposes. An update that changes the body and
- * nothing else carries no title, and showing an empty title box beside it
- * reads as though the proposal were taking the title away.
+ * The payload's own schema rather than a type written out again here: what a
+ * proposal can carry is decided once, in the contract, and a reviewer has to see
+ * all of it. Reading it by hand is how this screen came to look for two
+ * spellings of one field and to show neither a validity window nor a summary's
+ * dependencies.
+ *
+ * Every field is optional because a proposal carries only what it proposes. An
+ * update that changes the body and nothing else carries no title, and an empty
+ * title box beside it would read as the proposal taking the title away.
  */
-export interface Content {
-  title?: string;
-  body?: string;
-  type?: string;
-  language?: string;
-  categories?: string[];
-  tags?: string[];
-  sources?: FrontmatterSource[];
-}
+export type Content = ProposedContent;
 
 /**
  * A create carries the content at the top level; a supersession carries it
- * under `newItem`, or carries nothing when the replacement is an item the
+ * under `new_item`, or carries nothing when the replacement is an item the
  * workspace already holds; an update carries only the fields it changes; a
  * delete carries nothing at all.
  */
 export function contentOf(proposal: ProposalDetail): Content | null {
   if (proposal.proposal_type === 'knowledge_delete') return null;
-  const payload = proposal.proposed_payload as Record<string, unknown> | null;
-  if (!payload) return null;
-  const source = (
-    proposal.proposal_type === 'knowledge_supersede'
-      ? (payload['newItem'] as Record<string, unknown> | undefined)
-      : payload
-  ) as Record<string, unknown> | undefined;
-  if (!source) return null;
-  const content: Content = {
-    ...str(source, 'title'),
-    ...str(source, 'body'),
-    ...str(source, 'type'),
-    ...str(source, 'language'),
-    ...list(source, 'categories'),
-    ...list(source, 'tags'),
-    ...(Array.isArray(source['sources'])
-      ? { sources: source['sources'] as FrontmatterSource[] }
-      : {}),
-  };
-  return Object.keys(content).length === 0 ? null : content;
+  if (proposal.proposal_type === 'knowledge_supersede') {
+    const parsed = ProposedSupersedePayload.safeParse(proposal.proposed_payload);
+    return present(parsed.success ? parsed.data.new_item : undefined);
+  }
+  const parsed = ProposedContent.safeParse(proposal.proposed_payload);
+  return present(parsed.success ? parsed.data : undefined);
 }
 
-/** Items the proposer was shown as possible duplicates and ruled out. */
-export function ruledOutDuplicates(proposal: ProposalDetail): string[] {
-  const payload = proposal.proposed_payload as Record<string, unknown> | null;
-  const ids = payload?.['acknowledgedDuplicateIds'] ?? payload?.['acknowledged_duplicate_ids'];
-  return Array.isArray(ids) ? ids.map(String) : [];
+/** Nothing to show is null, not an empty object: a redacted payload has none. */
+function present(content: Content | undefined): Content | null {
+  return content && Object.keys(content).length > 0 ? content : null;
+}
+
+/**
+ * Items the proposer was shown as possible duplicates and ruled out.
+ *
+ * From the proposal itself, which is where they are recorded. This read the
+ * payload for them until the record started serving them, and so answered "none
+ * were ruled out" for every proposal ever made.
+ */
+export function ruledOutDuplicates(proposal: ProposalSummary): string[] {
+  return [...proposal.acknowledged_duplicate_ids];
 }
 
 /** Why this proposal is in the queue rather than already applied. */
@@ -113,12 +111,4 @@ export function inSegment(proposal: ProposalSummary, segment: Segment, now: Date
       );
     }
   }
-}
-
-function str(source: Record<string, unknown>, key: string): Record<string, string> {
-  return typeof source[key] === 'string' ? { [key]: source[key] } : {};
-}
-
-function list(source: Record<string, unknown>, key: string): Record<string, string[]> {
-  return Array.isArray(source[key]) ? { [key]: (source[key] as unknown[]).map(String) } : {};
 }
