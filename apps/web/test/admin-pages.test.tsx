@@ -2094,6 +2094,27 @@ describe('knowledge page', () => {
     expect((title.closest('li') as HTMLElement).textContent).toContain('revision 1');
   });
 
+  it('says which of the three evidence states a row is in', async () => {
+    // One source and two independent ones are a different bet, and the row used
+    // to collapse both into "has sources" (ADR 0026).
+    mockApi({
+      ...ROUTES,
+      'GET /v1/knowledge.list': () =>
+        json({
+          items: [
+            { ...ITEM, id: 'kn_one', title: 'Rests on one thing', evidence_state: 'source_backed' },
+            { ...ITEM, id: 'kn_two', title: 'Rests on two', evidence_state: 'corroborated' },
+          ],
+          next_cursor: null,
+        }),
+    });
+    renderApp('/knowledge');
+    const rowOf = async (name: string) =>
+      within((await screen.findByRole('button', { name })).closest('li') as HTMLElement);
+    expect((await rowOf('Rests on one thing')).getByText('Source-backed')).toBeInTheDocument();
+    expect((await rowOf('Rests on two')).getByText('Corroborated')).toBeInTheDocument();
+  });
+
   it('narrows on the server, from an address somebody can be sent', async () => {
     const calls = mockApi(ROUTES);
     renderApp('/knowledge?category=architecture&type=decision&state=unreviewed');

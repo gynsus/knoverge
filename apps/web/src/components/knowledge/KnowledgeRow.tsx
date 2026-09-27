@@ -54,7 +54,6 @@ export function KnowledgeRow({
 }) {
   const { t, i18n } = useTranslation();
   const reviewed = item.reviewState !== 'unreviewed';
-  const sourced = item.evidenceState !== 'none';
 
   return (
     <li
@@ -100,9 +99,12 @@ export function KnowledgeRow({
             )}
             {t(`knowledge.review.${item.reviewState}`)}
           </span>
+          {/* Which of the three, not whether there are any: one source and two
+              independent ones are a different bet, and a state nothing
+              distinguishes is a state nobody sees (ADR 0026). */}
           <span className="flex items-center gap-1">
             <Link2 aria-hidden="true" className="size-3.5" />
-            {sourced ? t('knowledge.sourced') : t('knowledge.unsourced')}
+            {t(`knowledge.evidence.${item.evidenceState}`)}
           </span>
           {item.disputed && (
             <span className="flex items-center gap-1 text-destructive">
