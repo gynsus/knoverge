@@ -274,11 +274,15 @@ export class KnowledgeService {
           objectType: 'knowledge_item',
           objectId: itemId,
           categoryIds: p.chosen.map((c) => c.id),
+          // The revision and the hash are the event's own fields, not metadata:
+          // rule 3 asks every material write to record what it wrote, and a
+          // caller reading the feed through the contract should not have to know
+          // which key a metadata bag happens to use (ADR 0028).
+          afterRevisionId: revisionId,
+          afterContentHash: revision.contentHash,
           // No title and no body: the ledger holds ids, hashes and actor
           // context, never the knowledge itself.
           metadata: {
-            revision: revisionId,
-            content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             item_type: input.type,
@@ -547,11 +551,11 @@ export class KnowledgeService {
           // Both sides, so the filter matches whoever could see the item
           // before as well as whoever can see it now.
           categoryIds: [...new Set([...before, ...p.chosen.map((c) => c.id)])],
+          beforeRevisionId: was.id,
+          beforeContentHash: was.contentHash,
+          afterRevisionId: revisionId,
+          afterContentHash: revision.contentHash,
           metadata: {
-            revision: revisionId,
-            before_revision: was.id,
-            before_hash: was.contentHash,
-            content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             change_kind: p.kind,
@@ -997,9 +1001,15 @@ export class KnowledgeService {
           objectType: 'knowledge_item',
           objectId: newItemId,
           categoryIds: pNew.chosen.map((c) => c.id),
+          ...(replacement
+            ? {
+                beforeRevisionId: replacement.revision.id,
+                beforeContentHash: replacement.revision.contentHash,
+              }
+            : {}),
+          afterRevisionId: newRevisionId,
+          afterContentHash: newRevision.contentHash,
           metadata: {
-            revision: newRevisionId,
-            content_hash: newRevision.contentHash,
             frontmatter_hash: newRevision.frontmatterHash,
             git_commit: pNew.commitHash,
             item_type: pNew.frontmatter.type,
@@ -1013,11 +1023,11 @@ export class KnowledgeService {
           objectType: 'knowledge_item',
           objectId: input.oldItemId,
           categoryIds: oldCategoryIds,
+          beforeRevisionId: old.revision.id,
+          beforeContentHash: old.revision.contentHash,
+          afterRevisionId: oldRevisionId,
+          afterContentHash: oldRevision.contentHash,
           metadata: {
-            revision: oldRevisionId,
-            before_revision: old.revision.id,
-            before_hash: old.revision.contentHash,
-            content_hash: oldRevision.contentHash,
             frontmatter_hash: oldRevision.frontmatterHash,
             git_commit: pOld.commitHash,
             superseded_by: newItemId,
@@ -1373,10 +1383,11 @@ export class KnowledgeService {
           objectId: itemId,
           // Where it was, so the change feed reaches whoever could see it.
           categoryIds: gone,
+          beforeRevisionId: item.revision.id,
+          beforeContentHash: item.revision.contentHash,
+          afterRevisionId: revisionId,
+          afterContentHash: revision.contentHash,
           metadata: {
-            revision: revisionId,
-            before_revision: item.revision.id,
-            content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             categories_before: gone,
@@ -1505,10 +1516,13 @@ export class KnowledgeService {
           objectType: 'knowledge_item',
           objectId: item.id,
           categoryIds: p.chosen.map((c) => c.id),
+          // The revision it was brought back from is the before side: that is
+          // what the item last said, even though it said it before the delete.
+          beforeRevisionId: previous.id,
+          afterRevisionId: revisionId,
+          afterContentHash: revision.contentHash,
           metadata: {
-            revision: revisionId,
             restored_from: previous.id,
-            content_hash: revision.contentHash,
             frontmatter_hash: revision.frontmatterHash,
             git_commit: p.commitHash,
             categories_before: [],
@@ -2001,9 +2015,9 @@ export class KnowledgeService {
         categoryIds: (await this.o.items.categoriesOf(actor.workspaceId, [partner.itemId])).map(
           (row) => row.categoryId as string,
         ),
+        afterRevisionId: partner.revisionId,
+        afterContentHash: revision.contentHash,
         metadata: {
-          revision: partner.revisionId,
-          content_hash: revision.contentHash,
           frontmatter_hash: revision.frontmatterHash,
           git_commit: partner.planned.commitHash,
           change_kind: 'metadata',

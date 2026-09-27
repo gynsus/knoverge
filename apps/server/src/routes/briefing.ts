@@ -329,7 +329,9 @@ export async function activityDigest(
       // and it is what a reader would fetch next. The feed arrives newest first,
       // so the first one to mention this item is the one to keep.
       if (entry.revisionId === null) {
-        entry.revisionId = revisionOf(event.metadata) ?? event.afterRevisionId;
+        // The metadata only for events written before the column was filled in:
+        // the ledger is append-only and old rows keep their shape (ADR 0028).
+        entry.revisionId = event.afterRevisionId ?? asText(event.metadata, 'revision');
       }
       if (event.createdAt > entry.at) entry.at = event.createdAt;
       items.set(event.objectId, entry);
@@ -398,14 +400,4 @@ export async function activityDigest(
 function asText(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key];
   return typeof value === 'string' ? value : null;
-}
-
-/**
- * The revision an event produced.
- *
- * `metadata.revision` first and the column second: knowledge writes record it in
- * the metadata, and the column is there for whatever does not.
- */
-function revisionOf(metadata: Record<string, unknown>): string | null {
-  return asText(metadata, 'revision');
 }

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   TERMS_VERSION,
+  EventsListResponse,
   KnowledgeDiffResponse,
   KnowledgeCountsResponse,
   KnowledgeListResponse,
@@ -2084,5 +2085,116 @@ describe('two writers at once', () => {
     // item is not deleted rather than writing a second restore over the first.
     expect([a.statusCode, b.statusCode].sort(), `${a.body}\n${b.body}`).toEqual([200, 400]);
     await stillWritable('After two restores');
+  });
+});
+
+/**
+ * Rule 3 asks a material write to record the revision and hash on each side, and
+ * the event has four columns for them. Nothing wrote them: the same facts went
+ * into `metadata` under other names, and the contract served four nulls for facts
+ * the row was holding a few bytes away (ADR 0028).
+ */
+describe('an event says which revision it wrote', () => {
+  async function feedFor(itemId: string) {
+    const res = await admin.post('/v1/events_list', { limit: 500, newest_first: true });
+    expect(res.statusCode, res.body).toBe(200);
+    return EventsListResponse.parse(res.json()).events.filter((e) => e.object_id === itemId);
+  }
+
+  it('on a create, and on the change that follows it', async () => {
+    const created = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The ledger records its revisions',
+          body: 'First text.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const changed = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: created.id,
+          base_revision_id: created.current_revision_id,
+          base_content_hash: created.content_hash,
+          body: 'Second text.\n',
+        })
+      ).json(),
+    ).item;
+
+    const events = await feedFor(created.id);
+    const create = events.find((e) => e.event_type === 'knowledge.created');
+    const update = events.find((e) => e.event_type === 'knowledge.updated');
+
+    // A create has no before: there was nothing to read.
+    expect(create).toMatchObject({
+      before_revision_id: null,
+      after_revision_id: created.current_revision_id,
+      after_content_hash: created.content_hash,
+    });
+    // An update has both sides, which is what makes the feed answer "from what,
+    // to what" without fetching the item's history.
+    expect(update).toMatchObject({
+      before_revision_id: created.current_revision_id,
+      before_content_hash: created.content_hash,
+      after_revision_id: changed.current_revision_id,
+      after_content_hash: changed.content_hash,
+    });
+    // And not twice: one fact, one place. `frontmatter_hash` stays in the
+    // metadata, which is the one of the four that has no column.
+    expect(update?.metadata).not.toHaveProperty('revision');
+    expect(update?.metadata).not.toHaveProperty('before_revision');
+    expect(update?.metadata).toHaveProperty('frontmatter_hash');
+  });
+
+  it('on both ends of a supersession', async () => {
+    const old = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'The rate before the change',
+          body: 'Twelve percent.\n',
+          type: 'fact',
+        })
+      ).json(),
+    ).item;
+    const result = SupersedeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.supersede', {
+          old_item_id: old.id,
+          old_base_revision_id: old.current_revision_id,
+          old_base_content_hash: old.content_hash,
+          new_item: {
+            title: 'The rate after the change',
+            body: 'Fourteen percent.\n',
+            type: 'fact',
+          },
+        })
+      ).json(),
+    );
+
+    const superseded = (await feedFor(old.id)).find((e) => e.event_type === 'knowledge.superseded');
+    expect(superseded).toMatchObject({
+      before_revision_id: old.current_revision_id,
+      before_content_hash: old.content_hash,
+      after_revision_id: result.superseded.current_revision_id,
+    });
+    const written = (await feedFor(result.item.id)).find(
+      (e) => e.event_type === 'knowledge.created',
+    );
+    expect(written).toMatchObject({
+      before_revision_id: null,
+      after_revision_id: result.item.current_revision_id,
+    });
+  });
+
+  it('and the chain still verifies, because no stored event was rewritten', async () => {
+    // The hash covers the event's fields and its metadata (ADR 0007), so a
+    // migration tidying old rows into the columns would have broken the chain
+    // from that row on — and the table's own trigger would have refused it
+    // first. There is no such migration, and this is what would catch one.
+    const workspace = await services.repositories.workspaces.findBySlug('personal');
+    const result = await services.ledger.verify(workspace!.id);
+    expect(result).toMatchObject({ ok: true });
+    expect(result.count).toBeGreaterThan(0);
   });
 });
