@@ -109,6 +109,14 @@ export interface UpdateItemInput {
   relations?: readonly FrontmatterRelation[] | undefined;
   /** See `CreateItemInput`. Replaces the whole list when given. */
   summaryOf?: readonly string[] | undefined;
+  /**
+   * The model that produced the text being sent, when one did.
+   *
+   * A write that changes the body without this clears whatever the item said
+   * before, and a write that leaves the body alone leaves it as it was: changing a
+   * tag does not make a drafted summary hand-written (ADR 0031).
+   */
+  draftedBy?: string | undefined;
   /** See `CreateItemInput`: the proposal this write applies. */
   proposalId?: ProposalId | undefined;
   /** See `CreateItemInput`: set only by the review workflow. */
@@ -146,6 +154,13 @@ export interface CreateItemInput {
    * them moves on and that is how anybody knows to look at it again (ADR 0024).
    */
   summaryOf?: readonly string[] | undefined;
+  /**
+   * The model that produced this text, when one did (ADR 0031).
+   *
+   * Written to the frontmatter, because a model phrasing an item is a property of
+   * the text and the file is what a reader has without the application.
+   */
+  draftedBy?: string | undefined;
   /**
    * The proposal this write applies, recorded on the commit so the repository
    * alone says which decision produced the file.

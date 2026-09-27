@@ -36,6 +36,14 @@ export interface Draft {
    * revision it is at now (ADR 0024).
    */
   summaryOf: string[];
+  /**
+   * The model that produced the body now in the form, when one did.
+   *
+   * Sent with the save, so the file says a model phrased this and a reader of the
+   * repository can see it without the application (ADR 0031). Cleared by the server
+   * when a later write changes the body without claiming it again.
+   */
+  draftedBy: string | null;
 }
 
 export const emptyDraft: Draft = {
@@ -50,6 +58,7 @@ export const emptyDraft: Draft = {
   validUntil: '',
   observedAt: '',
   summaryOf: [],
+  draftedBy: null,
 };
 
 /**
@@ -76,6 +85,7 @@ export const draftOf = (item: KnowledgeItemDetail): Draft => ({
   validUntil: asDateInput(item.valid_until),
   observedAt: asDateInput(item.observed_at),
   summaryOf: [...item.summary_of],
+  draftedBy: item.drafted_by,
 });
 
 /** Whether anything in the form differs from the item it started at. */

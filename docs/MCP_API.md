@@ -298,6 +298,12 @@ item's current one. Neither is affected by `include_relations`: what a summary w
 made from is what it is, not a relation to something else, and an agent reading a
 summary needs to know whether it has fallen behind (ADR 0024).
 
+`drafted_by` names the model that phrased this revision's body, when one did, and
+is null otherwise. `knowledge_create`, `knowledge_update` and the propose tools take
+it: a caller that drafted the text with a model says so, and a caller that changed
+the body without saying it again clears it, because the field describes the text in
+the file rather than the item's past (ADR 0031).
+
 The answer carries `disputed` and, alongside `relations`, `disputed_by`: the items whose `contradicts` relation points at this one. A contradiction is recorded on the item that reported it, so without the second list an agent reading the item it was reported against would see `disputed: true` and nothing to look at. `include_relations: false` leaves out both lists and keeps the flag — rule 8 says dispute state is retrievable, so an agent that sees it can ask again for who (ADR 0022).
 
 The browser's `GET /v1/knowledge.get` asks for the whole body rather than a slice, because the editor writes back what it was given and a slice would be saved over the rest.

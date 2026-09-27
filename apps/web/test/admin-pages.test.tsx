@@ -1628,6 +1628,7 @@ describe('knowledge page', () => {
     disputed_by: [],
     summary_of: [],
     superseded_by: null,
+    drafted_by: null,
     content_hash: 'sha256:' + 'a'.repeat(64),
     frontmatter_hash: 'sha256:' + 'b'.repeat(64),
     revision_number: 1,
@@ -1788,6 +1789,20 @@ describe('knowledge page', () => {
     // "supersedes kn_01J8..." tells a reader nothing they can act on.
     expect(await within(drawer).findByRole('button', { name: 'The older decision' })).toBeVisible();
     expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
+  });
+
+  it('names the model that phrased the text, where a reader meets the text', async () => {
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, type: 'summary', drafted_by: 'qwen3' } }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+    // Next to the text it describes: knowing a model wrote it is what decides
+    // how closely somebody reads it.
+    expect(await within(drawer).findByText('Drafted by')).toBeInTheDocument();
+    expect(within(drawer).getByText('qwen3')).toBeInTheDocument();
   });
 
   it('says what replaced an item, which is what its status raises', async () => {
@@ -2024,6 +2039,9 @@ describe('knowledge page', () => {
       unknown
     >;
     expect(body['summary_of']).toEqual([`${source.id}@${source.current_revision_id}`]);
+    // Saved with the text, so the item says a model phrased it rather than
+    // leaving the claim looking hand-written (ADR 0031).
+    expect(body['drafted_by']).toBe('qwen3');
   });
 
   it('records the revision a chosen source is at, with no model involved', async () => {
@@ -2087,8 +2105,10 @@ describe('knowledge page', () => {
       unknown
     >;
     expect(body['summary_of']).toEqual([`${source.id}@${source.current_revision_id}`]);
-    // Nothing was drafted, so nothing asked a model for anything.
+    // Nothing was drafted, so nothing asked a model for anything, and nothing
+    // says one wrote the text.
     expect(calls.some((c) => c.url.includes('draft_summary'))).toBe(false);
+    expect(body).not.toHaveProperty('drafted_by');
   });
 
   it('names who contradicts an item, which its own connections cannot say', async () => {

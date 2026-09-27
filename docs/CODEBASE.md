@@ -689,6 +689,24 @@ older revision says what that revision said. It survives
 that is no longer current has exactly one thing a reader has to follow, and
 withholding it makes the status unanswerable.
 
+## Naming the model that phrased the text
+
+`drafted_by` is a frontmatter field and nothing else: no column, no migration, no
+event field. The wording belongs to a revision, and the revision already stores its
+frontmatter, so the file a person reads without the application answers the question
+and a read of an older revision answers it as that revision did (ADR 0031).
+
+Two places decide its value, and both are one line. `KnowledgeService.create` writes
+it when the caller named a model. `update` keeps it when the body is not part of the
+write, and deletes it when the body changes without a model being named again — so a
+tag edit does not make a drafted summary hand-written, and a rewrite does not leave a
+model's name on somebody's own sentences. The proposal path carries it in the payload
+and drops it when a reviewer edits the body, for the same reason: a reviewer who
+rewrote the text is its author.
+
+The browser fills it from the drafting control, which knows which model answered, and
+sends it only when the body on the screen is that answer.
+
 ## Pushing a notification out of the installation
 
 `packages/core/src/webhooks/service.ts` is the only place this product calls a host

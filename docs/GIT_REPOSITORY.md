@@ -82,6 +82,7 @@ external:
   external_key: github.com/example/project-x:architecture/authentication
 summary_of:                 # only for type = summary
   - kn_01J...@rev_01J...
+drafted_by: llama3.1:8b     # only when a model phrased this body
 ---
 ```
 
@@ -93,6 +94,7 @@ Field rules:
 - `relations.target` is a portable item id; item ids are stable across export/import;
 - no secrets, tokens, embeddings, or user emails;
 - keys are written in the order above; unknown keys are rejected by the parser;
+- `drafted_by` names the model that phrased the body of this revision, and is absent on text a person wrote. It survives a write that leaves the body alone and is dropped by one that changes the body without naming a model again, so it describes the text in the file rather than the item's past (ADR 0031);
 - a field with nothing in it is left out rather than written as an empty list, so the file stays readable — except `valid_from`, `valid_until` and `observed_at`, which are written as `null`, because for an instant "unset" and "explicitly none" are not the same statement;
 - item ids and revision ids are ULIDs in Crockford base32, which has no `I`, `L`, `O` or `U`.
 

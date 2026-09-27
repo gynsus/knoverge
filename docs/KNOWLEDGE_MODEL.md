@@ -298,6 +298,12 @@ on an item that was replaced, and `disputed_by`, on an item something
 contradicts. Both are projections of a relation recorded on the other item, so
 that a file read on its own answers the question it raises.
 
+`drafted_by` appears on the same terms: it names the model that phrased this
+revision's body, and nothing at all once somebody rewrites the text. It is
+provenance about the wording, not a review state — a drafted body a person read
+and approved is `human_reviewed` and still says which model wrote the first
+draft (ADR 0031).
+
 The Markdown body contains knowledge intended for human reading.
 
 ## 7. Lifecycle status

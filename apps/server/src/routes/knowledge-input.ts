@@ -38,6 +38,7 @@ export function contentInput(body: ContentRequest): CreateItemInput {
     sources,
     relations,
     summary_of,
+    drafted_by,
     reason,
     ...rest
   } = body as Required<ContentRequest>;
@@ -57,6 +58,7 @@ export function contentInput(body: ContentRequest): CreateItemInput {
     sources,
     relations,
     summaryOf: summary_of,
+    draftedBy: drafted_by,
     reason,
   };
 }
@@ -85,6 +87,7 @@ export function changeInput(
     sources,
     relations,
     summary_of,
+    drafted_by,
     reason,
     ...rest
   } = body as Required<Omit<UpdateKnowledgeRequest, 'request_id' | 'idempotency_key'>>;
@@ -105,6 +108,7 @@ export function changeInput(
     sources,
     relations,
     summaryOf: summary_of,
+    draftedBy: drafted_by,
     reason,
   };
 }
