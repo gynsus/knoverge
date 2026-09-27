@@ -213,6 +213,14 @@ export {
 } from './idempotency/service.ts';
 export { canonicalJson } from './ledger/canonical-json.ts';
 export {
+  exportHeader,
+  exportedEvent,
+  rehydrate,
+  verifyExport,
+  type ExportHeader,
+  type ExportedEvent,
+} from './ledger/export.ts';
+export {
   HASH_PREFIX,
   MIN_LEDGER_KEY_BYTES,
   computeEventHash,

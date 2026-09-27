@@ -2,6 +2,7 @@ import { Command } from 'commander';
 
 import pkg from '../package.json' with { type: 'json' };
 import { agentCommand } from './commands/agent.ts';
+import { auditCommand } from './commands/audit.ts';
 import { backupCommand } from './commands/backup.ts';
 import { bootstrapCommand } from './commands/bootstrap.ts';
 import { dbCommand } from './commands/db.ts';
@@ -22,6 +23,7 @@ program
   .version(pkg.version, '-v, --version');
 
 program.addCommand(agentCommand());
+program.addCommand(auditCommand());
 program.addCommand(backupCommand());
 program.addCommand(bootstrapCommand());
 program.addCommand(dbCommand());
