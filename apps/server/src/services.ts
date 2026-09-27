@@ -44,6 +44,7 @@ import {
   UserService,
   WorkspaceService,
   type LedgerKey,
+  type LedgerKeyring,
 } from '@knoverge/core';
 import {
   createDatabase,
@@ -75,7 +76,12 @@ export interface ServicesConfig {
    * API-only process, where nothing here runs jobs.
    */
   enqueueRefine?: (workspaceId: string, sessionId: string) => Promise<void>;
-  ledgerKey: LedgerKey;
+  /**
+   * One key, or the keyring a rotated installation runs with (ADR 0030).
+   *
+   * A test that has never rotated passes one key and means the same thing.
+   */
+  ledgerKey: LedgerKey | LedgerKeyring;
   /** Peppers agent credential hashes so a leaked database cannot be brute-forced offline. */
   tokenPepper: string;
   /**

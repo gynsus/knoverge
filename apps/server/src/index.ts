@@ -64,7 +64,7 @@ async function main(): Promise<void> {
         'semantic search is unavailable; answering lexically',
       ),
     databaseUrl: config.databaseUrl,
-    ledgerKey: config.ledgerKey,
+    ledgerKey: config.ledgerKeys,
     tokenPepper: config.tokenPepper,
     dataDir: config.dataDir,
     pendingPerActor: config.agentBudgets.pendingProposals,

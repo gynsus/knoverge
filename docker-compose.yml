@@ -33,6 +33,9 @@ services:
       KNOVERGE_DATABASE_URL: postgres://${KNOVERGE_POSTGRES_USER:-knoverge}:${KNOVERGE_POSTGRES_PASSWORD:?set a database password in .env}@postgres:5432/${KNOVERGE_POSTGRES_DB:-knoverge}
       KNOVERGE_DATA_DIR: /data
       KNOVERGE_LEDGER_KEY: ${KNOVERGE_LEDGER_KEY:?Set KNOVERGE_LEDGER_KEY in .env (openssl rand -hex 32)}
+      # Empty unless the operator has rotated, and empty unless a webhook exists.
+      KNOVERGE_LEDGER_KEY_RETIRED: ${KNOVERGE_LEDGER_KEY_RETIRED:-}
+      KNOVERGE_ENCRYPTION_KEY: ${KNOVERGE_ENCRYPTION_KEY:-}
       KNOVERGE_SESSION_SECRET: ${KNOVERGE_SESSION_SECRET:?Set KNOVERGE_SESSION_SECRET in .env (openssl rand -hex 32)}
       KNOVERGE_TOKEN_PEPPER: ${KNOVERGE_TOKEN_PEPPER:?Set KNOVERGE_TOKEN_PEPPER in .env (openssl rand -hex 32)}
       KNOVERGE_BASE_URL: ${KNOVERGE_BASE_URL:-http://localhost:3000}

@@ -10,6 +10,44 @@ export type LedgerKey = { readonly bytes: Buffer };
 export const MIN_LEDGER_KEY_BYTES = 32;
 
 /**
+ * The keys in force: one that signs, and any number that only verify.
+ *
+ * A key is retired rather than replaced (ADR 0030). Rehashing what is written is
+ * the one thing rotation must not mean here: the table rejects UPDATE, rule 4 says
+ * application code never changes an event, and a chain that configuration can
+ * rewrite is not a chain.
+ */
+export interface LedgerKeyring {
+  signing: LedgerKey;
+  /** Verification only, newest first. Events they signed still verify. */
+  retired: readonly LedgerKey[];
+}
+
+/** One key, for an installation that has never rotated. */
+export function keyring(signing: LedgerKey, retired: readonly LedgerKey[] = []): LedgerKeyring {
+  return { signing, retired };
+}
+
+/** Every key a verification may try, the signing one first. */
+export function keysOf(ring: LedgerKeyring): readonly LedgerKey[] {
+  return [ring.signing, ...ring.retired];
+}
+
+/**
+ * Names a key without being one.
+ *
+ * An HMAC over a fixed string: an operator can check that the key they think is
+ * configured is the one running, and a fingerprint in a log or a terminal is not a
+ * key somebody can sign with.
+ */
+export function fingerprint(key: LedgerKey): string {
+  return hmac(key, 'knoverge-ledger-key-fingerprint').slice(
+    HASH_PREFIX.length,
+    HASH_PREFIX.length + 16,
+  );
+}
+
+/**
  * Parses KNOVERGE_LEDGER_KEY (hex encoded, at least 32 bytes).
  */
 export function parseLedgerKey(hex: string): LedgerKey {

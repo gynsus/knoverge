@@ -106,6 +106,8 @@ KNOVERGE_AUTO_MIGRATE         true (default) applies pending migrations on start
 KNOVERGE_SESSION_SECRET       signs browser cookies; required; hex, at least 32 bytes
 KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at least 32 bytes
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
+KNOVERGE_LEDGER_KEY_RETIRED   keys that verify and no longer sign, comma separated; see "Rotating the ledger key"
+KNOVERGE_ENCRYPTION_KEY       encrypts webhook signing secrets; exactly 32 bytes; without it a webhook cannot be created
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
 KNOVERGE_AGENT_READS_PER_MINUTE        600 by default, per credential
@@ -324,6 +326,29 @@ docker compose exec knoverge knoverge db recover --workspace personal
 It takes the same workspace lock the server's writers take, so it is safe against a live installation: it waits for whatever is writing. Each workspace is reported as examined, recovered, abandoned and unresolved. An operation that reached Git is completed from the commit; one that never committed is abandoned. Anything left **unresolved** is the case the architecture calls unrepairable — a revision with no commit, or a commit the repository no longer has — and the command names each one with the reason and exits non-zero, so a script notices. Those need the backup.
 
 An unresolved operation closes its own workspace and nothing else: the recovery pass carries on to the rest, the server finishes starting, and the job runner runs. The reason is also written to the operation row, so `db recover` and the startup log are not the only places to find it.
+
+### Rotating the ledger key
+
+```bash
+docker compose exec knoverge knoverge ledger keys
+openssl rand -hex 32
+# .env: move the old KNOVERGE_LEDGER_KEY into KNOVERGE_LEDGER_KEY_RETIRED,
+#       put the new value in KNOVERGE_LEDGER_KEY
+docker compose up -d knoverge
+docker compose exec knoverge knoverge ledger verify
+```
+
+A key is retired rather than replaced: the events it signed are still there and
+still verify, because rehashing them is the one thing rotation must not mean here
+(ADR 0030). `verify` says `used a retired key` when a green result depended on one,
+which is what tells an operator whether dropping it would cost them the proof that
+nobody edited those events. `ledger keys` prints a fingerprint of each key in force
+rather than the key, so checking which one is running does not put it on a terminal.
+
+Retired keys accumulate only if you let them. Each one costs one extra HMAC at the
+rotation boundary and nothing anywhere else, so there is no performance reason to
+drop one — only the decision about whether that stretch of history still needs to be
+verifiable.
 
 ### Pushing a notification somewhere
 

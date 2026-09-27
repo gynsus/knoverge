@@ -4,12 +4,20 @@ import { newId } from '../ids.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { Tx } from '../ports/unit-of-work.ts';
-import { computeEventHash, genesisHash, type LedgerKey } from './hash.ts';
+import {
+  computeEventHash,
+  genesisHash,
+  keyring,
+  keysOf,
+  type LedgerKey,
+  type LedgerKeyring,
+} from './hash.ts';
 import type { EventRepository } from './repository.ts';
 import type { EventActor, EventInput, EventRecord } from './types.ts';
 
 export interface LedgerOptions {
-  key: LedgerKey;
+  /** One key, or a keyring after a rotation (ADR 0030). */
+  key: LedgerKey | LedgerKeyring;
   events: EventRepository;
   clock?: Clock;
 }
@@ -21,20 +29,33 @@ export interface VerifyResult {
   /** First sequence whose hash did not verify, when not ok. */
   brokenAt?: number;
   reason?: string;
+  /**
+   * True when a retired key was needed for at least one event.
+   *
+   * Worth saying: after a rotation a failure is ambiguous between a tampered row
+   * and a key nobody kept, and an operator reading a green result should know
+   * whether it still depends on a key they might be about to drop.
+   */
+  usedRetiredKey?: boolean;
 }
 
 /**
  * Append-only, keyed hash-chained event ledger (ADR 0007).
  */
 export class EventLedger {
-  private readonly key: LedgerKey;
+  private readonly keys: LedgerKeyring;
   private readonly events: EventRepository;
   private readonly clock: Clock;
 
   constructor(options: LedgerOptions) {
-    this.key = options.key;
+    this.keys = 'signing' in options.key ? options.key : keyring(options.key);
     this.events = options.events;
     this.clock = options.clock ?? systemClock;
+  }
+
+  /** The key that signs. Retired ones verify and never sign. */
+  private get key(): LedgerKey {
+    return this.keys.signing;
   }
 
   /**
@@ -89,7 +110,13 @@ export class EventLedger {
    * database and the key; see ADR 0007 for what it does and does not prove.
    */
   async verify(workspaceId: WorkspaceId, pageSize = 500): Promise<VerifyResult> {
-    let expectedPrev = genesisHash(this.key);
+    const keys = keysOf(this.keys);
+    // The key the last event verified with, tried first for the next one: a
+    // rotation is one boundary in a long chain, so this costs one extra HMAC at
+    // that boundary and none anywhere else (ADR 0030).
+    let current = keys[0] as LedgerKey;
+    let usedRetiredKey = false;
+    let expectedPrev: string | null = null;
     let expectedSequence = 1;
     let count = 0;
     let after = 0;
@@ -100,7 +127,21 @@ export class EventLedger {
         if (event.sequence !== expectedSequence) {
           return { ok: false, count, brokenAt: event.sequence, reason: 'sequence gap' };
         }
-        if (event.prevEventHash !== expectedPrev) {
+        if (expectedPrev === null) {
+          // The first event of the workspace: its previous hash is a genesis, and
+          // which key made that genesis is what says where this chain started.
+          const started = keys.find((key) => genesisHash(key) === event.prevEventHash);
+          if (!started) {
+            return {
+              ok: false,
+              count,
+              brokenAt: event.sequence,
+              reason: 'no configured key produced this chain’s genesis',
+            };
+          }
+          if (started !== keys[0]) usedRetiredKey = true;
+          current = started;
+        } else if (event.prevEventHash !== expectedPrev) {
           return { ok: false, count, brokenAt: event.sequence, reason: 'previous hash mismatch' };
         }
         const { eventHash, ...rest } = event;
@@ -110,17 +151,23 @@ export class EventLedger {
         if (!hasher) {
           return { ok: false, count, brokenAt: event.sequence, reason: 'unknown hash version' };
         }
-        const recomputed = computeEventHash(this.key, event.prevEventHash, hasher(rest));
-        if (recomputed !== eventHash) {
+        const content = hasher(rest);
+        const signedWith =
+          computeEventHash(current, event.prevEventHash, content) === eventHash
+            ? current
+            : keys.find((key) => computeEventHash(key, event.prevEventHash, content) === eventHash);
+        if (!signedWith) {
           return { ok: false, count, brokenAt: event.sequence, reason: 'event hash mismatch' };
         }
+        if (signedWith !== keys[0]) usedRetiredKey = true;
+        current = signedWith;
         expectedPrev = eventHash;
         expectedSequence += 1;
         count += 1;
         after = event.sequence;
       }
     }
-    return { ok: true, count };
+    return { ok: true, count, ...(usedRetiredKey ? { usedRetiredKey } : {}) };
   }
 }
 
