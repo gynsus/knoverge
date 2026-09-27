@@ -419,6 +419,59 @@ describe('the audit feed', () => {
     expect(page.has_more).toBe(true);
     expect(page.next_sequence).toBe(page.events[0]!.sequence);
   });
+
+  it('pages backwards too, which newest-first could not do at all', async () => {
+    // `after_sequence` bounds the wrong end of a descending read, so without a
+    // cursor of its own `newest_first` answered with the newest page for ever.
+    const newest = EventsListResponse.parse(
+      (await admin.post('/v1/events_list', { limit: 2, newest_first: true })).json(),
+    );
+    expect(newest.events).toHaveLength(2);
+    // Newest first really is newest first.
+    expect(newest.events[0]!.sequence).toBeGreaterThan(newest.events[1]!.sequence);
+    // And `next_sequence` is the edge this page stopped at, which reading
+    // backwards is the oldest of them.
+    expect(newest.next_sequence).toBe(newest.events[1]!.sequence);
+    expect(newest.has_more).toBe(true);
+
+    const older = EventsListResponse.parse(
+      (
+        await admin.post('/v1/events_list', {
+          limit: 2,
+          newest_first: true,
+          before_sequence: newest.next_sequence,
+        })
+      ).json(),
+    );
+    expect(older.events).toHaveLength(2);
+    // A different page, and an older one.
+    expect(older.events[0]!.sequence).toBeLessThan(newest.next_sequence);
+    expect(new Set([...newest.events, ...older.events].map((e) => e.id)).size).toBe(4);
+  });
+
+  it('walks the whole ledger backwards and stops', async () => {
+    const seen: number[] = [];
+    let before: number | undefined;
+    for (let guard = 0; guard < 200; guard += 1) {
+      const page = EventsListResponse.parse(
+        (
+          await admin.post('/v1/events_list', {
+            limit: 20,
+            newest_first: true,
+            ...(before === undefined ? {} : { before_sequence: before }),
+          })
+        ).json(),
+      );
+      seen.push(...page.events.map((e) => e.sequence));
+      if (!page.has_more) break;
+      before = page.next_sequence;
+    }
+    // Every sequence once, strictly descending: a loop that repeated a page
+    // would show duplicates, and one that skipped would leave a hole.
+    expect(new Set(seen).size).toBe(seen.length);
+    expect([...seen].sort((a, b) => b - a)).toEqual(seen);
+    expect(seen).toContain(1);
+  });
 });
 
 describe('the change feed', () => {

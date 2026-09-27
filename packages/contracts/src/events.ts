@@ -96,7 +96,16 @@ export type ObjectType = z.infer<typeof ObjectType>;
  * and passes it back.
  */
 export const EventsListInput = z.object({
+  /** Only events after this. The cursor a feed reading forward carries. */
   after_sequence: z.number().int().nonnegative().default(0),
+  /**
+   * Only events before this. The cursor a feed reading backward carries.
+   *
+   * `newest_first` needs one: without it, asking again after the newest page
+   * answers with the newest page, because `after_sequence` bounds the wrong end
+   * of a descending read.
+   */
+  before_sequence: z.number().int().positive().optional(),
   event_types: z.array(EventType).max(40).default([]),
   category_paths: z.array(CategoryPath).max(20).default([]),
   /**
@@ -107,7 +116,10 @@ export const EventsListInput = z.object({
    * way of asking about an actor they cannot see.
    */
   actor_id: ActorId.optional(),
-  /** Newest first, for a caller that wants the last few rather than the first page. */
+  /**
+   * Newest first, for a caller that wants the last few rather than the first
+   * page. Continue with `before_sequence`, not `after_sequence`.
+   */
   newest_first: z.boolean().default(false),
   limit: z.number().int().min(1).max(500).default(200),
 });
@@ -147,7 +159,13 @@ export type EventSummary = z.infer<typeof EventSummary>;
 
 export const EventsListResponse = z.object({
   events: z.array(EventSummary),
-  /** Where to resume. The same as the last event's sequence, or the cursor. */
+  /**
+   * Where to resume, in whichever direction this page was read.
+   *
+   * Reading forward it is the newest sequence in the page and goes back as
+   * `after_sequence`; reading `newest_first` it is the oldest and goes back as
+   * `before_sequence`. Either way it is the edge this page stopped at.
+   */
   next_sequence: z.number().int().nonnegative(),
   has_more: z.boolean(),
 });

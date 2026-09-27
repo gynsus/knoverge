@@ -92,6 +92,7 @@ export async function eventsList(
     ...(categoryIds.length ? { categoryIds } : {}),
     ...(actorId ? { actorId } : {}),
     ...(input.newest_first ? { newestFirst: true } : {}),
+    ...(input.before_sequence === undefined ? {} : { beforeSequence: input.before_sequence }),
   });
   const page = events.slice(0, input.limit);
   return {

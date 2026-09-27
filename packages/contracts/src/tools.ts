@@ -269,7 +269,7 @@ export const TOOLS: readonly ToolContract[] = [
   {
     name: 'events_list',
     description:
-      'The audit feed: what happened in this workspace and who made it happen, after a cursor. For keeping a copy of the knowledge in step use knowledge_changes instead, which answers your read scope and names no actors.',
+      'The audit feed: what happened in this workspace and who made it happen, after a cursor. Read forward from `after_sequence`, or set `newest_first` for the last few and page back with `before_sequence`; either way `next_sequence` is the edge to carry into the next call. For keeping a copy of the knowledge in step use knowledge_changes instead, which answers your read scope and names no actors.',
     input: EventsListInput,
     output: EventsListResponse,
     readOnly: true,

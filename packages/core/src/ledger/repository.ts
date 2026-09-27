@@ -10,7 +10,16 @@ export interface LedgerHead {
 
 /** What a feed asks of the ledger. */
 export interface EventFeedOptions {
+  /** Only events after this, which is how a feed reads forward. */
   afterSequence: number;
+  /**
+   * Only events before this, which is how a feed reads backward.
+   *
+   * The cursor `newestFirst` needs. Without it, asking for the newest page
+   * again after the newest page answers with the newest page: `afterSequence`
+   * bounds the wrong end for a descending read.
+   */
+  beforeSequence?: number | undefined;
   limit: number;
   eventTypes?: readonly string[] | undefined;
   /** Events whose category snapshot touches one of these. */

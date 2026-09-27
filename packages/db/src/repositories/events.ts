@@ -1,7 +1,7 @@
 import type { EventFeedOptions } from '@knoverge/core';
 import type { EventId, WorkspaceId } from '@knoverge/contracts';
 import type { EventRecord, EventRepository, LedgerHead, Tx } from '@knoverge/core';
-import { and, asc, desc, eq, gt, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql } from 'drizzle-orm';
 
 import { LOCK_LEDGER } from '../locks.ts';
 
@@ -54,6 +54,9 @@ export function createEventRepository(db: Database): EventRepository {
         eq(events.workspaceId, workspaceId),
         gt(events.sequence, options.afterSequence),
       ];
+      if (options.beforeSequence !== undefined) {
+        where.push(lt(events.sequence, options.beforeSequence));
+      }
       if (options.eventTypes?.length) {
         where.push(inArray(events.eventType, [...options.eventTypes]));
       }
