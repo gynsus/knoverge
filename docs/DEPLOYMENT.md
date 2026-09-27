@@ -30,10 +30,17 @@ Expected workflow:
 git clone <repository>
 cd knoverge
 cp .env.example .env
+# Fill in the four values the copy leaves empty: KNOVERGE_POSTGRES_PASSWORD and
+# the three secrets from section 6, each `openssl rand -hex 32`.
 docker volume create knoverge-postgres
 docker volume create knoverge-data
 docker compose up -d
 ```
+
+Nothing generates the four for you, and nothing comes up without them: compose
+stops before starting anything and names the one it is missing. That is the point
+— an installation that started with a password somebody else could guess would be
+worse than one that did not start.
 
 The two volumes are created by hand, once, and declared `external` in
 `docker-compose.yml`. Compose only ever removes volumes it created itself, so

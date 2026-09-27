@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { ConfigError, loadConfig } from '../src/config.ts';
+import { ConfigError, ENV_SCHEMA_KEYS, loadConfig } from '../src/config.ts';
 
 const base = {
   KNOVERGE_DATABASE_URL: 'postgres://u:p@localhost:5432/db',
@@ -100,5 +101,25 @@ describe('loadConfig', () => {
 
   it('rejects an invalid role', () => {
     expect(() => loadConfig({ ...base, KNOVERGE_ROLE: 'admin' })).toThrow(ConfigError);
+  });
+});
+
+describe('the example configuration', () => {
+  /**
+   * Baked into the image at build time, not something an operator sets, so it is
+   * the one variable the example is right to leave out.
+   */
+  const NOT_AN_OPERATOR_SETTING = ['KNOVERGE_VERSION'];
+
+  it('mentions every variable the server reads', () => {
+    // `.env.example` is what an installation is copied from (DEPLOYMENT section 3).
+    // A variable the server reads and the file never names is one an operator finds
+    // out about from the source, which is how two agent budgets went undocumented.
+    const example = readFileSync(new URL('../../../.env.example', import.meta.url), 'utf8');
+    const mentioned = new Set(example.match(/KNOVERGE_[A-Z0-9_]+/g) ?? []);
+    const missing = ENV_SCHEMA_KEYS.filter(
+      (key) => !mentioned.has(key) && !NOT_AN_OPERATOR_SETTING.includes(key),
+    );
+    expect(missing).toEqual([]);
   });
 });
