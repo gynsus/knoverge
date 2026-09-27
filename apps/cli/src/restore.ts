@@ -121,6 +121,10 @@ export async function inspectTarget(
     SELECT count(*)::int AS others FROM pg_stat_activity
     WHERE datname = current_database()
       AND pid <> pg_backend_pid()
+      -- Clients only. An autovacuum worker is a backend on this database with no
+      -- application name, and counting one made the command refuse to run because
+      -- the database was tidying itself up — which CI found before an operator did.
+      AND backend_type = 'client backend'
       AND coalesce(application_name, '') <> ${self}
   `);
   const dataEntries = await readdir(dataDir).catch(() => [] as string[]);
