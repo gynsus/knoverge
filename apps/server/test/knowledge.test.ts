@@ -2210,3 +2210,127 @@ describe('an event says which revision it wrote', () => {
     expect(result.count).toBeGreaterThan(0);
   });
 });
+
+/**
+ * What produced the text, on the file.
+ *
+ * `draft_summary` runs a model and writes nothing; the person saves through the
+ * ordinary write, and until now the model's part disappeared at that moment. It is a
+ * property of the text, so it belongs where a reader with no application can see it
+ * (ADR 0031).
+ */
+describe('a model that phrased an item', () => {
+  const read = async (itemId: string) =>
+    KnowledgeResponse.parse((await admin.get(`/v1/knowledge.get?item_id=${itemId}`)).json()).item;
+
+  it('is named on the item and in the file', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the support hours are',
+          body: 'Until five, every weekday.\n',
+          type: 'summary',
+          drafted_by: 'llama3.1:8b',
+        })
+      ).json(),
+    ).item;
+    expect(item.drafted_by).toBe('llama3.1:8b');
+
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    const file = await readFile(join(repository, item.markdown_path), 'utf8');
+    // The file, because that is what somebody reads without the application, and
+    // what a backup restores.
+    expect(file).toContain('drafted_by: llama3.1:8b');
+  });
+
+  it('survives a write that leaves the body alone', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the delivery window is',
+          body: 'Two working days.\n',
+          type: 'summary',
+          drafted_by: 'llama3.1:8b',
+        })
+      ).json(),
+    ).item;
+    const tagged = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          tags: ['delivery'],
+        })
+      ).json(),
+    ).item;
+    // Changing a tag does not make a drafted summary hand-written.
+    expect(tagged.drafted_by).toBe('llama3.1:8b');
+    expect(tagged.tags).toEqual(['delivery']);
+  });
+
+  it('is gone once somebody rewrites the text', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the refund policy says',
+          body: 'Thirty days, unopened.\n',
+          type: 'summary',
+          drafted_by: 'llama3.1:8b',
+        })
+      ).json(),
+    ).item;
+    const rewritten = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          body: 'Thirty days, unopened, with the receipt.\n',
+        })
+      ).json(),
+    ).item;
+    // A field claiming a model phrased text somebody typed would be worse than no
+    // field at all.
+    expect(rewritten.drafted_by).toBeNull();
+
+    const repository = join(dataDir, 'repositories', item.workspace_id);
+    const file = await readFile(join(repository, item.markdown_path), 'utf8');
+    expect(file).not.toContain('drafted_by');
+  });
+
+  it('is what that revision said, when an older one is read back', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'What the escalation path is',
+          body: 'Support, then the on-call engineer.\n',
+          type: 'summary',
+          drafted_by: 'llama3.1:8b',
+        })
+      ).json(),
+    ).item;
+    await admin.post('/v1/admin/knowledge.update', {
+      item_id: item.id,
+      base_revision_id: item.current_revision_id,
+      base_content_hash: item.content_hash,
+      body: 'Support, then the on-call engineer, then the duty manager.\n',
+    });
+    const now = await read(item.id);
+    expect(now.drafted_by).toBeNull();
+    // The history says when the text stopped being a model's and became somebody's
+    // own, which is the point of the field being per revision.
+    // Through the tool route, which takes a revision. The browser route above
+    // always reads the current one: the editor writes back what it was given,
+    // and the history is read through `knowledge.diff`.
+    const older = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/knowledge_get', {
+          item_id: item.id,
+          revision_id: item.current_revision_id,
+        })
+      ).json(),
+    ).item;
+    expect(older.drafted_by).toBe('llama3.1:8b');
+  });
+});

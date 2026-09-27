@@ -151,6 +151,7 @@ export class KnowledgeService {
           sources: [...(input.sources ?? [])],
           relations: [...(input.relations ?? [])],
           ...(input.summaryOf?.length ? { summary_of: [...input.summaryOf] } : {}),
+          ...(input.draftedBy ? { drafted_by: input.draftedBy } : {}),
           ...(input.external ? { external: input.external } : {}),
         } as Frontmatter;
 
@@ -420,6 +421,13 @@ export class KnowledgeService {
         } as Frontmatter;
 
         assertPeriod(draft, input.itemId);
+        // Kept by a write that leaves the body alone, cleared by one that changes it:
+        // changing a tag does not make a drafted summary hand-written, and a field
+        // claiming a model phrased text somebody typed would be worse than no field
+        // (ADR 0031). A delete rather than an omission, because the draft is spread
+        // from the previous frontmatter and already carries it.
+        if (input.draftedBy) draft.drafted_by = input.draftedBy;
+        else if (input.body !== undefined) delete (draft as { drafted_by?: unknown }).drafted_by;
         // A type changed away from `summary` drops the list with it: an item
         // that is not a summary claiming to summarise things is a claim nothing
         // reads and the frontmatter schema refuses outright.
@@ -761,6 +769,7 @@ export class KnowledgeService {
               updated_at: now.toISOString(),
               sources: [...(input.newItem!.sources ?? [])],
               relations,
+              ...(input.newItem!.draftedBy ? { drafted_by: input.newItem!.draftedBy } : {}),
               ...(input.newItem!.summaryOf?.length
                 ? { summary_of: [...input.newItem!.summaryOf] }
                 : {}),

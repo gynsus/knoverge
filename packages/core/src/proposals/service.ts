@@ -223,6 +223,11 @@ function editsToPayload(edits: ProposalEditsInput): Partial<ProposedUpdatePayloa
     sources: edits.sources ? [...edits.sources] : undefined,
     relations: edits.relations ? [...edits.relations] : undefined,
     summary_of: edits.summaryOf ? [...edits.summaryOf] : undefined,
+    // Never from a reviewer: what produced the text is the proposer's account of
+    // their own work, and a reviewer who rewrites the body is the author of what
+    // they wrote. Undefined and not absent because the type above asks for every
+    // key; the merge below is what drops what the proposal said (ADR 0031).
+    drafted_by: undefined,
   };
   return Object.fromEntries(Object.entries(mapped).filter(([, value]) => value !== undefined));
 }
@@ -248,6 +253,11 @@ export interface ResolveProposalInput {
  * a validity window and a summary's dependencies went the same way later.
  */
 function nothingLeft(_rest: Record<string, never>): void {}
+
+/** Without the keys an edit dropped: jsonb keeps an explicit undefined as null. */
+function prune(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
+}
 
 /**
  * The payload as its schema says it should be.
@@ -293,6 +303,7 @@ function contentPayload(input: CreateItemInput): ProposedCreatePayload {
     sources: [...(input.sources ?? [])],
     relations: [...(input.relations ?? [])],
     summary_of: [...(input.summaryOf ?? [])],
+    drafted_by: input.draftedBy,
   };
   // Undefined is not a value jsonb keeps, and a key stored as null reads back
   // as "given and empty" rather than "never asked about".
@@ -318,6 +329,7 @@ function contentInput(payload: ProposedCreatePayload): CreateItemInput {
     sources,
     relations,
     summary_of,
+    drafted_by,
     ...rest
   } = payload;
   nothingLeft(rest);
@@ -336,6 +348,7 @@ function contentInput(payload: ProposedCreatePayload): CreateItemInput {
     ...(sources ? { sources } : {}),
     ...(relations ? { relations } : {}),
     ...(summary_of ? { summaryOf: summary_of } : {}),
+    ...(drafted_by ? { draftedBy: drafted_by } : {}),
   };
 }
 
@@ -480,6 +493,7 @@ export class ProposalService {
       sources: input.sources ? [...input.sources] : undefined,
       relations: input.relations ? [...input.relations] : undefined,
       summary_of: input.summaryOf ? [...input.summaryOf] : undefined,
+      drafted_by: input.draftedBy,
     };
     // A field left out is left alone, so only what was given is stored.
     const payload = Object.fromEntries(
@@ -900,6 +914,10 @@ export class ProposalService {
       });
     }
     const given = editsToPayload(edits);
+    // A reviewer who rewrote the text is its author, so the proposer's claim that a
+    // model produced it goes with the old body (ADR 0031).
+    const dropped: Record<string, unknown> =
+      edits.body !== undefined ? { drafted_by: undefined } : {};
     if (proposal.proposalType === 'knowledge_supersede') {
       const p = read(ProposedSupersedePayload, proposal.proposedPayload, proposal.id);
       if (!p.new_item) {
@@ -912,9 +930,12 @@ export class ProposalService {
           { objectIds: { proposal: proposal.id } },
         );
       }
-      return { ...proposal.proposedPayload, new_item: { ...p.new_item, ...given } };
+      return {
+        ...proposal.proposedPayload,
+        new_item: prune({ ...p.new_item, ...given, ...dropped }),
+      };
     }
-    return { ...proposal.proposedPayload, ...given };
+    return prune({ ...proposal.proposedPayload, ...given, ...dropped });
   }
 
   /**
@@ -1217,6 +1238,7 @@ export class ProposalService {
       sources,
       relations,
       summary_of,
+      drafted_by,
       ...rest
     } = read(ProposedUpdatePayload, payload, proposalId);
     nothingLeft(rest);
@@ -1238,6 +1260,7 @@ export class ProposalService {
       ...(valid_until !== undefined ? { validUntil: valid_until } : {}),
       ...(observed_at !== undefined ? { observedAt: observed_at } : {}),
       ...(summary_of !== undefined ? { summaryOf: summary_of } : {}),
+      ...(drafted_by !== undefined ? { draftedBy: drafted_by } : {}),
     };
   }
 

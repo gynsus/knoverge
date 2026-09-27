@@ -316,6 +316,16 @@ export const Frontmatter = z
     external: FrontmatterExternal.optional(),
     /** Only for `type: summary`: the revisions the summary was made from. */
     summary_of: z.array(SummaryDependencyRef).max(MAX_SUMMARY_DEPENDENCIES).optional(),
+    /**
+     * The model that produced the text of this revision, when one did.
+     *
+     * A property of the text, which is why it is on the file rather than in the
+     * event or among the sources: a reader of the repository with no application
+     * anywhere is exactly who needs to know that a model phrased this (ADR 0031).
+     * It says nothing about who checked it — `review` says that — and it is cleared
+     * by a write that changes the body without claiming it again.
+     */
+    drafted_by: ModelName.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -357,6 +367,7 @@ export const FRONTMATTER_KEY_ORDER = [
   'disputed_by',
   'external',
   'summary_of',
+  'drafted_by',
 ] as const satisfies readonly (keyof Frontmatter)[];
 
 /** A revision as the commit trailers name it: `<item>@<revision> <kind>`. */
@@ -430,6 +441,14 @@ export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
    */
   summary_of: z.array(SummaryDependencyRef),
   /**
+   * The model that produced this revision's text, when one did (ADR 0031).
+   *
+   * Null for text somebody wrote, and for text a model drafted and a person then
+   * rewrote: the field is cleared by a write that changes the body without claiming
+   * it again.
+   */
+  drafted_by: ModelName.nullable(),
+  /**
    * Which items contradict this one, which `relations` cannot say: a
    * contradiction is recorded on the item that reported it, and this is the
    * other end of it. Empty unless `disputed` is true. See ADR 0022.
@@ -484,6 +503,14 @@ export const CreateKnowledgeRequest = z.object({
     .describe(
       'Only for `type: summary`: the items and the exact revisions of them this was made from, as `<item id>@<revision id>`. The revision matters — a summary goes stale when one of them moves on, which is how anybody knows to look at it again.',
     ),
+  /**
+   * The model that produced this text, when one did.
+   *
+   * What `knowledge.draft_summary` answered with, sent back by whoever read the
+   * draft and kept it. Recorded on the file, because a model phrasing an item is a
+   * property of the text (ADR 0031).
+   */
+  drafted_by: ModelName.optional(),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
   /**
@@ -820,6 +847,9 @@ export const UpdateKnowledgeRequest = z.object({
     .describe(
       'Replaces the whole list when given. Only for `type: summary`. Naming the current revisions of the same sources is how a summary stops being stale.',
     ),
+  drafted_by: ModelName.optional().describe(
+    'The model that produced the text you are sending, when one did. A write that changes the body without this clears whatever the item said before: a field claiming a model phrased text somebody typed would be worse than no field (ADR 0031).',
+  ),
   request_id: z.string().max(128).optional(),
   idempotency_key: z.string().max(128).optional(),
   /**

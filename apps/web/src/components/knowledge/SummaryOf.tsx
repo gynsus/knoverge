@@ -93,7 +93,8 @@ export function SummaryOfEditor({
   selfId: string;
   onChange: (refs: string[]) => void;
   /** The drafted text, for the caller to put in the body. */
-  onDrafted: (body: string) => void;
+  /** The text, and the model that produced it, which the save records (ADR 0031). */
+  onDrafted: (body: string, model: string) => void;
 }) {
   const { t } = useTranslation();
   const pairs = refs.map((ref) => splitDependencyRef(ref));
@@ -129,7 +130,7 @@ export function SummaryOfEditor({
       }),
     onSuccess: (answer) => {
       onChange([...answer.summary_of]);
-      onDrafted(answer.body);
+      onDrafted(answer.body, answer.model);
     },
   });
 

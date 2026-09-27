@@ -115,6 +115,9 @@ function detail(result: ItemResult): KnowledgeItemDetail {
     // summary should say what that revision was made from, not what the current
     // one is.
     summary_of: revision.frontmatter.summary_of ?? [],
+    // From the revision like the rest: reading an older revision should say what
+    // produced that text, not what produced the current one (ADR 0031).
+    drafted_by: revision.frontmatter.drafted_by ?? null,
     stale: result.stale,
     categories: result.categories,
     tags: result.tags,

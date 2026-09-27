@@ -1485,6 +1485,41 @@ describe('what a proposal carries survives review', () => {
     expect((await read(result.item_id)).valid_from).toBe('2026-03-01T00:00:00.000Z');
   });
 
+  it('keeps the model that phrased the text', async () => {
+    const proposal = await pendingCreate('Drafting proposer', {
+      title: 'What the courier does with a missed parcel',
+      body: 'Held at the depot for five working days.\n',
+      drafted_by: 'llama3.1:8b',
+    });
+    const approved = ProposalResult.parse(
+      (await admin.post('/v1/proposal_approve', { proposal_id: proposal.id })).json(),
+    );
+    // A proposal is where a model's wording usually arrives, so dropping the
+    // field on the way through review would leave the claim looking hand-written.
+    expect((await read(approved.item_id)).drafted_by).toBe('llama3.1:8b');
+  });
+
+  it('drops it when the reviewer writes the text themselves', async () => {
+    const proposal = await pendingCreate('Redrafting proposer', {
+      title: 'How the warehouse numbers its shelves',
+      body: 'Aisle letter, then bay number, painted on the floor.\n',
+      drafted_by: 'llama3.1:8b',
+    });
+    const res = await admin.post('/v1/proposal_approve', {
+      proposal_id: proposal.id,
+      edits: { body: 'The bay number is painted on the shelf as well as the floor.\n' },
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const result = ProposalResult.parse(res.json());
+    // The reviewer's own sentences, and a field naming a model would be a claim
+    // about text no model wrote (ADR 0031).
+    expect((await read(result.item_id)).drafted_by).toBeNull();
+    const detail = (await admin.get(`/v1/proposal.get?proposal_id=${proposal.id}`)).json() as {
+      proposal: { proposed_payload: Record<string, unknown> };
+    };
+    expect(detail.proposal.proposed_payload).not.toHaveProperty('drafted_by');
+  });
+
   it('says which candidates the proposer ruled out', async () => {
     // Recorded since the first proposal and served to nobody, so the queue could
     // not say why a second item was proposed rather than the first one edited.

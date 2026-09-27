@@ -272,6 +272,22 @@ A value the server will refuse is refused on the screen first. Both have to
 check — the API is public and the browser is not the only caller — but nobody
 should have to press Save to be told what was already visible.
 
+## 2m1. Text a model drafted says so where it is read
+
+The drawer that asks a model to draft a summary already says which model answered,
+while the draft is on the screen and before it is saved. The field it fills is sent
+with the save, so the item itself carries the model's name and the drawer shows it
+next to the text on every later reading.
+
+Both are needed, because they answer different questions. The notice says "read
+this before you save it". The row says "a model phrased what you are reading" to
+somebody who was not there when it was written, which is what decides how closely
+they read it.
+
+The form sends the field only when a model drafted the text it is sending. A save
+of a hand-written body that named a model would be a claim about text nobody's
+model wrote, which is worse than no field at all (ADR 0031).
+
 ## 2n. A control sits with what it governs
 
 The ledger shows a digest of a period above a feed of everything. The period

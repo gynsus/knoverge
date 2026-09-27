@@ -284,6 +284,15 @@ export function ItemDetails({
               <dd className="text-foreground">
                 <Validity item={item} />
               </dd>
+              {/* What produced the text, when a model did. Beside the dates rather
+                  than near the review state on purpose: `review` says who checked
+                  it, and this says what wrote the first version (ADR 0031). */}
+              {item.drafted_by && (
+                <>
+                  <dt>{t('knowledge.drafted_by')}</dt>
+                  <dd className="text-foreground">{item.drafted_by}</dd>
+                </>
+              )}
               {item.observed_at && (
                 <>
                   <dt>{t('knowledge.observed_at')}</dt>

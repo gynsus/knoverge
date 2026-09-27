@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { ModelName } from './ai.ts';
 import { PolicyEffect } from './policy.ts';
 import { ActorId, KnowledgeItemId, ProposalId, RevisionId, WorkspaceId } from './ids.ts';
 import { LanguageTag } from './identity.ts';
@@ -73,6 +74,8 @@ export const ProposedContent = z.object({
   sources: z.array(FrontmatterSource).max(50).optional(),
   relations: z.array(FrontmatterRelation).max(50).optional(),
   summary_of: z.array(SummaryDependencyRef).max(MAX_SUMMARY_DEPENDENCIES).optional(),
+  /** The model that produced the text, when one did (ADR 0031). */
+  drafted_by: ModelName.optional(),
 });
 export type ProposedContent = z.infer<typeof ProposedContent>;
 
@@ -251,10 +254,16 @@ export type ProposeSupersedeRequest = z.infer<typeof ProposeSupersedeRequest>;
  *
  * Derived from the payload rather than written out again, so that a field a
  * proposal can carry is a field a reviewer can correct and the two lists cannot
- * drift apart. Not the slug, which decides where the file lives, and not
- * `external`, which is the source system's own key for the record.
+ * drift apart. Not the slug, which decides where the file lives; not `external`,
+ * which is the source system's own key for the record; and not `drafted_by`, because
+ * what produced the text is the proposer's account of their own work and a reviewer
+ * who rewrites the body is the author of what they wrote (ADR 0031).
  */
-export const ProposalEdits = ProposedContent.omit({ slug: true, external: true });
+export const ProposalEdits = ProposedContent.omit({
+  slug: true,
+  external: true,
+  drafted_by: true,
+});
 export type ProposalEdits = z.infer<typeof ProposalEdits>;
 
 /**
