@@ -569,6 +569,49 @@ The activity tab is the ledger narrowed to one actor, newest first —
 narrows to the caller's own for anybody else, so naming an actor is not a way
 of reading about one you cannot see.
 
+## The ledger in the browser
+
+`apps/web/src/pages/LedgerPage.tsx` is the screen the product is named after.
+Until it existed, events were visible on an agent's card and in a category's
+history, and `activity_digest` had no interface at all: the one feature that says
+what a week came to was reachable only by an agent.
+
+Two bands, because a reader arrives with two questions. The summary is the digest
+— counts, the items it touched and the proposals it decided, each leading to the
+thing itself. The feed below is the chain, newest first, read backwards a page at
+a time through `before_sequence`. Reading a descending feed with
+`after_sequence` hands back the newest page for ever, which is the defect that
+put `before_sequence` in the contract.
+
+**One vocabulary for the whole screen.** The digest names a change by its event
+type with the prefix taken off — `updated`, `approved` — so both bands label them
+through `events.types.*`, and "Item changed" means the same thing in the summary
+and in the feed. A test holds that every event type has a label in every locale:
+an unnamed one falls back to the enum, which is the schema leaking into the
+product.
+
+`components/ledger/groups.ts` is the filter. Fifty types in a select is a list
+nobody reads, so a group is a set of types and not a prefix:
+`knowledge.proposed_create` belongs with the proposals, `command.denied` with
+them too. A test holds that every type is in exactly one group — a type in none is
+one the filter hides without saying so, and a type in two is one whose count a
+reader meets twice. The group is sent to the server as `event_types`, because the
+page is paged and filtering the page in the browser answers a question nobody
+asked.
+
+The narrative is a button. It costs a model call, it answers null when nothing is
+configured, and the counts are the digest without it (rule 9) — so the screen says
+which model wrote the paragraph, and says plainly that none is configured rather
+than leaving the button to do nothing. Both the longer period and the prose keep
+the previous counts on screen while they are fetched, because it is the same
+summary either side of the wait.
+
+Without `events.read_all` both bands answer with the reader's own events, and the
+page says so. A quiet ledger and a narrowed one look identical, and "nothing
+happened" is the wrong thing for somebody to conclude about a workspace they can
+only see their own corner of. The line waits for the permissions to arrive rather
+than flashing while they do — `can` is false before the answer comes back.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

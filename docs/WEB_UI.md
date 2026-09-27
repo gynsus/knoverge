@@ -272,6 +272,19 @@ A value the server will refuse is refused on the screen first. Both have to
 check — the API is public and the browser is not the only caller — but nobody
 should have to press Save to be told what was already visible.
 
+## 2n. A control sits with what it governs
+
+The ledger shows a digest of a period above a feed of everything. The period
+selector belongs inside the digest, beside its heading, and not in a toolbar at
+the top of the page. Put at the top it looks like it bounds both, and the moment
+somebody picks a month and the feed below does not move, the screen reads as
+broken.
+
+So the test for where a control goes is what changes when it is used. A filter
+that narrows one band is drawn inside that band; a filter that narrows the page
+is drawn once at the top. A test holds the ledger's two apart: choosing a period
+refetches the digest and must leave the feed's request count where it was.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   RefreshCw,
+  ScrollText,
   Settings,
   ShieldCheck,
 } from 'lucide-react';
@@ -51,6 +52,9 @@ const NAV = [
   { to: '/review', key: 'review', icon: Inbox, needs: 'knowledge.approve' },
   { to: '/sync', key: 'sync', icon: RefreshCw, needs: 'proposal.read_all' },
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },
+  // Everybody, down to a read-only member, holds `events.read_own`; what that
+  // narrows is what the page answers with, not whether it is offered.
+  { to: '/ledger', key: 'ledger', icon: ScrollText, needs: 'events.read_own' },
   { to: '/agents', key: 'agents', icon: Bot, needs: 'agent.manage' },
   { to: '/policy', key: 'policy', icon: ShieldCheck, needs: 'policy.manage' },
   { to: '/workspaces', key: 'workspaces', icon: Building2 },
