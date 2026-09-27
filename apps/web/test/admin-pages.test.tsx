@@ -451,6 +451,53 @@ describe('taxonomy page', () => {
     expect(screen.getByRole('button', { name: 'In use' })).toBeInTheDocument();
   });
 
+  it('says how far archiving reaches before it happens', async () => {
+    // It was a menu item that acted on click and answered with a toast, so a
+    // branch of several sections closed as quietly as an empty one. Archiving
+    // takes the whole subtree in one write (WEB_UI rule 4).
+    const parent = {
+      ...CATEGORY,
+      id: 'cat_p',
+      slug: 'projects',
+      path: 'projects',
+      name: 'Projects',
+    };
+    const child = {
+      ...CATEGORY,
+      id: 'cat_c',
+      parent_id: 'cat_p',
+      slug: 'brisbane',
+      path: 'projects/brisbane',
+      name: 'Brisbane',
+      item_count: 7,
+    };
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () =>
+        json({ taxonomy_version: 2, categories: [parent, child] }),
+      'POST /v1/admin/taxonomy.archive': () => json({ taxonomy_version: 3, category: parent }),
+    });
+    const user = userEvent.setup();
+    renderApp('/taxonomy');
+
+    await user.click(await screen.findByRole('button', { name: 'Actions for Projects' }));
+    await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
+    const dialog = await screen.findByRole('dialog');
+    // The reach of the one click, counted from what the screen can already see.
+    expect(within(dialog).getByText(/1 under it/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/7 records/)).toBeInTheDocument();
+    // And that it can be undone, which is why this is not a destructive button.
+    expect(within(dialog).getByText(/Restore brings the whole branch back/)).toBeInTheDocument();
+    // Nothing sent yet: the consequence goes on screen before the click.
+    expect(calls.some((c) => c.url.includes('taxonomy.archive'))).toBe(false);
+
+    await user.click(within(dialog).getByRole('button', { name: 'Archive' }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes('taxonomy.archive'))).toBe(true));
+    expect(calls.find((c) => c.url.includes('taxonomy.archive'))?.body).toEqual({
+      category_id: 'cat_p',
+    });
+  });
+
   it('searches names, paths, aliases and descriptions, and keeps the ancestors', async () => {
     const parent = {
       ...CATEGORY,
@@ -1483,6 +1530,7 @@ describe('knowledge page', () => {
     relations: [],
     disputed_by: [],
     summary_of: [],
+    superseded_by: null,
     content_hash: 'sha256:' + 'a'.repeat(64),
     frontmatter_hash: 'sha256:' + 'b'.repeat(64),
     revision_number: 1,
@@ -1643,6 +1691,37 @@ describe('knowledge page', () => {
     // "supersedes kn_01J8..." tells a reader nothing they can act on.
     expect(await within(drawer).findByRole('button', { name: 'The older decision' })).toBeVisible();
     expect(within(drawer).getByText('Supersedes')).toBeInTheDocument();
+  });
+
+  it('says what replaced an item, which is what its status raises', async () => {
+    // The file carried `superseded_by` and the API did not, so a reader met an
+    // item whose status said `superseded` and nothing that said by what.
+    const replacement = {
+      ...DETAIL,
+      id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1TR',
+      title: 'The decision that replaced it',
+    };
+    mockApi({
+      ...ROUTES,
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () =>
+        json({ item: { ...DETAIL, status: 'superseded', superseded_by: replacement.id } }),
+      [`GET /v1/knowledge.get?item_id=${replacement.id}`]: () => json({ item: replacement }),
+    });
+    renderApp(`/knowledge?item=${ITEM.id}`);
+    const drawer = await screen.findByRole('dialog');
+
+    expect(await within(drawer).findByText('Replaced by')).toBeInTheDocument();
+    // Named, and it opens: an id on screen is a thing somebody has to look up.
+    const link = await within(drawer).findByRole('button', {
+      name: 'The decision that replaced it',
+    });
+    const user = userEvent.setup();
+    await user.click(link);
+    expect(
+      await within(await screen.findByRole('dialog')).findByRole('heading', {
+        name: 'The decision that replaced it',
+      }),
+    ).toBeVisible();
   });
 
   it('says a claim always held when nothing said otherwise', async () => {

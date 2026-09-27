@@ -285,3 +285,68 @@ export function DeleteDialog({
     </Dialog>
   );
 }
+
+export interface ArchiveDialogProps {
+  category: CategorySummary | null;
+  categories: readonly CategorySummary[];
+  onClose: () => void;
+  onConfirm: () => void;
+  busy: boolean;
+  error: unknown;
+}
+
+/**
+ * Closing a category, and everything under it.
+ *
+ * Archiving takes the whole subtree out of the active tree in one write, which is
+ * the part nobody could see: it was a menu item that acted on click and answered
+ * with a toast, so a branch of nine sections closed as quietly as an empty one
+ * (WEB_UI rule 4).
+ *
+ * Not `destructive`, and it says so: the knowledge stays where it is, the files do
+ * not move, and Restore brings the branch back. What makes this worth a dialog is
+ * the reach of one click, not the risk of losing anything.
+ */
+export function ArchiveDialog({
+  category,
+  categories,
+  onClose,
+  onConfirm,
+  busy,
+  error,
+}: ArchiveDialogProps) {
+  const { t } = useTranslation();
+  if (!category) return null;
+  const inside = categories.filter(
+    (c) => c.path.startsWith(`${category.path}/`) && c.status === 'active',
+  );
+  const items = inside.reduce((total, c) => total + c.item_count, category.item_count);
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t('taxonomy.archive_title')}</DialogTitle>
+          <DialogDescription>{t('taxonomy.archive_intro')}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <p className="font-medium">{category.name}</p>
+          <p className="font-mono text-xs text-muted-foreground">{category.path}</p>
+        </div>
+        <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
+          <p>{t('taxonomy.archive_effect', { categories: inside.length, items })}</p>
+          <p className="text-muted-foreground">{t('taxonomy.archive_reversible')}</p>
+        </div>
+        <ErrorNotice error={error} />
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>
+            {t('common.cancel')}
+          </Button>
+          <Button type="button" disabled={busy} onClick={onConfirm}>
+            {busy ? t('common.working') : t('taxonomy.archive')}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

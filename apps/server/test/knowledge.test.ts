@@ -1630,6 +1630,18 @@ describe('superseding an item', () => {
     expect(oldFile).toContain('status: superseded');
     // Not a second relation, which would be a second thing to disagree.
     expect(oldFile).not.toContain('type: supersedes');
+
+    // And the answer says it too. The file carried it and the API did not, so a
+    // reader met an item whose status said `superseded` and nothing that said by
+    // what — the one question that status raises.
+    expect(result.superseded.superseded_by).toBe(result.item.id);
+    const reread = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${old.id}`)).json(),
+    ).item;
+    expect(reread.superseded_by).toBe(result.item.id);
+    // The replacement is not superseded by anything, and says so rather than
+    // pointing at itself.
+    expect(result.item.superseded_by).toBeNull();
   });
 
   it('lets an item the workspace already holds take over', async () => {

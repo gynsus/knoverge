@@ -29,7 +29,12 @@ import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { CategoryDetails } from '../components/taxonomy/CategoryDetails.tsx';
 import { CategorySheet } from '../components/taxonomy/CategorySheet.tsx';
 import { CategoryTree } from '../components/taxonomy/CategoryTree.tsx';
-import { DeleteDialog, MergeDialog, MoveDialog } from '../components/taxonomy/TaxonomyDialogs.tsx';
+import {
+  ArchiveDialog,
+  DeleteDialog,
+  MergeDialog,
+  MoveDialog,
+} from '../components/taxonomy/TaxonomyDialogs.tsx';
 import { ProposedCategory } from '../components/taxonomy/ProposedCategory.tsx';
 import { TaxonomyHistory } from '../components/taxonomy/TaxonomyHistory.tsx';
 
@@ -64,6 +69,7 @@ export function TaxonomyPage() {
   const [moving, setMoving] = useState<CategorySummary | null>(null);
   const [merging, setMerging] = useState<CategorySummary | null>(null);
   const [deleting, setDeleting] = useState<CategorySummary | null>(null);
+  const [archiving, setArchiving] = useState<CategorySummary | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   /** Which proposed category is open, when one is instead of a real one. */
@@ -241,6 +247,7 @@ export function TaxonomyPage() {
     mutationFn: (category: CategorySummary) => adminApi.taxonomy.archive(category.id),
     onSuccess: async () => {
       await refresh();
+      setArchiving(null);
       done(t('taxonomy.archived'));
     },
   });
@@ -270,7 +277,10 @@ export function TaxonomyPage() {
     onEdit: (category: CategorySummary) => openSheet(category, null),
     onMove: setMoving,
     onMerge: setMerging,
-    onArchive: (category: CategorySummary) => archive.mutate(category),
+    onArchive: (category: CategorySummary) => {
+      archive.reset();
+      setArchiving(category);
+    },
     onDelete: (category: CategorySummary) => {
       remove.reset();
       setDeleting(category);
@@ -420,7 +430,7 @@ export function TaxonomyPage() {
       </div>
 
       <ErrorNotice error={taxonomy.isError ? taxonomy.error : undefined} />
-      <ErrorNotice error={archive.error ?? restore.error} />
+      <ErrorNotice error={restore.error} />
       {taxonomy.isPending && <p role="status">{t('common.loading')}</p>}
 
       {taxonomy.data && all.length > 0 && (
@@ -554,6 +564,14 @@ export function TaxonomyPage() {
         onConfirm={(intoId) => merge.mutate(intoId)}
         busy={merge.isPending}
         error={merge.error}
+      />
+      <ArchiveDialog
+        category={archiving}
+        categories={all}
+        onClose={() => setArchiving(null)}
+        onConfirm={() => archiving && archive.mutate(archiving)}
+        busy={archive.isPending}
+        error={archive.error}
       />
       <DeleteDialog
         category={deleting}
