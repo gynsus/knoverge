@@ -390,13 +390,41 @@ KNOVERGE_DATA_VOLUME=knoverge_knoverge-data
 ## 9. Backups
 
 A complete backup contains the database, the data directory and the secrets. The
-first two are taken together by the `backup` service; the third is yours to keep
-somewhere else.
+first two are taken together, on a schedule by the `backup` service or on demand by
+`knoverge backup`; the third is yours to keep somewhere else.
 
 ```bash
 docker volume create knoverge-backups
 docker compose --profile backup up -d
 ```
+
+### On demand, with nothing writing
+
+```bash
+docker compose exec knoverge knoverge backup --out /backups --keep 14
+```
+
+Same layout, one difference, and it is the one that matters: this takes the write
+lock of every workspace and holds it for the whole run, so no canonical write can
+start while the dump and the archive are taken. The scheduled service cannot do
+that — it is a separate container with read-only access to the data and no way to
+reach the locks — so its backups carry the skew described below. This one does not.
+
+A workspace that is being written when the command starts makes it wait, and the
+server bounds that wait; a command that cannot get the locks fails rather than
+taking a skewed backup. The manifest records where each workspace's ledger stood
+under the lock:
+
+```text
+taken_at=20260927T112951Z
+taken_by=knoverge backup
+order=postgres-then-data
+locked=every-workspace
+data_dir=/data
+workspace=ws_01M348EV806RS0Y5XFXCZFFATD slug=knoverge sequence=199
+```
+
+so a restore can check it came back to the sequence it was taken at.
 
 It is a profile rather than a default service because a complete installation is
 one application container plus PostgreSQL, and an operator with their own backup
@@ -429,9 +457,9 @@ and the order decides which way:
   and nothing can repair it, because the knowledge itself is the part that is
   missing.
 
-So the script dumps first. The skew is not eliminated — only `knoverge backup`
-(Milestone 9), which takes the workspace write lock for the duration, will do
-that — but it is pushed onto the side that is detectable and repairable.
+So the script dumps first. The skew is not eliminated — `knoverge backup` is what
+eliminates it, by holding every workspace write lock for the duration — but it is
+pushed onto the side that is detectable and repairable.
 
 ### Secrets
 

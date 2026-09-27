@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { agentCommand } from '../src/commands/agent.ts';
+import { backupCommand } from '../src/commands/backup.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
@@ -13,6 +14,7 @@ import { workspaceCommand } from '../src/commands/workspace.ts';
 /** The surface the deployment guide tells operators to use. */
 const EXPECTED: Record<string, string[]> = {
   agent: ['create', 'list', 'disable', 'token'],
+  backup: [],
   bootstrap: [],
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
   mcp: ['check', 'stdio'],
@@ -25,6 +27,7 @@ const EXPECTED: Record<string, string[]> = {
 
 const commands = [
   agentCommand(),
+  backupCommand(),
   bootstrapCommand(),
   dbCommand(),
   ledgerCommand(),

@@ -431,6 +431,9 @@ importers:
         specifier: 'catalog:'
         version: 2.9.1
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: 'catalog:'
+        version: 12.1.0
       '@types/node':
         specifier: 'catalog:'
         version: 24.13.5
