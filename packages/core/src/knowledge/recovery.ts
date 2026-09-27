@@ -354,9 +354,9 @@ export class KnowledgeRecovery {
         objectType: 'knowledge_item',
         objectId: plan.itemId,
         categoryIds: plan.categories.map((c) => c.categoryId),
+        afterRevisionId: plan.revisionId,
+        afterContentHash: revision.contentHash,
         metadata: {
-          revision: plan.revisionId,
-          content_hash: revision.contentHash,
           git_commit: plan.commitHash,
           change_kind: plan.kind,
           // So the feed shows this was written by recovery rather than by the

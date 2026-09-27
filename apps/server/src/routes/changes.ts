@@ -120,8 +120,11 @@ export async function knowledgeChanges(
         sequence: event.sequence,
         change_kind: KINDS[event.eventType] as ChangeKindFeed,
         item_id: event.objectId,
-        revision_id: text(event.metadata, 'revision') ?? event.afterRevisionId,
-        content_hash: text(event.metadata, 'content_hash') ?? event.afterContentHash,
+        // The columns, and the metadata only for events written before the
+        // columns were filled in. The ledger is append-only, so those rows stay
+        // exactly as they were written (ADR 0028).
+        revision_id: event.afterRevisionId ?? text(event.metadata, 'revision'),
+        content_hash: event.afterContentHash ?? text(event.metadata, 'content_hash'),
         frontmatter_hash: text(event.metadata, 'frontmatter_hash'),
         // A taxonomy event carries no item categories; the snapshot it does
         // carry is the category it was about, which is the same on both sides.

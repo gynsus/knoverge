@@ -546,6 +546,15 @@ Two feeds are derived from the ledger:
 - **audit feed** (`events_list`): all events, gated by `events.read_own` / `events.read_all`;
 - **knowledge change feed** (`knowledge_changes`): only `knowledge.*`, `relation.*` and `category.*` events, filtered by the caller's `knowledge.read` scope using `category_ids_json`.
 
+The four revision columns are where a write records what it changed, as rule 3
+asks: `before_revision_id` and `before_content_hash` are what the caller read,
+`after_revision_id` and `after_content_hash` what the write produced. They were
+null for a long time while knowledge writes kept the same facts in
+`metadata_json` under other names, and events written in that period keep them
+there — the chain covers the metadata, so rewriting a row to tidy the shape would
+break it (ADR 0028). The derived feeds read the column first and the metadata
+second for exactly that reason; the audit feed serves the row as it stands.
+
 `category_ids_json` holds the union of where the item was and where it ended
 up, not only the latter. ADR 0010 says an item that leaves the caller's scope
 must appear to them as `deleted`; with only the new categories, an item moved
