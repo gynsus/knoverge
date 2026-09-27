@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,6 +25,7 @@ const ok = { status: 'ok' as const };
 
 let container: StartedPostgreSqlContainer;
 let dataDir: string;
+let webDist: string;
 let services: Services;
 let app: FastifyInstance;
 
@@ -91,16 +92,25 @@ beforeAll(async () => {
     poolMax: 4,
   });
   await runMigrations(services.database.db, migrationsFolder);
+  // A shell to serve, because the style nonce lives in it and only a build with
+  // the security plugin has one to put there.
+  webDist = await mkdtemp(join(tmpdir(), 'knoverge-web-'));
+  await writeFile(
+    join(webDist, 'index.html'),
+    '<!doctype html><html><head><title>Knoverge</title></head><body><div id="root"></div></body></html>',
+  );
   app = await buildApp({
     version: 'test',
     probes: { database: async () => ok, dataDir: async () => ok },
     services,
     security: { sessionSecret: 'e'.repeat(64), cookieSecure: false },
+    webDist,
   });
 });
 
 afterAll(async () => {
   if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (webDist) await rm(webDist, { recursive: true, force: true });
   await app?.close();
   await services?.close();
   await container?.stop();
@@ -573,5 +583,37 @@ describe('accepting the terms', () => {
     // to answer later who agreed to what.
     expect(user?.termsVersion).toBe(TERMS_VERSION);
     expect(user?.termsAcceptedAt).toBeInstanceOf(Date);
+  });
+});
+
+describe('the policy and the nonce it hands the interface', () => {
+  it('serves a shell whose nonce is the one the policy allows', async () => {
+    // Radix locks the page scroll by injecting a `<style>`, and the policy admits
+    // an inline style only by nonce. If the two ever disagree, every dialog in
+    // the product is blocked and the page jumps by a scrollbar.
+    const res = await app.inject({ method: 'GET', url: '/' });
+    expect(res.statusCode).toBe(200);
+    const nonce = /<meta name="csp-nonce" content="([^"]+)"/u.exec(res.body)?.[1];
+    expect(nonce, res.body).toBeTruthy();
+    const policy = res.headers['content-security-policy'] as string;
+    expect(policy).toContain(`style-src 'self' 'nonce-${nonce}'`);
+    // And scripts are not widened by it: the shell carries no inline script.
+    expect(policy).toContain("script-src 'self'");
+    expect(policy).not.toMatch(/script-src[^;]*nonce/u);
+  });
+
+  it('mints a new nonce for every response', async () => {
+    // A nonce reused across responses is not a nonce. The shell is `no-store`
+    // for the same reason: a revalidated body would carry an old one.
+    const nonceOf = async (url: string) => {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.headers['cache-control']).toBe('no-store');
+      return /content="([^"]+)"/u.exec(res.body)?.[1];
+    };
+    const first = await nonceOf('/');
+    const second = await nonceOf('/');
+    const route = await nonceOf('/knowledge');
+    expect(first).toBeTruthy();
+    expect(new Set([first, second, route]).size).toBe(3);
   });
 });

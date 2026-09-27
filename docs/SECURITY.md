@@ -36,6 +36,32 @@ Milestone 1 (web and accounts):
 - request body size limits;
 - security headers: CSP, `X-Content-Type-Options`, `Referrer-Policy`, `Frame-Options`, HSTS when behind TLS.
 
+### The content security policy, and the one nonce in it
+
+Everything comes from `'self'`. Scripts, styles, fonts, connections and frames
+have no other source, `object-src` is `'none'` and `frame-ancestors` is `'none'`.
+
+`style-src` carries one addition: a nonce, minted per response. The interface
+locks the page scroll through Radix, which injects a `<style>` element to
+compensate for the scrollbar width, so without an allowance every dialog and
+popover in the product trips the policy and the page jumps by a scrollbar.
+`'unsafe-inline'` would have admitted every inline style on the page, including
+any that knowledge text managed to smuggle past the renderer; a nonce admits only
+the styles the application itself injects.
+
+The nonce reaches the bundle through a `<meta name="csp-nonce">` on the shell,
+which the application hands to the one library that needs it at start-up. Not
+through an inline script: that would have needed a nonce in `script-src` too,
+widening one directive to fix the other. `script-src` therefore stays `'self'`
+with no nonce at all.
+
+Two consequences worth stating. The shell cannot be served as a file, because it
+carries a value that changes per response; and it is `no-store` rather than
+`no-cache`, because a stored body revalidated with a 304 would hand an old nonce
+to a page served under a new policy. A build whose shell has no `</head>` to put
+the meta in is refused at start-up: with nowhere to put the nonce every dialog is
+blocked, and nothing about a running server would say why.
+
 Milestone 4 (agents), shipped:
 
 - per-credential rate limits, one budget for reads and a tighter one for writes; the sync batch bucket arrives with the sync operations in Milestone 5;

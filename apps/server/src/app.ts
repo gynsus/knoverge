@@ -1,9 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import fastifyStatic from '@fastify/static';
 
 import { LiveResponse, ReadyResponse } from '@knoverge/contracts';
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
+import Fastify, {
+  type FastifyBaseLogger,
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyRequest,
+} from 'fastify';
 
 import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
 
@@ -12,7 +19,12 @@ import { registerAgentContext } from './plugins/agent-context.ts';
 import { registerAuthContext } from './plugins/auth-context.ts';
 import { NOT_FOUND, registerErrorHandler } from './plugins/errors.ts';
 import { registerRequestLogging } from './plugins/logging.ts';
-import { registerRateLimits, registerSecurity, type SecurityOptions } from './plugins/security.ts';
+import {
+  cspNonceOf,
+  registerRateLimits,
+  registerSecurity,
+  type SecurityOptions,
+} from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminAiRoutes } from './routes/admin-ai.ts';
@@ -158,21 +170,53 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     },
   );
 
+  /**
+   * The single-page shell, with this response's nonce in it.
+   *
+   * Read once and kept: the bundle does not change while the process runs. What
+   * does change is the nonce, which is why the shell cannot be served as a file
+   * — and why it is `no-store` rather than `no-cache`. A stored body revalidated
+   * with a 304 would carry yesterday's nonce under today's header, and the
+   * styles the interface injects would be blocked again.
+   */
+  const shell = options.webDist
+    ? await readFile(join(options.webDist, 'index.html'), 'utf8')
+    : null;
+  if (shell !== null && !shell.includes('</head>')) {
+    // Refused at start-up rather than discovered later: with nowhere to put the
+    // nonce, every dialog in the interface is blocked by our own policy, and
+    // nothing about a running server would say why.
+    throw new Error('the web bundle has no </head> to carry the style nonce');
+  }
+  const sendShell = (request: FastifyRequest, reply: FastifyReply): FastifyReply => {
+    const nonce = cspNonceOf(request);
+    const html =
+      shell === null || nonce === ''
+        ? // No policy in this build, so nothing needs a nonce, and `content=""`
+          // would only look like one that failed.
+          (shell ?? '')
+        : shell.replace('</head>', `  <meta name="csp-nonce" content="${nonce}" />\n  </head>`);
+    return reply.header('cache-control', 'no-store').type('text/html; charset=utf-8').send(html);
+  };
+
   if (options.webDist) {
     await app.register(fastifyStatic, {
       root: options.webDist,
       prefix: '/',
       wildcard: false,
-      index: ['index.html'],
+      // No `index`: the shell carries a per-response nonce and so cannot be
+      // served from disk. `GET /` is a route of its own below.
+      index: false,
       cacheControl: false,
       setHeaders: (res, filePath) => {
-        // Hashed assets under /assets are immutable; index.html must always be revalidated.
+        // Hashed assets under /assets are immutable.
         const cache = filePath.includes('/assets/')
           ? 'public, max-age=31536000, immutable'
           : 'no-cache';
         void res.header('cache-control', cache);
       },
     });
+    app.get('/', (request, reply) => sendShell(request, reply));
   }
 
   const webDist = options.webDist;
@@ -182,9 +226,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     const path = request.url.split('?')[0] ?? request.url;
     const isApi = API_PREFIXES.some((p) => path === p.replace(/\/$/, '') || path.startsWith(p));
     if (webDist && request.method === 'GET' && !isApi) {
-      return reply
-        .header('cache-control', 'no-cache')
-        .sendFile('index.html', webDist, { cacheControl: false });
+      return sendShell(request, reply);
     }
     return reply.code(404).send(NOT_FOUND);
   });
