@@ -3,6 +3,8 @@ import {
   ProposalListInput,
   ProposalResponse,
   ProposalsResponse,
+  ProposedContent,
+  ProposedSupersedePayload,
   type ProposalSummary,
 } from '@knoverge/contracts';
 import type {
@@ -15,39 +17,70 @@ import type {
   RejectProposalRequest,
   WithdrawProposalRequest,
 } from '@knoverge/contracts';
-import { DomainError, type ProposalRecord } from '@knoverge/core';
+import { DomainError, type ProposalEditsInput, type ProposalRecord } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { idempotencyKey, resolveWorkspaceActor } from '../plugins/actor-context.ts';
+import { changeInput, contentInput, proposalExtras } from './knowledge-input.ts';
 import type { Services } from '../services.ts';
+
+/**
+ * What a proposal says about the item it would write.
+ *
+ * A create carries the content at the top level and a supersession under
+ * `new_item`; an update carries only the fields it changes; a delete and a
+ * category proposal carry nothing of the sort, and a resolved proposal's payload
+ * may have been emptied by maintenance. All of those answer an empty content
+ * rather than an error: this names a row in a queue.
+ */
+function proposedContent(proposal: ProposalRecord): ProposedContent {
+  if (proposal.proposalType === 'knowledge_supersede') {
+    const parsed = ProposedSupersedePayload.safeParse(proposal.proposedPayload);
+    return parsed.success ? (parsed.data.new_item ?? {}) : {};
+  }
+  const parsed = ProposedContent.safeParse(proposal.proposedPayload);
+  return parsed.success ? parsed.data : {};
+}
 
 /**
  * The title a proposal proposes, when its payload carries one.
  *
- * A create carries it at the top level and a supersession under `new_item`.
  * An update carries it only when it is changing it, and a delete never; those
  * are named by the item they are about instead.
  */
 export function proposedTitle(proposal: ProposalRecord): string | null {
-  const payload = proposal.proposedPayload as Record<string, unknown>;
-  const source =
-    proposal.proposalType === 'knowledge_supersede'
-      ? ((payload['newItem'] as Record<string, unknown> | undefined) ?? {})
-      : payload;
-  const title = source['title'];
-  return typeof title === 'string' && title !== '' ? title : null;
+  return proposedContent(proposal).title ?? null;
 }
 
 /** Where the proposal says it belongs, read the same way its title is. */
 function proposedCategories(proposal: ProposalRecord): string[] {
-  const payload = proposal.proposedPayload as Record<string, unknown>;
-  const source =
-    proposal.proposalType === 'knowledge_supersede'
-      ? ((payload['newItem'] as Record<string, unknown> | undefined) ?? {})
-      : payload;
-  const categories = source['categories'];
-  return Array.isArray(categories) ? categories.map(String) : [];
+  return [...(proposedContent(proposal).categories ?? [])];
+}
+
+/**
+ * A reviewer's edits, in the domain's own names.
+ *
+ * Named field by field: the wire speaks snake_case and the domain speaks
+ * camelCase, and handing one straight to the other worked only for the fields
+ * whose names happen to match. It stopped working the moment a validity window
+ * could be edited, and would have dropped it without a word.
+ */
+function editsFor(edits: NonNullable<ApproveProposalRequest['edits']>): ProposalEditsInput {
+  return {
+    ...(edits.title !== undefined ? { title: edits.title } : {}),
+    ...(edits.body !== undefined ? { body: edits.body } : {}),
+    ...(edits.type !== undefined ? { type: edits.type } : {}),
+    ...(edits.language ? { language: edits.language } : {}),
+    ...(edits.categories !== undefined ? { categories: edits.categories } : {}),
+    ...(edits.tags !== undefined ? { tags: edits.tags } : {}),
+    ...(edits.valid_from !== undefined ? { validFrom: edits.valid_from } : {}),
+    ...(edits.valid_until !== undefined ? { validUntil: edits.valid_until } : {}),
+    ...(edits.observed_at !== undefined ? { observedAt: edits.observed_at } : {}),
+    ...(edits.sources !== undefined ? { sources: edits.sources } : {}),
+    ...(edits.relations !== undefined ? { relations: edits.relations } : {}),
+    ...(edits.summary_of !== undefined ? { summaryOf: edits.summary_of } : {}),
+  };
 }
 
 function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): ProposalSummary {
@@ -61,6 +94,8 @@ function summary(proposal: ProposalRecord, itemTitles?: Map<string, string>): Pr
       (proposal.targetItemId ? (itemTitles?.get(proposal.targetItemId) ?? null) : null),
     categories: proposedCategories(proposal) as ProposalSummary['categories'],
     target_item_id: proposal.targetItemId,
+    acknowledged_duplicate_ids:
+      proposal.acknowledgedDuplicateIds as ProposalSummary['acknowledged_duplicate_ids'],
     proposed_by_actor_id: proposal.proposedByActorId,
     base_revision_id: proposal.baseRevisionId,
     base_content_hash: proposal.baseContentHash,
@@ -194,20 +229,8 @@ export async function knowledgeProposeCreate(
     body,
     async () => {
       const outcome = await services.proposals.proposeCreate(actor.context, actor.standing, {
-        title: body.title,
-        body: body.body,
-        type: body.type,
-        language: body.language,
-        categories: body.categories,
-        tags: body.tags,
-        slug: body.slug,
-        sources: body.sources,
-        relations: body.relations,
-        external: body.external,
-        reason: body.reason,
-        confidence: body.confidence,
-        acknowledgedDuplicateIds: body.acknowledged_duplicate_ids,
-        syncSessionId: body.sync_session_id,
+        ...contentInput(body),
+        ...proposalExtras(body),
       });
       return {
         proposal: await named(services, actor.context.workspaceId, outcome.proposal),
@@ -231,22 +254,8 @@ export async function knowledgeProposeUpdate(
     body,
     async () => {
       const outcome = await services.proposals.proposeUpdate(actor.context, actor.standing, {
-        itemId: body.item_id,
-        baseRevisionId: body.base_revision_id,
-        baseContentHash: body.base_content_hash,
-        title: body.title,
-        body: body.body,
-        type: body.type,
-        language: body.language,
-        categories: body.categories,
-        tags: body.tags,
-        validFrom: body.valid_from,
-        validUntil: body.valid_until,
-        observedAt: body.observed_at,
-        sources: body.sources,
-        relations: body.relations,
-        reason: body.reason,
-        confidence: body.confidence,
+        ...changeInput(body),
+        ...proposalExtras(body),
       });
       return {
         proposal: await named(services, actor.context.workspaceId, outcome.proposal),
@@ -302,23 +311,7 @@ export async function knowledgeProposeSupersede(
         oldBaseRevisionId: body.old_base_revision_id,
         oldBaseContentHash: body.old_base_content_hash,
         validUntil: body.valid_until,
-        ...(body.new_item
-          ? {
-              newItem: {
-                title: body.new_item.title,
-                body: body.new_item.body,
-                type: body.new_item.type,
-                language: body.new_item.language,
-                categories: body.new_item.categories,
-                tags: body.new_item.tags,
-                slug: body.new_item.slug,
-                observedAt: body.new_item.observed_at,
-                relations: body.new_item.relations,
-                sources: body.new_item.sources,
-                external: body.new_item.external,
-              },
-            }
-          : {}),
+        ...(body.new_item ? { newItem: contentInput(body.new_item) } : {}),
         ...(body.existing_item
           ? {
               existingItem: {
@@ -361,7 +354,7 @@ export async function proposalApprove(
     async () => {
       const outcome = await services.proposals.approve(actor.context, actor.standing, {
         proposalId: body.proposal_id,
-        edits: body.edits,
+        ...(body.edits ? { edits: editsFor(body.edits) } : {}),
         note: body.note,
       });
       return {

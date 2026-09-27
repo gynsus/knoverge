@@ -38,6 +38,7 @@ import { z } from 'zod';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { requireListPermission, requirePermission } from '../plugins/actor-context.ts';
+import { changeInput, contentInput } from './knowledge-input.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
 
@@ -162,23 +163,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.write');
       assertHuman(actor.context.actorType);
-      const result = await services.knowledge.create(actor.context, {
-        title: request.body.title,
-        body: request.body.body,
-        type: request.body.type,
-        language: request.body.language,
-        categories: request.body.categories,
-        tags: request.body.tags,
-        slug: request.body.slug,
-        validFrom: request.body.valid_from,
-        validUntil: request.body.valid_until,
-        observedAt: request.body.observed_at,
-        relations: request.body.relations,
-        sources: request.body.sources,
-        summaryOf: request.body.summary_of,
-        external: request.body.external,
-        reason: request.body.reason,
-      });
+      const result = await services.knowledge.create(actor.context, contentInput(request.body));
       return whole(result);
     },
   );
@@ -218,24 +203,7 @@ export function registerKnowledgeRoutes(app: FastifyInstance, services: Services
     async (request) => {
       const actor = await requirePermission(services, request, 'knowledge.write');
       assertHuman(actor.context.actorType);
-      const result = await services.knowledge.update(actor.context, {
-        itemId: request.body.item_id,
-        baseRevisionId: request.body.base_revision_id,
-        baseContentHash: request.body.base_content_hash,
-        title: request.body.title,
-        body: request.body.body,
-        type: request.body.type,
-        language: request.body.language,
-        categories: request.body.categories,
-        tags: request.body.tags,
-        validFrom: request.body.valid_from,
-        validUntil: request.body.valid_until,
-        observedAt: request.body.observed_at,
-        sources: request.body.sources,
-        relations: request.body.relations,
-        summaryOf: request.body.summary_of,
-        reason: request.body.reason,
-      });
+      const result = await services.knowledge.update(actor.context, changeInput(request.body));
       return whole(result);
     },
   );

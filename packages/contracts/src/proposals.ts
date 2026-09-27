@@ -6,9 +6,13 @@ import { LanguageTag } from './identity.ts';
 import {
   CreateKnowledgeRequest,
   DeleteKnowledgeRequest,
+  FrontmatterExternal,
   FrontmatterRelation,
   FrontmatterSource,
+  ItemSlug,
   ItemType,
+  MAX_SUMMARY_DEPENDENCIES,
+  SummaryDependencyRef,
   SupersedeKnowledgeRequest,
   Tag,
   UpdateKnowledgeRequest,
@@ -41,6 +45,69 @@ export const ProposalStatus = z.enum([
 ]);
 export type ProposalStatus = z.infer<typeof ProposalStatus>;
 
+/**
+ * What a proposal carries, which is the only copy of what was proposed.
+ *
+ * A schema, because a pending proposal is re-applied from this and from nothing
+ * else: a field the payload leaves out is a field that approving it drops,
+ * silently, with no error and nothing on the screen to say so. It was assembled
+ * by hand at four call sites and fell behind the request twice — once when a
+ * validity window arrived, once when a summary learned its dependencies.
+ *
+ * Every field is optional, because an update carries only what it changes.
+ * `ProposedCreatePayload` is this with the three a new item cannot do without.
+ */
+export const ProposedContent = z.object({
+  title: z.string().trim().min(1).max(300).optional(),
+  body: z.string().min(1).max(200_000).optional(),
+  type: ItemType.optional(),
+  /** Null where the create path stored "not given" as null. */
+  language: LanguageTag.nullable().optional(),
+  categories: z.array(CategoryPath).max(20).optional(),
+  tags: z.array(Tag).max(50).optional(),
+  slug: ItemSlug.optional(),
+  valid_from: z.iso.datetime({ offset: true }).nullable().optional(),
+  valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
+  observed_at: z.iso.datetime({ offset: true }).nullable().optional(),
+  external: FrontmatterExternal.optional(),
+  sources: z.array(FrontmatterSource).max(50).optional(),
+  relations: z.array(FrontmatterRelation).max(50).optional(),
+  summary_of: z.array(SummaryDependencyRef).max(MAX_SUMMARY_DEPENDENCIES).optional(),
+});
+export type ProposedContent = z.infer<typeof ProposedContent>;
+
+/** A create proposal's payload: the whole item, as the proposer wrote it. */
+export const ProposedCreatePayload = ProposedContent.required({
+  title: true,
+  body: true,
+  type: true,
+});
+export type ProposedCreatePayload = z.infer<typeof ProposedCreatePayload>;
+
+/** An update proposal's payload: the fields it changes and no others. */
+export const ProposedUpdatePayload = ProposedContent;
+export type ProposedUpdatePayload = z.infer<typeof ProposedUpdatePayload>;
+
+/**
+ * A supersede proposal's payload: what replaces the item, and from when.
+ *
+ * Either a new item to write or an existing one to point at, never both: the
+ * replacement is one thing, and which of the two it is decides what approving
+ * the proposal writes.
+ */
+export const ProposedSupersedePayload = z.object({
+  valid_until: z.iso.datetime({ offset: true }).nullable().optional(),
+  new_item: ProposedCreatePayload.optional(),
+  existing_item: z
+    .object({
+      item_id: KnowledgeItemId,
+      base_revision_id: RevisionId,
+      base_content_hash: z.string(),
+    })
+    .optional(),
+});
+export type ProposedSupersedePayload = z.infer<typeof ProposedSupersedePayload>;
+
 export const ProposalSummary = z.object({
   id: ProposalId,
   workspace_id: WorkspaceId,
@@ -63,6 +130,15 @@ export const ProposalSummary = z.object({
    */
   categories: z.array(CategoryPath),
   target_item_id: KnowledgeItemId.nullable(),
+  /**
+   * Candidates the proposer was shown and ruled out, which is why this is a
+   * second item rather than an edit to the first.
+   *
+   * On the record since the first proposal and read by nothing until now: the
+   * queue was built to say "duplicates ruled out" and could not, because the
+   * ids were in a column nothing served.
+   */
+  acknowledged_duplicate_ids: z.array(KnowledgeItemId),
   proposed_by_actor_id: ActorId,
   base_revision_id: RevisionId.nullable(),
   base_content_hash: z.string().nullable(),
@@ -172,17 +248,13 @@ export type ProposeSupersedeRequest = z.infer<typeof ProposeSupersedeRequest>;
  * `confidence` are the proposer's account of their own work, and a reviewer
  * rewriting them would leave a record of a proposal nobody made. A reviewer
  * who disagrees rejects with a note, or approves with the text they want.
+ *
+ * Derived from the payload rather than written out again, so that a field a
+ * proposal can carry is a field a reviewer can correct and the two lists cannot
+ * drift apart. Not the slug, which decides where the file lives, and not
+ * `external`, which is the source system's own key for the record.
  */
-export const ProposalEdits = z.object({
-  title: z.string().trim().min(1).max(300).optional(),
-  body: z.string().min(1).max(200_000).optional(),
-  type: ItemType.optional(),
-  language: LanguageTag.optional(),
-  categories: z.array(CategoryPath).max(20).optional(),
-  tags: z.array(Tag).max(50).optional(),
-  sources: z.array(FrontmatterSource).max(50).optional(),
-  relations: z.array(FrontmatterRelation).max(50).optional(),
-});
+export const ProposalEdits = ProposedContent.omit({ slug: true, external: true });
 export type ProposalEdits = z.infer<typeof ProposalEdits>;
 
 /**

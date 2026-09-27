@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Check, Clock, Pencil, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,8 @@ import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
 import { Markdown } from '../knowledge/Markdown.tsx';
 import { SourceList } from '../knowledge/SourceList.tsx';
+import { SummaryOf } from '../knowledge/SummaryOf.tsx';
+import { Validity } from '../knowledge/Validity.tsx';
 import { Diff, ListDiff } from './Diff.tsx';
 import { RejectDialog } from './RejectDialog.tsx';
 import { contentOf, queueReasons, ruledOutDuplicates, type Content } from './proposal.ts';
@@ -38,6 +41,7 @@ export function ProposalDetail({
   onResolved: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const content = contentOf(proposal);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Content | null>(content);
@@ -169,6 +173,30 @@ export function ProposalDetail({
               <dd>{Math.round(proposal.confidence * 100)}%</dd>
             </>
           )}
+          {/* When the claim holds, if the proposal says. A reviewer deciding on
+              a fact about last quarter is deciding a different thing from one
+              deciding a fact about now, and the proposal carried this all along
+              with nowhere to show it. */}
+          {(content?.valid_from ?? content?.valid_until) !== undefined &&
+            (content?.valid_from ?? content?.valid_until) !== null && (
+              <>
+                <dt className="text-muted-foreground">{t('knowledge.holds')}</dt>
+                <dd>
+                  <Validity
+                    item={{
+                      valid_from: content?.valid_from ?? null,
+                      valid_until: content?.valid_until ?? null,
+                    }}
+                  />
+                </dd>
+              </>
+            )}
+          {content?.observed_at && (
+            <>
+              <dt className="text-muted-foreground">{t('knowledge.observed_at')}</dt>
+              <dd>{new Date(content.observed_at).toLocaleDateString(i18n.language)}</dd>
+            </>
+          )}
         </dl>
         {proposal.reason && (
           <p className="text-sm">
@@ -182,6 +210,16 @@ export function ProposalDetail({
           </p>
         )}
       </section>
+
+      {/* For a proposed summary this is the proposal: what it was made from, and
+          whether any of it has moved since. The same section the item's own
+          drawer shows, because the question is the same one. */}
+      {content?.summary_of && content.summary_of.length > 0 && (
+        <SummaryOf
+          refs={content.summary_of}
+          onOpen={(itemId) => void navigate(`/knowledge?item=${encodeURIComponent(itemId)}`)}
+        />
+      )}
 
       {editing ? (
         <EditForm

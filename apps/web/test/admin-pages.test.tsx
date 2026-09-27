@@ -971,6 +971,7 @@ describe('categories an agent has asked for', () => {
     title: 'Data Governance',
     categories: [],
     target_item_id: null,
+    acknowledged_duplicate_ids: [],
     proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
     base_revision_id: null,
     base_content_hash: null,
@@ -2269,6 +2270,7 @@ const PROPOSAL = {
   title: 'Release cadence',
   categories: ['architecture/constraints'],
   target_item_id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+  acknowledged_duplicate_ids: [],
   proposed_by_actor_id: 'act_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   base_revision_id: 'rev_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
   base_content_hash: 'sha256:abc',
@@ -2357,6 +2359,61 @@ describe('review inbox', () => {
     // Provenance decides an agent proposal, so its absence is stated rather
     // than left as a section that is simply not there.
     expect(detail.textContent).toContain('Nothing here says where this came from');
+  });
+
+  it('shows the period a proposal claims, and what a summary was made from', async () => {
+    // Both are fields the payload carries and this screen used to read past: it
+    // had a type of its own for the payload, with neither field in it.
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [PROPOSAL] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({
+          proposal: {
+            ...PROPOSAL,
+            proposed_payload: {
+              body: 'We release on Tuesdays.',
+              valid_from: '2026-01-01T00:00:00.000Z',
+              valid_until: '2026-06-30T00:00:00.000Z',
+              summary_of: [`${ITEM.id}@${ITEM.current_revision_id}`],
+            },
+          },
+        }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+    });
+    renderApp(`/review?proposal=${PROPOSAL.id}`);
+
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
+    // A reviewer deciding a fact about the first half of the year is deciding a
+    // different thing from one deciding a fact about now.
+    expect(detail.textContent).toContain('Holds');
+    expect(await screen.findByText(/1\/1\/2026/)).toBeInTheDocument();
+    // And for a proposed summary, what it rests on.
+    expect(detail.textContent).toContain('Made from');
+  });
+
+  it('says what the proposer ruled out, which is why this is a second item', async () => {
+    const acknowledged = {
+      ...PROPOSAL,
+      acknowledged_duplicate_ids: ['kn_01J8Z3M4Q9V0X7K2B5N6P8R1TZ'],
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/proposal.list?status=pending': () => json({ proposals: [acknowledged] }),
+      'GET /v1/proposal.list?status=conflict': () => json({ proposals: [] }),
+      [`GET /v1/proposal.get?proposal_id=${PROPOSAL.id}`]: () =>
+        json({
+          proposal: { ...acknowledged, proposed_payload: { body: 'We release on Tuesdays.' } },
+        }),
+      [`GET /v1/knowledge.get?item_id=${ITEM.id}`]: () => json({ item: ITEM }),
+    });
+    renderApp(`/review?proposal=${PROPOSAL.id}`);
+
+    const detail = await screen.findByRole('region', { name: 'Release cadence' });
+    // Read from the record. It was read from the payload, which never carried
+    // them, so this said nothing about every proposal ever made.
+    expect(detail.textContent).toContain('The proposer ruled out 1 similar item');
   });
 
   it('counts the piles, and the count is also the filter', async () => {

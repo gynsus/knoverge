@@ -1,3 +1,8 @@
+import {
+  ProposedCreatePayload,
+  ProposedSupersedePayload,
+  ProposedUpdatePayload,
+} from '@knoverge/contracts';
 import type {
   CategoryId,
   EventType,
@@ -86,28 +91,6 @@ export interface ProposeSupersedeInput extends SupersedeInput {
   confidence?: number | undefined;
 }
 
-/** A supersede proposal's payload: what replaces the item, and from when. */
-interface ProposedSupersedePayload {
-  validUntil?: string | null;
-  newItem?: ProposedCreatePayload;
-  existingItem?: { itemId: KnowledgeItemId; baseRevisionId: RevisionId; baseContentHash: string };
-}
-
-/** The stored payload of an update proposal: only the fields that were given. */
-interface ProposedUpdatePayload {
-  title: string;
-  body: string;
-  type: ItemType;
-  language: string;
-  categories: string[];
-  tags: string[];
-  sources: FrontmatterSource[];
-  relations: FrontmatterRelation[];
-  validFrom: string | null;
-  validUntil: string | null;
-  observedAt: string | null;
-}
-
 /** A policy answer that is not a refusal, and the rule that gave it. */
 type PolicyDecision = { effect: Exclude<PolicyEffect, 'deny'>; ruleId?: string | undefined };
 
@@ -178,7 +161,13 @@ function assertBase(current: ItemResult, revisionId: RevisionId, contentHash: st
   );
 }
 
-/** What a reviewer may change before approving: the content and nothing else. */
+/**
+ * What a reviewer may change before approving: the content and nothing else.
+ *
+ * The same fields a proposal can carry, minus the two a reviewer has no business
+ * rewriting — the slug decides where the file lives, and `external` is the source
+ * system's own key for the record.
+ */
 export interface ProposalEditsInput {
   title?: string | undefined;
   body?: string | undefined;
@@ -186,8 +175,40 @@ export interface ProposalEditsInput {
   language?: string | undefined;
   categories?: readonly string[] | undefined;
   tags?: readonly string[] | undefined;
+  validFrom?: string | null | undefined;
+  validUntil?: string | null | undefined;
+  observedAt?: string | null | undefined;
   sources?: readonly FrontmatterSource[] | undefined;
   relations?: readonly FrontmatterRelation[] | undefined;
+  summaryOf?: readonly string[] | undefined;
+}
+
+/**
+ * A reviewer's changes, under the names the payload stores them by.
+ *
+ * Named field by field rather than spread in: the payload speaks the contract's
+ * snake_case and this file speaks the domain's camelCase, and folding one into
+ * the other by accident wrote `validFrom` into a payload that is read for
+ * `valid_from` — an edit that vanished on approval.
+ */
+function editsToPayload(edits: ProposalEditsInput): Partial<ProposedUpdatePayload> {
+  const mapped: { [K in keyof Required<ProposedUpdatePayload>]: ProposedUpdatePayload[K] } = {
+    title: edits.title,
+    body: edits.body,
+    type: edits.type,
+    language: edits.language,
+    categories: edits.categories ? [...edits.categories] : undefined,
+    tags: edits.tags ? [...edits.tags] : undefined,
+    slug: undefined,
+    valid_from: edits.validFrom,
+    valid_until: edits.validUntil,
+    observed_at: edits.observedAt,
+    external: undefined,
+    sources: edits.sources ? [...edits.sources] : undefined,
+    relations: edits.relations ? [...edits.relations] : undefined,
+    summary_of: edits.summaryOf ? [...edits.summaryOf] : undefined,
+  };
+  return Object.fromEntries(Object.entries(mapped).filter(([, value]) => value !== undefined));
 }
 
 export interface ApproveProposalInput {
@@ -201,28 +222,105 @@ export interface ResolveProposalInput {
   reason?: string | undefined;
 }
 
-/** A create proposal's payload, as `proposeCreate` stored it. */
-interface ProposedCreatePayload {
-  title: string;
-  body: string;
-  type: ItemType;
-  language: string | null;
-  categories: string[];
-  tags: string[];
-  sources: FrontmatterSource[];
-  relations: FrontmatterRelation[];
-  /**
-   * What the source system calls this, when the proposer said.
-   *
-   * Everything a proposal carries has to survive review, or a write that
-   * policy let through and a write a reviewer approved produce different
-   * items. This one went missing and took the whole external-identity half
-   * of reconciliation with it: an item recorded through review had no key to
-   * be found by again.
-   */
-  external?: { source_system: string; external_key: string } | undefined;
-  /** The file name the proposer asked for, when it asked for one. */
-  slug?: string | undefined;
+/**
+ * Nothing left over.
+ *
+ * Called with the rest of a destructured payload, so that a field the contract
+ * gains and this file does not pass on is a compile error rather than a field
+ * silently dropped when somebody approves the proposal. `external` went missing
+ * that way once and took the external-identity half of reconciliation with it;
+ * a validity window and a summary's dependencies went the same way later.
+ */
+function nothingLeft(_rest: Record<string, never>): void {}
+
+/**
+ * The payload as its schema says it should be.
+ *
+ * A stored payload is data, not a type: it was written by an older version of
+ * this file, edited by a reviewer, and kept for as long as the proposal waits.
+ * Reading it through the schema refuses one this cannot apply, instead of
+ * applying half of it and writing an item nobody proposed.
+ */
+function read<T>(
+  schema: { safeParse: (value: unknown) => { success: boolean; data?: T } },
+  value: unknown,
+  proposalId: ProposalId,
+): T {
+  const parsed = schema.safeParse(value);
+  if (!parsed.success || parsed.data === undefined) {
+    throw new DomainError(
+      'VALIDATION_ERROR',
+      'this proposal carries a payload that cannot be read',
+      {
+        objectIds: { proposal: proposalId },
+      },
+    );
+  }
+  return parsed.data;
+}
+
+/** What a proposal carries, from the input it was made with. */
+function contentPayload(input: CreateItemInput): ProposedCreatePayload {
+  // A mapped type over every key, so the compiler asks about each one.
+  const fields: { [K in keyof Required<ProposedCreatePayload>]: ProposedCreatePayload[K] } = {
+    title: input.title,
+    body: input.body,
+    type: input.type,
+    language: input.language ?? null,
+    categories: [...(input.categories ?? [])],
+    tags: [...(input.tags ?? [])],
+    slug: input.slug,
+    valid_from: input.validFrom ?? null,
+    valid_until: input.validUntil ?? null,
+    observed_at: input.observedAt ?? null,
+    external: input.external,
+    sources: [...(input.sources ?? [])],
+    relations: [...(input.relations ?? [])],
+    summary_of: [...(input.summaryOf ?? [])],
+  };
+  // Undefined is not a value jsonb keeps, and a key stored as null reads back
+  // as "given and empty" rather than "never asked about".
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined),
+  ) as ProposedCreatePayload;
+}
+
+/** The content a create or a replacement writes, with nothing left behind. */
+function contentInput(payload: ProposedCreatePayload): CreateItemInput {
+  const {
+    title,
+    body,
+    type,
+    language,
+    categories,
+    tags,
+    slug,
+    valid_from,
+    valid_until,
+    observed_at,
+    external,
+    sources,
+    relations,
+    summary_of,
+    ...rest
+  } = payload;
+  nothingLeft(rest);
+  return {
+    title,
+    body,
+    type,
+    ...(language ? { language } : {}),
+    ...(categories ? { categories } : {}),
+    ...(tags ? { tags } : {}),
+    ...(slug ? { slug } : {}),
+    ...(valid_from !== undefined ? { validFrom: valid_from } : {}),
+    ...(valid_until !== undefined ? { validUntil: valid_until } : {}),
+    ...(observed_at !== undefined ? { observedAt: observed_at } : {}),
+    ...(external ? { external } : {}),
+    ...(sources ? { sources } : {}),
+    ...(relations ? { relations } : {}),
+    ...(summary_of ? { summaryOf: summary_of } : {}),
+  };
 }
 
 /**
@@ -308,18 +406,7 @@ export class ProposalService {
       // both decides instead, so a hidden match takes the direct route away
       // (ADR 0017).
       decision: hidden.length > 0 ? { ...decision, effect: 'require_review' } : decision,
-      payload: {
-        title: input.title,
-        body: input.body,
-        type: input.type,
-        language: input.language ?? null,
-        categories: [...(input.categories ?? [])],
-        tags: [...(input.tags ?? [])],
-        sources: [...(input.sources ?? [])],
-        relations: [...(input.relations ?? [])],
-        ...(input.external ? { external: input.external } : {}),
-        ...(input.slug ? { slug: input.slug } : {}),
-      },
+      payload: contentPayload(input),
       targetItemId: null,
       baseRevisionId: null,
       baseContentHash: null,
@@ -360,23 +447,26 @@ export class ProposalService {
       type: input.type ?? current.item.type,
     });
 
-    const payload: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries({
+    const given: { [K in keyof Required<ProposedUpdatePayload>]: ProposedUpdatePayload[K] } = {
       title: input.title,
       body: input.body,
       type: input.type,
       language: input.language,
       categories: input.categories ? [...input.categories] : undefined,
       tags: input.tags ? [...input.tags] : undefined,
+      slug: undefined,
+      valid_from: input.validFrom,
+      valid_until: input.validUntil,
+      observed_at: input.observedAt,
+      external: undefined,
       sources: input.sources ? [...input.sources] : undefined,
       relations: input.relations ? [...input.relations] : undefined,
-      validFrom: input.validFrom,
-      validUntil: input.validUntil,
-      observedAt: input.observedAt,
-    })) {
-      // A field left out is left alone, so only what was given is stored.
-      if (value !== undefined) payload[key] = value;
-    }
+      summary_of: input.summaryOf ? [...input.summaryOf] : undefined,
+    };
+    // A field left out is left alone, so only what was given is stored.
+    const payload = Object.fromEntries(
+      Object.entries(given).filter(([, value]) => value !== undefined),
+    ) as ProposedUpdatePayload;
 
     return this.record(actor, {
       proposalType: 'knowledge_update',
@@ -391,7 +481,7 @@ export class ProposalService {
       apply: (proposalId) =>
         applied(
           this.o.knowledge.update(actor, {
-            ...this.updateInput(payload),
+            ...this.updateInput(payload, proposalId),
             itemId: input.itemId,
             baseRevisionId: input.baseRevisionId,
             baseContentHash: input.baseContentHash,
@@ -426,30 +516,15 @@ export class ProposalService {
       type: input.newItem?.type ?? current.item.type,
     });
 
-    const payload: Record<string, unknown> = {
-      ...(input.validUntil !== undefined ? { validUntil: input.validUntil } : {}),
-      ...(input.newItem
-        ? {
-            newItem: {
-              title: input.newItem.title,
-              body: input.newItem.body,
-              type: input.newItem.type,
-              language: input.newItem.language ?? null,
-              categories: [...(input.newItem.categories ?? [])],
-              tags: [...(input.newItem.tags ?? [])],
-              sources: [...(input.newItem.sources ?? [])],
-              relations: [...(input.newItem.relations ?? [])],
-              ...(input.newItem.external ? { external: input.newItem.external } : {}),
-              ...(input.newItem.slug ? { slug: input.newItem.slug } : {}),
-            },
-          }
-        : {}),
+    const payload: ProposedSupersedePayload = {
+      ...(input.validUntil !== undefined ? { valid_until: input.validUntil } : {}),
+      ...(input.newItem ? { new_item: contentPayload(input.newItem) } : {}),
       ...(input.existingItem
         ? {
-            existingItem: {
-              itemId: input.existingItem.itemId,
-              baseRevisionId: input.existingItem.baseRevisionId,
-              baseContentHash: input.existingItem.baseContentHash,
+            existing_item: {
+              item_id: input.existingItem.itemId,
+              base_revision_id: input.existingItem.baseRevisionId,
+              base_content_hash: input.existingItem.baseContentHash,
             },
           }
         : {}),
@@ -686,9 +761,9 @@ export class ProposalService {
   ): Promise<void> {
     const content =
       proposal.proposalType === 'knowledge_create'
-        ? (payload as unknown as ProposedCreatePayload)
+        ? read(ProposedCreatePayload, payload, proposal.id)
         : proposal.proposalType === 'knowledge_supersede'
-          ? (payload as ProposedSupersedePayload).newItem
+          ? read(ProposedSupersedePayload, payload, proposal.id).new_item
           : undefined;
     if (!content) return;
     await this.o.duplicates.assertStillDistinct({
@@ -696,7 +771,10 @@ export class ProposalService {
       title: content.title,
       body: content.body,
       type: content.type,
-      categoryIds: (await this.categoryIds(actor.workspaceId, content.categories)) as CategoryId[],
+      categoryIds: (await this.categoryIds(
+        actor.workspaceId,
+        content.categories ?? [],
+      )) as CategoryId[],
       acknowledged: proposal.acknowledgedDuplicateIds,
     });
   }
@@ -717,19 +795,9 @@ export class ProposalService {
     review: ReviewState,
   ): Promise<AppliedWrite> {
     if (proposal.proposalType === 'knowledge_create') {
-      const p = payload as unknown as ProposedCreatePayload;
       return applied(
         this.o.knowledge.create(actor, {
-          title: p.title,
-          body: p.body,
-          type: p.type,
-          ...(p.language ? { language: p.language } : {}),
-          categories: p.categories,
-          tags: p.tags,
-          sources: p.sources,
-          relations: p.relations,
-          ...(p.external ? { external: p.external } : {}),
-          ...(p.slug ? { slug: p.slug } : {}),
+          ...contentInput(read(ProposedCreatePayload, payload, proposal.id)),
           proposalId: proposal.id,
           review,
         }),
@@ -760,7 +828,7 @@ export class ProposalService {
     if (proposal.proposalType === 'knowledge_update') {
       return applied(
         this.o.knowledge.update(actor, {
-          ...this.updateInput(payload),
+          ...this.updateInput(payload, proposal.id),
           itemId,
           baseRevisionId,
           baseContentHash,
@@ -781,7 +849,7 @@ export class ProposalService {
     }
     if (proposal.proposalType === 'knowledge_supersede') {
       const result = await this.o.knowledge.supersede(actor, {
-        ...this.supersedeInput(payload),
+        ...this.supersedeInput(payload, proposal.id),
         oldItemId: itemId,
         oldBaseRevisionId: baseRevisionId,
         oldBaseContentHash: baseContentHash,
@@ -813,12 +881,10 @@ export class ProposalService {
         objectIds: { proposal: proposal.id },
       });
     }
-    const given = Object.fromEntries(
-      Object.entries(edits).filter(([, value]) => value !== undefined),
-    );
+    const given = editsToPayload(edits);
     if (proposal.proposalType === 'knowledge_supersede') {
-      const p = proposal.proposedPayload as ProposedSupersedePayload;
-      if (!p.newItem) {
+      const p = read(ProposedSupersedePayload, proposal.proposedPayload, proposal.id);
+      if (!p.new_item) {
         // The replacement already exists and has its own text, its own
         // history and its own reviewers. Editing it here would change an item
         // the proposal only pointed at.
@@ -828,7 +894,7 @@ export class ProposalService {
           { objectIds: { proposal: proposal.id } },
         );
       }
-      return { ...proposal.proposedPayload, newItem: { ...p.newItem, ...given } };
+      return { ...proposal.proposedPayload, new_item: { ...p.new_item, ...given } };
     }
     return { ...proposal.proposedPayload, ...given };
   }
@@ -1079,45 +1145,70 @@ export class ProposalService {
   /** The stored payload of a supersede proposal, as `knowledge.supersede` takes it. */
   private supersedeInput(
     payload: Record<string, unknown>,
+    proposalId: ProposalId,
   ): Pick<SupersedeInput, 'validUntil' | 'newItem' | 'existingItem'> {
-    const p = payload as ProposedSupersedePayload;
+    const { valid_until, new_item, existing_item, ...rest } = read(
+      ProposedSupersedePayload,
+      payload,
+      proposalId,
+    );
+    nothingLeft(rest);
     return {
-      ...(p.validUntil !== undefined ? { validUntil: p.validUntil } : {}),
-      ...(p.newItem
+      ...(valid_until !== undefined ? { validUntil: valid_until } : {}),
+      ...(new_item ? { newItem: contentInput(new_item) } : {}),
+      ...(existing_item
         ? {
-            newItem: {
-              title: p.newItem.title,
-              body: p.newItem.body,
-              type: p.newItem.type,
-              ...(p.newItem.language ? { language: p.newItem.language } : {}),
-              categories: p.newItem.categories,
-              tags: p.newItem.tags,
-              sources: p.newItem.sources,
-              relations: p.newItem.relations,
-              ...(p.newItem.external ? { external: p.newItem.external } : {}),
-              ...(p.newItem.slug ? { slug: p.newItem.slug } : {}),
+            existingItem: {
+              itemId: existing_item.item_id,
+              baseRevisionId: existing_item.base_revision_id,
+              baseContentHash: existing_item.base_content_hash,
             },
           }
         : {}),
-      ...(p.existingItem ? { existingItem: p.existingItem } : {}),
     };
   }
 
   /** The stored payload of an update proposal, as `knowledge.update` takes it. */
-  private updateInput(payload: Record<string, unknown>): Partial<UpdateItemInput> {
-    const p = payload as Partial<ProposedUpdatePayload>;
+  private updateInput(
+    payload: Record<string, unknown>,
+    proposalId: ProposalId,
+  ): Partial<UpdateItemInput> {
+    const {
+      title,
+      body,
+      type,
+      language,
+      categories,
+      tags,
+      slug,
+      valid_from,
+      valid_until,
+      observed_at,
+      external,
+      sources,
+      relations,
+      summary_of,
+      ...rest
+    } = read(ProposedUpdatePayload, payload, proposalId);
+    nothingLeft(rest);
+    // Not the slug and not `external`: an update proposal never carries either,
+    // and an update that renamed the file or rewrote the source system's key
+    // would be doing something nobody asked for.
+    void slug;
+    void external;
     return {
-      ...(p.title !== undefined ? { title: p.title } : {}),
-      ...(p.body !== undefined ? { body: p.body } : {}),
-      ...(p.type !== undefined ? { type: p.type } : {}),
-      ...(p.language !== undefined ? { language: p.language } : {}),
-      ...(p.categories !== undefined ? { categories: p.categories } : {}),
-      ...(p.tags !== undefined ? { tags: p.tags } : {}),
-      ...(p.sources !== undefined ? { sources: p.sources } : {}),
-      ...(p.relations !== undefined ? { relations: p.relations } : {}),
-      ...(p.validFrom !== undefined ? { validFrom: p.validFrom } : {}),
-      ...(p.validUntil !== undefined ? { validUntil: p.validUntil } : {}),
-      ...(p.observedAt !== undefined ? { observedAt: p.observedAt } : {}),
+      ...(title !== undefined ? { title } : {}),
+      ...(body !== undefined ? { body } : {}),
+      ...(type !== undefined ? { type } : {}),
+      ...(language !== undefined && language !== null ? { language } : {}),
+      ...(categories !== undefined ? { categories } : {}),
+      ...(tags !== undefined ? { tags } : {}),
+      ...(sources !== undefined ? { sources } : {}),
+      ...(relations !== undefined ? { relations } : {}),
+      ...(valid_from !== undefined ? { validFrom: valid_from } : {}),
+      ...(valid_until !== undefined ? { validUntil: valid_until } : {}),
+      ...(observed_at !== undefined ? { observedAt: observed_at } : {}),
+      ...(summary_of !== undefined ? { summaryOf: summary_of } : {}),
     };
   }
 
