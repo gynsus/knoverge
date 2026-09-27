@@ -630,7 +630,33 @@ is not a procedure.
 
 ## 11. Upgrades
 
-Docker releases use versioned image tags.
+### Released images
+
+```bash
+docker pull ghcr.io/gynsus/knoverge:0.1.0
+```
+
+`ghcr.io/gynsus/knoverge`, built for `linux/amd64` and `linux/arm64` — a self-hosted
+installation is as likely to be somebody's own small machine as a cloud instance. A
+tag `vX.Y.Z` publishes `X.Y.Z`, and a release that is not a prerelease also moves
+`latest`; a prerelease does not, because somebody pulling without a tag is asking for
+the current release rather than the next one being tried.
+
+The version is baked in at build time, so a release says which one it is:
+
+```bash
+docker run --rm --entrypoint knoverge ghcr.io/gynsus/knoverge:0.1.0 --version
+```
+
+`/health` and `workspace_manifest` report the same number, and the MCP handshake
+carries it. The number in the repository's `package.json` is `0.0.0` and stays there:
+the version of a release is the tag it was cut from, and a build that reported the
+source tree's number would report the same number for every release ever made.
+
+The compose file builds the image locally by default. To run a released one, replace
+the `build` block with `image: ghcr.io/gynsus/knoverge:0.1.0`.
+
+### Schema
 
 Database schema uses migrations, run automatically on start unless `KNOVERGE_AUTO_MIGRATE=false`. With auto-migration disabled, run them explicitly:
 

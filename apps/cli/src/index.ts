@@ -20,7 +20,10 @@ const program = new Command();
 program
   .name('knoverge')
   .description('Knoverge command line.')
-  .version(pkg.version, '-v, --version');
+  // The tag a release image was built from, and the source tree's own number
+  // outside one. A released binary reporting 0.0.0 would make every release
+  // indistinguishable from every other.
+  .version(process.env['KNOVERGE_VERSION'] ?? pkg.version, '-v, --version');
 
 program.addCommand(agentCommand());
 program.addCommand(auditCommand());

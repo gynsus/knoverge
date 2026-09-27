@@ -32,11 +32,16 @@ RUN pnpm --filter @knoverge/server --prod deploy --legacy /out/server \
 
 # ---- runtime: one image with the server and the CLI ----
 FROM base AS runtime
+# The tag this image was built from. The workspace's package.json says 0.0.0 and
+# always will, so a release that did not bake its version in would report the same
+# number as every other release.
+ARG KNOVERGE_VERSION=0.0.0-dev
 # `knoverge backup` shells out to pg_dump, and pg_dump refuses a server newer
 # than itself, so the client major version is pinned to the one the deployment
 # guide runs. Only the client: the image has no database in it.
 RUN apk add --no-cache postgresql17-client
 ENV NODE_ENV=production \
+    KNOVERGE_VERSION=${KNOVERGE_VERSION} \
     KNOVERGE_PORT=3000 \
     KNOVERGE_HOST=0.0.0.0 \
     KNOVERGE_DATA_DIR=/data \

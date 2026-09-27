@@ -47,6 +47,15 @@ const EnvSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{64,}$/, 'KNOVERGE_TOKEN_PEPPER must be hex, at least 32 bytes'),
   KNOVERGE_BASE_URL: z.string().url().default('http://localhost:3000'),
+  /**
+   * What this build calls itself, when a release baked it in.
+   *
+   * The workspace's package.json says 0.0.0 and always will: the version of a
+   * release is the tag it was cut from, and an image that reports the number in the
+   * source tree reports the same number for every release ever made. Health, the
+   * manifest and the MCP handshake all read this.
+   */
+  KNOVERGE_VERSION: z.string().max(64).optional(),
   KNOVERGE_WEB_DIST: z.string().min(1).optional(),
   KNOVERGE_AUTO_MIGRATE: z
     .enum(['true', 'false'])
@@ -106,6 +115,8 @@ export interface Config {
   autoMigrate: boolean;
   logLevel: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace';
   trustProxy: boolean;
+  /** What this build calls itself; the source tree's own number when unset. */
+  version: string | undefined;
   /** What one agent credential may spend, per minute and at once. */
   agentBudgets: AgentBudgets;
   /** Null unless an operator configured a provider, which is the default. */
@@ -183,6 +194,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     autoMigrate: e.KNOVERGE_AUTO_MIGRATE,
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
+    version: e.KNOVERGE_VERSION,
     agentBudgets: {
       readsPerMinute: e.KNOVERGE_AGENT_READS_PER_MINUTE,
       writesPerMinute: e.KNOVERGE_AGENT_WRITES_PER_MINUTE,
