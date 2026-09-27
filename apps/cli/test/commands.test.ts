@@ -4,6 +4,7 @@ import { agentCommand } from '../src/commands/agent.ts';
 import { backupCommand } from '../src/commands/backup.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
+import { integrityCommand } from '../src/commands/integrity.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
 import { permissionsCommand } from '../src/commands/permissions.ts';
@@ -18,6 +19,7 @@ const EXPECTED: Record<string, string[]> = {
   backup: [],
   bootstrap: [],
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
+  integrity: ['check'],
   mcp: ['check', 'stdio'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
@@ -32,6 +34,7 @@ const commands = [
   backupCommand(),
   bootstrapCommand(),
   dbCommand(),
+  integrityCommand(),
   ledgerCommand(),
   mcpCommand(),
   permissionsCommand(),

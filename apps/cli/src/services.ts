@@ -14,6 +14,7 @@ import {
   CrossStoreWriter,
   EventLedger,
   IdempotencyService,
+  IntegrityService,
   KnowledgeRecovery,
   KnowledgeService,
   MaintenanceService,
@@ -198,6 +199,23 @@ export function createServices() {
   // resolve a blocked workspace without restarting the process. The workspace
   // lock is a PostgreSQL advisory lock, so this is safe to run against a
   // installation that is up: it waits for whatever is writing.
+  const integrity = lazy(
+    () =>
+      new IntegrityService({
+        workspaces: repositories.workspaces,
+        items: repositories.knowledge,
+        revisions: repositories.revisions,
+        categories: repositories.categories,
+        operations: repositories.operations,
+        ledger: ledger(),
+        git: git(),
+        parseItem,
+        contentHash,
+        frontmatterHash,
+        parseTaxonomy,
+        taxonomyPath: TAXONOMY_PATH,
+      }),
+  );
   const recovery = lazy(
     () =>
       new RecoveryService({
@@ -315,6 +333,9 @@ export function createServices() {
     },
     get maintenance() {
       return maintenance();
+    },
+    get integrity() {
+      return integrity();
     },
     get recovery() {
       return recovery();
