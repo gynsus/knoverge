@@ -597,17 +597,13 @@ proposal.rejected
 proposal.edited_and_approved
 proposal.withdrawn
 proposal.conflict
-sync.started
-sync.completed
-sync.expired
-summary.generated
 attachment.uploaded
 attachment.extracted
 webhook.changed
 integrity.check_completed
 ```
 
-Not in the ledger (high volume or non-material): successful authentication, individual sync candidate classifications, search queries, job runs. These live in application logs, `AgentCredential.last_used_at` and `SyncCandidate`.
+Not in the ledger (high volume or non-material): successful authentication, individual sync candidate classifications, search queries, job runs, and a reconciliation pass opening or closing. These live in application logs, `AgentCredential.last_used_at`, `SyncSession` and `SyncCandidate`. A pass produces proposals, and each of those is an event carrying the session it came from; what the pass itself writes for the agent is a checkpoint, which is operational state of the same kind as `last_used_at`. Generating a summary is not in the ledger either: the draft writes nothing, and saving it is an ordinary create or update with its own event. ADR 0027 records both, and the rule they come from — a type is listed here only if something writes it.
 
 ## 23. Operation
 

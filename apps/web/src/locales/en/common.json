@@ -242,10 +242,6 @@
       "proposal.withdrawn": "Proposal withdrawn",
       "relation.created": "Connection added",
       "relation.removed": "Connection removed",
-      "summary.generated": "Summary written",
-      "sync.completed": "Reconciliation finished",
-      "sync.expired": "Reconciliation expired",
-      "sync.started": "Reconciliation started",
       "user.created": "Account created",
       "user.password_reset": "Password reset",
       "webhook.changed": "Webhook changed",
@@ -496,7 +492,6 @@
       "knowledge": "Knowledge",
       "proposals": "Proposals and refusals",
       "taxonomy": "Categories",
-      "sync": "Reconciliation",
       "access": "Access and administration"
     },
     "intro": "What has happened here, and who made it happen. Every material change is on record, in order, and each entry leads to the thing it changed.",
