@@ -130,9 +130,17 @@ describe('what an agent may ask for', () => {
     expect(manifest.limits).toEqual({
       reads_per_minute: DEFAULT_AGENT_LIMITS.readsPerMinute,
       writes_per_minute: DEFAULT_AGENT_LIMITS.writesPerMinute,
+      sync_batches_per_minute: DEFAULT_AGENT_LIMITS.syncBatchesPerMinute,
       concurrent_requests: DEFAULT_AGENT_LIMITS.concurrent,
+      pending_proposals: DEFAULT_AGENT_LIMITS.pendingProposals,
       max_request_bytes: MAX_TOOL_BODY_BYTES,
     });
+  });
+
+  it('gives a batch of inventory a budget of its own', () => {
+    // One call carrying a whole inventory, classified line by line against the
+    // workspace, is not one write among sixty.
+    expect(AGENT_LIMITS.syncBatch.max).toBeLessThan(AGENT_LIMITS.write.max);
   });
 
   it('gives a write a smaller budget than a read', () => {

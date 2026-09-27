@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { parseLedgerKey, type LedgerKey } from '@knoverge/core';
+import { DEFAULT_PENDING_PER_ACTOR, parseLedgerKey, type LedgerKey } from '@knoverge/core';
 import { z } from 'zod';
 
 import type { AgentBudgets } from './plugins/agent-limits.ts';
@@ -40,7 +40,14 @@ const EnvSchema = z.object({
   // either way, so a client can pace itself.
   KNOVERGE_AGENT_READS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(600),
   KNOVERGE_AGENT_WRITES_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(60),
+  KNOVERGE_AGENT_SYNC_BATCHES_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(12),
   KNOVERGE_AGENT_CONCURRENCY: z.coerce.number().int().min(1).max(256).default(8),
+  KNOVERGE_AGENT_PENDING_PROPOSALS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100_000)
+    .default(DEFAULT_PENDING_PER_ACTOR),
   // Optional, and disabled is the default: rule 9 says the core runs with no
   // AI provider, and rule 12 says nothing is contacted unless an operator
   // asked for it.
@@ -135,6 +142,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     agentBudgets: {
       readsPerMinute: e.KNOVERGE_AGENT_READS_PER_MINUTE,
       writesPerMinute: e.KNOVERGE_AGENT_WRITES_PER_MINUTE,
+      syncBatchesPerMinute: e.KNOVERGE_AGENT_SYNC_BATCHES_PER_MINUTE,
+      pendingProposals: e.KNOVERGE_AGENT_PENDING_PROPOSALS,
       concurrent: e.KNOVERGE_AGENT_CONCURRENCY,
     },
     embeddings: embeddingSettings(e),

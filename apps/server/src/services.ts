@@ -75,6 +75,14 @@ export interface ServicesConfig {
   tokenPepper: string;
   /** Workspace repositories live under this directory. */
   dataDir: string;
+  /**
+   * How many proposals one actor may have waiting for review.
+   *
+   * A domain rule rather than a transport one — it protects the review queue, not
+   * the server — so the service holds it and the environment sets it. The default
+   * lives in the domain.
+   */
+  pendingPerActor?: number;
   /** What the manifest reports as the running build. */
   version?: string;
   poolMax?: number;
@@ -328,6 +336,7 @@ export function createServices(config: ServicesConfig) {
     }),
     actors: repositories.actors,
     ledger,
+    ...(config.pendingPerActor === undefined ? {} : { pendingPerActor: config.pendingPerActor }),
   });
   const taxonomy = new TaxonomyService({
     uow,

@@ -1,4 +1,4 @@
-import { DomainError } from '@knoverge/core';
+import { DEFAULT_PENDING_PER_ACTOR, DomainError } from '@knoverge/core';
 import type { FastifyInstance, FastifyRequest, onRequestHookHandler } from 'fastify';
 
 declare module 'fastify' {
@@ -36,7 +36,20 @@ export const MAX_TOOL_BODY_BYTES = 512 * 1024;
 export const DEFAULT_AGENT_LIMITS = {
   readsPerMinute: 600,
   writesPerMinute: 60,
+  /**
+   * Batches of inventory a minute.
+   *
+   * A write budget is set for a write: one item, one commit, one ledger entry.
+   * `sync_submit_inventory` is a write that carries up to half a megabyte of one
+   * agent's description of its own material and classifies every line of it
+   * against the workspace, and sixty of those a minute is a different order of
+   * cost. The specification asked for this bucket when reconciliation shipped.
+   */
+  syncBatchesPerMinute: 12,
   concurrent: DEFAULT_CONCURRENT_PER_CREDENTIAL,
+  // The domain's own number, not a second copy of it: the service enforces this
+  // and the manifest only reports it.
+  pendingProposals: DEFAULT_PENDING_PER_ACTOR,
 } as const;
 
 /**
@@ -51,7 +64,16 @@ export const DEFAULT_AGENT_LIMITS = {
 export interface AgentBudgets {
   readsPerMinute: number;
   writesPerMinute: number;
+  syncBatchesPerMinute: number;
   concurrent: number;
+  /**
+   * How many proposals one actor may have waiting for review at once.
+   *
+   * The budget a rate limit cannot express, and the one this product needs most:
+   * rule 5 makes a proposal the only way an agent writes, and a review queue with
+   * ten thousand things in it is a review queue nobody uses.
+   */
+  pendingProposals: number;
 }
 
 /** The plugin's own shape, per class. */
@@ -59,8 +81,12 @@ export function rateLimitsFor(budgets: AgentBudgets) {
   return {
     read: { max: budgets.readsPerMinute, timeWindow: '1 minute' },
     write: { max: budgets.writesPerMinute, timeWindow: '1 minute' },
+    syncBatch: { max: budgets.syncBatchesPerMinute, timeWindow: '1 minute' },
   } as const;
 }
+
+/** The tools a batch budget applies to, rather than the ordinary write one. */
+export const SYNC_BATCH_TOOLS: ReadonlySet<string> = new Set(['sync_submit_inventory']);
 
 /** In-flight requests, by credential. Per process, which is where they run. */
 const inFlight = new Map<string, number>();

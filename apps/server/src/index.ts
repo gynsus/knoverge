@@ -67,6 +67,7 @@ async function main(): Promise<void> {
     ledgerKey: config.ledgerKey,
     tokenPepper: config.tokenPepper,
     dataDir: config.dataDir,
+    pendingPerActor: config.agentBudgets.pendingProposals,
     version: pkg.version,
   });
   const database = services.database;

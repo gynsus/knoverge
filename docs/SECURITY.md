@@ -420,7 +420,15 @@ Readiness has a separate, tighter budget. It is unauthenticated and runs every p
 
 The limiter runs after authentication, so a request that ends in a refusal has already paid one indexed lookup. Tokens are compared by digest rather than by a key derivation function, so that lookup is a query, not work an attacker can amplify.
 
-Stricter per-route limits apply to authentication failures, and to proposal writes and sync batches when they arrive.
+Stricter per-route limits apply to authentication failures, and a batch of inventory has a budget of its own: `sync_submit_inventory` carries a whole inventory in one call and classifies every line of it against the workspace, so it is not one write among sixty.
+
+### The backlog, which a rate cannot express
+
+Rule 5 makes a proposal the only way an agent writes, and the review queue is where every agent write is decided. Sixty writes a minute for an hour is three thousand pending proposals, every one of them inside every budget above — and a queue with three thousand things in it is a queue nobody uses. Each pending proposal also holds proposed text, which is the only copy of it outside Git.
+
+So one actor may have a bounded number of proposals waiting at once, two hundred by default (`KNOVERGE_AGENT_PENDING_PROPOSALS`). Reaching it answers `RATE_LIMITED` and says what has to happen: waiting does not clear this, a reviewer does. `workspace_manifest` reports the number under `limits.pending_proposals`, so a client paces itself rather than discovering it by refusal.
+
+It counts `pending` and `conflict` — both are waiting for a person — and not what a policy rule let through, because an `allow_direct` write is decided and gone. Counting those would make a rule that grants more end up granting less.
 
 ## 13a. The workspace repository
 

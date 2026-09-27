@@ -4,6 +4,7 @@ import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import {
   MAX_TOOL_BODY_BYTES,
+  SYNC_BATCH_TOOLS,
   limitConcurrency,
   rateLimitsFor,
   type AgentBudgets,
@@ -127,8 +128,15 @@ export function registerToolRoutes(
           : [csrfUnlessBearer(app), limitConcurrency(app, budgets.concurrent)],
         // A write takes the workspace lock, makes a commit and appends to the
         // ledger; a read does none of those. One budget for both would be set
-        // for the cheap one and leave the expensive one unprotected.
-        config: { rateLimit: tool.readOnly ? limits.read : limits.write },
+        // for the cheap one and leave the expensive one unprotected. A batch of
+        // inventory is a third class again: one call, a whole inventory.
+        config: {
+          rateLimit: tool.readOnly
+            ? limits.read
+            : SYNC_BATCH_TOOLS.has(tool.name)
+              ? limits.syncBatch
+              : limits.write,
+        },
         bodyLimit: MAX_TOOL_BODY_BYTES,
         schema: {
           operationId: tool.name,
