@@ -312,6 +312,40 @@ It takes the same workspace lock the server's writers take, so it is safe agains
 
 An unresolved operation closes its own workspace and nothing else: the recovery pass carries on to the rest, the server finishes starting, and the job runner runs. The reason is also written to the operation row, so `db recover` and the startup log are not the only places to find it.
 
+### Whether the two stores still agree
+
+```bash
+docker compose exec knoverge knoverge integrity check
+docker compose exec knoverge knoverge integrity check --workspace personal --json
+```
+
+PostgreSQL holds an index of the knowledge and Git holds the knowledge itself, so
+the two can disagree and only one of them is canonical. Every write goes through
+the cross-store writer so that they cannot disagree by accident, and recovery
+repairs the one case a crash produces. This is the check that neither of those is
+quietly failing, and it is the command to run after a restore.
+
+Per workspace it reports the items examined, the events the chain was recomputed
+over, and every finding:
+
+| finding | what it means |
+| --- | --- |
+| `operation_unfinished` | a write stopped half way; `knoverge db recover` resolves it |
+| `ledger_broken` | the hash chain does not hold together from some sequence on |
+| `commit_missing` | a revision names a commit the repository does not have |
+| `file_missing` | the file a revision recorded is not there |
+| `content_hash_mismatch` | the file does not hash to what the database recorded |
+| `frontmatter_disagrees` | the file's metadata and the revision's disagree, field by field |
+| `taxonomy_missing` / `taxonomy_disagrees` | `taxonomy.yaml` is absent or is not the tree the database holds |
+
+It exits non-zero when it finds anything, so a scheduled run is a check rather than
+a log line. The findings name objects and field names and never any knowledge: a
+report is not a place for the text it is reporting about.
+
+It reads and never writes. An integrity checker that repaired things would be the
+fourth way knowledge changes in this product and the least reviewed one — the
+repairs live in `db recover` and, where nothing can repair, in the backup.
+
 ### Permission grants from the command line
 
 `knoverge permissions list`, `grant` and `revoke` administer grants as the workspace system actor. They exist because a grant can restrict the people who administer grants, and a restriction is deliberately not lifted by the person it restricts:
@@ -482,7 +516,8 @@ application writes" is step one and the command checks it rather than trusting i
 replace it, naming the workspaces it would replace. After: it verifies the ledger
 chain of every workspace and compares each head with the sequence the manifest
 recorded, and exits non-zero if any of them did not come back where the backup
-left it. A script that restores and carries on regardless is how a bad restore
+left it. Follow it with `knoverge integrity check`, which is the one that reads the
+repository. A script that restores and carries on regardless is how a bad restore
 goes unnoticed until somebody reads knowledge that is not there.
 
 By hand, the same order:
@@ -490,7 +525,7 @@ By hand, the same order:
 1. stop application writes;
 2. restore PostgreSQL — `pg_restore --clean --if-exists --dbname=knoverge postgres.dump`;
 3. restore the data directory — `tar -xzf data.tar.gz -C "$KNOVERGE_DATA_DIR"`;
-4. run `knoverge ledger verify` (and `knoverge integrity check` once it ships in Milestone 9);
+4. run `knoverge integrity check`, which verifies the chain as part of its work;
 5. rebuild search/embedding indexes if needed — `knoverge db reindex`;
 6. start application. Startup recovery resolves any operation the backup caught mid-flight, and reports any it cannot.
 

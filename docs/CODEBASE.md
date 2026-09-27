@@ -465,6 +465,33 @@ data — written by an older version of the code, possibly edited by a reviewer,
 kept for as long as the proposal waits — and one that cannot be read is refused
 rather than half-applied.
 
+## Whether the two stores still agree
+
+`packages/core/src/integrity/service.ts` reads what is on disk and compares it with
+what the database recorded, workspace by workspace: unfinished operations, the
+ledger's hash chain, every item's commit and file, the file's frontmatter against
+the revision's, and `taxonomy.yaml` against the categories table.
+
+Three decisions worth keeping.
+
+**It reads and never writes.** A checker that repaired things would be a fourth way
+knowledge changes, next to a write, a proposal and recovery, and the least reviewed
+of the four. What can be repaired is `db recover`'s job; what cannot is the backup's.
+
+**A deleted item is checked at its commit.** Its file is gone from the working tree
+and present in every commit that had it, so the check reads it with `readAt` — which
+is the only way to reach the half of the repository a working-tree listing cannot
+see.
+
+**A finding names objects and fields, never text.** A frontmatter disagreement says
+which fields disagree, not what they say; a content mismatch says the two hashes.
+The report goes into logs and into a script's output, and knowledge does not belong
+in either. That is the same rule the ledger follows (rule 4).
+
+One false positive is worth knowing about, because it failed the first run: a
+workspace nobody has filed anything in has no `taxonomy.yaml` yet, so a missing file
+is only a finding when the database holds categories.
+
 ## Writing to PostgreSQL and Git together
 
 `packages/core/src/operations` holds the primitive every canonical write goes

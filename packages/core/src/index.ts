@@ -1,4 +1,12 @@
 export type { ActorContext } from './actor-context.ts';
+export {
+  IntegrityService,
+  type Finding,
+  type FindingKind,
+  type IntegrityOptions,
+  type IntegrityReport,
+  type WorkspaceIntegrity,
+} from './integrity/service.ts';
 export { KnowledgeRecovery, type KnowledgeRecoveryOptions } from './knowledge/recovery.ts';
 export {
   ProposalService,
