@@ -112,8 +112,8 @@ All strings come from message catalogues (English source, Russian first). See `I
 - `db migrate` / `db prune` / `db recover`: the last finishes or abandons writes
   an interrupted process left behind, which is how a workspace the write guard
   has closed is opened without restarting the server;
-- `integrity check` (Milestone 9): cross-store and ledger verification;
-- `backup` / `restore` helpers (Milestone 9);
+- `integrity check`: cross-store and ledger verification, reading and never repairing;
+- `backup`, which holds every workspace write lock so the dump and the archive describe one moment, and `restore`, which checks that what came back is what was taken;
 - `mcp stdio`: local stdio bridge that proxies to a remote Knoverge MCP endpoint with a bearer token from the environment.
 
 ### PostgreSQL

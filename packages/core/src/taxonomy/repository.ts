@@ -171,6 +171,8 @@ export interface TaxonomyVersionRepository {
   latest(
     workspaceId: WorkspaceId,
   ): Promise<{ version: number; gitCommitHash: string | null } | null>;
+  /** Whether any taxonomy version was written by this commit. */
+  knowsCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
   /**
    * Records the version this change produced, with the commit that wrote
    * `taxonomy.yaml`.

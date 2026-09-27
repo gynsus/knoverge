@@ -446,5 +446,18 @@ export function createRevisionRepository(db: Database): RevisionRepository {
         .limit(1);
       return rows[0]?.hash ?? null;
     },
+    async knowsCommit(workspaceId, commitHash) {
+      const rows = await db
+        .select({ id: knowledgeRevisions.id })
+        .from(knowledgeRevisions)
+        .where(
+          and(
+            eq(knowledgeRevisions.workspaceId, workspaceId),
+            eq(knowledgeRevisions.gitCommitHash, commitHash),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0;
+    },
   };
 }

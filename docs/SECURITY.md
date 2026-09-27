@@ -64,13 +64,24 @@ blocked, and nothing about a running server would say why.
 
 Milestone 4 (agents), shipped:
 
-- per-credential rate limits, one budget for reads and a tighter one for writes; the sync batch bucket arrives with the sync operations in Milestone 5;
+- per-credential rate limits, one budget for reads and a tighter one for writes;
 - MCP request size limit (512 KiB, under the megabyte accepted elsewhere);
 - at most eight requests in flight per credential, which a per-minute budget cannot express.
 
-Milestone 9 (operations): audit export, backup tooling, webhooks, token rotation UI, advanced hardening.
+Milestone 9 (operations), shipped:
 
-Milestone 9 hardening has not shipped, so an Internet-facing deployment should sit behind a reverse proxy that terminates TLS and adds its own rate limiting.
+- a batch of inventory has a budget of its own, which is the bucket Milestone 4 left for the sync operations;
+- a bound on how many proposals one actor may leave waiting for review, which is the budget a rate cannot express (section 13);
+- webhooks that carry a notification and never the knowledge (ADR 0029), with signing secrets encrypted under `KNOVERGE_ENCRYPTION_KEY`;
+- ledger key rotation by retiring a key rather than replacing it (ADR 0030);
+- `knoverge backup` and `knoverge restore`, and `knoverge integrity check` for whether the two stores still agree;
+- `knoverge audit export` and `knoverge audit verify`, which check a trail without the installation that produced it;
+- token rotation in the browser, with the fact that says finishing a rotation is safe.
+
+TLS is still the proxy's job: the server speaks HTTP and expects something in front
+of it to terminate TLS, which section 12 of `DEPLOYMENT.md` shows with a Caddy
+example. What has changed is that the rate limiting is no longer something a proxy has
+to add on the server's behalf.
 
 ## 4. Human authentication
 

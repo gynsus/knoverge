@@ -1,4 +1,6 @@
+import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -69,6 +71,11 @@ async function anItem(title: string, body: string) {
 
 const fileOf = (path: string) => join(dataDir, 'repositories', workspaceId, path);
 
+/** git, in a workspace's repository, the way an operator would run it. */
+const run = promisify(execFile);
+const gitIn = async (repository: string, args: readonly string[]) =>
+  (await run('git', ['-C', repository, ...args])).stdout;
+
 beforeAll(async () => {
   dataDir = await mkdtemp(join(tmpdir(), 'knoverge-integrity-'));
   container = await new PostgreSqlContainer('pgvector/pgvector:pg17').start();
@@ -107,6 +114,7 @@ beforeAll(async () => {
     revisions: services.repositories.revisions,
     categories: services.repositories.categories,
     operations: services.repositories.operations,
+    versions: services.repositories.taxonomyVersions,
     ledger: services.ledger,
     git: createGitStore({ dataDir }),
     parseItem,
@@ -259,6 +267,26 @@ describe('knoverge integrity check', () => {
     }
   });
 
+  it('does not mistake a taxonomy commit for a hand-made one', async () => {
+    // A workspace's history interleaves knowledge commits and taxonomy commits, so
+    // HEAD is as likely to be one as the other. Asking only the revisions whether
+    // they know it would report every category change as somebody editing the
+    // repository by hand.
+    const created = await admin.request({
+      method: 'POST',
+      url: '/v1/admin/taxonomy.create',
+      headers: { 'x-knoverge-workspace': workspaceId },
+      payload: { name: 'Hours and rates' },
+    });
+    expect(created.statusCode, created.body).toBe(200);
+
+    const report = await integrity.check([workspaceId]);
+    expect(
+      report.findings.filter((f) => f.kind === 'head_unknown'),
+      JSON.stringify(report.findings),
+    ).toEqual([]);
+  });
+
   it('finds an unfinished operation, and says which command repairs it', async () => {
     // What recovery resolves. Reported and never repaired here: a checker that
     // wrote would be the fourth way knowledge changes and the least reviewed one.
@@ -301,5 +329,41 @@ describe('knoverge integrity check', () => {
     const finding = report.findings.find((f) => f.kind === 'ledger_broken');
     expect(finding, JSON.stringify(report.findings)).toBeDefined();
     expect(finding?.detail).toMatch(/hash mismatch|previous hash/u);
+  });
+
+  it('notices a commit somebody made by hand', async () => {
+    // The gap GIT_REPOSITORY.md names: a commit added on top of HEAD contradicts
+    // nothing the database recorded — every revision still points at a commit that
+    // exists, every file still hashes to what it should — so the only way to see one
+    // is to ask where the branch is.
+    // Named, because this session belongs to two workspaces by now.
+    const written = await admin.request({
+      method: 'POST',
+      url: '/v1/admin/knowledge.create',
+      headers: { 'x-knoverge-workspace': workspaceId },
+      payload: {
+        title: 'Before the hand-made commit',
+        body: 'Written through the API.\n',
+        type: 'fact',
+      },
+    });
+    expect(written.statusCode, written.body).toBe(200);
+    const repository = join(dataDir, 'repositories', workspaceId);
+    await writeFile(join(repository, 'notes.txt'), 'left here by an operator\n', 'utf8');
+    await gitIn(repository, ['add', 'notes.txt']);
+    await gitIn(repository, [
+      '-c',
+      'user.name=Operator',
+      '-c',
+      'user.email=operator@example.com',
+      'commit',
+      '-m',
+      'by hand',
+    ]);
+
+    const report = await integrity.check([workspaceId]);
+    const finding = report.findings.find((f) => f.kind === 'head_unknown');
+    expect(finding, JSON.stringify(report.findings)).toBeDefined();
+    expect(finding?.detail).toContain('no revision and no taxonomy version');
   });
 });

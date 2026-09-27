@@ -364,6 +364,19 @@ export function createTaxonomyVersionRepository(db: Database): TaxonomyVersionRe
         .limit(1);
       return rows[0] ?? null;
     },
+    async knowsCommit(workspaceId: WorkspaceId, commitHash: string) {
+      const rows = await db
+        .select({ version: taxonomyVersions.version })
+        .from(taxonomyVersions)
+        .where(
+          and(
+            eq(taxonomyVersions.workspaceId, workspaceId),
+            eq(taxonomyVersions.gitCommitHash, commitHash),
+          ),
+        )
+        .limit(1);
+      return rows.length > 0;
+    },
     async bump(tx: Tx, workspaceId: WorkspaceId, at: Date, version: number, gitCommitHash: string) {
       // The unique index on (workspace, version) is the backstop: if two
       // writers ever reached here with one number, the second fails rather

@@ -427,6 +427,7 @@ over, and every finding:
 | `content_hash_mismatch` | the file does not hash to what the database recorded |
 | `frontmatter_disagrees` | the file's metadata and the revision's disagree, field by field |
 | `taxonomy_missing` / `taxonomy_disagrees` | `taxonomy.yaml` is absent or is not the tree the database holds |
+| `head_unknown` | the branch is at a commit no revision and no taxonomy version was written by — somebody committed by hand |
 
 It exits non-zero when it finds anything, so a scheduled run is a check rather than
 a log line. The findings name objects and field names and never any knowledge: a

@@ -79,6 +79,14 @@ export interface GitStore {
    */
   hasCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
   /**
+   * Where the branch is now, or null for a repository with no commits.
+   *
+   * Asked by the integrity check: a commit an operator added by hand contradicts
+   * nothing the database recorded, so the only way to notice one is to look at HEAD
+   * and ask whether the database has ever heard of it.
+   */
+  headCommit(workspaceId: WorkspaceId): Promise<string | null>;
+  /**
    * The `Knoverge-*` trailers of a commit, in order.
    *
    * What recovery reads: a commit that reached Git without its PostgreSQL

@@ -7,7 +7,7 @@ import type { KnowledgeRepository, RevisionRepository } from '../knowledge/repos
 import type { EventLedger } from '../ledger/ledger.ts';
 import type { OperationRepository } from '../operations/repository.ts';
 import type { GitStore } from '../ports/git-store.ts';
-import type { CategoryRepository } from '../taxonomy/repository.ts';
+import type { CategoryRepository, TaxonomyVersionRepository } from '../taxonomy/repository.ts';
 import type { WorkspaceRepository } from '../workspace/repository.ts';
 
 /**
@@ -27,7 +27,16 @@ export type FindingKind =
   | 'frontmatter_hash_mismatch'
   | 'frontmatter_disagrees'
   | 'taxonomy_missing'
-  | 'taxonomy_disagrees';
+  | 'taxonomy_disagrees'
+  /**
+   * The branch is at a commit the database has never heard of.
+   *
+   * A commit an operator added by hand contradicts nothing the database recorded —
+   * every revision still points at a commit that exists, and every file still
+   * hashes to what it should — so the only way to notice one is to look at HEAD.
+   * `GIT_REPOSITORY.md` names this as the gap the guard cannot see.
+   */
+  | 'head_unknown';
 
 export interface Finding {
   workspaceId: WorkspaceId;
@@ -60,6 +69,8 @@ export interface IntegrityOptions {
   revisions: RevisionRepository;
   categories: CategoryRepository;
   operations: OperationRepository;
+  /** Asked whether a commit wrote a taxonomy version, for the HEAD check. */
+  versions: TaxonomyVersionRepository;
   ledger: EventLedger;
   git: GitStore;
   parseItem: (text: string) => { frontmatter: Frontmatter; body: string };
@@ -140,6 +151,7 @@ export class IntegrityService {
     }
 
     await this.checkTaxonomy(workspaceId, say);
+    await this.checkHead(workspaceId, say);
 
     let items = 0;
     let after: KnowledgeItemId | undefined;
@@ -243,6 +255,35 @@ export class IntegrityService {
         `the file says status ${parsed.frontmatter.status}, the row says ${item.status}`,
       );
     }
+  }
+
+  /**
+   * Whether the branch is where the database thinks it is.
+   *
+   * Not "HEAD is the newest recorded commit": a workspace's history interleaves
+   * knowledge commits and taxonomy commits, and hashes carry no order, so the
+   * question that can be answered is whether the database has heard of this commit
+   * at all. A commit an operator added by hand has not been.
+   */
+  private async checkHead(
+    workspaceId: WorkspaceId,
+    say: (kind: FindingKind, objectId: string, detail: string) => void,
+  ): Promise<void> {
+    const head = await this.o.git.headCommit(workspaceId);
+    // No commits at all is a repository nothing has been written to yet, which the
+    // per-item checks already say everything about.
+    if (head === null) return;
+    if (
+      (await this.o.revisions.knowsCommit(workspaceId, head)) ||
+      (await this.o.versions.knowsCommit(workspaceId, head))
+    ) {
+      return;
+    }
+    say(
+      'head_unknown',
+      workspaceId,
+      `the branch is at ${head.slice(0, 12)}, which no revision and no taxonomy version was written by`,
+    );
   }
 
   private async checkTaxonomy(

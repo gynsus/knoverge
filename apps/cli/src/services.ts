@@ -226,6 +226,7 @@ export function createServices() {
         revisions: repositories.revisions,
         categories: repositories.categories,
         operations: repositories.operations,
+        versions: repositories.taxonomyVersions,
         ledger: ledger(),
         git: git(),
         parseItem,
