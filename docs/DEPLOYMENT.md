@@ -468,13 +468,30 @@ The `.env` secrets, stored separately from the data backups. A backup without
 
 ## 10. Restore
 
-Restore order:
+```bash
+docker compose stop knoverge
+docker compose run --rm --entrypoint knoverge knoverge restore --from /backups/20260927T112951Z
+docker compose start knoverge
+```
+
+`knoverge restore` does the two mechanical steps and the two that matter either
+side of them. Before: it reads the manifest, refuses a directory that is not a
+whole backup, refuses while anything else is connected to the database — "stop
+application writes" is step one and the command checks it rather than trusting it
+— and refuses a database that already holds knowledge unless `--force` says to
+replace it, naming the workspaces it would replace. After: it verifies the ledger
+chain of every workspace and compares each head with the sequence the manifest
+recorded, and exits non-zero if any of them did not come back where the backup
+left it. A script that restores and carries on regardless is how a bad restore
+goes unnoticed until somebody reads knowledge that is not there.
+
+By hand, the same order:
 
 1. stop application writes;
-2. restore PostgreSQL — `pg_restore --dbname=knoverge postgres.dump`;
+2. restore PostgreSQL — `pg_restore --clean --if-exists --dbname=knoverge postgres.dump`;
 3. restore the data directory — `tar -xzf data.tar.gz -C "$KNOVERGE_DATA_DIR"`;
 4. run `knoverge ledger verify` (and `knoverge integrity check` once it ships in Milestone 9);
-5. rebuild search/embedding indexes if needed;
+5. rebuild search/embedding indexes if needed — `knoverge db reindex`;
 6. start application. Startup recovery resolves any operation the backup caught mid-flight, and reports any it cannot.
 
 The drill itself is covered by a test: `packages/db/test/restore.test.ts` takes a
