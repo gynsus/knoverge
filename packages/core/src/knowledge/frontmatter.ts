@@ -1,6 +1,8 @@
 import type { EvidenceState, Frontmatter, FrontmatterSource } from '@knoverge/contracts';
 import { FRONTMATTER_KEY_ORDER, canonicalTag, normaliseTag } from '@knoverge/contracts';
 
+import { canonicalJson } from '../ledger/canonical-json.ts';
+
 /**
  * What a claim rests on, from the sources it cites (KNOWLEDGE_MODEL.md §8).
  *
@@ -70,6 +72,14 @@ export interface MetadataChange {
  * `updated_at` is skipped: it differs by construction on every revision, and a
  * list of changes whose first entry is always the same one is a list people
  * stop reading.
+ *
+ * Compared canonically, so that two values which say the same thing are the same
+ * value. `JSON.stringify` is key-order sensitive, and the two frontmatters handed
+ * to this do not always come from the same place: one may be a row read back out
+ * of jsonb and the other the same file parsed from YAML, and jsonb does not keep
+ * the order a source object was written in. The integrity checker found that on
+ * its first run against a real workspace and reported seventy-three items as
+ * disagreeing about `sources` whose sources were identical.
  */
 export function compareFrontmatter(from: Frontmatter, to: Frontmatter): MetadataChange[] {
   const changes: MetadataChange[] = [];
@@ -77,7 +87,7 @@ export function compareFrontmatter(from: Frontmatter, to: Frontmatter): Metadata
     if (field === 'updated_at') continue;
     const before = (from as Record<string, unknown>)[field];
     const after = (to as Record<string, unknown>)[field];
-    if (JSON.stringify(before ?? null) !== JSON.stringify(after ?? null)) {
+    if (canonicalJson(before ?? null) !== canonicalJson(after ?? null)) {
       changes.push({ field, from: before ?? null, to: after ?? null });
     }
   }
