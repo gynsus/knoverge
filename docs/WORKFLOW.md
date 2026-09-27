@@ -173,6 +173,23 @@ Migration policy:
 - **before the first tagged release (v0.1.0):** migrations may be regenerated and squashed into a single baseline; the pull request must say so explicitly, and developers recreate their local database;
 - **from v0.1.0 on:** released migrations are immutable; every change is a new additive migration with an upgrade test.
 
+`packages/db/test/migration-upgrade.test.ts` is that test, once for the whole folder:
+it applies the migrations in stages against a database that already holds a row, and
+steps through every intermediate state carrying that row forward. Applying everything
+to an empty database — which `migrations.test.ts` does — says a fresh install works
+and nothing about the case an operator meets. A migration like
+
+```sql
+ALTER TABLE "workspaces" ADD COLUMN "probe" text NOT NULL;
+```
+
+passes the fresh test and fails both upgrade tests, which is exactly why they exist.
+
+What makes a released migration immutable is this document and the review of the pull
+request that would change one, not the runner: drizzle matches applied migrations by
+the timestamp in the journal, so an edit to a file already applied is passed over
+rather than reported. The test pins that behaviour so a change in it is noticed.
+
 ## 10. Security
 
 Assume Knoverge may contain highly sensitive private information.
