@@ -407,11 +407,18 @@ describe('taxonomy page', () => {
       name: 'In use',
       item_count: 12,
     };
+    // The server's answer and the tree's next answer are two different things,
+    // and a test that only watches the request cannot tell whether the screen
+    // caught up. This one lets the list change and then looks at the tree.
+    let categories = [empty, used];
     const calls = mockApi({
       ...SIGNED_IN,
       'GET /v1/taxonomy.list?include_archived=true': () =>
-        json({ taxonomy_version: 2, categories: [empty, used] }),
-      'POST /v1/admin/taxonomy.delete': () => json({ taxonomy_version: 3, category: empty }),
+        json({ taxonomy_version: categories.length, categories }),
+      'POST /v1/admin/taxonomy.delete': () => {
+        categories = [used];
+        return json({ taxonomy_version: 3, category: empty });
+      },
     });
     const user = userEvent.setup();
     renderApp('/taxonomy');
@@ -438,6 +445,10 @@ describe('taxonomy page', () => {
     expect(calls.find((c) => c.url.includes('taxonomy.delete'))?.body).toEqual({
       category_id: 'cat_empty',
     });
+    // And it leaves the tree, without a reload. A row still there after the row
+    // is gone is the screen lying about the workspace.
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Typo' })).toBeNull());
+    expect(screen.getByRole('button', { name: 'In use' })).toBeInTheDocument();
   });
 
   it('searches names, paths, aliases and descriptions, and keeps the ancestors', async () => {
