@@ -325,6 +325,36 @@ It takes the same workspace lock the server's writers take, so it is safe agains
 
 An unresolved operation closes its own workspace and nothing else: the recovery pass carries on to the rest, the server finishes starting, and the job runner runs. The reason is also written to the operation row, so `db recover` and the startup log are not the only places to find it.
 
+### Pushing a notification somewhere
+
+```bash
+openssl rand -hex 32   # KNOVERGE_ENCRYPTION_KEY, if the installation has none yet
+docker compose exec knoverge curl -sS localhost:3000/v1/admin/webhooks.upsert \
+  -H 'content-type: application/json' -H "authorization: Bearer $TOKEN" \
+  -d '{"url":"https://example.internal/knoverge","event_types":["knowledge.created"]}'
+```
+
+The answer carries the signing secret once. It is encrypted at rest with
+`KNOVERGE_ENCRYPTION_KEY` and never served again; an operator who lost it upserts a
+new one. Without that key the call is refused rather than storing a secret in clear.
+
+What arrives is a batch of event summaries and never the knowledge (ADR 0029): a URL
+is not an actor and holds no read scope, so a receiver that wants an item fetches it
+with a credential of its own. Verify `X-Knoverge-Signature` as HMAC-SHA256 over
+`<X-Knoverge-Timestamp>.<body>`, comparing digests rather than strings, and reject a
+timestamp far from now.
+
+Delivery is a sweep every minute, from the worker role. Each endpoint carries a
+cursor over the workspace's ledger sequence, so a delivery that fails resends rather
+than skips — at least once, in order, keyed on an event id that does not change. A
+failing endpoint is retried further and further apart, up to half an hour, and
+`webhooks.list` shows the consecutive failures and the last error. A new webhook
+starts from the current sequence: adding one asks for what happens next, not for a
+replay of the workspace's history.
+
+`event_types` empty means every type. Redirects are refused, and private addresses
+are not blocked — see `SECURITY.md`.
+
 ### Whether the two stores still agree
 
 ```bash

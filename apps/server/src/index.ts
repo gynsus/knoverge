@@ -68,6 +68,7 @@ async function main(): Promise<void> {
     tokenPepper: config.tokenPepper,
     dataDir: config.dataDir,
     pendingPerActor: config.agentBudgets.pendingProposals,
+    ...(config.encryptionKey ? { encryptionKey: config.encryptionKey } : {}),
     version: pkg.version,
   });
   const database = services.database;
@@ -81,6 +82,9 @@ async function main(): Promise<void> {
         embed: (workspaceId) => services.embeddings.fill(workspaceId as WorkspaceId),
         workspaces: async () =>
           (await services.repositories.workspaces.list()).map((workspace) => workspace.id),
+        // Only where a secret can be kept. Without the key a webhook cannot be
+        // created, so a sweep would have nothing to do and nothing to say.
+        ...(config.encryptionKey ? { deliverWebhooks: () => services.webhooks.deliverDue() } : {}),
       })
     : undefined;
   const jobs = runner.jobs;

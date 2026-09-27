@@ -35,6 +35,19 @@ export const EMBEDDING_QUEUE = 'search.embed';
 const EMBEDDING_SCHEDULE = '*/5 * * * *';
 
 /**
+ * Where a notification leaves the installation.
+ *
+ * Away from the request for the same reason embedding is: it calls somebody
+ * else's server, which may be slow or down, and a knowledge write must not wait
+ * for it. A minute is the resolution a webhook gets — it is a notification that
+ * something happened, not a channel anything depends on.
+ */
+export const WEBHOOK_QUEUE = 'webhook.deliver';
+
+/** Every minute, and a failing endpoint waits longer than that by its own backoff. */
+const WEBHOOK_SCHEDULE = '* * * * *';
+
+/**
  * Background job runner (pg-boss on PostgreSQL). Queues are registered by the
  * milestones that need them.
  */
@@ -65,6 +78,14 @@ export interface JobsOptions {
   embed: (workspaceId: string) => Promise<{ embedded: number; remaining: number }>;
   /** Every workspace, for the sweep that catches up after a restart. */
   workspaces: () => Promise<string[]>;
+  /**
+   * Delivers whatever every due webhook has not been told about yet.
+   *
+   * Absent on an installation with no encryption key, where a webhook cannot be
+   * created in the first place: scheduling a sweep that could only ever fail
+   * would fill the log with the operator's own decision.
+   */
+  deliverWebhooks?: () => Promise<{ webhookId: string; delivered: number; ok: boolean }[]>;
 }
 
 export function createJobs(
@@ -125,6 +146,21 @@ export function createJobs(
       });
       await boss.createQueue(`${EMBEDDING_QUEUE}.sweep`);
       await boss.schedule(`${EMBEDDING_QUEUE}.sweep`, EMBEDDING_SCHEDULE);
+
+      const deliver = options.deliverWebhooks;
+      if (deliver) {
+        await boss.createQueue(WEBHOOK_QUEUE);
+        await boss.work(WEBHOOK_QUEUE, async () => {
+          for (const outcome of await deliver()) {
+            // Only what happened. A delivery that found nothing to say is not
+            // news, and a minute's worth of those would be the whole log.
+            if (outcome.delivered > 0 || !outcome.ok) {
+              logger.info(outcome, outcome.ok ? 'webhook delivered' : 'webhook delivery failed');
+            }
+          }
+        });
+        await boss.schedule(WEBHOOK_QUEUE, WEBHOOK_SCHEDULE);
+      }
 
       started = true;
       logger.info(

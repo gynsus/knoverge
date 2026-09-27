@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import { parseEncryptionKey, type EncryptionKey } from '@knoverge/auth';
 import { DEFAULT_PENDING_PER_ACTOR, parseLedgerKey, type LedgerKey } from '@knoverge/core';
 import { z } from 'zod';
 
@@ -18,6 +19,14 @@ const EnvSchema = z.object({
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
   KNOVERGE_LEDGER_KEY: z.string().min(1, 'KNOVERGE_LEDGER_KEY is required'),
+  /**
+   * Encrypts the secrets the server has to reuse in clear.
+   *
+   * Optional, unlike the other three: an installation that configures no webhook
+   * needs nowhere to keep a signing secret. Creating one without this is refused
+   * rather than stored in clear.
+   */
+  KNOVERGE_ENCRYPTION_KEY: z.string().optional(),
   KNOVERGE_SESSION_SECRET: z
     .string()
     .regex(/^[0-9a-fA-F]{64,}$/, 'KNOVERGE_SESSION_SECRET must be hex, at least 32 bytes'),
@@ -68,6 +77,8 @@ export interface Config {
   dataDir: string;
   /** HMAC key of the event ledger (ADR 0007). */
   ledgerKey: LedgerKey;
+  /** Present when the operator configured one; webhooks need it. */
+  encryptionKey?: EncryptionKey;
   /** Signs cookies (CSRF). */
   sessionSecret: string;
   /** Peppers agent credential hashes. */
@@ -124,6 +135,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       `Invalid configuration:\nKNOVERGE_LEDGER_KEY: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
+  let encryptionKey: EncryptionKey | undefined;
+  if (e.KNOVERGE_ENCRYPTION_KEY) {
+    try {
+      encryptionKey = parseEncryptionKey(e.KNOVERGE_ENCRYPTION_KEY);
+    } catch (err) {
+      // Set and wrong is a configuration error; absent is a decision.
+      throw new ConfigError(
+        `Invalid configuration:\nKNOVERGE_ENCRYPTION_KEY: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
   return {
     port: e.KNOVERGE_PORT,
     host: e.KNOVERGE_HOST,
@@ -131,6 +153,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
     ledgerKey,
+    ...(encryptionKey ? { encryptionKey } : {}),
     sessionSecret: e.KNOVERGE_SESSION_SECRET,
     tokenPepper: e.KNOVERGE_TOKEN_PEPPER,
     baseUrl: new URL(e.KNOVERGE_BASE_URL),

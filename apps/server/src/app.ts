@@ -29,6 +29,7 @@ import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminAiRoutes } from './routes/admin-ai.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
+import { registerAdminWebhookRoutes } from './routes/admin-webhooks.ts';
 import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerKnowledgeRoutes } from './routes/knowledge.ts';
@@ -113,6 +114,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerAdminAgentRoutes(app, options.services);
     registerAdminAiRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
+    registerAdminWebhookRoutes(app, options.services);
     registerAdminWorkspaceRoutes(app, options.services);
     registerKnowledgeRoutes(app, options.services);
     registerProposalRoutes(app, options.services);

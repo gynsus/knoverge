@@ -922,22 +922,26 @@ Attachment
 
 ## 32. Webhook
 
-Milestone 9.
-
 ```text
 Webhook
 - id
 - workspace_id
 - url
-- secret_ciphertext   (encrypted with KNOVERGE_ENCRYPTION_KEY; needed in clear to sign payloads)
-- event_types_json
-- status
+- secret_ciphertext   (AES-256-GCM under KNOVERGE_ENCRYPTION_KEY; needed in clear to sign payloads)
+- event_types_json    (empty means every type)
+- status: active | disabled
+- cursor              (the per-workspace ledger sequence this endpoint has been told about)
+- failures            (consecutive; the wait before the next attempt is computed from it)
+- next_attempt_at nullable
 - created_at
-- last_delivery_at
-- last_error nullable
+- updated_at
+- last_delivery_at nullable
+- last_error nullable  (a status code or a socket error, never a response body)
 ```
 
-Signing secrets are encrypted, not hashed, because the server must recover them. Passwords and bearer tokens remain one-way hashes.
+Signing secrets are encrypted, not hashed, because the server must recover them to sign. Passwords, session tokens and bearer tokens remain one-way hashes.
+
+A webhook carries a notification and not the knowledge (ADR 0029): the body is a batch of the same event summaries `events_list` serves, and a receiver that wants an item fetches it with a credential of its own. `cursor` is the per-workspace sequence, so a delivery that fails leaves it where it was and the next attempt resends rather than skips; deliveries are at least once and in order, keyed on an event id that does not change. A new webhook starts at the workspace's current sequence, because an operator adding one wants what happens next rather than a replay.
 
 ## 33. Jobs
 
