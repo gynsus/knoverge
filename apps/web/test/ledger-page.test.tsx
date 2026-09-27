@@ -212,6 +212,16 @@ describe('the ledger vocabulary', () => {
     }
   });
 
+  it('offers no group the ledger cannot answer', () => {
+    // A filter whose only possible answer is "nothing" presents a gap in the
+    // enum as a fact about the workspace. Reconciliation was one: three types
+    // declared, none ever written, one group that could never match (ADR 0027).
+    for (const group of GROUPS) {
+      if (group === 'all') continue;
+      expect(typesIn(group), group).not.toEqual([]);
+    }
+  });
+
   it('puts every event type in exactly one group', () => {
     // A type in no group is one the filters hide without saying so; a type in
     // two is one a reader meets twice.

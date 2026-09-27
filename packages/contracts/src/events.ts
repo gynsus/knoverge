@@ -5,6 +5,12 @@ import { CategoryPath } from './taxonomy.ts';
 
 /**
  * Ledger event types (DATA_MODEL.md section 22). Only material changes are events.
+ *
+ * A type is here only if something writes it (ADR 0027). Four were not: a
+ * reconciliation pass is not a material change and generating a summary is not a
+ * write, so an agent reading this feed for either took silence for an answer.
+ * The five that remain unwritten belong to milestones not yet built and arrive
+ * with the code that writes them.
  */
 export const EventType = z.enum([
   'workspace.created',
@@ -55,10 +61,6 @@ export const EventType = z.enum([
   'proposal.edited_and_approved',
   'proposal.withdrawn',
   'proposal.conflict',
-  'sync.started',
-  'sync.completed',
-  'sync.expired',
-  'summary.generated',
   'attachment.uploaded',
   'attachment.extracted',
   'webhook.changed',
@@ -79,7 +81,6 @@ export const ObjectType = z.enum([
   'knowledge_item',
   'relation',
   'proposal',
-  'sync_session',
   'attachment',
   'webhook',
   'command',
