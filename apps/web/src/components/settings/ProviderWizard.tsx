@@ -225,7 +225,9 @@ export function ProviderWizard({
                 ok
                 text={t('ai.wizard.reached', {
                   version: catalogue?.version ?? t('ai.wizard.no_version'),
-                  count: catalogue?.models.length ?? 0,
+                  // A phrase rather than a number: "1 models" was wrong in English
+                  // and Russian needs four forms where English needs two.
+                  models: t('ai.n_models', { count: catalogue?.models.length ?? 0 }),
                 })}
               />
               <Field

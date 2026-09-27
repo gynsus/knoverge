@@ -23,6 +23,20 @@ function reach(categories: readonly CategorySummary[], category: CategorySummary
   return { descendants: ids.length - 1, items: category.subtree_item_count };
 }
 
+/**
+ * A count as a phrase, so the noun agrees with it.
+ *
+ * i18next pluralises one `count` per key, and these sentences count two or three
+ * things at once: "Moves {{items}}, {{categories}} and {{aliases}}" cannot pluralise
+ * any of them. So each countable noun is its own key with its own plural forms, and
+ * the sentence takes the rendered phrase. English has two forms and Russian four,
+ * and this is where both get used.
+ */
+function useCounted(): (noun: 'items' | 'categories' | 'aliases', count: number) => string {
+  const { t } = useTranslation();
+  return (noun, count) => t(`taxonomy.n_${noun}`, { count });
+}
+
 export interface MoveDialogProps {
   category: CategorySummary | null;
   categories: readonly CategorySummary[];
@@ -50,6 +64,7 @@ export function MoveDialog({
   error,
 }: MoveDialogProps) {
   const { t } = useTranslation();
+  const counted = useCounted();
   const [parentId, setParentId] = useState<string | null>(null);
   if (!category) return null;
   const counts = reach(categories, category);
@@ -96,7 +111,10 @@ export function MoveDialog({
         </dl>
         {(counts.descendants > 0 || counts.items > 0) && (
           <p className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-            {t('taxonomy.move_effect', { categories: counts.descendants, items: counts.items })}
+            {t('taxonomy.move_effect', {
+              categories: counted('categories', counts.descendants),
+              items: counted('items', counts.items),
+            })}
           </p>
         )}
         <ErrorNotice error={error} />
@@ -143,6 +161,7 @@ export function MergeDialog({
   error,
 }: MergeDialogProps) {
   const { t } = useTranslation();
+  const counted = useCounted();
   const [intoId, setIntoId] = useState<string | null>(null);
   if (!category) return null;
   const into = categories.find((c) => c.id === intoId) ?? null;
@@ -181,9 +200,9 @@ export function MergeDialog({
           <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
             <p>
               {t('taxonomy.merge_effect', {
-                items: category.item_count,
-                categories: children,
-                aliases: category.aliases.length,
+                items: counted('items', category.item_count),
+                categories: counted('categories', children),
+                aliases: counted('aliases', category.aliases.length),
               })}
             </p>
             <p className="text-muted-foreground">
@@ -240,6 +259,7 @@ export function DeleteDialog({
   error,
 }: DeleteDialogProps) {
   const { t } = useTranslation();
+  const counted = useCounted();
   if (!category) return null;
   const children = categories.filter((c) => c.parent_id === category.id).length;
   const blocked = category.item_count > 0 || children > 0;
@@ -258,7 +278,10 @@ export function DeleteDialog({
         {blocked ? (
           <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
             <p>
-              {t('taxonomy.delete_blocked', { items: category.item_count, categories: children })}
+              {t('taxonomy.delete_blocked', {
+                items: counted('items', category.item_count),
+                categories: counted('categories', children),
+              })}
             </p>
             <p className="text-muted-foreground">{t('taxonomy.delete_merge_instead')}</p>
           </div>
@@ -316,6 +339,7 @@ export function ArchiveDialog({
   error,
 }: ArchiveDialogProps) {
   const { t } = useTranslation();
+  const counted = useCounted();
   if (!category) return null;
   const inside = categories.filter(
     (c) => c.path.startsWith(`${category.path}/`) && c.status === 'active',
@@ -334,7 +358,12 @@ export function ArchiveDialog({
           <p className="font-mono text-xs text-muted-foreground">{category.path}</p>
         </div>
         <div className="grid gap-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
-          <p>{t('taxonomy.archive_effect', { categories: inside.length, items })}</p>
+          <p>
+            {t('taxonomy.archive_effect', {
+              categories: counted('categories', inside.length),
+              items: counted('items', items),
+            })}
+          </p>
           <p className="text-muted-foreground">{t('taxonomy.archive_reversible')}</p>
         </div>
         <ErrorNotice error={error} />

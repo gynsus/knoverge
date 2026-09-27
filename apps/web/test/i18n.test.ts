@@ -42,6 +42,38 @@ describe('message catalogues', () => {
     expect(i18n.t('items', { count: 7 })).toBe('7 элементов');
   });
 
+  it('agrees with the number in both languages, where a sentence counts two things', async () => {
+    // i18next pluralises one `count` per key, and these sentences count two or three
+    // things at once. So each countable noun is its own key and the sentence takes
+    // the rendered phrase — which is the only way Russian's four forms and English's
+    // two both end up on the noun rather than on the sentence.
+    const en = createI18n('en');
+    await en.loadLanguages(['en']);
+    const phrase = (i18n: typeof en, noun: string, count: number) =>
+      i18n.t(`taxonomy.n_${noun}`, { count });
+    expect(phrase(en, 'items', 1)).toBe('1 knowledge item');
+    expect(phrase(en, 'items', 7)).toBe('7 knowledge items');
+    expect(
+      en.t('taxonomy.delete_blocked', {
+        items: phrase(en, 'items', 1),
+        categories: phrase(en, 'categories', 1),
+      }),
+    ).toBe('Holds 1 knowledge item and 1 category under it.');
+
+    const ru = createI18n('ru');
+    await ru.loadLanguages(['ru']);
+    // One, few, many: the three Russian needs and English does not have.
+    expect(phrase(ru, 'items', 1)).toBe('1 запись');
+    expect(phrase(ru, 'items', 3)).toBe('3 записи');
+    expect(phrase(ru, 'items', 12)).toBe('12 записей');
+    expect(
+      ru.t('taxonomy.delete_blocked', {
+        items: phrase(ru, 'items', 1),
+        categories: phrase(ru, 'categories', 1),
+      }),
+    ).toBe('Здесь 1 запись и 1 раздел внутри.');
+  });
+
   it('translates in the requested locale and falls back to English', async () => {
     const i18n = createI18n('ru');
     await i18n.loadLanguages(['ru']);

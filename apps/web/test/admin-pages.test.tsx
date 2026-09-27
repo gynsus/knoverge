@@ -579,9 +579,10 @@ describe('taxonomy page', () => {
     await user.click(await screen.findByRole('button', { name: 'Actions for Projects' }));
     await user.click(await screen.findByRole('menuitem', { name: 'Archive' }));
     const dialog = await screen.findByRole('dialog');
-    // The reach of the one click, counted from what the screen can already see.
-    expect(within(dialog).getByText(/1 under it/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/7 records/)).toBeInTheDocument();
+    // The reach of the one click, counted from what the screen can already see —
+    // and the noun agrees with the number, in both languages.
+    expect(within(dialog).getByText(/1 category under it/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/7 knowledge items/)).toBeInTheDocument();
     // And that it can be undone, which is why this is not a destructive button.
     expect(within(dialog).getByText(/Restore brings the whole branch back/)).toBeInTheDocument();
     // Nothing sent yet: the consequence goes on screen before the click.

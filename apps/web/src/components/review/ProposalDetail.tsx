@@ -206,7 +206,9 @@ export function ProposalDetail({
         )}
         {ruledOut.length > 0 && (
           <p className="text-sm text-muted-foreground">
-            {t('review.duplicates_ruled_out', { count: ruledOut.length })}
+            {t('review.duplicates_ruled_out', {
+              similar: t('review.n_similar', { count: ruledOut.length }),
+            })}
           </p>
         )}
       </section>
