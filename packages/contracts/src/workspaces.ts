@@ -253,8 +253,25 @@ export const WorkspaceManifest = z.object({
   limits: z.object({
     reads_per_minute: z.number().int().positive(),
     writes_per_minute: z.number().int().positive(),
+    /**
+     * Batches of inventory a minute, which is a budget of its own.
+     *
+     * `sync_submit_inventory` carries a whole inventory and classifies every line
+     * of it against the workspace, so it is not one write among sixty.
+     */
+    sync_batches_per_minute: z.number().int().positive(),
     /** Requests one credential may have in flight at once. */
     concurrent_requests: z.number().int().positive(),
+    /**
+     * How many proposals you may have waiting for review at once.
+     *
+     * A backlog rather than a rate, because a rate cannot express it: a minute's
+     * worth of writes an hour long is thousands of pending proposals, all of them
+     * within budget, and the review queue is where every agent write is decided.
+     * Read this and pace by it; the count in `counts.pending_proposals` is the
+     * whole workspace's, and this is what one actor may hold.
+     */
+    pending_proposals: z.number().int().positive(),
     /** The largest body a tool call may carry. */
     max_request_bytes: z.number().int().positive(),
   }),

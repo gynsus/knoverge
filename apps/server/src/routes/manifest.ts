@@ -104,7 +104,9 @@ export async function workspaceManifest(
     limits: {
       reads_per_minute: budgets.readsPerMinute,
       writes_per_minute: budgets.writesPerMinute,
+      sync_batches_per_minute: budgets.syncBatchesPerMinute,
       concurrent_requests: budgets.concurrent,
+      pending_proposals: budgets.pendingProposals,
       max_request_bytes: MAX_TOOL_BODY_BYTES,
     },
   } as WorkspaceManifest;

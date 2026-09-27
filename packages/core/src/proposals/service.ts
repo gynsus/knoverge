@@ -41,6 +41,20 @@ import type { CategoryRepository } from '../taxonomy/repository.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
 import type { ProposalPatch, ProposalRecord, ProposalRepository } from './repository.ts';
 
+/**
+ * How many proposals one actor may have waiting at once.
+ *
+ * Not a rate: sixty writes a minute for an hour is three thousand pending
+ * proposals, every one of them inside every budget the server enforces. Rule 5
+ * makes a proposal the only way an agent writes, so an agent that is broken or
+ * hostile fills the review queue and the queue is where every write is decided.
+ *
+ * High enough that a reconciliation pass offering a thousand candidates and
+ * proposing two hundred of them goes through, low enough that a loop is stopped
+ * within a minute. An operator loading a workspace from somewhere else raises it.
+ */
+export const DEFAULT_PENDING_PER_ACTOR = 200;
+
 export interface ProposalServiceOptions {
   uow: UnitOfWork;
   proposals: ProposalRepository;
@@ -54,6 +68,8 @@ export interface ProposalServiceOptions {
   duplicates: DuplicateMatcher;
   actors: ActorRepository;
   ledger: EventLedger;
+  /** The backlog one actor may hold. `DEFAULT_PENDING_PER_ACTOR` when not given. */
+  pendingPerActor?: number;
   clock?: Clock;
 }
 
@@ -359,11 +375,13 @@ export interface ProposalOutcome {
  */
 export class ProposalService {
   private readonly o: ProposalServiceOptions;
+  private readonly pendingPerActor: number;
   private readonly clock: Clock;
 
   constructor(options: ProposalServiceOptions) {
     this.o = options;
     this.clock = options.clock ?? systemClock;
+    this.pendingPerActor = options.pendingPerActor ?? DEFAULT_PENDING_PER_ACTOR;
   }
 
   async proposeCreate(
@@ -1092,6 +1110,17 @@ export class ProposalService {
     };
 
     if (spec.decision.effect === 'require_review') {
+      // What this actor already has waiting. Only on the path that leaves
+      // something waiting: a write policy let through is decided and gone, and
+      // counting it would make an allow_direct rule tighter than no rule.
+      const waiting = await this.o.proposals.countPendingBy(actor.workspaceId, actor.actorId);
+      if (waiting >= this.pendingPerActor) {
+        throw new DomainError(
+          'RATE_LIMITED',
+          `you have ${waiting} proposals waiting for review, which is as many as this workspace allows at once; they have to be decided before you propose more`,
+          { retryable: true, objectIds: { actor: actor.actorId } },
+        );
+      }
       // The direct path validates these inside the write. Review has no such
       // moment, so a proposal naming an item that does not exist would sit in
       // the inbox until somebody approved it and it failed there.

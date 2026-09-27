@@ -9,6 +9,7 @@ export {
 } from './integrity/service.ts';
 export { KnowledgeRecovery, type KnowledgeRecoveryOptions } from './knowledge/recovery.ts';
 export {
+  DEFAULT_PENDING_PER_ACTOR,
   ProposalService,
   type ProposalOutcome,
   type ProposalServiceOptions,

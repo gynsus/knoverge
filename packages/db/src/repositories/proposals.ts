@@ -110,6 +110,22 @@ export function createProposalRepository(db: Database): ProposalRepository {
       return rows.length;
     },
 
+    async countPendingBy(workspaceId, actorId) {
+      // `pending` and `conflict`: both are waiting for a person, and a proposal
+      // that went into conflict still holds its text and still occupies the
+      // queue. A resolved one is a decision and costs nobody anything.
+      const [row] = await db
+        .select({ total: count() })
+        .from(proposals)
+        .where(
+          and(
+            eq(proposals.workspaceId, workspaceId),
+            eq(proposals.proposedByActorId, actorId),
+            inArray(proposals.status, ['pending', 'conflict']),
+          ),
+        );
+      return row?.total ?? 0;
+    },
     async countForCategory(workspaceId, categoryId) {
       // Any status. A resolved proposal is a decision somebody made, and the
       // foreign key would cascade it away as readily as a pending one.

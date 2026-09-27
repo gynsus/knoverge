@@ -93,4 +93,11 @@ export interface ProposalRepository {
    * this the database would remove them without a word (ADR 0025).
    */
   countForCategory(workspaceId: WorkspaceId, categoryId: CategoryId): Promise<number>;
+  /**
+   * How many proposals this actor has waiting for a decision.
+   *
+   * The backlog a rate limit cannot see: sixty writes a minute for an hour is
+   * three thousand pending proposals, every one of them inside every budget.
+   */
+  countPendingBy(workspaceId: WorkspaceId, actorId: ActorId): Promise<number>;
 }

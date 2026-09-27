@@ -108,9 +108,11 @@ KNOVERGE_TOKEN_PEPPER         peppers agent credential hashes; required; hex, at
 KNOVERGE_LEDGER_KEY           HMAC key for the event ledger; required; hex, at least 32 bytes; never stored in the database
 KNOVERGE_TRUST_PROXY
 KNOVERGE_LOG_LEVEL
-KNOVERGE_AGENT_READS_PER_MINUTE   600 by default, per credential
-KNOVERGE_AGENT_WRITES_PER_MINUTE  60 by default, per credential
-KNOVERGE_AGENT_CONCURRENCY        8 by default; requests one credential may have in flight
+KNOVERGE_AGENT_READS_PER_MINUTE        600 by default, per credential
+KNOVERGE_AGENT_WRITES_PER_MINUTE       60 by default, per credential
+KNOVERGE_AGENT_SYNC_BATCHES_PER_MINUTE 12 by default; sync_submit_inventory carries a whole inventory
+KNOVERGE_AGENT_CONCURRENCY             8 by default; requests one credential may have in flight
+KNOVERGE_AGENT_PENDING_PROPOSALS       200 by default; proposals one actor may leave waiting for review
 NODE_ENV                      development | test | production
 
 Not read yet. The features they configure do not exist, and the configuration
@@ -281,20 +283,31 @@ semantically within a few minutes.
 
 ### Agent budgets
 
-One credential may make 600 reads and 60 writes a minute and hold 8 requests in
-flight. A write takes the workspace lock, makes a Git commit and appends to the
-ledger, which is why it is the smaller number.
+One credential may make 600 reads and 60 writes a minute, 12 batches of inventory
+a minute, and hold 8 requests in flight. A write takes the workspace lock, makes a
+Git commit and appends to the ledger, which is why it is smaller than a read; a
+batch of inventory carries a whole inventory in one call and classifies every line
+of it against the workspace, which is why it is smaller again.
 
-Sixty writes a minute is right for an agent recording what it learns and wrong
-for one loading a workspace from somewhere else, so the three are configurable.
-Raise them for the duration of an import and put them back:
+Beside those is a budget that is not a rate: one actor may have **200 proposals
+waiting for review** at once. A rate cannot express this — sixty writes a minute
+for an hour is three thousand pending proposals, all of them within budget — and
+the review queue is where every agent write is decided. Reaching it answers
+`RATE_LIMITED`, and what clears it is a reviewer rather than time. A write a policy
+rule lets through is not counted: it is decided and gone.
+
+Sixty writes a minute is right for an agent recording what it learns and wrong for
+one loading a workspace from somewhere else, so all of them are configurable. Raise
+them for the duration of an import and put them back:
 
 ```bash
 KNOVERGE_AGENT_WRITES_PER_MINUTE=600
+KNOVERGE_AGENT_SYNC_BATCHES_PER_MINUTE=60
+KNOVERGE_AGENT_PENDING_PROPOSALS=2000
 ```
 
-Whatever they are set to, `workspace_manifest` reports them under `limits`, so
-a well-behaved client paces itself instead of discovering the budget by being
+Whatever they are set to, `workspace_manifest` reports them under `limits`, so a
+well-behaved client paces itself instead of discovering the budget by being
 refused. Exceeding one is still answered `RATE_LIMITED`, which is retryable.
 
 ### A workspace that refuses to be written to
