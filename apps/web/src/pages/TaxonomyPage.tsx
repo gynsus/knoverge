@@ -109,6 +109,7 @@ export function TaxonomyPage() {
     setSheetOpen(false);
     setMoving(null);
     setMerging(null);
+    setDeleting(null);
   };
 
   const all = useMemo(() => taxonomy.data?.categories ?? [], [taxonomy.data]);
@@ -224,7 +225,13 @@ export function TaxonomyPage() {
 
   const remove = useMutation({
     mutationFn: (category: CategorySummary) => adminApi.taxonomy.delete(category.id),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      await refresh();
+      // The only mutation here whose object is gone afterwards, so it is the
+      // only one that has to let go of it: a panel describing a category the
+      // tree no longer has is a panel about nothing.
+      setSelectedId((current) => (current === result.category.id ? null : current));
+      setDetailsOpen(false);
       setDeleting(null);
       done(t('taxonomy.deleted', { name: result.category.name }));
     },
