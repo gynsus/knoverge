@@ -32,6 +32,10 @@ RUN pnpm --filter @knoverge/server --prod deploy --legacy /out/server \
 
 # ---- runtime: one image with the server and the CLI ----
 FROM base AS runtime
+# `knoverge backup` shells out to pg_dump, and pg_dump refuses a server newer
+# than itself, so the client major version is pinned to the one the deployment
+# guide runs. Only the client: the image has no database in it.
+RUN apk add --no-cache postgresql17-client
 ENV NODE_ENV=production \
     KNOVERGE_PORT=3000 \
     KNOVERGE_HOST=0.0.0.0 \

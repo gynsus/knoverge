@@ -29,6 +29,7 @@
     "yaml": "catalog:"
   },
   "devDependencies": {
+    "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "tsx": "catalog:",
