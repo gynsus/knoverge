@@ -132,6 +132,15 @@ Rules:
 - secrets the server must reuse in clear (webhook signing secrets) are encrypted with `KNOVERGE_ENCRYPTION_KEY`, never hashed;
 - all four keys are part of the operator's secret backup; losing `KNOVERGE_LEDGER_KEY` makes historical ledger verification impossible, losing `KNOVERGE_ENCRYPTION_KEY` makes stored webhook secrets unrecoverable.
 
+### Taking the trail out of the installation
+
+`knoverge audit export` writes a workspace's ledger as JSON lines and
+`knoverge audit verify` recomputes the chain from that file alone. The export carries
+the fields the hash covers and the chain hashes, and a fingerprint of each key rather
+than a key, so it can be checked by somebody who was given the file and the key and
+nothing else. What it does not carry is anything the ledger does not hold: no knowledge
+text, no proposal payloads, no secrets (rule 4).
+
 ### Rotating the ledger key
 
 A key is retired, never replaced (ADR 0030). Rehashing what is written is the one thing rotation must not mean: the table rejects `UPDATE`, application code never changes an event, and a chain that configuration can rewrite is not a chain.

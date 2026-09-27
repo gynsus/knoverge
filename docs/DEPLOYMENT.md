@@ -327,6 +327,28 @@ It takes the same workspace lock the server's writers take, so it is safe agains
 
 An unresolved operation closes its own workspace and nothing else: the recovery pass carries on to the rest, the server finishes starting, and the job runner runs. The reason is also written to the operation row, so `db recover` and the startup log are not the only places to find it.
 
+### Handing the audit trail to somebody else
+
+```bash
+docker compose exec knoverge knoverge audit export --workspace personal --out /backups/audit.jsonl
+docker compose exec knoverge knoverge audit verify --from /backups/audit.jsonl
+```
+
+JSON lines: a header, then one event per line. The header says which workspace, which
+sequences, how many events, and a **fingerprint** of each key that could verify them —
+never a key. Every event carries exactly the fields the hash covers, under the names
+the hasher uses, plus the two chain hashes: category **ids** rather than paths,
+because a path is a name that can change and an id cannot.
+
+`audit verify` recomputes the whole chain from the file and the key, with no database
+involved. That is the point of the format: an auditor can check that nobody edited the
+trail without the installation that produced it and without trusting whoever handed it
+over. It exits non-zero and says where the chain stopped holding.
+
+`--after <sequence>` exports what follows a sequence, for an incremental run. A slice
+is verified from its first line onwards — the links inside it still have to hold, and
+the header says where it began.
+
 ### Rotating the ledger key
 
 ```bash

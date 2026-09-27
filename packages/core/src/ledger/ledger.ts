@@ -110,64 +110,123 @@ export class EventLedger {
    * database and the key; see ADR 0007 for what it does and does not prove.
    */
   async verify(workspaceId: WorkspaceId, pageSize = 500): Promise<VerifyResult> {
-    const keys = keysOf(this.keys);
-    // The key the last event verified with, tried first for the next one: a
-    // rotation is one boundary in a long chain, so this costs one extra HMAC at
-    // that boundary and none anywhere else (ADR 0030).
-    let current = keys[0] as LedgerKey;
-    let usedRetiredKey = false;
-    let expectedPrev: string | null = null;
-    let expectedSequence = 1;
-    let count = 0;
+    const walker = new ChainWalker(this.keys);
     let after = 0;
     for (;;) {
       const page = await this.events.listAfter(workspaceId, after, pageSize);
       if (page.length === 0) break;
       for (const event of page) {
-        if (event.sequence !== expectedSequence) {
-          return { ok: false, count, brokenAt: event.sequence, reason: 'sequence gap' };
-        }
-        if (expectedPrev === null) {
-          // The first event of the workspace: its previous hash is a genesis, and
-          // which key made that genesis is what says where this chain started.
-          const started = keys.find((key) => genesisHash(key) === event.prevEventHash);
-          if (!started) {
-            return {
-              ok: false,
-              count,
-              brokenAt: event.sequence,
-              reason: 'no configured key produced this chain’s genesis',
-            };
-          }
-          if (started !== keys[0]) usedRetiredKey = true;
-          current = started;
-        } else if (event.prevEventHash !== expectedPrev) {
-          return { ok: false, count, brokenAt: event.sequence, reason: 'previous hash mismatch' };
-        }
         const { eventHash, ...rest } = event;
-        // A row edited to name a version this build does not implement is a
-        // broken ledger, which is what verification exists to report.
-        const hasher = HASHERS[rest.hashVersion];
-        if (!hasher) {
-          return { ok: false, count, brokenAt: event.sequence, reason: 'unknown hash version' };
-        }
-        const content = hasher(rest);
-        const signedWith =
-          computeEventHash(current, event.prevEventHash, content) === eventHash
-            ? current
-            : keys.find((key) => computeEventHash(key, event.prevEventHash, content) === eventHash);
-        if (!signedWith) {
-          return { ok: false, count, brokenAt: event.sequence, reason: 'event hash mismatch' };
-        }
-        if (signedWith !== keys[0]) usedRetiredKey = true;
-        current = signedWith;
-        expectedPrev = eventHash;
-        expectedSequence += 1;
-        count += 1;
+        const failed = walker.next(rest, eventHash);
+        if (failed) return failed;
         after = event.sequence;
       }
     }
-    return { ok: true, count, ...(usedRetiredKey ? { usedRetiredKey } : {}) };
+    return walker.done();
+  }
+}
+
+/**
+ * Walking a chain, one event at a time.
+ *
+ * One definition of what "the chain holds together" means, because there are two
+ * callers: the ledger, reading pages out of the database, and the audit export's
+ * verification, reading lines out of a file with no database in sight. Two copies
+ * of this rule would be two answers to the only question the ledger exists to
+ * answer.
+ */
+export class ChainWalker {
+  private readonly keys: readonly LedgerKey[];
+  /**
+   * The key the last event verified with, tried first for the next one: a rotation
+   * is one boundary in a long chain, so trying keys costs one extra HMAC at that
+   * boundary and none anywhere else (ADR 0030).
+   */
+  private current: LedgerKey;
+  private expectedPrev: string | null = null;
+  private expectedSequence = 1;
+  private usedRetiredKey = false;
+  private count = 0;
+
+  constructor(keyring: LedgerKeyring) {
+    this.keys = keysOf(keyring);
+    this.current = this.keys[0] as LedgerKey;
+  }
+
+  /** Feeds one event. Answers a failure, or null when it holds. */
+  next(event: Omit<EventRecord, 'eventHash'>, eventHash: string): VerifyResult | null {
+    if (event.sequence !== this.expectedSequence) {
+      return { ok: false, count: this.count, brokenAt: event.sequence, reason: 'sequence gap' };
+    }
+    if (this.expectedPrev === null) {
+      // The first event: its previous hash is a genesis, and which key made that
+      // genesis is what says where this chain started.
+      const started = this.keys.find((key) => genesisHash(key) === event.prevEventHash);
+      if (!started) {
+        return {
+          ok: false,
+          count: this.count,
+          brokenAt: event.sequence,
+          reason: 'no configured key produced this chain’s genesis',
+        };
+      }
+      if (started !== this.keys[0]) this.usedRetiredKey = true;
+      this.current = started;
+    } else if (event.prevEventHash !== this.expectedPrev) {
+      return {
+        ok: false,
+        count: this.count,
+        brokenAt: event.sequence,
+        reason: 'previous hash mismatch',
+      };
+    }
+    // A row edited to name a version this build does not implement is a broken
+    // ledger, which is what verification exists to report.
+    const hasher = HASHERS[event.hashVersion];
+    if (!hasher) {
+      return {
+        ok: false,
+        count: this.count,
+        brokenAt: event.sequence,
+        reason: 'unknown hash version',
+      };
+    }
+    const content = hasher(event);
+    const signedWith =
+      computeEventHash(this.current, event.prevEventHash, content) === eventHash
+        ? this.current
+        : this.keys.find(
+            (key) => computeEventHash(key, event.prevEventHash, content) === eventHash,
+          );
+    if (!signedWith) {
+      return {
+        ok: false,
+        count: this.count,
+        brokenAt: event.sequence,
+        reason: 'event hash mismatch',
+      };
+    }
+    if (signedWith !== this.keys[0]) this.usedRetiredKey = true;
+    this.current = signedWith;
+    this.expectedPrev = eventHash;
+    this.expectedSequence += 1;
+    this.count += 1;
+    return null;
+  }
+
+  /** What the walk came to, once there is nothing left to feed it. */
+  done(): VerifyResult {
+    return {
+      ok: true,
+      count: this.count,
+      ...(this.usedRetiredKey ? { usedRetiredKey: true } : {}),
+    };
+  }
+
+  /** Where the next event has to start, for a walk that begins part way along. */
+  expectSequence(sequence: number, previousHash: string | null): void {
+    this.expectedSequence = sequence;
+    this.expectedPrev = previousHash;
   }
 }
 
