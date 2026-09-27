@@ -456,7 +456,11 @@ A feature is not complete unless it has:
 - migration if persistence changed;
 - message catalogue entries (English and Russian) if it adds UI text.
 
-For MCP-exposed features, add an integration test through the MCP adapter and through the HTTP RPC endpoint.
+Every operation that is a tool gets its integration test through the HTTP RPC endpoint, which is where its handler runs.
+
+The MCP side is covered once, not per tool. The adapter is one loop over `TOOLS`: it registers each name with the contract's description, input schema and read-only annotation, and hands the call to the same handler the HTTP route uses (rule 11). So what has to be tested is the bridge and the generation — that every tool is advertised, with the contract's own description, its own schema and the right annotation, and that a call over MCP reaches the handler with the caller's credential and comes back through the error mapping. Twenty-six almost identical tests of one loop would be twenty-six chances to write the same thing differently and none to notice a handler that was wrong.
+
+A tool whose MCP behaviour is not the generic one — a different transport shape, a stream, a tool the bridge special-cases — is not covered by that and gets its own test.
 
 ## Development order
 
