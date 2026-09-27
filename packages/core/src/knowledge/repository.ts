@@ -305,6 +305,8 @@ export interface RevisionRepository {
    * repository this workspace's history belongs to.
    */
   latestCommit(workspaceId: WorkspaceId, tx?: Tx): Promise<string | null>;
+  /** Whether any revision was written by this commit. */
+  knowsCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
 }
 
 /** A source the knowledge rests on, deduplicated per workspace. */

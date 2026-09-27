@@ -207,7 +207,9 @@ Editing the repository directly (outside Knoverge) is **unsupported in MVP**.
 
 What the server enforces today: PostgreSQL records the commit that wrote each taxonomy version, and a write is refused when the branch no longer leads back to that commit. A repository that was lost, replaced, restored from an older backup, or rewritten with `reset`, `rebase` or `filter-branch` therefore stops accepting writes rather than stacking new history on a hole. Reachability is the test, not mere presence: an object a reset left behind would otherwise pass until garbage collection ran and fail afterwards, which is the same repository giving two answers.
 
-What it does not enforce yet: a commit an operator added on top of HEAD is not noticed, because it does not contradict anything the database recorded. Recording and comparing HEAD, and the `knoverge integrity check` command that repairs a workspace the guard has locked, arrive in Milestone 9.
+A commit an operator added on top of HEAD does not contradict anything the database recorded — every revision still points at a commit that exists, and every file still hashes to what it should — so a write is not refused for it. `knoverge integrity check` is what notices: it asks where the branch is and whether any revision or taxonomy version was written by that commit, and reports `head_unknown` when none was. The question it can answer is "has the database heard of this commit", not "is HEAD the newest one": a workspace's history interleaves knowledge commits and taxonomy commits, and hashes carry no order.
+
+The check reads and never repairs. What can be repaired is `knoverge db recover`'s job, and a workspace whose repository was replaced or rewritten is the case the architecture calls unrepairable — that one needs the backup.
 
 Knoverge stages only the paths the operation itself wrote, so an unrelated file left in the working tree is never folded into a domain commit, and a change that alters no canonical byte does not become a commit because something else was lying in the directory.
 

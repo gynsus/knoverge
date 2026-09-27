@@ -72,5 +72,8 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     hasCommit(workspaceId: WorkspaceId, commitHash: string) {
       return open(workspaceId).hasCommit(commitHash);
     },
+    headCommit(workspaceId: WorkspaceId) {
+      return open(workspaceId).headCommit();
+    },
   };
 }

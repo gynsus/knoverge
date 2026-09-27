@@ -185,7 +185,10 @@ POST /v1/admin/embedding_profile.set        (Milestone 6)
 GET  /v1/admin/webhooks.list                where this workspace pushes notifications
 POST /v1/admin/webhooks.upsert              creates or changes one; the secret is shown once
 POST /v1/admin/webhooks.delete
-POST /v1/admin/integrity.check              (Milestone 9)
+                                            (no integrity route: the check reads the
+                                            repository and the whole ledger, which is
+                                            an operator's command rather than a
+                                            request — `knoverge integrity check`)
 POST /v1/admin/attachments.upload           (multipart, later milestone)
 ```
 
