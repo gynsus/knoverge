@@ -61,6 +61,13 @@ describe('loadConfig', () => {
     expect(loadConfig(base).ledgerKeys.signing.bytes).toHaveLength(32);
   });
 
+  it('takes the version a release baked in, and nothing when there is none', () => {
+    // package.json says 0.0.0 and always will, so an image that reported the
+    // source tree's number would report it for every release ever cut.
+    expect(loadConfig({ ...base, KNOVERGE_VERSION: '0.1.0' }).version).toBe('0.1.0');
+    expect(loadConfig(base).version).toBeUndefined();
+  });
+
   it('keeps a retired ledger key for verification, and refuses a malformed one', () => {
     // A key is retired rather than replaced: the events it signed are still there
     // and still verify, because rehashing them is what rotation must not mean

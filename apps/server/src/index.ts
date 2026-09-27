@@ -69,7 +69,9 @@ async function main(): Promise<void> {
     dataDir: config.dataDir,
     pendingPerActor: config.agentBudgets.pendingProposals,
     ...(config.encryptionKey ? { encryptionKey: config.encryptionKey } : {}),
-    version: pkg.version,
+    // The tag a release was cut from, or the source tree's number when nothing
+    // baked one in.
+    version: config.version ?? pkg.version,
   });
   const database = services.database;
 
@@ -90,7 +92,7 @@ async function main(): Promise<void> {
   const jobs = runner.jobs;
 
   const app = await buildApp({
-    version: pkg.version,
+    version: config.version ?? pkg.version,
     loggerInstance: logger,
     trustProxy: config.trustProxy,
     agentBudgets: config.agentBudgets,

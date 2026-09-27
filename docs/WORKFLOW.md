@@ -317,6 +317,21 @@ Versions follow Semantic Versioning. A release is a tag `vX.Y.Z` on `main`, crea
 - `CHANGELOG.md` is generated from Conventional Commits at release time; hand-edited only for the release summary;
 - release images are tagged with the same version.
 
+Cutting one is the tag and nothing else:
+
+```bash
+git tag -s v0.1.0 -m 'v0.1.0'
+git push origin v0.1.0
+```
+
+`.github/workflows/release.yml` builds `linux/amd64` and `linux/arm64`, bakes the
+version from the tag into the image, and pushes `ghcr.io/gynsus/knoverge:X.Y.Z` —
+plus `latest` when the version is not a prerelease. A tag that is not a version stops
+the workflow rather than publishing an image calling itself something nobody chose.
+
+It is a workflow of its own rather than a job in `ci.yml`, so that a change to how
+releases are published cannot break the checks every pull request depends on.
+
 ## 20. Architecture changes require ADRs
 
 Before implementing a change to any of the following, create or amend an ADR under `docs/adr/`:
