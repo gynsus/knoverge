@@ -420,7 +420,6 @@
     "source_unnamed": "Not named",
     "source_where": "Where it is",
     "source_where_hint": "A link, a path, a commit — whatever names it.",
-    "sourced": "Has sources",
     "sources": "Sources",
     "sources_hint": "Where this came from. A claim nothing backs is a claim somebody has to take on trust.",
     "stale": "Out of date",
@@ -462,7 +461,6 @@
       "summary": "Summary"
     },
     "uncategorised": "Uncategorised",
-    "unsourced": "No sources",
     "updated_when": "Updated {{when}}",
     "valid_from": "Holds from",
     "valid_from_hint": "When the claim started being true. Empty means it always was.",

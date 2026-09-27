@@ -687,6 +687,82 @@ describe('sources and relations', () => {
     expect(file).toContain('https://example.com/spec');
   });
 
+  it('calls it corroborated when two sources come from different publishers', async () => {
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Two people wrote this down',
+      body: 'And they were not the same person.',
+      type: 'fact',
+      sources: [
+        { type: 'web_url', uri: 'https://one.example.com/post', role: 'primary' },
+        { type: 'web_url', uri: 'https://two.example.org/article', role: 'supporting' },
+      ],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const item = KnowledgeResponse.parse(res.json()).item;
+    expect(item.evidence_state).toBe('corroborated');
+    // And the file says so, because the frontmatter is the portable copy.
+    const file = await readFile(
+      join(dataDir, 'repositories', item.workspace_id, item.markdown_path),
+      'utf8',
+    );
+    expect(file).toContain('evidence: corroborated');
+  });
+
+  it('is one publisher agreeing with itself, however many pages are cited', async () => {
+    // The likeliest way to reach the value at all: an agent citing three
+    // sections of one document. Counting entries would call that independent.
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Three sections of one document',
+      body: 'Cited thoroughly and from one place.',
+      type: 'fact',
+      sources: [
+        { type: 'web_url', uri: 'https://example.com/doc#a', role: 'primary' },
+        { type: 'web_url', uri: 'https://example.com/doc#b', role: 'supporting' },
+        { type: 'web_url', uri: 'https://example.com/other', role: 'supporting' },
+      ],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(KnowledgeResponse.parse(res.json()).item.evidence_state).toBe('source_backed');
+  });
+
+  it('follows the sources when they change, because it is derived', async () => {
+    const item = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.create', {
+          title: 'Backed twice for now',
+          body: 'Body.\n',
+          type: 'fact',
+          sources: [
+            { type: 'web_url', uri: 'https://one.example.com/x', role: 'primary' },
+            { type: 'web_url', uri: 'https://two.example.org/y', role: 'primary' },
+          ],
+        })
+      ).json(),
+    ).item;
+    expect(item.evidence_state).toBe('corroborated');
+
+    // A value a reviewer set once would stay where it was put.
+    const after = KnowledgeResponse.parse(
+      (
+        await admin.post('/v1/admin/knowledge.update', {
+          item_id: item.id,
+          base_revision_id: item.current_revision_id,
+          base_content_hash: item.content_hash,
+          sources: [{ type: 'web_url', uri: 'https://one.example.com/x', role: 'primary' }],
+        })
+      ).json(),
+    ).item;
+    expect(after.evidence_state).toBe('source_backed');
+  });
+
+  it('shows the pile of corroborated items on its own', async () => {
+    const res = await admin.get('/v1/knowledge.list?evidence_states=corroborated&limit=100');
+    expect(res.statusCode, res.body).toBe(200);
+    const listed = KnowledgeListResponse.parse(res.json()).items;
+    expect(listed.length).toBeGreaterThan(0);
+    expect(listed.every((i) => i.evidence_state === 'corroborated')).toBe(true);
+  });
+
   it('leaves a source with no locator as an assertion, not evidence', async () => {
     const res = await admin.post('/v1/admin/knowledge.create', {
       title: 'Somebody said so',

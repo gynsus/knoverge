@@ -357,6 +357,18 @@ The fan-out is one level deep, and that is the property that makes this safe to
 put in five operations: a verdict is decided by status and validity windows, and
 recomputing a verdict changes neither. There is no cascade to bound.
 
+## What a claim rests on
+
+`evidenceFrom` in `packages/core/src/knowledge/frontmatter.ts` is the whole of
+it, and it counts origins rather than entries (ADR 0026). Three sections of one
+document are one publisher agreeing with itself; a page and a write-up of it on
+another site are two. A source whose role is `derived` came out of another of
+these, and one whose role is `contradicting` argues the other way — neither is
+support, and the role vocabulary already said so before anything read it.
+
+Derived at every write, like `disputed` and `stale`, and for the same reason: a
+value a reviewer set once stays where it was put, and the sources move.
+
 ## A summary is stale by arithmetic
 
 `summary_dependencies` stores what a summary was made from as pairs of item and
