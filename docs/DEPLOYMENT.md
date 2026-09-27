@@ -656,11 +656,57 @@ run readiness/integrity checks
 
 ## 12. Reverse proxy
 
-Production examples include at least one simple HTTPS configuration.
+A complete installation is one application container plus PostgreSQL. A proxy is not
+required and is not a dependency — but an installation reachable from the Internet
+wants TLS in front of it, and Caddy is the documentation default because it gets and
+renews the certificate by itself.
 
-Caddy is the documentation default because automatic TLS keeps self-hosting simple.
+`infra/caddy/Caddyfile` is the file to start from:
 
-Do not make Caddy a required runtime dependency.
+```caddyfile
+knoverge.example.com {
+	reverse_proxy knoverge:3000 {
+		flush_interval -1
+		transport http {
+			read_timeout 10m
+		}
+	}
+	encode zstd gzip
+}
+```
+
+It is a compose profile, like the backup service, so it is opt-in rather than part
+of a complete installation:
+
+```bash
+docker compose --profile proxy up -d
+```
+
+Take the application's own port mapping away when you do, so it is reachable only
+through the proxy. `caddy-data` and `caddy-config` are ordinary compose volumes
+rather than external ones, unlike the knowledge base's: what is in them is a
+certificate and an account key, and losing those costs a renewal.
+
+Three things matter, whatever proxy it is.
+
+**`KNOVERGE_TRUST_PROXY=true`, and only behind one.** The server reads
+`X-Forwarded-For` only when this is set, because an anonymous caller's address is
+what per-actor rate limiting falls back to: believing that header from an untrusted
+hop lets anybody spend somebody else's budget. Set it when there is a proxy in
+front, and never when the server is reachable directly.
+
+**`KNOVERGE_BASE_URL` decides cookie security.** Cookies are marked `Secure` when it
+is `https`, so the URL has to be the public one rather than the container's.
+
+**The MCP endpoint is Streamable HTTP.** A POST's answer may be a stream held open
+while a tool runs, so the proxy must not buffer it (`flush_interval -1`) and must not
+cut it off early (a read timeout in minutes, not seconds). A buffering proxy makes an
+agent wait for the whole answer before it sees any of it; a short timeout ends a long
+tool call in the middle.
+
+The application sends its own HSTS, CSP and frame headers, so the proxy adds none:
+two sources for one header is how one of them ends up wrong. Compression is the
+exception, because the application does not do it.
 
 ## 13. Resource target
 

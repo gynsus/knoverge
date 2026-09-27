@@ -80,6 +80,26 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Not started by default, for the same reason the backup service is not: a
+  # complete installation is one application container plus PostgreSQL (rule 10),
+  # and an operator with a proxy already in front should not be handed a second
+  # one. Start it with `docker compose --profile proxy up -d`, and take the
+  # application's own port mapping away so it is reachable only through this.
+  caddy:
+    image: caddy:2-alpine
+    profiles: ['proxy']
+    ports:
+      - '${KNOVERGE_HTTP_PORT:-80}:80'
+      - '${KNOVERGE_HTTPS_PORT:-443}:443'
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      knoverge:
+        condition: service_started
+    restart: unless-stopped
+
 # Declared external so that `docker compose down -v` cannot remove them.
 # Compose only deletes volumes it created, and these are created once by hand:
 #
@@ -99,3 +119,8 @@ volumes:
   knoverge-backups:
     external: true
     name: ${KNOVERGE_BACKUP_VOLUME:-knoverge-backups}
+  # Compose's own, unlike the three above: what is in them — a certificate and an
+  # account key — is recoverable by asking for a certificate again, so losing them
+  # costs a renewal rather than a knowledge base.
+  caddy-data:
+  caddy-config:
