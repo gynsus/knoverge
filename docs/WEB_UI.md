@@ -307,6 +307,12 @@ the destination chosen from a searchable list.
 Neither is drag and drop. A gesture that can be made by accident is the wrong
 way to ask for a change that large.
 
+Revoking an agent's token asks too, and the dialog answers the question the
+operator actually has: has the agent moved on to a newer token, or is something
+still presenting this one. Both are derived from what the list already holds — the
+old token's last use against the newer one's issue time — and neither was shown
+until this rule was applied to them.
+
 Archive is offered where delete would be, wherever the object holds something
 somebody else put there — and it asks first, for the same reason. Archiving a
 category takes every active category under it with it, in one write, and it was a
