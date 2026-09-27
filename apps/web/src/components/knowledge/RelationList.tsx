@@ -105,6 +105,34 @@ export function DisputedBy({
   );
 }
 
+/**
+ * What replaced this item.
+ *
+ * A row that says `superseded` raises exactly one question, and until this
+ * existed the drawer had no answer to it: the replacement is recorded on this
+ * item's own file (ADR 0015) and was served to nobody.
+ */
+export function SupersededBy({
+  itemId,
+  onOpen,
+}: {
+  itemId: string;
+  onOpen: (itemId: string) => void;
+}) {
+  // No label of its own: the drawer's own term names this row, and a second
+  // heading inside the value would say the same thing twice (WEB_UI 2g).
+  const titles = useItemTitles([itemId]);
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(itemId)}
+      className="min-w-0 truncate text-left underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+    >
+      {titles.get(itemId) ?? itemId}
+    </button>
+  );
+}
+
 /** Adding and removing relations. */
 export function RelationEditor({
   relations,

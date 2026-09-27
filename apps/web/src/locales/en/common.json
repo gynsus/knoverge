@@ -28,7 +28,6 @@
     "credential_label_example": "Claude Code — MacBook",
     "credential_label_hint": "Which client and which machine, so a list of credentials reads as places rather than prefixes.",
     "credential_state": "Token state",
-    "credentials": "Active tokens",
     "credentials_hint": "What a client connects with. A credential is issued once and never shown again.",
     "disable": "Disable agent",
     "disable_confirm": "Type {{name}} to confirm",
@@ -440,6 +439,7 @@
     "summary_of_hint": "The exact revisions this was written from. When one of them moves on, the summary is out of date until somebody writes it again.",
     "summary_of_none": "Nothing chosen yet.",
     "summary_of_remove": "Remove {{what}}",
+    "superseded_by": "Replaced by",
     "tab_content": "The item",
     "tab_history": "History",
     "tab_relations": "Connections",
@@ -591,7 +591,6 @@
     "search_clear": "Clear the search",
     "state_disabled": "Disabled only",
     "state_enabled": "Enabled only",
-    "subject": "Applies to",
     "subject_is": "{{kind}}: {{value}}",
     "subject_kind": "Applies to",
     "subject_kinds": {
@@ -603,7 +602,6 @@
   },
   "review": {
     "all_proposers": "Anyone",
-    "approve": "Approve",
     "approve_as_is": "Approve as it is",
     "approve_with_edits": "Approve with your edits",
     "body_unchanged": "The text is unchanged.",
@@ -612,7 +610,6 @@
     "changes": "What this would change",
     "changes_item": "Changes",
     "choose": "Choose something from the queue to decide about it.",
-    "confidence": "The proposer's confidence: {{value}}%",
     "confidence_label": "The proposer's confidence",
     "context": "Context",
     "count_one": "{{count}} waiting",
@@ -730,7 +727,6 @@
     "viewer": "Viewer"
   },
   "settings": {
-    "account": "Account",
     "change_email": "Change email",
     "change_name": "Change name",
     "change_password": "Change password",
@@ -784,7 +780,6 @@
     "your_password": "Your password"
   },
   "setup": {
-    "administrator": "Administrator",
     "intro": "Create the first administrator account and the first workspace. This page disappears once setup is complete.",
     "language": "Language",
     "language_hint": "The language of this installation. You can change it later in Settings.",
@@ -796,8 +791,7 @@
     "step_workspace": "Workspace",
     "steps_label": "Setup steps",
     "submit": "Create administrator and workspace",
-    "title": "Set up Knoverge",
-    "workspace": "First workspace"
+    "title": "Set up Knoverge"
   },
   "status": {
     "title": "Server status",
@@ -866,6 +860,10 @@
     "already_close_hint": "Matched by a shared word in the name, not by meaning.",
     "approved_by": "Confirmed by {{who}}",
     "archive": "Archive",
+    "archive_effect": "Closes this category, {{categories}} under it, and leaves {{items}} records filed where they are.",
+    "archive_intro": "An archived category stays readable and stops being offered for new knowledge. Everything under it is archived with it, in one change.",
+    "archive_reversible": "Restore brings the whole branch back. Nothing is moved and nothing is lost.",
+    "archive_title": "Archive this category",
     "archived": "The category was archived.",
     "at_the_root": "At the root of the taxonomy",
     "belongs_here": "What belongs here",
@@ -1061,9 +1059,7 @@
     "role": "Role",
     "role_of": "Role of {{name}}",
     "save": "Save",
-    "saved": "Workspace updated.",
-    "this_is_you": "This is you",
-    "title": "Workspace"
+    "this_is_you": "This is you"
   },
   "workspaces": {
     "about": "About",

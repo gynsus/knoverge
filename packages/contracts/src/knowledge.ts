@@ -435,6 +435,15 @@ export const KnowledgeItemDetail = KnowledgeItemSummary.extend({
    * other end of it. Empty unless `disputed` is true. See ADR 0022.
    */
   disputed_by: z.array(KnowledgeItemId),
+  /**
+   * What replaced this, when something did.
+   *
+   * The other end of the `supersedes` relation the replacement carries, read
+   * from this item's frontmatter where ADR 0015 writes it. Without it a reader
+   * meets an item whose status says `superseded` and nothing that says by what —
+   * the one question that status raises.
+   */
+  superseded_by: KnowledgeItemId.nullable(),
   content_hash: z.string(),
   frontmatter_hash: z.string(),
 });

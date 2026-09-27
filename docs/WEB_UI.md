@@ -308,7 +308,12 @@ Neither is drag and drop. A gesture that can be made by accident is the wrong
 way to ask for a change that large.
 
 Archive is offered where delete would be, wherever the object holds something
-somebody else put there.
+somebody else put there — and it asks first, for the same reason. Archiving a
+category takes every active category under it with it, in one write, and it was a
+menu item that acted on click and answered with a toast: a branch of nine sections
+closed as quietly as an empty one. The dialog counts what goes with it from what
+the screen can already see, and says that Restore brings the branch back. What
+makes a click worth confirming is the reach of it, not only the risk.
 
 ## 5. What somebody may do comes from the server
 

@@ -21,7 +21,7 @@ import { ErrorNotice } from '../ErrorNotice.tsx';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Markdown } from './Markdown.tsx';
 import { RevisionDiff } from './RevisionDiff.tsx';
-import { DisputedBy, RelationList } from './RelationList.tsx';
+import { DisputedBy, RelationList, SupersededBy } from './RelationList.tsx';
 import { SummaryOf } from './SummaryOf.tsx';
 import { Validity } from './Validity.tsx';
 import { SourceList } from './SourceList.tsx';
@@ -259,6 +259,17 @@ export function ItemDetails({
                   <span>{t('knowledge.no_tags')}</span>
                 )}
               </dd>
+              {/* The one question a `superseded` status raises. The status is on
+                  the row and in the badge above; what replaced it was recorded
+                  on this item's own file and served to nobody (WEB_UI 2l). */}
+              {item.superseded_by && (
+                <>
+                  <dt>{t('knowledge.superseded_by')}</dt>
+                  <dd className="text-foreground">
+                    <SupersededBy itemId={item.superseded_by} onOpen={onOpenItem} />
+                  </dd>
+                </>
+              )}
               {/* What an agent calls this item, and what `knowledge_get`
                   takes. Nothing else on the screen says it. */}
               <dt>{t('knowledge.identifier')}</dt>

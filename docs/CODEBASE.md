@@ -647,6 +647,21 @@ happened" is the wrong thing for somebody to conclude about a workspace they can
 only see their own corner of. The line waits for the permissions to arrive rather
 than flashing while they do — `can` is false before the answer comes back.
 
+## The other end of a supersession
+
+The replacement carries the relation and the replaced item carries
+`superseded_by` in its frontmatter: one fact, written twice, in the two files that
+need it (ADR 0015). `KnowledgeItemDetail` served the relation and not the
+projection, so an item whose status read `superseded` answered nothing about what
+replaced it — the one question that status raises, and the one thing a reader
+needs next.
+
+It is served from the revision, like `disputed_by` and `summary_of`, so reading an
+older revision says what that revision said. It survives
+`include_relations: false` for the same reason the `disputed` flag does: an item
+that is no longer current has exactly one thing a reader has to follow, and
+withholding it makes the status unanswerable.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

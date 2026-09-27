@@ -110,6 +110,7 @@ function detail(result: ItemResult): KnowledgeItemDetail {
     // that revision said rather than what is true now.
     disputed: revision.frontmatter.disputed,
     disputed_by: revision.frontmatter.disputed_by ?? [],
+    superseded_by: revision.frontmatter.superseded_by ?? null,
     // From the revision, like the dispute fields: reading an older revision of a
     // summary should say what that revision was made from, not what the current
     // one is.
@@ -427,6 +428,9 @@ export async function knowledgeGet(
       // `summary_of` stays: it is what the summary is, not a relation to
       // something else, and an agent that asked for no relations still needs to
       // know a summary is out of step and against what.
+      // `superseded_by` stays for the same reason as the `disputed` flag: an item
+      // that is no longer current has exactly one thing a reader needs next, and
+      // withholding it makes the status unanswerable.
       ...(input.include_relations ? {} : { relations: [], disputed_by: [] }),
     },
     total_chars: whole.length,
