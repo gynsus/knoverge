@@ -630,13 +630,17 @@ Input:
 
 #### `events_list`
 
-The audit feed. Returns ledger events after a cursor.
+The audit feed. Returns ledger events around a cursor, in either direction.
 
 Input:
 
 ```json
 { "after_sequence": 22010, "event_types": [], "category_paths": [], "limit": 200 }
 ```
+
+Reading forward, `after_sequence` is the cursor and `next_sequence` comes back as the newest sequence in the page. Reading `newest_first` — the last few of something rather than the first page of everything — the cursor is `before_sequence` and `next_sequence` comes back as the *oldest* in the page. Either way it is the edge this page stopped at, and it goes into the next call in whichever field matches the direction.
+
+`newest_first` needs its own cursor because `after_sequence` bounds the wrong end of a descending read: without `before_sequence`, asking again after the newest page answers with the newest page.
 
 `events.read_own` restricts the result to the caller's own events; `events.read_all` returns everything in scope. For synchronisation use `knowledge_changes` instead.
 
