@@ -243,6 +243,22 @@ category, what would go in it, where it would hang — and none of that is on
 this screen. The queue says how many are waiting there rather than dropping
 them silently.
 
+## Our own policy blocking our own bundle
+
+`style-src 'self'` carries one nonce, minted per response in
+`plugins/security.ts` and read back by `cspNonceOf`. It exists for exactly one
+consumer: Radix locks the page scroll through `react-remove-scroll`, which injects
+a `<style>` element for the scrollbar width, and for as long as the policy had no
+allowance every dialog and popover logged a violation and the page jumped.
+
+The value travels on a `<meta name="csp-nonce">` in the shell, which `main.tsx`
+hands to `setNonce` from `get-nonce` — the API that stack already has for this.
+Not through an inline script, which would have needed its own nonce in
+`script-src` and widened the directive that is currently the tight one.
+
+That is why `app.ts` serves the shell from memory rather than as a file, and why
+it is `no-store`: the file is the same on every request and the nonce is not.
+
 ## Removing a category
 
 Three operations, and only one of them is a delete.

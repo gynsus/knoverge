@@ -561,6 +561,9 @@ importers:
       clsx:
         specifier: 'catalog:'
         version: 2.1.1
+      get-nonce:
+        specifier: ^1.0.1
+        version: 1.0.1
       i18next:
         specifier: 'catalog:'
         version: 26.4.2(typescript@5.9.3)

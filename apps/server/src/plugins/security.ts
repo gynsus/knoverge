@@ -2,6 +2,8 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyCsrf from '@fastify/csrf-protection';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyRateLimit from '@fastify/rate-limit';
+import { randomBytes } from 'node:crypto';
+
 import type { FastifyInstance, onRequestHookHandler } from 'fastify';
 
 export interface SecurityOptions {
@@ -14,23 +16,55 @@ export const SESSION_COOKIE = 'knoverge_session';
 export const CSRF_COOKIE = 'knoverge_csrf';
 
 /**
+ * Where the per-response nonce is written and read.
+ *
+ * On the raw request, because that is the object `helmet` hands its directive
+ * functions: the plugin sees Node's request and response, not Fastify's.
+ */
+const NONCE = Symbol.for('knoverge.cspNonce');
+
+/** The nonce for this response, or an empty string outside a request. */
+export function cspNonceOf(request: { raw: unknown }): string {
+  const value = (request.raw as Record<symbol, unknown>)[NONCE];
+  return typeof value === 'string' ? value : '';
+}
+
+/**
  * Web security baseline (SECURITY.md section 3): headers, cookies, CSRF, rate limits.
  */
 export async function registerSecurity(
   app: FastifyInstance,
   options: SecurityOptions,
 ): Promise<void> {
+  // One nonce per response, minted before helmet reads the directives and before
+  // anything can send the shell. Styles the interface itself injects carry it
+  // (see `style-src` below); nothing else is told what it is.
+  app.addHook('onRequest', (request, _reply, done) => {
+    (request.raw as unknown as Record<symbol, string>)[NONCE] = randomBytes(16).toString('base64');
+    done();
+  });
+
   await app.register(fastifyHelmet, {
     contentSecurityPolicy: {
       useDefaults: false,
       directives: {
         'default-src': ["'self'"],
         'script-src': ["'self'"],
-        // No 'unsafe-inline': the interface carries no style element, and the
-        // few style props it does set are applied by React through the CSSOM,
-        // which the policy does not govern. Allowing inline styles would widen
-        // it for nothing; a change that needs one must add a nonce instead.
-        'style-src': ["'self'"],
+        /**
+         * A nonce rather than 'unsafe-inline'.
+         *
+         * The interface does carry a style element, which is the thing the
+         * previous version of this comment denied: Radix locks the page scroll
+         * through `react-remove-scroll`, which injects a `<style>` to
+         * compensate for the scrollbar width, so every dialog and popover in
+         * the product tripped the policy and the page jumped by a scrollbar.
+         *
+         * The nonce is minted per response and reaches the bundle through a
+         * `<meta>` on the shell, which the application hands to `setNonce` at
+         * start-up. 'unsafe-inline' would have allowed every injected style on
+         * the page, including any an item's text managed to smuggle in.
+         */
+        'style-src': ["'self'", (req: unknown) => `'nonce-${cspNonceOf({ raw: req })}'`],
         'img-src': ["'self'", 'data:'],
         'font-src': ["'self'"],
         'connect-src': ["'self'"],
