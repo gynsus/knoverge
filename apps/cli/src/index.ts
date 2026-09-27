@@ -8,6 +8,7 @@ import { dbCommand } from './commands/db.ts';
 import { ledgerCommand } from './commands/ledger.ts';
 import { mcpCommand } from './commands/mcp.ts';
 import { permissionsCommand } from './commands/permissions.ts';
+import { restoreCommand } from './commands/restore.ts';
 import { taxonomyCommand } from './commands/taxonomy.ts';
 import { userCommand } from './commands/user.ts';
 import { workspaceCommand } from './commands/workspace.ts';
@@ -27,6 +28,7 @@ program.addCommand(workspaceCommand());
 program.addCommand(ledgerCommand());
 program.addCommand(mcpCommand());
 program.addCommand(permissionsCommand());
+program.addCommand(restoreCommand());
 program.addCommand(taxonomyCommand());
 program.addCommand(userCommand());
 

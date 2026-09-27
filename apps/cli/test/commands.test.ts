@@ -7,6 +7,7 @@ import { dbCommand } from '../src/commands/db.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
 import { permissionsCommand } from '../src/commands/permissions.ts';
+import { restoreCommand } from '../src/commands/restore.ts';
 import { taxonomyCommand } from '../src/commands/taxonomy.ts';
 import { userCommand } from '../src/commands/user.ts';
 import { workspaceCommand } from '../src/commands/workspace.ts';
@@ -20,6 +21,7 @@ const EXPECTED: Record<string, string[]> = {
   mcp: ['check', 'stdio'],
   ledger: ['verify'],
   permissions: ['list', 'grant', 'revoke'],
+  restore: [],
   taxonomy: ['list', 'create', 'move', 'archive', 'restore'],
   user: ['password-reset', 'email'],
   workspace: ['create', 'list'],
@@ -33,6 +35,7 @@ const commands = [
   ledgerCommand(),
   mcpCommand(),
   permissionsCommand(),
+  restoreCommand(),
   taxonomyCommand(),
   userCommand(),
   workspaceCommand(),
