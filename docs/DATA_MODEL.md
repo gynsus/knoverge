@@ -763,9 +763,13 @@ would leave a summary that silently forgets what it was made from, and rule 7
 says the dependency is explicit. Deletion is logical, so this is only reachable by
 a hard delete, which the product does not do.
 
-## 28. Search document and search chunk
+## 28. Search chunk
 
-Rebuildable projections of canonical content.
+A rebuildable projection of canonical content.
+
+There is no search document beside it. This section named one for a while, and ADR
+0020 had already decided against it: two granularities over the same text drift, and
+every query then has to choose which one it believes.
 
 ```text
 SearchChunk
