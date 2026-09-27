@@ -1,0 +1,34 @@
+# One installation behind HTTPS, with certificates Caddy gets and renews itself.
+#
+# Not a required dependency: a complete installation is one application container
+# plus PostgreSQL (rule 10), and this is the file an operator who wants it in front
+# of that starts from. Anything that terminates TLS and forwards the request will
+# do; what Knoverge needs from it is in the comments below.
+knoverge.example.com {
+	# Caddy sets X-Forwarded-For and X-Forwarded-Proto on its own. The server
+	# reads them only when KNOVERGE_TRUST_PROXY=true, because a caller's own
+	# address is what per-actor rate limiting falls back to for anonymous
+	# requests, and believing that header from an untrusted hop lets anybody
+	# spend somebody else's budget.
+	reverse_proxy knoverge:3000 {
+		# The MCP endpoint is Streamable HTTP: a POST whose answer may be a
+		# stream held open while a tool runs. Buffering it would make an agent
+		# wait for the whole response before it saw any of it, and a short read
+		# timeout would cut a long tool call off in the middle.
+		flush_interval -1
+		transport http {
+			read_timeout 10m
+		}
+	}
+
+	# The application sends its own security headers (HSTS, CSP, frame options),
+	# so this adds none: two sources for one header is how one of them ends up
+	# wrong. Compression is the exception — it is the proxy's job and the
+	# application does not do it.
+	encode zstd gzip
+
+	log {
+		output stdout
+		format console
+	}
+}
