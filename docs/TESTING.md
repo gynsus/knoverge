@@ -194,7 +194,7 @@ Interrupted sync can continue using the same session until expiry.
 
 ## 7. Contract tests
 
-For every tool, through both MCP and HTTP:
+For every tool, through HTTP:
 
 - schema validation;
 - authentication;
@@ -203,6 +203,20 @@ For every tool, through both MCP and HTTP:
 - stable error code and HTTP status mapping;
 - request attribution;
 - tool name matches `^[a-z][a-z0-9_]*$`.
+
+Through MCP, once for the bridge rather than once per tool — the adapter is a loop
+over `TOOLS` and the handler behind it is the same one HTTP calls (rule 11):
+
+- every tool in the contract is advertised, and nothing else is;
+- each is advertised with the contract's own description, the property names of its
+  own input schema, and `readOnlyHint` equal to its `readOnly`;
+- a call over MCP reaches the handler as the credential that made it, and a refusal
+  comes back as the same error code HTTP would give;
+- the transport's own rules hold: the request size limit, and a tool that answers
+  `202` over HTTP still answers a pending proposal here.
+
+`apps/server/test/mcp.test.ts` is that test. A tool whose MCP behaviour is not the
+generic one would need its own, and there is none today.
 
 ## 8. Internationalisation tests
 

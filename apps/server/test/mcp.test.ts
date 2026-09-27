@@ -138,21 +138,43 @@ afterAll(async () => {
   await container?.stop();
 });
 
+/** The Zod shape behind a tool's input, whatever wrapper the contract put on it. */
+function shapeOf(input: unknown): Record<string, unknown> {
+  const schema = input as { shape?: Record<string, unknown>; _def?: Record<string, unknown> };
+  const shape =
+    schema.shape ??
+    (schema._def?.['schema'] as { shape?: Record<string, unknown> } | undefined)?.shape ??
+    (schema._def?.['innerType'] as { shape?: Record<string, unknown> } | undefined)?.shape;
+  if (!shape) throw new Error('a tool input that is not an object schema');
+  return shape;
+}
+
 describe('the MCP endpoint', () => {
-  it('advertises every tool the contract defines', async () => {
+  it('advertises every tool with the contract’s own description and schema', async () => {
+    // Every tool, not a sample. The bridge is one loop over TOOLS, so what has to
+    // be covered is the loop and the generation rather than each of the
+    // twenty-six operations through it: calling all of them over MCP would be
+    // twenty-six tests of the same eight lines. This is the test that carries the
+    // rule in CLAUDE.md's completion definition, so it checks the whole list.
     const client = await connect(agentToken);
     try {
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name).sort()).toEqual(TOOLS.map((t) => t.name).sort());
-      const get = tools.find((t) => t.name === 'knowledge_get')!;
-      // The description an agent reads when choosing is the contract's own.
-      expect(get.description).toBe(TOOLS.find((t) => t.name === 'knowledge_get')!.description);
-      expect(get.annotations?.readOnlyHint).toBe(true);
-      expect(get.inputSchema.properties).toHaveProperty('item_id');
-      // A write tool says so, which is what a client uses to decide whether
-      // to ask a person first.
+      for (const tool of TOOLS) {
+        const advertised = tools.find((t) => t.name === tool.name);
+        expect(advertised, tool.name).toBeDefined();
+        // The description an agent reads when choosing is the contract's own.
+        expect(advertised?.description, tool.name).toBe(tool.description);
+        // A write says so, which is what a client uses to decide whether to ask a
+        // person first.
+        expect(advertised?.annotations?.readOnlyHint, tool.name).toBe(tool.readOnly);
+        // And the input an agent is told to send is the input the handler
+        // validates: the same fields, generated from the same schema.
+        expect(Object.keys(advertised?.inputSchema.properties ?? {}).sort(), tool.name).toEqual(
+          Object.keys(shapeOf(tool.input)).sort(),
+        );
+      }
       const propose = tools.find((t) => t.name === 'knowledge_propose_create')!;
-      expect(propose.annotations?.readOnlyHint).toBe(false);
       // Fields carry their own descriptions, or an agent sees names and types
       // and nothing about what they are for. Provenance is the one that
       // suffers: every item seeded into the first real workspace arrived
