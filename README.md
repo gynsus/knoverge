@@ -10,9 +10,9 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.1.0**, the first tagged release. Milestones 0 to 9 of
+Knoverge is at **v0.2.0**. Milestones 0 to 9 of
 [the plan](docs/IMPLEMENTATION_PLAN.md) are complete, and
-[CHANGELOG.md](CHANGELOG.md) says what that release contains.
+[CHANGELOG.md](CHANGELOG.md) says what each release contains.
 
 - **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
 - **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-six tools at `POST /v1/<tool_name>`, from one contract. Per-credential budgets for reads, writes, inventory batches and requests in flight, and a backlog budget for proposals waiting on review.
@@ -45,7 +45,7 @@ the secrets for you: an installation that came up with a password somebody else
 could guess would be worse than one that did not come up.
 
 To run a released image instead of building from source, replace the `build` block
-in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.1.0`. See
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.2.0`. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,
@@ -396,9 +396,9 @@ knoverge/
 └── README.md
 ```
 
-## What the first release is, and is not
+## What the releases so far contain, and what they do not
 
-v0.1.0 contains:
+v0.1.0, the first tagged release:
 
 - workspace creation and first-admin bootstrap;
 - users, workspace memberships, agent identities and API tokens;

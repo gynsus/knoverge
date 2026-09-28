@@ -4,10 +4,40 @@ Versions follow [Semantic Versioning](https://semver.org). A release is a tag
 `vX.Y.Z` on `main`, and the image published for it is
 `ghcr.io/gynsus/knoverge:X.Y.Z`.
 
-From v0.2.0 on, entries here are generated from the Conventional Commits since the
-previous tag and hand-edited only for the release summary. This first one is
-written by hand: a generated list of everything would say "added" a couple of
-hundred times and tell a reader nothing about what they are installing.
+An entry follows the Conventional Commits since the previous tag, written up so a
+reader learns what changed rather than which commits landed. The v0.1.0 entry is
+written by hand throughout: a generated list of everything would say "added" a
+couple of hundred times and tell a reader nothing about what they are installing.
+
+## v0.2.0 — 2026-09-28
+
+### Added
+
+- **Settings → Webhooks.** Adding an endpoint no longer means a request written by
+  hand inside the container. The screen leads with what leaves — an event and never
+  the knowledge — then asks for the address, the event types, and whether it is
+  delivering. The signing secret is shown once, with the check a receiver has to
+  perform ready to copy.
+- Each endpoint shows how it is going: consecutive failures, when the next attempt
+  is due, and what went wrong last. All three were in the API from the first day and
+  appeared on no screen, so an endpoint that stopped working stopped working
+  silently.
+- `webhooks.list` answers `secret_storage_configured`, and an installation without a
+  `KNOVERGE_ENCRYPTION_KEY` says above the button that it cannot keep a signing
+  secret rather than refusing a filled-in form.
+- `next_attempt_at` on a webhook summary, so a screen can say when a failing
+  endpoint will be tried again without a second copy of the backoff rule.
+
+### Changed
+
+- Replacing a signing secret asks for the new one, with a button that generates it.
+  An update that leaves it out keeps the secret it has, so offering to replace it and
+  then sending nothing would have promised something it did not do.
+
+### Compatibility
+
+Additive: two new fields on an existing administrative response. No schema change,
+no migration, and nothing about what is delivered or how it is signed has changed.
 
 ## v0.1.0 — 2026-09-28
 
