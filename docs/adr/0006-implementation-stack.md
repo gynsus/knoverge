@@ -29,7 +29,10 @@ The project also wants to stay on current, proven versions and remain upgradeabl
 Version policy:
 
 - exact versions are chosen and pinned in Milestone 0 after checking current releases;
-- automated dependency updates (Renovate or Dependabot) keep them current;
+- automated dependency updates keep them current: `.github/dependabot.yml` groups
+  packages, workflow actions and base images into one weekly pull request each,
+  and the checks decide whether it can be merged. A version pinned in the pnpm
+  catalogue may still need a hand, and `pnpm outdated -r` is what says so;
 - major upgrades of framework-level dependencies get a changelog entry and, when behaviour changes, an ADR amendment.
 
 ## Consequences

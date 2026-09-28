@@ -1,0 +1,51 @@
+# Keeping the versions this product is pinned to current, which Milestone 0 asked
+# for and nothing did.
+#
+# Weekly and grouped: a separate pull request per package would be a queue nobody
+# reads, and every one of them runs the whole test suite. What arrives is one
+# branch per ecosystem, and the checks decide whether it can be merged.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      production:
+        dependency-type: production
+        update-types: ['minor', 'patch']
+      development:
+        dependency-type: development
+        update-types: ['minor', 'patch']
+    commit-message:
+      prefix: chore
+      include: scope
+
+  # The actions a workflow runs are as much a supply chain as the packages the
+  # product imports, and they are pinned by major tag, which moves under us.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: ci
+
+  # The base images the release image is built from.
+  - package-ecosystem: docker
+    directories:
+      - /infra/docker
+      - /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      images:
+        patterns: ['*']
+    commit-message:
+      prefix: chore

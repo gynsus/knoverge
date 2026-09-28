@@ -2,7 +2,23 @@
 
 Build vertically and keep every milestone runnable.
 
+## Where this is
+
+Milestones 0 to 9 are delivered. **v0.1.0** was cut on 28 September 2026 and is the
+first tagged release; **v0.2.0** added the webhooks screen. `CHANGELOG.md` says what
+each one contains, and every milestone below carries the release it arrived in.
+
+From v0.1.0 the migrations are immutable: a change to persistence is a new additive
+migration with an upgrade test, never an edit to one that shipped.
+
+Milestone 10 is next in this order and needs an ADR before any of it is written.
+Which milestone is taken next is a decision about the product rather than about the
+code — 10 is what a hosted connector needs, 11 is what somebody with a folder of
+documents needs — and the order here is the default, not a promise.
+
 ## Milestone 0 - repository scaffold
+
+_Delivered — v0.1.0._
 
 Deliver:
 
@@ -17,7 +33,10 @@ Deliver:
 - lint/format/test commands, Vitest, Testcontainers;
 - CI (lint, typecheck, test, catalogue completeness);
 - `.env.example`, single-container `docker-compose.yml`;
-- pinned tool versions (`.nvmrc`, `engines`), automated dependency updates.
+- pinned tool versions (`.nvmrc`, `engines`), automated dependency updates
+  (`.github/dependabot.yml`: packages, actions and base images, weekly and grouped;
+  a version that lives in the pnpm catalogue may still need a hand, and
+  `pnpm outdated -r` is what says so).
 
 Acceptance:
 
@@ -28,6 +47,8 @@ docker compose up
 starts a working environment with a web page and `/health/ready` green.
 
 ## Milestone 1 - identity, workspace and taxonomy
+
+_Delivered — v0.1.0._
 
 Deliver:
 
@@ -51,6 +72,8 @@ Web UI:
 
 ## Milestone 2 - canonical knowledge + Git history
 
+_Delivered — v0.1.0._
+
 Deliver:
 
 - knowledge items, tags, categories join, review/evidence/dispute state;
@@ -66,6 +89,8 @@ Tests must simulate process failure between Git and database stages.
 
 ## Milestone 3 - proposals, policy and review
 
+_Delivered — v0.1.0._
+
 Deliver:
 
 - create/update/delete/supersede proposals, relations through the `relations` list;
@@ -79,6 +104,8 @@ Deliver:
 At this point agents can safely contribute information.
 
 ## Milestone 4 - MCP and HTTP surface
+
+_Delivered — v0.1.0._
 
 Deliver the shared contract and both adapters:
 
@@ -114,6 +141,8 @@ Integration tests must call the MCP server and the HTTP endpoint rather than onl
 
 ## Milestone 5 - reconciliation protocol
 
+_Delivered — v0.1.0._
+
 Deliver:
 
 ```text
@@ -146,6 +175,8 @@ This milestone is mandatory before calling the product a shared multi-agent know
 
 ## Milestone 6 - hybrid search
 
+_Delivered — v0.1.0._
+
 Deliver:
 
 - search chunks: deterministic paragraph splitter, per-chunk FTS;
@@ -161,6 +192,8 @@ System still works if embeddings are disabled.
 
 ## Milestone 7 - provenance, relations and temporal knowledge
 
+_Delivered — v0.1.0._
+
 Deliver:
 
 - source references and revision-source links;
@@ -171,6 +204,8 @@ Deliver:
 - provenance UI.
 
 ## Milestone 8 - summaries and digests
+
+_Delivered — v0.1.0._
 
 Deliver:
 
@@ -185,6 +220,8 @@ Deliver:
 No generated summary may replace canonical sources.
 
 ## Milestone 9 - hardening and operations
+
+_Delivered — v0.1.0, and the webhooks screen in v0.2.0._
 
 Deliver:
 
@@ -202,6 +239,8 @@ Deliver:
 
 ## Milestone 10 - OAuth 2.1 for hosted MCP clients
 
+_Not started. ADR required first._
+
 Deliver:
 
 - Knoverge as OAuth 2.1 authorization server with PKCE and dynamic client registration;
@@ -213,6 +252,8 @@ ADR required before implementation.
 
 ## Milestone 11 - documents and attachments
 
+_Not started._
+
 Deliver:
 
 - attachment upload (web UI, HTTP, MCP);
@@ -221,9 +262,15 @@ Deliver:
 - unsupported files stored by reference only;
 - attachment references in provenance.
 
-See ADR 0008.
+See ADR 0008. One thing to settle before the store is written: the ADR names
+`KNOVERGE_DATA_DIR/workspaces/<workspace_id>/attachments/<sha256>`, and what the
+data directory actually holds today is `repositories/<workspace_id>`. The layout
+that exists wins unless there is a reason it should not, and the ADR is amended
+rather than quietly contradicted.
 
 ## Milestone 12 - media understanding
+
+_Not started._
 
 Deliver through the intelligence provider abstraction:
 
@@ -235,6 +282,8 @@ each producing `document` items with provenance. Providers are optional; without
 
 ## Milestone 13 - export and import
 
+_Not started._
+
 Deliver:
 
 - full workspace export (Git bundle plus metadata JSON) and import;
@@ -242,6 +291,8 @@ Deliver:
 - importer for externally created Git commits.
 
 ## Milestone 14 - knowledge gardening
+
+_Not started._
 
 Only after previous milestones are stable.
 
@@ -259,6 +310,9 @@ All automatic gardening creates proposals unless explicitly authorised.
 
 ## Later
 
+- end-to-end browser tests for the review and knowledge flows (Playwright; no
+  harness yet, and `docs/TESTING.md` says so where somebody writing a test will
+  read it);
 - physical purge of Git history for secrets and personal data;
 - TOTP and OIDC sign-in;
 - commit signing;
