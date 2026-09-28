@@ -10,29 +10,44 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is under development and already runs. Milestones 0 to 6 are
-complete, and Milestone 7 is partly done:
+Knoverge is at **v0.1.0**, the first tagged release. Milestones 0 to 9 of
+[the plan](docs/IMPLEMENTATION_PLAN.md) are complete, and
+[CHANGELOG.md](CHANGELOG.md) says what that release contains.
 
 - **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
-- **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-six tools at `POST /v1/<tool_name>`, from one contract. Per-credential rate limits, request size and concurrency limits.
+- **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-six tools at `POST /v1/<tool_name>`, from one contract. Per-credential budgets for reads, writes, inventory batches and requests in flight, and a backlog budget for proposals waiting on review.
 - **Review** — agents propose, policy decides, and a person approves, edits and approves, rejects or withdraws. The review screen is a queue: it says why each proposal is waiting, what it would change against what the item says now, and what it rests on. Nothing an agent writes becomes canonical without a rule that says so.
 - **Reconciliation** — a connecting agent finds out what the workspace already knows before it writes: a session, candidates matched by hash, external key and then meaning, and a run a reviewer can read as a run.
 - **Finding things** — hybrid search over a chunked index: language-aware full text, trigrams, and optional embeddings fused by reciprocal rank. A compact index for reconciliation, a briefing that fits a budget, an audit feed and a change feed.
+- **Time and disagreement** — a claim can say when it holds; a contradiction is recorded once and shows at both ends; evidence state is derived from the sources rather than asserted.
+- **Summaries and digests** — a summary keeps the exact revisions it was made from and goes stale when one of them moves; a model can draft its text and a person saves it, and the file says which model phrased it. The activity digest has a screen, and an optional narrative of the period.
 - **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers only the models that can embed, and reports what one returns before it is chosen. Everything above works with none configured.
-- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, backups with a restore drill, and recovery for a write that reached Git and no further.
+- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge, and recovery for a write that reached Git and no further.
 
-Not yet: contradiction handling and the temporal questions of Milestone 7 (the
-fields are stored, nothing sets `disputed` and nothing queries validity),
-summaries and digests with an LLM (8), OAuth for hosted connectors (10),
-attachments and media (11-12).
+Not yet: OAuth for hosted connectors (Milestone 10), attachments and documents
+(11), media understanding (12), export and import (13), knowledge gardening (14).
+Webhooks are configured through the API or the command line and have no screen,
+and there are no end-to-end browser tests.
 
 ## Trying it
 
 ```bash
-cp .env.example .env          # set KNOVERGE_LEDGER_KEY and KNOVERGE_TOKEN_PEPPER
+cp .env.example .env          # fill the four empty values: the database password
+                              # and three secrets, each `openssl rand -hex 32`
+docker volume create knoverge-postgres
+docker volume create knoverge-data
 docker compose up -d
 open http://localhost:3000    # first run: the terms, the owner account, the workspace
 ```
+
+The two volumes are made by hand and declared external, so `docker compose down -v`
+cannot take the database and the workspace repositories with it. Nothing generates
+the secrets for you: an installation that came up with a password somebody else
+could guess would be worse than one that did not come up.
+
+To run a released image instead of building from source, replace the `build` block
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.1.0`. See
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,
 no telemetry, and the operator is responsible for backups and for what goes
@@ -344,7 +359,6 @@ All intelligence features use a provider abstraction.
 Supported classes:
 
 - OpenAI-compatible API
-- Anthropic
 - Ollama
 - provider disabled
 
@@ -368,11 +382,12 @@ knoverge/
 │   ├── policy/
 │   └── intelligence/
 ├── docs/
-│   ├── adr/
-│   └── i18n/
+│   └── adr/
 ├── infra/
+│   ├── backup/
+│   ├── caddy/
 │   └── docker/
-├── scripts/
+├── CHANGELOG.md
 ├── CLAUDE.md
 ├── CONTRIBUTING.md
 ├── LICENSE
@@ -382,9 +397,9 @@ knoverge/
 └── README.md
 ```
 
-## MVP
+## What the first release is, and is not
 
-The first usable version must include:
+v0.1.0 contains:
 
 - workspace creation and first-admin bootstrap;
 - users, workspace memberships, agent identities and API tokens;
@@ -407,7 +422,7 @@ The first usable version must include:
 - security baseline for Internet exposure (rate limits, CSRF, security headers);
 - English and Russian user interface.
 
-The MVP does **not** require:
+It deliberately does **not** contain:
 
 - OAuth 2.1 for MCP clients (planned as a later milestone);
 - document ingestion, audio/video transcription, image understanding (planned);
@@ -444,6 +459,7 @@ Thank you.
 
 ## Documentation map
 
+- [CHANGELOG.md](CHANGELOG.md) - what each release contains
 - [CLAUDE.md](CLAUDE.md) - implementation instructions for Claude Code
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - system architecture
 - [docs/KNOWLEDGE_MODEL.md](docs/KNOWLEDGE_MODEL.md) - knowledge structure
