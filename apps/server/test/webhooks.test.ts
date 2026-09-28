@@ -122,7 +122,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await new Promise<void>((resolve) => receiver?.close(() => resolve()));
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (dataDir) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   await app?.close();
   await services?.close();
   await container?.stop();

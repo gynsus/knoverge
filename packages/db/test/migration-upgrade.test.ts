@@ -135,7 +135,7 @@ describe('upgrading an installation', () => {
       expect(tables).toContain('summary_dependencies');
     } finally {
       await handle.close();
-      await rm(older, { recursive: true, force: true });
+      await rm(older, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 
@@ -161,7 +161,7 @@ describe('upgrading an installation', () => {
           // table has something in it.
           await keepARow(handle);
         } finally {
-          await rm(folder, { recursive: true, force: true });
+          await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
         }
       }
       expect((await getMigrationStatus(handle.db, migrationsFolder)).pending).toEqual([]);
@@ -191,7 +191,7 @@ describe('upgrading an installation', () => {
       expect(after.after.pending).toEqual([]);
     } finally {
       await handle.close();
-      await rm(folder, { recursive: true, force: true });
+      await rm(folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
     }
   });
 });

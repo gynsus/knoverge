@@ -131,7 +131,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (dataDir) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   await app?.close();
   await services?.close();
   await container?.stop();
@@ -234,7 +234,12 @@ describe('knoverge integrity check', () => {
     expect(item.statusCode, item.body).toBe(200);
     const written = KnowledgeResponse.parse(item.json()).item;
 
-    await rm(join(dataDir, 'repositories', lost), { recursive: true, force: true });
+    await rm(join(dataDir, 'repositories', lost), {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 50,
+    });
 
     const report = await integrity.check([lost]);
     const finding = report.findings.find(
