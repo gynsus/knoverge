@@ -53,6 +53,14 @@ import {
   TaxonomyProposeInput,
   TaxonomyProposeResult,
 } from './taxonomy.ts';
+import {
+  AttachmentListInput,
+  AttachmentQuery,
+  AttachmentResponse,
+  AttachmentsResponse,
+  SingleAttachmentResponse,
+  UploadAttachmentInput,
+} from './attachments.ts';
 import { WorkspaceManifest, WorkspaceManifestInput } from './workspaces.ts';
 
 /**
@@ -89,6 +97,9 @@ export const ToolName = z.enum([
   'sync_get_matches',
   'sync_status',
   'sync_complete',
+  'attachment_upload',
+  'attachment_list',
+  'attachment_get',
 ]);
 export type ToolName = z.infer<typeof ToolName>;
 
@@ -321,6 +332,30 @@ export const TOOLS: readonly ToolContract[] = [
     input: SyncCompleteInput,
     output: SyncCompleteResult,
     readOnly: false,
+  },
+  {
+    name: 'attachment_upload',
+    description:
+      'Bring a file into the workspace: base64 in, and its text becomes a `document` item the same way anything else you write does — through review unless a policy rule says otherwise. Needs `knowledge.write`. The file travels inside the request body, so `max_attachment_bytes` in the manifest is what fits; a larger file goes to `POST /v1/admin/attachments.upload` as multipart.',
+    input: UploadAttachmentInput,
+    output: AttachmentResponse,
+    readOnly: false,
+  },
+  {
+    name: 'attachment_list',
+    description:
+      'The files this workspace holds, newest first, each with what became of the text inside it.',
+    input: AttachmentListInput,
+    output: AttachmentsResponse,
+    readOnly: true,
+  },
+  {
+    name: 'attachment_get',
+    description:
+      'One file, and the knowledge items made from it. `extraction_state` says why there are none yet: a file is read a minute after it arrives, and text an agent brought waits for a reviewer.',
+    input: AttachmentQuery,
+    output: SingleAttachmentResponse,
+    readOnly: true,
   },
 ];
 

@@ -193,6 +193,10 @@ POST /v1/admin/webhooks.delete
                                             repository and the whole ledger, which is
                                             an operator's command rather than a
                                             request — `knoverge integrity check`)
+POST /v1/attachment_upload                  the same operation as a tool: base64 in, within the
+                                            manifest's `max_attachment_bytes`
+POST /v1/attachment_list                    what this workspace holds
+POST /v1/attachment_get                     one file, with the items made from it
 POST /v1/admin/attachments.upload           multipart; the part is named `file`, and an optional
                                             `original_uri` field says where it came from. Needs
                                             `knowledge.write`. Answers with the attachment and
