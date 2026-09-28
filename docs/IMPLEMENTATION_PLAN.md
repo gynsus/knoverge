@@ -252,8 +252,9 @@ ADR required before implementation.
 
 ## Milestone 11 - documents and attachments
 
-_Delivered. Storage, the record, the HTTP surface, text extraction (text,
-Markdown, HTML, PDF, DOCX), the Files screen and the three MCP tools._
+_Delivered — v0.3.0. Storage, the record, the HTTP surface, text extraction (text,
+Markdown, HTML, PDF, DOCX), the Files screen and the three MCP tools. A file that
+was not read can be asked for again (v0.4.0)._
 
 Deliver:
 
@@ -280,12 +281,13 @@ Two things the first part left for the rest of the milestone, both deliberate:
 
 ## Milestone 12 - media understanding
 
-_Done, except one case. An image is described by an assigned vision model, which is
-also how the text in a screenshot is read, and an audio or video file becomes what
-was said in it when a transcription model is assigned — an OpenAI-compatible one,
-since Ollama has no endpoint that listens. A scanned PDF is still `unsupported`: a
-page inside one has to be rendered to an image first, and rendering needs a canvas
-this product does not have._
+_Delivered — v0.4.0, except one case. An image is described by an assigned vision
+model, which is also how the text in a screenshot is read, and an audio or video
+file becomes what was said in it when a transcription model is assigned — an
+OpenAI-compatible one, since Ollama has no endpoint that listens, and its key is
+set in the interface (ADR 0033). A scanned PDF is still `unsupported`: a page
+inside one has to be rendered to an image first, and rendering needs a canvas this
+product does not have._
 
 Deliver through the intelligence provider abstraction:
 

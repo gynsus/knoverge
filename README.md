@@ -10,7 +10,7 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.3.0**. Milestones 0 to 9, 11 and 12 of
+Knoverge is at **v0.4.0**. Milestones 0 to 9, 11 and 12 of
 [the plan](docs/IMPLEMENTATION_PLAN.md) are complete — 12 bar the scanned PDF —
 and [CHANGELOG.md](CHANGELOG.md) says what each release contains.
 

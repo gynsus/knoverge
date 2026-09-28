@@ -9,6 +9,92 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.4.0 — 2026-09-28
+
+Milestone 12: a workspace can read what its files say, whatever they are.
+
+### Added
+
+- **Pictures become knowledge.** With a vision model assigned, an image is
+  described and the text on a screenshot or a photographed page is read out, and
+  what comes back is an ordinary `document` item with the attachment it came from
+  as its source. `drafted_by` names the model on the file itself, because a
+  description is a model's words about somebody's picture (ADR 0031).
+- **Recordings become knowledge.** With a transcription model assigned, an audio
+  or video file becomes what was said in it. The file goes as it arrived and under
+  its own name — a container this product cannot open is one a transcription
+  server opens every day — and nothing is said about the language, because a
+  workspace's own language is a guess about somebody else's recording.
+- **Two more purposes on the settings page**, each its own model, each connected
+  and stopped on its own. Transcription is offered only from the providers that
+  could answer it: Ollama has no endpoint that takes a recording, and the page
+  says so rather than letting somebody assign a model that can never be asked.
+- **A probe for vision**: a red square on white, a hundred and forty-six bytes,
+  drawn here rather than fetched from anywhere (rule 12). The screen shows what
+  the model said about it, because a catalogue never says which models can see.
+  Transcription has no probe, and the wizard says so outright: speech is the one
+  thing that cannot be made up here, and a synthesised clip would test the
+  synthesiser.
+- **An API key is set in the interface**, for the one kind of provider that has
+  any use for one. Sealed with `KNOVERGE_ENCRYPTION_KEY` exactly as a webhook's
+  signing secret is, write-only, and never shown again: the page says whether a
+  provider has one, never which (ADR 0033). Without an encryption key the field is
+  not offered and the server refuses rather than storing in clear.
+- **A file that was not read can be read again.** The sweep only looks at files
+  nobody has read yet, so a model assigned today could never reach a file that
+  arrived last month, and a provider unreachable for a minute left a file `failed`
+  for good. `attachments.reread` takes one file or every `unsupported` and
+  `failed` file in the workspace, with a button on the Files screen for each.
+- **ADR 0032**, which records what Milestone 12 decided and had not written down:
+  text a model produced about an uploaded file is written without a person reading
+  it first, and what makes that safe enough is not the model.
+
+### Fixed
+
+- **A vision model could never be assigned.** `ai_assignments_purpose_check` still
+  listed the two purposes that existed when the table was written, so `ai.assign`
+  answered `INTERNAL_ERROR`. The vision half of Milestone 12 had never worked in
+  the product; it reached `main` and no tagged release.
+- **A claim could expire mid-transcription.** The window a file's claim is believed
+  for was ten minutes, chosen when the longest a file could take was reading a PDF.
+  A transcription provider is given ten minutes before it is given up on, so the
+  next sweep could take a file still being transcribed: the same recording paid for
+  twice, and two documents from it. Half an hour now, and the relationship between
+  the two numbers is a test.
+- **The wizard opened a purpose on the wrong model.** Pressing Change on the vision
+  row pre-filled whatever the embedding model was.
+- **A replaced provider key was noticed by one process only.** The built provider
+  is cached, and the sealed key is now part of what it is cached by, so a worker
+  does not keep calling with a revoked credential until a restart.
+- **The wizard would not connect an OpenAI-compatible provider at all**, which left
+  transcription reachable only if the embedding provider happened to be one.
+
+### Changed
+
+- `SECURITY.md` says where a model's words do reach the repository without
+  somebody reading them first, and that an assigned vision or transcription model
+  is sent the bytes of an uploaded file — not only text.
+- The Files screen's "not readable here" no longer calls a picture a kind of file
+  nothing here reads. It says what to connect, and which case is still out of
+  reach.
+- The README said twenty-six tools when there were twenty-nine.
+- `docs/DATA_MODEL.md` has a section for the AI tables, which had none.
+
+### Guards
+
+- Every `CHECK` constraint listing values is asserted against its contract enum —
+  twenty-three columns — because a `CHECK` and a `z.enum` are one list written
+  twice, and that is how the vision purpose reached `main` unable to be assigned.
+- The README's tool count is checked against the contract.
+
+### Compatibility
+
+Two additive migrations. No configuration is required: with no vision or
+transcription model assigned, files behave exactly as they did in v0.3.0.
+`KNOVERGE_EMBEDDING_API_KEY` still works and is the fallback for the address it
+names. Two new fields on the AI settings response and one on a provider; nothing
+existing changed shape.
+
 ## v0.3.0 — 2026-09-28
 
 Milestone 11: a workspace can hold the documents its knowledge came from.
