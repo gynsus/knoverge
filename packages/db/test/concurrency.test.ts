@@ -174,7 +174,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
-  if (repoRoot) await rm(repoRoot, { recursive: true, force: true });
+  if (repoRoot) await rm(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 /** Every category's path must be its parent's path plus its own slug. */
@@ -513,7 +513,12 @@ describe('a repository that lost its history', () => {
 
     // The repository is gone: a lost volume, a restore of the database alone,
     // or somebody else's directory mounted in its place.
-    await rm(join(repoRoot, 'repositories', workspace.id), { recursive: true, force: true });
+    await rm(join(repoRoot, 'repositories', workspace.id), {
+      recursive: true,
+      force: true,
+      maxRetries: 5,
+      retryDelay: 50,
+    });
 
     // Writing would start a fresh repository and build new history on top of a
     // hole, then call the result canonical.

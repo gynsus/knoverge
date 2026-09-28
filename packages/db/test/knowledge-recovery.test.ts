@@ -227,7 +227,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
-  if (repoRoot) await rm(repoRoot, { recursive: true, force: true });
+  if (repoRoot) await rm(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe('a create that reached Git and no further', () => {

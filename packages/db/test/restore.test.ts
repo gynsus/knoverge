@@ -181,7 +181,7 @@ afterAll(async () => {
   await restored?.close().catch(() => undefined);
   await live?.close().catch(() => undefined);
   await container?.stop();
-  if (repoRoot) await rm(repoRoot, { recursive: true, force: true });
+  if (repoRoot) await rm(repoRoot, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe('restoring a backup', () => {
