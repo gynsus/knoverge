@@ -9,7 +9,9 @@ Users want to bring files into the knowledge base: text documents, PDFs, office 
 
 ## Decision
 
-1. Original files are stored on the local filesystem under `KNOVERGE_DATA_DIR/workspaces/<workspace_id>/attachments/<sha256>`, content-addressed and deduplicated. They are part of the backup boundary but never committed to Git.
+1. Original files are stored on the local filesystem under `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`, content-addressed and deduplicated. They are part of the backup boundary but never committed to Git.
+
+   This ADR first said `workspaces/<workspace_id>/attachments/<sha256>`, written before there was a data directory to disagree with. What exists is `repositories/<workspace_id>`, one directory per kind of thing with the workspace under it, and `ARCHITECTURE.md` has described attachments the same way since. The layout that exists wins: an ADR is a decision, not a claim about a directory somebody else already made.
 2. An `Attachment` record in PostgreSQL holds media type, size, original filename, original location (`original_uri`) and extraction status.
 3. Files that contain text are extracted by a background job into a `document` knowledge item whose Markdown is the extracted text. The item carries a source reference of type `attachment` plus the original location, so search, briefing and reconciliation treat the content as ordinary knowledge.
 4. Text-bearing formats in the first ingestion milestone: plain text, Markdown, HTML, PDF, DOCX. Extraction runs without an AI provider.

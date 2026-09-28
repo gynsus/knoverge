@@ -262,11 +262,9 @@ Deliver:
 - unsupported files stored by reference only;
 - attachment references in provenance.
 
-See ADR 0008. One thing to settle before the store is written: the ADR names
-`KNOVERGE_DATA_DIR/workspaces/<workspace_id>/attachments/<sha256>`, and what the
-data directory actually holds today is `repositories/<workspace_id>`. The layout
-that exists wins unless there is a reason it should not, and the ADR is amended
-rather than quietly contradicted.
+See ADR 0008. Files live at `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`,
+beside `repositories/<workspace_id>` and the way `ARCHITECTURE.md` has always
+described them.
 
 ## Milestone 12 - media understanding
 
