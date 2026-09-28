@@ -84,3 +84,7 @@ export type AiProviderId = z.infer<typeof AiProviderId>;
 
 export const WebhookId = idSchema('hook');
 export type WebhookId = z.infer<typeof WebhookId>;
+
+/** A file somebody brought in, stored by the hash of its contents (ADR 0008). */
+export const AttachmentId = idSchema('att');
+export type AttachmentId = z.infer<typeof AttachmentId>;

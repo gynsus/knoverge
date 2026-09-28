@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 
 import { LiveResponse, ReadyResponse } from '@knoverge/contracts';
@@ -29,6 +30,7 @@ import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerAdminAiRoutes } from './routes/admin-ai.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
+import { registerAdminAttachmentRoutes } from './routes/admin-attachments.ts';
 import { registerAdminWebhookRoutes } from './routes/admin-webhooks.ts';
 import { registerAdminWorkspaceRoutes } from './routes/admin-workspace.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
@@ -111,7 +113,18 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       services: options.services,
       cookieSecure: options.security.cookieSecure,
     });
+    // The parser for the one route that takes a file. Its limit is the
+    // installation's own: a part that runs past it is cut off, and the route
+    // refuses rather than storing a file missing its end.
+    await app.register(multipart, {
+      limits: { fileSize: options.services.attachmentMaxBytes, files: 1, fields: 4 },
+      // The parser stops reading and says the part was cut short, rather than
+      // throwing its own error: the route answers with the size this
+      // installation accepts, which is the one thing the uploader needs to know.
+      throwFileSizeLimit: false,
+    });
     registerAdminAgentRoutes(app, options.services);
+    registerAdminAttachmentRoutes(app, options.services);
     registerAdminAiRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
     registerAdminWebhookRoutes(app, options.services);

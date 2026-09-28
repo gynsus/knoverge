@@ -751,6 +751,34 @@ somebody pointing this at a third party is deciding exactly that. The health eac
 shows was in `webhooks.list` from the first day and was displayed nowhere, so an
 endpoint that stopped working stopped working silently.
 
+## Files a workspace holds
+
+`packages/attachments` is the whole of the storage: a path made of a hash, an
+atomic write, a read and an existence check. There is no `storage_path` column
+anywhere, because the path *is* the hash — a column would be a second answer to a
+question the hash already answers, and after a restore the two could disagree.
+
+The bytes are written before the row, and that order is the decision. A file on
+disk with no row is a few kilobytes nobody asked for; a row with no file is a
+record of something that is not there, which the integrity check reports as
+`attachment_missing` and nothing can repair — an attachment is not in Git and
+cannot be rebuilt from anything. So the check looks for the second and not the
+first.
+
+Deduplication is per workspace, by content. The same file uploaded twice is one
+attachment and the answer says `created: false`, so an uploader who expected a new
+id is told which one it is. Not global, because "you already have this" is an
+answer that would tell one workspace what another holds.
+
+What the domain refuses — an empty file, one past the installation's limit, a
+filename that is a path or carries a line break — it refuses for every transport,
+even where the HTTP route gets there first: the multipart parser stops at the limit
+and takes the directory off a filename, and the MCP upload will do neither.
+
+An uploaded file is served as a download and never as a page. `SECURITY.md` says
+why: an HTML file somebody uploaded, served inline, runs on this installation's
+origin with this installation's cookie.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

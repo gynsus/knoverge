@@ -1,0 +1,21 @@
+{
+  "name": "@knoverge/attachments",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The attachment store: files kept by the hash of their contents, outside Git",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

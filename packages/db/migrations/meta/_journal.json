@@ -134,6 +134,13 @@
       "when": 1790235957924,
       "tag": "0018_webhooks",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790588230840,
+      "tag": "0019_attachments",
+      "breakpoints": true
     }
   ]
 }

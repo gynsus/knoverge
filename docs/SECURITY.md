@@ -477,6 +477,8 @@ Canonical knowledge is a Git repository per workspace, written by running `git` 
 
 **Nothing caller-supplied reaches the command line as an option or a path.** Arguments are always passed as an array, never through a shell. Commit hashes are checked against their shape before they become arguments, paths are resolved inside the repository and refused if they reach `.git`, and a commit subject or trailer value containing a line break is refused — a forged trailer would otherwise let a title speak for the commit when recovery reads it.
 
+**An uploaded file is never a page.** Anything served from `attachments.download` comes back with `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff` and `Content-Security-Policy: default-src 'none'; sandbox`. An HTML file somebody uploaded, served inline, would run on this installation's own origin with this installation's session cookie — the same reason knowledge is rendered and never becomes HTML. The filename in that header is stripped of anything outside printable ASCII and repeated as `filename*` for the rest, and the domain refuses a name with a path separator or a line break in it before it is ever written down.
+
 **Attribution cannot be dressed up as somebody else.** The author address is always `<actor id>@knoverge.local`, and a display name is stripped of the characters git would render as an address before it is used.
 
 **The backup container is not privileged.** It drops to the database image's own unprivileged user before doing any work, mounts the data directory read-only, and only writes to the backup volume. It copies canonical knowledge and archives it; neither task needs the privileges of the machine.

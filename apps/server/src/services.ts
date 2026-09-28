@@ -17,6 +17,7 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  AttachmentService,
   AuthorizationAdminService,
   DomainError,
   AuthorizationService,
@@ -46,6 +47,7 @@ import {
   type LedgerKey,
   type LedgerKeyring,
 } from '@knoverge/core';
+import { FileAttachmentStore } from '@knoverge/attachments';
 import {
   createDatabase,
   createRepositories,
@@ -92,8 +94,15 @@ export interface ServicesConfig {
    * storing a signing secret the operator believes is encrypted.
    */
   encryptionKey?: EncryptionKey;
-  /** Workspace repositories live under this directory. */
+  /** Workspace repositories and attachments live under this directory. */
   dataDir: string;
+  /**
+   * The largest file an upload may carry, in bytes.
+   *
+   * Defaulted here rather than required, because every test that builds services
+   * would otherwise carry a number it does not care about.
+   */
+  attachmentMaxBytes?: number;
   /**
    * How many proposals one actor may have waiting for review.
    *
@@ -140,6 +149,9 @@ function requireEncryptionKey(key: EncryptionKey | undefined): EncryptionKey {
   }
   return key;
 }
+
+/** What an installation accepts when nothing said otherwise: the config's own default. */
+const DEFAULT_ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
 
 export function createServices(config: ServicesConfig) {
   const database: DatabaseHandle = createDatabase({
@@ -349,6 +361,19 @@ export function createServices(config: ServicesConfig) {
     }
   };
 
+  // Files live beside the repositories under the data directory, never in Git
+  // (ADR 0008). One store for the process, because a store is a path and a path
+  // is not state.
+  const attachmentStore = new FileAttachmentStore(config.dataDir);
+  const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES;
+  const attachments = new AttachmentService({
+    uow,
+    attachments: repositories.attachments,
+    store: attachmentStore,
+    ledger,
+    maxBytes: attachmentMaxBytes,
+  });
+
   const webhooks = new WebhookService({
     uow,
     webhooks: repositories.webhooks,
@@ -505,6 +530,9 @@ export function createServices(config: ServicesConfig) {
     members,
     knowledge,
     proposals,
+    attachments,
+    /** The largest file an upload may carry; the multipart parser needs it too. */
+    attachmentMaxBytes,
     webhooks,
     /**
      * Whether a webhook signing secret has somewhere to live.

@@ -64,7 +64,7 @@ One port. Exact port may change during implementation, but the final project mus
 Required persistent data:
 
 - PostgreSQL;
-- `KNOVERGE_DATA_DIR` (workspace Git repositories and attachments). Required by the `knoverge` command line as well as the server, and it must name the same directory: pointed elsewhere, the command line would create a second, empty repository for the workspace, and the integrity guard would then refuse to write to it.
+- `KNOVERGE_DATA_DIR` (workspace Git repositories under `repositories/<workspace id>` and uploaded files under `attachments/<workspace id>`; the backup copies the whole directory, so files are inside the backup boundary without anything else being configured). Required by the `knoverge` command line as well as the server, and it must name the same directory: pointed elsewhere, the command line would create a second, empty repository for the workspace, and the integrity guard would then refuse to write to it.
 
 Logical volumes:
 
@@ -122,6 +122,7 @@ KNOVERGE_AGENT_WRITES_PER_MINUTE       60 by default, per credential
 KNOVERGE_AGENT_SYNC_BATCHES_PER_MINUTE 12 by default; sync_submit_inventory carries a whole inventory
 KNOVERGE_AGENT_CONCURRENCY             8 by default; requests one credential may have in flight
 KNOVERGE_AGENT_PENDING_PROPOSALS       200 by default; proposals one actor may leave waiting for review
+KNOVERGE_ATTACHMENT_MAX_MB             25 by default; the largest file an upload may carry
 NODE_ENV                      development | test | production
 
 Not read yet. The features they configure do not exist, and the configuration
@@ -132,7 +133,6 @@ KNOVERGE_LLM_PROVIDER         (Milestone 8) disabled | openai_compatible | anthr
 KNOVERGE_LLM_BASE_URL         (Milestone 8)
 KNOVERGE_LLM_API_KEY          (Milestone 8)
 KNOVERGE_LLM_MODEL            (Milestone 8)
-KNOVERGE_ATTACHMENT_MAX_MB    (Milestone 11)
 ```
 
 The server must start with LLM and embedding providers disabled, and today it always does: nothing reads those variables yet, and the core never will (rule 9).

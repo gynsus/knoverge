@@ -193,7 +193,16 @@ POST /v1/admin/webhooks.delete
                                             repository and the whole ledger, which is
                                             an operator's command rather than a
                                             request — `knoverge integrity check`)
-POST /v1/admin/attachments.upload           (multipart, later milestone)
+POST /v1/admin/attachments.upload           multipart; the part is named `file`, and an optional
+                                            `original_uri` field says where it came from. Needs
+                                            `knowledge.write`. Answers with the attachment and
+                                            `created`, which is false when the workspace already
+                                            held those bytes
+GET  /v1/admin/attachments.list             what this workspace holds
+GET  /v1/admin/attachments.get              one of them, by id
+GET  /v1/admin/attachments.download         the file itself, always as a download and never
+                                            rendered: `Content-Disposition: attachment`,
+                                            `nosniff`, and a policy that allows nothing
 ```
 
 Admin endpoints follow the same RPC style and the same error model.

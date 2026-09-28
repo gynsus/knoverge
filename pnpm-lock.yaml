@@ -176,6 +176,9 @@ catalogs:
     '@fastify/helmet':
       specifier: 13.1.1
       version: 13.1.1
+    '@fastify/multipart':
+      specifier: 9.4.0
+      version: 9.4.0
     '@fastify/rate-limit':
       specifier: 11.2.0
       version: 11.2.0
@@ -397,6 +400,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@knoverge/attachments':
+        specifier: workspace:*
+        version: link:../../packages/attachments
       '@knoverge/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -461,6 +467,9 @@ importers:
       '@fastify/helmet':
         specifier: 'catalog:'
         version: 13.1.1
+      '@fastify/multipart':
+        specifier: 'catalog:'
+        version: 9.4.0
       '@fastify/rate-limit':
         specifier: 'catalog:'
         version: 11.2.0
@@ -470,6 +479,9 @@ importers:
       '@fastify/swagger':
         specifier: 'catalog:'
         version: 9.8.1
+      '@knoverge/attachments':
+        specifier: workspace:*
+        version: link:../../packages/attachments
       '@knoverge/auth':
         specifier: workspace:*
         version: link:../../packages/auth
@@ -637,6 +649,18 @@ importers:
       vite:
         specifier: 'catalog:'
         version: 8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1)
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.1(@types/node@24.13.5)(jsdom@30.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
+
+  packages/attachments:
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.13.5
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
       vitest:
         specifier: 'catalog:'
         version: 5.0.1(@types/node@24.13.5)(jsdom@30.0.1)(vite@8.3.0(@types/node@24.13.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.13)(yaml@2.9.1))
@@ -1589,6 +1613,9 @@ packages:
   '@fastify/ajv-compiler@4.0.6':
     resolution: {integrity: sha512-NtuzM0SfaMJbGlnjr9LWQUN5LzgSrbB8tf/wRZNas+4E1O/Nmzl53e7ruT61HDZyRCJGC6FxIogmNZO1c5ETBA==}
 
+  '@fastify/busboy@3.2.2':
+    resolution: {integrity: sha512-yXSS27qPExaXeuLvMRMXOLtpipzfQYNjG3FkunDWKGfMYjKuhFXko9CVzqxm8jcF+lmtS9Fd89QNdh9XDjnbNg==}
+
   '@fastify/cookie@11.1.2':
     resolution: {integrity: sha512-Dtrpk/YOGUsbRMvP/8ZqPpwnMRv0qSqodFdoQ2B589Obc7jw4s4Qla+cV72Bsm7WsZJnqlYFX/i7uSBq0xzg6g==}
 
@@ -1597,6 +1624,9 @@ packages:
 
   '@fastify/csrf@8.1.0':
     resolution: {integrity: sha512-vUNZy11syr4mYI+5AqWZOLyYZXPMCYNGHw0Ww8tlmPnwSNWyTYKadKX6XveD5vaiENclcGkvaSnUZZQDRzpOhw==}
+
+  '@fastify/deepmerge@3.2.1':
+    resolution: {integrity: sha512-N5Oqvltoa2r9z1tbx4xjky0oRR60v+T47Ic4J1ukoVQcptLOrIdRnCSdTGmOmajZuHVKlTnfcmrjyqsGEW1ztA==}
 
   '@fastify/error@4.2.0':
     resolution: {integrity: sha512-RSo3sVDXfHskiBZKBPRgnQTtIqpi/7zhJOEmAxCiBcM7d0uwdGdxLlsCaLzGs8v8NnxIRlfG0N51p5yFaOentQ==}
@@ -1612,6 +1642,9 @@ packages:
 
   '@fastify/merge-json-schemas@0.2.1':
     resolution: {integrity: sha512-OA3KGBCy6KtIvLf8DINC5880o5iBlDX4SxzLQS8HorJAbqluzLRn80UXU0bxZn7UOFhFgpRJDasfwn9nG4FG4A==}
+
+  '@fastify/multipart@9.4.0':
+    resolution: {integrity: sha512-Z404bzZeLSXTBmp/trCBuoVFX28pM7rhv849Q5TsbTFZHuk1lc4QjQITTPK92DKVpXmNtJXeHSSc7GYvqFpxAQ==}
 
   '@fastify/proxy-addr@5.1.1':
     resolution: {integrity: sha512-zv07Y9GEuDsJPegZoDFd4SDWaZOW8N2pa0GSrYmKpId/tjt1Hgo3BjZBVjdVpfVrHaA+Qv5jawtS2O50J5xM9g==}
@@ -3876,6 +3909,9 @@ packages:
 
   fast-uri@4.1.5:
     resolution: {integrity: sha512-vZeoMRB4epNr7QfdHxel7te/RcX16CxyXI07JCCTFWZA2s4v1azGNESRj+2EoaHSaWFL/Z3GmKT2jF6A202jLg==}
+
+  fastify-plugin@5.1.0:
+    resolution: {integrity: sha512-FAIDA8eovSt5qcDgcBvDuX/v0Cjz0ohGhENZ/wpc3y+oZCY2afZ9Baqql3g/lC+OHRnciQol4ww7tuthOb9idw==}
 
   fastify-plugin@6.0.0:
     resolution: {integrity: sha512-fZOty7z3O7vOliF6d8bHE3wiEh1KcNnKEQensSgTk9C1DvN6nRLS++XVd86v33Hw/8u9Un8A1zDrQ8ujcQDHEg==}
@@ -6178,6 +6214,8 @@ snapshots:
       ajv-formats: 3.0.1(ajv@8.20.0)
       fast-uri: 4.1.5
 
+  '@fastify/busboy@3.2.2': {}
+
   '@fastify/cookie@11.1.2':
     dependencies:
       cookie: 2.0.1
@@ -6190,6 +6228,8 @@ snapshots:
       fastify-plugin: 6.0.0
 
   '@fastify/csrf@8.1.0': {}
+
+  '@fastify/deepmerge@3.2.1': {}
 
   '@fastify/error@4.2.0': {}
 
@@ -6207,6 +6247,14 @@ snapshots:
   '@fastify/merge-json-schemas@0.2.1':
     dependencies:
       dequal: 2.0.3
+
+  '@fastify/multipart@9.4.0':
+    dependencies:
+      '@fastify/busboy': 3.2.2
+      '@fastify/deepmerge': 3.2.1
+      '@fastify/error': 4.2.0
+      fastify-plugin: 5.1.0
+      secure-json-parse: 4.1.0
 
   '@fastify/proxy-addr@5.1.1':
     dependencies:
@@ -8439,6 +8487,8 @@ snapshots:
   fast-uri@3.1.8: {}
 
   fast-uri@4.1.5: {}
+
+  fastify-plugin@5.1.0: {}
 
   fastify-plugin@6.0.0: {}
 

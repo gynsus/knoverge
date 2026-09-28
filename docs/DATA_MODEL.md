@@ -906,23 +906,47 @@ A repeated key with a different request hash must fail. The key is scoped to the
 
 ## 31. Attachment
 
-Later milestone. See ADR 0008.
+A file a workspace holds. See ADR 0008.
 
 ```text
 Attachment
 - id
 - workspace_id
-- sha256
+- content_hash            sha256:<hex> of the bytes
 - media_type
 - size_bytes
-- original_filename
-- original_uri nullable
-- storage_path
-- extraction_status: none | pending | done | failed | unsupported
-- extracted_item_id nullable
+- filename                what it was called when it arrived
+- original_uri nullable   where it came from, when the uploader said
+- extraction_state: pending | extracted | unsupported | failed
+- extraction_error nullable
+- document_item_id nullable
 - uploaded_by_actor_id
 - created_at
+
+unique (workspace_id, content_hash)
 ```
+
+There is no `storage_path` column: the path is the hash, under
+`KNOVERGE_DATA_DIR/attachments/<workspace id>/<hex>`. A column would be a second
+answer to a question the hash already answers, and the two could disagree after a
+restore.
+
+Unique per workspace by content, so the same file uploaded twice is one row and
+the second upload says `created: false`. Per workspace rather than globally,
+because "you already have this" would otherwise tell one workspace what another
+holds.
+
+`document_item_id` is the `document` item made from the text inside. It is set
+null rather than cascading when that item is purged: the file is still here and
+still readable, and a row that vanished with the item it produced would leave
+bytes on disk with nothing pointing at them. `extraction_state` is `pending`
+until the extraction job has looked at the file; `unsupported` is not a failure
+but an answer — the file is kept and referred to.
+
+The bytes are the only copy. An attachment is not in Git and cannot be rebuilt
+from anything, which is why `knoverge integrity check` reports a row whose file
+is missing (`attachment_missing`) and why the backup covers the whole data
+directory.
 
 ## 32. Webhook
 
