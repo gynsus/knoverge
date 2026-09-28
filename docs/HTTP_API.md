@@ -213,6 +213,12 @@ GET  /v1/admin/attachments.get              one of them, by id
 GET  /v1/admin/attachments.download         the file itself, always as a download and never
                                             rendered: `Content-Disposition: attachment`,
                                             `nosniff`, and a policy that allows nothing
+POST /v1/admin/attachments.reread           puts a file that was not read back in the queue;
+                                            `knowledge.write`. With no `attachment_id`, every
+                                            `unsupported` or `failed` file in the workspace,
+                                            which is what somebody who has just assigned a
+                                            model means. Those two states only: a file that
+                                            already became an item would become a second one
 ```
 
 Admin endpoints follow the same RPC style and the same error model.

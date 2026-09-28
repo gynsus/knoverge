@@ -293,23 +293,34 @@
     "workspace_slug_hint": "Lower-case letters, digits and hyphens; used in URLs and the repository."
   },
   "files": {
-    "title": "Files",
-    "intro": "Files this workspace holds. What a file says becomes an ordinary knowledge item — searched, reviewed and versioned like anything else — and the file itself stays here for anybody who wants the original.",
-    "drop_hint": "Drop a file here, or choose one. Text, Markdown, HTML, PDF and Word documents are read; anything else is kept and can be downloaded.",
-    "choose": "Choose a file",
-    "empty": "No files yet.",
-    "file": "File",
-    "state": "State",
-    "size": "Size",
     "added": "Added",
     "added_when": "Added {{when}}.",
+    "choose": "Choose a file",
     "details": "File",
+    "download": "Download",
+    "drop_hint": "Drop a file here, or choose one. Text, Markdown, HTML, PDF and Word documents are read; anything else is kept and can be downloaded.",
+    "empty": "No files yet.",
+    "error": "What went wrong: {{error}}",
+    "explained": {
+      "pending": "A sweep reads new files about once a minute.",
+      "extracting": "A worker has it now.",
+      "extracted": "Its text is a knowledge item.",
+      "proposed": "An agent brought this file, so its text is waiting in the review queue like anything else an agent writes.",
+      "unsupported": "Nothing here read this file on its own, and no model was able to either. Connect a vision model under Settings and a picture becomes a knowledge item; connect a transcription model and a recording does. A scanned PDF still does not — a page in one has to be rendered to an image first. The file is kept and can be downloaded.",
+      "failed": "The file could not be read. It is kept, and downloading it is the way to find out why."
+    },
+    "file": "File",
+    "intro": "Files this workspace holds. What a file says becomes an ordinary knowledge item — searched, reviewed and versioned like anything else — and the file itself stays here for anybody who wants the original.",
     "made_from_this": "Made from this file",
     "nothing_yet": "Nothing yet.",
     "original": "The original",
     "original_hint": "Kept exactly as it arrived, under the hash of its contents.",
-    "download": "Download",
-    "error": "What went wrong: {{error}}",
+    "reread": "Read it again",
+    "reread_all_one": "Read {{count}} file again",
+    "reread_all_other": "Read {{count}} files again",
+    "reread_hint": "A sweep only looks at files nobody has read yet, so connecting a model does not go back over what is already here. This does.",
+    "size": "Size",
+    "state": "State",
     "states": {
       "pending": "Waiting to be read",
       "extracting": "Being read",
@@ -318,14 +329,7 @@
       "unsupported": "Not readable here",
       "failed": "Could not be read"
     },
-    "explained": {
-      "pending": "A sweep reads new files about once a minute.",
-      "extracting": "A worker has it now.",
-      "extracted": "Its text is a knowledge item.",
-      "proposed": "An agent brought this file, so its text is waiting in the review queue like anything else an agent writes.",
-      "unsupported": "Nothing here read this file on its own, and no model was able to either. Connect a vision model under Settings and a picture becomes a knowledge item; connect a transcription model and a recording does. A scanned PDF still does not — a page in one has to be rendered to an image first. The file is kept and can be downloaded.",
-      "failed": "The file could not be read. It is kept, and downloading it is the way to find out why."
-    }
+    "title": "Files"
   },
   "home": {
     "workspaces": "Your workspaces"

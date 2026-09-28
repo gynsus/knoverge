@@ -1,6 +1,8 @@
 import {
   type AttachmentListInput,
   AttachmentQuery,
+  RereadAttachmentsInput,
+  RereadAttachmentsResponse,
   AttachmentResponse,
   AttachmentsResponse,
   SingleAttachmentResponse,
@@ -161,6 +163,25 @@ export function registerAdminAttachmentRoutes(app: FastifyInstance, services: Se
           : {}),
       });
       return { attachment: summary(result.attachment), created: result.created };
+    },
+  );
+
+  r.post(
+    '/v1/admin/attachments.reread',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: RereadAttachmentsInput, response: { 200: RereadAttachmentsResponse } },
+    },
+    async (request) => {
+      // `knowledge.write` and not `knowledge.read`: what this leads to is a
+      // document item, so it is governed like writing one.
+      const actor = await requirePermission(services, request, 'knowledge.write');
+      const id = request.body.attachment_id;
+      const queued = await services.attachments.reread(
+        actor.context.workspaceId,
+        ...(id === undefined ? [] : [id]),
+      );
+      return { queued };
     },
   );
 

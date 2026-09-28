@@ -1,11 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
-import { Download } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ATTACHMENT_KEY } from '@/lib/query-keys';
+import { ATTACHMENTS_KEY, ATTACHMENT_KEY } from '@/lib/query-keys';
 import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
@@ -21,6 +21,7 @@ import { readableSize, toneOf } from './attachment.ts';
  */
 export function AttachmentDetails({ attachmentId }: { attachmentId: string }) {
   const { t, i18n } = useTranslation();
+  const client = useQueryClient();
   const file = useQuery({
     queryKey: [...ATTACHMENT_KEY, attachmentId],
     queryFn: ({ signal }) => adminApi.attachments.get(attachmentId, signal),
@@ -30,6 +31,16 @@ export function AttachmentDetails({ attachmentId }: { attachmentId: string }) {
     refetchInterval: (query) => {
       const state = query.state.data?.attachment.extraction_state;
       return state === 'pending' || state === 'extracting' ? 10_000 : false;
+    },
+  });
+
+  const reread = useMutation({
+    mutationFn: () => adminApi.attachments.reread({ attachment_id: attachmentId }),
+    onSuccess: async () => {
+      // Both: the drawer shows this file's state and the list behind it shows
+      // the same state in a row.
+      await client.invalidateQueries({ queryKey: [...ATTACHMENT_KEY, attachmentId] });
+      await client.invalidateQueries({ queryKey: ATTACHMENTS_KEY });
     },
   });
 
@@ -44,6 +55,15 @@ export function AttachmentDetails({ attachmentId }: { attachmentId: string }) {
 
   const attachment = file.data.attachment;
   const items = file.data.items;
+  /**
+   * Whether this one can be tried again.
+   *
+   * Only the two states that produced nothing. A file that already became an
+   * item would become a second one, and one a worker is holding is not
+   * somebody's to take back.
+   */
+  const rereadable =
+    attachment.extraction_state === 'unsupported' || attachment.extraction_state === 'failed';
 
   return (
     <div className="grid content-start gap-5 overflow-y-auto p-4">
@@ -73,6 +93,21 @@ export function AttachmentDetails({ attachmentId }: { attachmentId: string }) {
           {t('files.error', { error: attachment.extraction_error })}
         </p>
       )}
+      {rereadable && (
+        <div className="grid justify-items-start gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => reread.mutate()}
+            disabled={reread.isPending}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+            {t('files.reread')}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t('files.reread_hint')}</p>
+        </div>
+      )}
+      <ErrorNotice error={reread.error} />
 
       <div className="grid gap-2">
         <h3 className="text-sm font-medium">{t('files.made_from_this')}</h3>

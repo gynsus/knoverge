@@ -113,6 +113,32 @@ export const UploadAttachmentInput = z.object({
 });
 export type UploadAttachmentInput = z.infer<typeof UploadAttachmentInput>;
 
+/**
+ * Asking for a file to be read again.
+ *
+ * Two things make a file need this, and both are ordinary. A model that was not
+ * assigned when the file arrived is assigned now, so a picture nothing could read
+ * in March can be described in April. And a provider that was unreachable for a
+ * minute left a file `failed` for good, because a sweep only ever looks at files
+ * nobody has read yet.
+ *
+ * Without an id it takes every file in the workspace that is `unsupported` or
+ * `failed`, which is the shape of both cases: somebody changed something, and
+ * what was unreadable before may not be now. Those two states are the only ones
+ * it accepts, because a file that already became an item would become a second
+ * one.
+ */
+export const RereadAttachmentsInput = z.object({
+  attachment_id: AttachmentId.optional(),
+});
+export type RereadAttachmentsInput = z.infer<typeof RereadAttachmentsInput>;
+
+export const RereadAttachmentsResponse = z.object({
+  /** How many files are waiting to be read again. */
+  queued: z.number().int().nonnegative(),
+});
+export type RereadAttachmentsResponse = z.infer<typeof RereadAttachmentsResponse>;
+
 /** Everything this workspace holds. */
 export const AttachmentListInput = z.object({
   limit: z.number().int().min(1).max(200).default(50),

@@ -249,6 +249,82 @@ describe('the files a workspace holds', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
   });
 
+  it('offers to read again what nothing could read, and says why that is a thing', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/attachments.list': () =>
+        json({
+          attachments: [
+            { ...FILE, extraction_state: 'unsupported' },
+            {
+              ...FILE,
+              id: 'att_01J8Z3M4Q9V0X7K2B5N6P8R1T4',
+              filename: 'broken.pdf',
+              extraction_state: 'failed',
+            },
+            {
+              ...FILE,
+              id: 'att_01J8Z3M4Q9V0X7K2B5N6P8R1T5',
+              filename: 'read.md',
+              extraction_state: 'extracted',
+            },
+          ],
+        }),
+      'POST /v1/admin/attachments.reread': () => json({ queued: 2 }),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/files');
+
+    // Two, not three: the one that already became an item would become a
+    // second one.
+    const button = await screen.findByRole('button', { name: 'Read 2 files again' });
+    // The reason it exists at all, said rather than left to be worked out.
+    expect(screen.getByText(/only looks at files nobody has read yet/i)).toBeInTheDocument();
+
+    await user.click(button);
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/attachments.reread'))).toBe(true),
+    );
+    // No id: somebody who has just connected a model means all of them.
+    const sent = calls.find((c) => c.url.endsWith('/v1/admin/attachments.reread'))!;
+    expect(JSON.parse(sent.body as string)).toEqual({});
+  });
+
+  it('offers nothing to read again when everything was read', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/attachments.list': () =>
+        json({ attachments: [{ ...FILE, extraction_state: 'extracted' }] }),
+    });
+    renderApp('/files');
+
+    expect(await screen.findByText('runbook.pdf')).toBeInTheDocument();
+    // A button that would do nothing is worse than no button.
+    expect(screen.queryByRole('button', { name: /read .* again/i })).not.toBeInTheDocument();
+  });
+
+  it('reads one file again from its own drawer, naming that file', async () => {
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/attachments.list': () =>
+        json({ attachments: [{ ...FILE, extraction_state: 'unsupported' }] }),
+      [`GET /v1/admin/attachments.get?attachment_id=${ATTACHMENT_ID}`]: () =>
+        json({ attachment: { ...FILE, extraction_state: 'unsupported' }, items: [] }),
+      'POST /v1/admin/attachments.reread': () => json({ queued: 1 }),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp(`/files?file=${ATTACHMENT_ID}`);
+
+    const drawer = await screen.findByRole('dialog');
+    await user.click(await within(drawer).findByRole('button', { name: 'Read it again' }));
+
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith('/v1/admin/attachments.reread'))).toBe(true),
+    );
+    const sent = calls.find((c) => c.url.endsWith('/v1/admin/attachments.reread'))!;
+    expect(JSON.parse(sent.body as string)).toEqual({ attachment_id: ATTACHMENT_ID });
+  });
+
   it('offers no upload to somebody who may not write', async () => {
     mockApi({
       ...signedIn(['knowledge.read']),

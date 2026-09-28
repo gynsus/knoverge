@@ -120,6 +120,21 @@ export function createAttachmentRepository(db: Database): AttachmentRepository {
         .where(and(eq(attachments.workspaceId, workspaceId), eq(attachments.id, id)));
     },
 
+    async requeue(workspaceId: WorkspaceId, id?: AttachmentId) {
+      // The states are in the statement rather than checked first, so what is
+      // moved is decided by the same read that moves it: a file a worker claimed
+      // between the check and the write is not taken out from under it.
+      const rows = await db.execute<{ id: string }>(sql`
+        UPDATE ${attachments}
+        SET extraction_state = 'pending', extraction_error = NULL, extraction_started_at = NULL
+        WHERE workspace_id = ${workspaceId}
+          AND extraction_state IN ('unsupported', 'failed')
+          ${id === undefined ? sql`` : sql`AND id = ${id}`}
+        RETURNING id
+      `);
+      return rows.rows.length;
+    },
+
     async list(workspaceId: WorkspaceId, limit = 200) {
       const rows = await db
         .select()

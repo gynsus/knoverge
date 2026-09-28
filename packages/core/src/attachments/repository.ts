@@ -54,6 +54,16 @@ export interface AttachmentRepository {
     state: ExtractionState,
     error: string | null,
   ): Promise<void>;
+  /**
+   * Puts files back in the queue to be read again, and says how many went.
+   *
+   * Only `unsupported` and `failed` ones, whichever id is asked for: a file that
+   * already became an item would become a second one, and one a worker is
+   * holding is not somebody else's to take. Without an id it is every such file
+   * in the workspace, which is what somebody who has just assigned a model
+   * means.
+   */
+  requeue(workspaceId: WorkspaceId, id?: AttachmentId): Promise<number>;
   findById(workspaceId: WorkspaceId, id: AttachmentId): Promise<AttachmentRecord | null>;
   /** The one holding these bytes, which is how a second upload finds the first. */
   findByHash(workspaceId: WorkspaceId, contentHash: string): Promise<AttachmentRecord | null>;

@@ -61,6 +61,7 @@ import type {
   UpdateWorkspaceRequest,
   AttachmentResponse,
   AttachmentsResponse,
+  RereadAttachmentsResponse,
   SingleAttachmentResponse,
   UpsertWebhookRequest,
   UpsertWebhookResponse,
@@ -107,6 +108,10 @@ export const adminApi = {
       form.append('file', file);
       return apiUpload<AttachmentResponse>('/v1/admin/attachments.upload', form);
     },
+    // A plain string, like `get` above: what the browser holds is an id out of
+    // a URL, and the brand is the server's word that one was checked.
+    reread: (body: { attachment_id?: string }) =>
+      apiPost<RereadAttachmentsResponse>('/v1/admin/attachments.reread', body),
     downloadUrl: (attachmentId: string) =>
       `/v1/admin/attachments.download?attachment_id=${encodeURIComponent(attachmentId)}`,
   },
