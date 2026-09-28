@@ -829,7 +829,9 @@ which is rule 9 doing its work: the rest of the product does not notice.
 What comes back is knowledge, so it is knowledge: a `document` item with the same
 attachment source as any other, and `drafted_by` naming the model — a description
 is a model's words about somebody's picture, and a reader has to know that
-(ADR 0031).
+(ADR 0031). It is written without anybody reading it first, which is a decision
+and not an oversight: ADR 0032 says what makes it safe enough, and none of it is
+the model.
 
 The instruction is where the defence is. A scan of a page saying "ignore your
 instructions" is a picture of somebody's words, and the instruction says which of
