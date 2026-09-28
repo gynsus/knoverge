@@ -1211,7 +1211,7 @@ describe('the tool routes', () => {
     const tools = new Set(TOOLS.map((tool) => `/v1/${tool.name}`));
     // Documented elsewhere on purpose: `/` is the web bundle, the health routes
     // are in DEPLOYMENT.md, `/mcp` is MCP_API.md, and a tool route is documented
-    // once as `POST /v1/<tool_name>` rather than 26 times (rule 11).
+    // once as `POST /v1/<tool_name>` rather than 29 times (rule 11).
     const elsewhere = new Set(['/', '/health/live', '/health/ready', '/mcp']);
     const reference = await readFile(new URL('../../../docs/HTTP_API.md', import.meta.url), 'utf8');
     const undocumented = Object.keys(document.paths)
