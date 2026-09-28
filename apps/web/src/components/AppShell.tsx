@@ -7,6 +7,7 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
+  Paperclip,
   RefreshCw,
   ScrollText,
   Settings,
@@ -49,6 +50,9 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher.tsx';
 const NAV = [
   { to: '/', key: 'home', icon: LayoutDashboard },
   { to: '/knowledge', key: 'knowledge', icon: BookOpenText, needs: 'knowledge.read' },
+  // Beside the knowledge rather than inside it: a file is where knowledge came
+  // from, and it is not knowledge itself (ADR 0008).
+  { to: '/files', key: 'files', icon: Paperclip, needs: 'knowledge.read' },
   { to: '/review', key: 'review', icon: Inbox, needs: 'knowledge.approve' },
   { to: '/sync', key: 'sync', icon: RefreshCw, needs: 'proposal.read_all' },
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },

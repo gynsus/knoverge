@@ -322,6 +322,26 @@ And when the installation cannot do it at all — a signing secret needs a key t
 sealed with — the screen says so above the button rather than behind it, in the words
 an operator can act on, including the name of the variable to set.
 
+## 2p. A screen exists where a state changes without anybody watching
+
+Most of this product answers immediately: a write returns the revision it made. A
+file does not — it is read by a sweep a minute later, and what comes out is a
+knowledge item that lives on another screen entirely.
+
+So the list of files leads with the state, and the drawer says what the state
+means rather than leaving a badge to be interpreted: waiting to be read, being
+read, read, waiting for review, not readable here, could not be read. Two of those
+are not problems. A file nothing here can read is kept and can be downloaded, and
+saying so is the difference between an answer and an apparent fault.
+
+While the answer is still coming the screen asks again by itself, slowly, and stops
+as soon as it has one. A person who uploaded a file should not have to learn that
+reloading is how you find out.
+
+And the way from a file to what it produced is a link, by title. The whole point of
+recording where knowledge came from is that somebody can go and read it — in both
+directions.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

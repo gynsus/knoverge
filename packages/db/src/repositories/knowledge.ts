@@ -27,6 +27,8 @@ import {
   knowledgeItemTags,
   knowledgeItems,
   knowledgeRevisions,
+  revisionSources,
+  sourceReferences,
   tags,
 } from '../schema/knowledge.ts';
 import { isStale } from './summaries.ts';
@@ -107,6 +109,29 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
         .limit(1);
       return rows[0] ? toItem(rows[0]) : null;
     },
+    async listFromAttachment(workspaceId: WorkspaceId, attachmentId: string, limit = 50) {
+      // Through the current revision only: an item that used to rest on this file
+      // and no longer does is not something it produced, and a list that said
+      // otherwise would be a list of what used to be true.
+      const rows = await db
+        .select({ item: knowledgeItems })
+        .from(knowledgeItems)
+        .innerJoin(
+          revisionSources,
+          eq(revisionSources.revisionId, knowledgeItems.currentRevisionId),
+        )
+        .innerJoin(sourceReferences, eq(sourceReferences.id, revisionSources.sourceReferenceId))
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            eq(sourceReferences.attachmentId, attachmentId),
+          ),
+        )
+        .orderBy(desc(knowledgeItems.createdAt))
+        .limit(limit);
+      return rows.map((row) => toItem(row.item));
+    },
+
     async list(workspaceId: WorkspaceId, options: ListItemsOptions = {}) {
       const where = [eq(knowledgeItems.workspaceId, workspaceId)];
       if (options.status) where.push(eq(knowledgeItems.status, options.status));

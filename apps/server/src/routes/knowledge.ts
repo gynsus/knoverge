@@ -58,7 +58,8 @@ function revisionSummary(revision: RevisionRecord): RevisionSummary {
   };
 }
 
-function summary(entry: ItemSummary): KnowledgeItemSummary {
+/** A list row, wherever a list of items is answered from. */
+export function summary(entry: ItemSummary): KnowledgeItemSummary {
   const { item } = entry;
   return {
     id: item.id,

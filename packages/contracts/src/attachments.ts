@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { KnowledgeItemSummary } from './knowledge.ts';
 import { ActorId, AttachmentId, WorkspaceId } from './ids.ts';
 
 /**
@@ -61,8 +62,17 @@ export const AttachmentResponse = z.object({
 });
 export type AttachmentResponse = z.infer<typeof AttachmentResponse>;
 
-/** One of them, read back. An upload's answer says more; a read has nothing to add. */
-export const SingleAttachmentResponse = z.object({ attachment: AttachmentSummary });
+/**
+ * One of them, read back, with whatever came out of it.
+ *
+ * The items are the ones whose current revision rests on this file — the link is
+ * the source on the item and nothing else (ADR 0008). Empty while the text is
+ * still with a reviewer, which `extraction_state` is what explains.
+ */
+export const SingleAttachmentResponse = z.object({
+  attachment: AttachmentSummary,
+  items: z.array(KnowledgeItemSummary),
+});
 export type SingleAttachmentResponse = z.infer<typeof SingleAttachmentResponse>;
 
 export const AttachmentsResponse = z.object({ attachments: z.array(AttachmentSummary) });

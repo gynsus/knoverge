@@ -826,6 +826,22 @@ Every ending is written to the row, including the ones that are not failures.
 left `pending` because the sweep crashed on it is the one state the job must never
 leave behind, which is why the whole of it is inside the catch.
 
+## Files on screen
+
+`apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,
+because a file is where knowledge came from and is not knowledge itself (ADR 0008).
+
+The link from a file to what came out of it is read from the item's side — a source
+of type `attachment` naming the file — which is why `source_references.attachment_id`
+is finally populated: the column has been in the schema since the first migration
+and nothing wrote to it. `KnowledgeService.itemsFromAttachment` is the query, and it
+reads through the current revision only: an item that used to rest on a file and no
+longer does is not something that file produced.
+
+An upload is the one request in this product that is not JSON. `apiUpload` sets no
+`content-type`, because the browser writes the multipart boundary into it and a
+header set by hand would replace the one part of it the parser needs.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

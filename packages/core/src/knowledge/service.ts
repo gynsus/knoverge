@@ -1,4 +1,5 @@
 import {
+  AttachmentId,
   ItemSlug,
   type ChangeKind,
   type Frontmatter,
@@ -1271,6 +1272,37 @@ export class KnowledgeService {
   }
 
   /**
+   * The items that came out of one file.
+   *
+   * Read from the item's side, because that is where the link is: a source of
+   * type `attachment` naming this file (ADR 0008). An item that used to rest on
+   * it and no longer does is not listed — what a file produced is what currently
+   * rests on it, not what once did.
+   */
+  async itemsFromAttachment(actor: ActorContext, attachmentId: string): Promise<ItemSummary[]> {
+    const items = await this.o.items.listFromAttachment(actor.workspaceId, attachmentId);
+    if (items.length === 0) return [];
+    const { categories, tags } = await this.decorate(actor.workspaceId, items);
+    const revisionIds = items.map((i) => i.currentRevisionId).filter((id) => id !== null);
+    const current = new Map(
+      (await this.o.revisions.findManyByIds(actor.workspaceId, revisionIds)).map((r) => [r.id, r]),
+    );
+    return items.map((item) => {
+      const revision = item.currentRevisionId ? current.get(item.currentRevisionId) : undefined;
+      return {
+        item,
+        title: revision?.title ?? '',
+        revisionNumber: revision?.revisionNumber ?? 1,
+        categories: categories.get(item.id) ?? [],
+        tags: tags.get(item.id) ?? [],
+        // A document made from a file is not a summary, and only a summary can
+        // be stale.
+        stale: false,
+      };
+    });
+  }
+
+  /**
    * The sizes of the piles the list offers as quick views.
    *
    * The same permission the list needs and no narrower: these count what that
@@ -1579,7 +1611,14 @@ export class KnowledgeService {
         uri: source.uri ?? null,
         externalSystem: source.client ?? null,
         externalKey: source.external_key ?? null,
-        attachmentId: null,
+        // The one source type that names something this installation holds. It
+        // is what makes "which items came out of this file" a question the
+        // database can answer, and the column has been here since the first
+        // migration waiting for it (ADR 0008).
+        attachmentId:
+          source.type === 'attachment' && AttachmentId.safeParse(source.external_key).success
+            ? (source.external_key ?? null)
+            : null,
         sourceModifiedAt: null,
         sourceContentHash: source.content_hash ?? null,
         confidence: null,
