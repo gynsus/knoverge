@@ -483,7 +483,7 @@ Canonical knowledge is a Git repository per workspace, written by running `git` 
 
 **A workspace cannot fill the disk every workspace shares.** Every taxonomy change rewrites the whole file and commits it, so without a ceiling a holder of `taxonomy.manage` in one workspace could grow its repository with the square of the number of changes until the volume was full — taking PostgreSQL down with it wherever an operator put both on one filesystem. A workspace holds at most 2 000 categories, the rendered `taxonomy.yaml` is capped at 1 MiB, and `git gc --auto` runs after each commit while the write lock is still held.
 
-Not yet enforced, and known: a commit an operator adds on top of HEAD is not detected. It is recorded in `docs/GIT_REPOSITORY.md` §9.
+A commit an operator adds on top of HEAD contradicts nothing the database recorded, so a write is not refused for it; `knoverge integrity check` reports it as `head_unknown`. The reasoning is in `docs/GIT_REPOSITORY.md` §9.
 
 ## 14. Backup security
 
