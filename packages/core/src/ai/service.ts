@@ -189,9 +189,16 @@ export class AiSettingsService {
       // model that can be handed a picture.
       visionEnabled:
         this.o.generation !== undefined && assignments.some((a) => a.purpose === 'vision'),
+      // And the provider's shape as well, which the other two do not need: only
+      // an OpenAI-compatible provider has an endpoint that listens, and a
+      // provider can be changed into one that has not after it was assigned.
       transcriptionEnabled:
         this.o.transcription !== undefined &&
-        assignments.some((a) => a.purpose === 'transcription'),
+        assignments.some(
+          (a) =>
+            a.purpose === 'transcription' &&
+            providers.find((p) => p.id === a.providerId)?.kind === 'openai_compatible',
+        ),
     };
   }
 
@@ -284,7 +291,17 @@ export class AiSettingsService {
     providerId: AiProviderId;
     model: string;
   }): Promise<AiAssignmentRecord> {
-    await this.expect(input.providerId);
+    const provider = await this.expect(input.providerId);
+    // Refused rather than stored and quietly never used: Ollama has no endpoint
+    // that takes a recording, and an assignment the settings page shows while
+    // nothing listens is worse than no assignment at all.
+    if (input.purpose === 'transcription' && provider.kind !== 'openai_compatible') {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'transcription needs an OpenAI-compatible provider; this one has no endpoint that listens',
+        { objectIds: { provider_id: provider.id } },
+      );
+    }
     const record: AiAssignmentRecord = {
       purpose: input.purpose,
       providerId: input.providerId,

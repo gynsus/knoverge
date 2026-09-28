@@ -574,18 +574,27 @@ things that do not work. The model list is filtered by the capabilities the
 provider reports, so a generative model cannot be chosen to make vectors nor an
 embedding model to write text.
 
-There are two purposes and they are chosen separately, because they are separate
-questions. `embedding` feeds the vector half of search and the semantic steps of
-duplicate detection and reconciliation; `generation` writes summaries and the
-optional narrative on a digest. One provider can hold both, and stopping one
-leaves the other alone.
+There are four purposes and each is chosen separately, because they are separate
+questions and, on most installations, separate models. `embedding` feeds the
+vector half of search and the semantic steps of duplicate detection and
+reconciliation; `generation` writes summaries and the optional narrative on a
+digest; `vision` looks at a picture; `transcription` listens to a recording. One
+provider can hold several, and stopping one leaves the others alone.
 
-The second check differs by purpose because there is no one answer for both. For
-an embedding model it reports the dimension — the number the whole index hangs
-from and the one nobody configures. For a generation model it reports the
+`transcription` is the one purpose that is not offered from every provider.
+Ollama has no endpoint that takes a recording, so the screen offers it from the
+providers that could answer it, the service refuses an assignment to one that
+could not, and `transcription_enabled` reads the assigned provider's kind rather
+than the assignment alone — a provider can be edited into a different kind after
+it was assigned.
+
+The second check differs by purpose because there is no one answer for all four.
+For an embedding model it reports the dimension — the number the whole index
+hangs from and the one nobody configures. For a generation model it reports the
 sentence the model actually wrote, because a model that answers in a hundred
-milliseconds and says nothing useful has not worked, and a tick would say it
-had.
+milliseconds and says nothing useful has not worked, and a tick would say it had.
+For a vision model it sends a red square and shows the answer. For a
+transcription model there is no check at all, and the wizard says so.
 
 `packages/intelligence/src/generation.ts` keeps the instruction and the material
 in separate messages: one is the product's instruction and the other is
