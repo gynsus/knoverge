@@ -32,7 +32,11 @@ export interface AttachmentExtractorOptions {
   knowledge: KnowledgeService;
   proposals: ProposalService;
   /** Bytes and a media type in, text or a reason out. No provider, no network. */
-  extract: (mediaType: string, bytes: Uint8Array, maxCharacters: number) => Extraction;
+  extract: (
+    mediaType: string,
+    bytes: Uint8Array,
+    maxCharacters: number,
+  ) => Extraction | Promise<Extraction>;
   /** The most one knowledge item may hold. */
   maxCharacters: number;
   clock?: Clock;
@@ -123,7 +127,7 @@ export class AttachmentExtractor {
       throw new DomainError('NOT_FOUND', 'the file for this attachment is not in the store');
     }
     const bytes = await this.bytes(attachment);
-    const found = this.o.extract(attachment.mediaType, bytes, this.o.maxCharacters);
+    const found = await this.o.extract(attachment.mediaType, bytes, this.o.maxCharacters);
     if (found.kind !== 'text') {
       await this.settle(attachment, found.kind, found.reason);
       return {

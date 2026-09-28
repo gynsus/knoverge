@@ -789,9 +789,23 @@ duplicate check runs on that path too, so the same document uploaded twice does
 not become two items.
 
 The extraction itself is in `packages/attachments` and asks nothing of anybody: no
-provider, no network (rule 9). It is deliberately modest — scripts and styles go
-with their contents, block elements become line breaks, entities are decoded — and
-an installation that needs a faithful conversion still has the original file.
+provider, no network (rule 9). Text, Markdown and HTML are read here — deliberately
+modestly: scripts and styles go with their contents, block elements become line
+breaks, entities are decoded, and an installation that needs a faithful conversion
+still has the original file.
+
+PDF and Word are two libraries, chosen for what they cost as much as for what they
+do. `unpdf` is Mozilla's engine in a build meant to run outside a browser, at two
+megabytes against `pdfjs-dist`'s thirty-five, and it needs no worker, no canvas and
+no font fetched from anywhere, because this reads text and never renders a page.
+`mammoth` reads Word, and the alternative was a zip reader and an XML parser here —
+a `.docx` is only simple until it has a table, a footnote or a list in it. Both are
+imported where they are used, so an installation that never uploads a PDF never
+loads a PDF engine, and `knoverge integrity check` loads neither.
+
+A PDF with no text layer is a scan: a picture of a page, with nothing to read. That
+is `unsupported` rather than a failure — the file is kept, and reading one is what
+Milestone 12 is for.
 
 Text longer than one item may hold is a failure and not a truncation. Half a
 document stored as if it were the whole one is the kind of thing nobody notices

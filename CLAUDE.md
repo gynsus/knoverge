@@ -313,7 +313,9 @@ A package rather than a file in the server because the command line needs it too
 ideas of where files live would answer for two directories.
 
 Also here: getting the text out of one, which asks nothing of anybody — no
-provider and no network (rule 9).
+provider and no network (rule 9). Text, Markdown and HTML are read by this package;
+PDF and Word come from `unpdf` and `mammoth`, imported where they are used so that
+nothing loads a PDF engine until a PDF arrives.
 
 Not here: what that text *becomes*. It is an ordinary `document` knowledge item
 with the usual provenance and review, written by the domain as the person or agent

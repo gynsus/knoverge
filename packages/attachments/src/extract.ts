@@ -29,6 +29,12 @@ const PLAIN = new Set([
 
 const HTML = new Set(['text/html', 'application/xhtml+xml']);
 
+/** What the Word reader is, without naming the module in a type position. */
+type ReadWord = (input: { buffer: Buffer }) => Promise<{ value: string }>;
+
+const PDF = 'application/pdf';
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
 /** Where a media type stops and its parameters begin: `text/plain; charset=utf-8`. */
 function baseType(mediaType: string): string {
   return (mediaType.split(';')[0] ?? '').trim().toLowerCase();
@@ -104,29 +110,79 @@ function fromHtml(html: string): string {
 }
 
 /**
+ * The words on the pages of a PDF.
+ *
+ * `unpdf` rather than `pdfjs-dist` itself: it is the same engine in a build meant
+ * to run outside a browser, at two megabytes instead of thirty-five, and it needs
+ * no worker, no canvas and no fonts fetched from anywhere — this reads text and
+ * never renders a page (rule 12).
+ *
+ * Imported where it is used rather than at the top of the file, so an
+ * installation that never uploads a PDF does not load a PDF engine, and
+ * `knoverge integrity check` does not load one at all.
+ */
+async function fromPdf(bytes: Uint8Array): Promise<Extraction> {
+  const { extractText: pdfText, getDocumentProxy } = await import('unpdf');
+  // A plain `Uint8Array` and never a `Buffer`, which is what a file read from
+  // disk is: the engine refuses one outright, because a Buffer is a view into a
+  // pool it would then hold a reference into.
+  const document = await getDocumentProxy(bytes instanceof Buffer ? new Uint8Array(bytes) : bytes);
+  const { text } = await pdfText(document, { mergePages: true });
+  const trimmed = text.trim();
+  if (trimmed === '') {
+    // A scan is a picture of a page. There is nothing here to read, and reading
+    // it is Milestone 12's job — so this is an answer rather than a failure, and
+    // the file is kept for whoever can read it.
+    return {
+      kind: 'unsupported',
+      reason: 'this PDF has no text layer; it is a scan, and reading one needs OCR',
+    };
+  }
+  return { kind: 'text', text: trimmed };
+}
+
+/**
+ * The text of a Word document.
+ *
+ * `mammoth`, which is a small focused library that has been doing this for years,
+ * rather than a zip reader and an XML parser here: a `.docx` is only simple until
+ * it has a table, a footnote or a list in it.
+ */
+async function fromDocx(bytes: Uint8Array): Promise<Extraction> {
+  // The namespace under ESM, the module itself under CommonJS: the package ships
+  // one shape and Node hands over the other depending on how it is loaded.
+  const loaded = (await import('mammoth')) as unknown as {
+    extractRawText?: ReadWord;
+    default?: { extractRawText: ReadWord };
+  };
+  const extractRawText = loaded.extractRawText ?? loaded.default?.extractRawText;
+  if (!extractRawText) throw new Error('the document reader did not load');
+  const { value } = await extractRawText({ buffer: Buffer.from(bytes) });
+  // Word ends every paragraph with its own blank line, and an empty cell is a
+  // paragraph too: what arrives has runs of them, and what a person reads does not.
+  const text = value.replace(/\n{3,}/gu, '\n\n').trim();
+  return text === ''
+    ? { kind: 'failed', reason: 'the document holds no text' }
+    : { kind: 'text', text };
+}
+
+/**
  * The text inside a file, or why there is none.
  *
  * `maxCharacters` is the size one knowledge item may hold. A file whose text is
  * larger is a failure rather than a truncation: half a document stored as if it
  * were the whole one is the kind of thing nobody notices until they rely on it.
  */
-export function extractText(
+export async function extractText(
   mediaType: string,
   bytes: Uint8Array,
   maxCharacters: number,
-): Extraction {
+): Promise<Extraction> {
   const type = baseType(mediaType);
-  const readable = PLAIN.has(type) || HTML.has(type) || type.startsWith('text/');
-  if (!readable) {
-    return { kind: 'unsupported', reason: `nothing here reads ${type || 'that type'}` };
-  }
+  const found = await read(type, bytes);
+  if (found.kind !== 'text') return found;
 
-  const decoded = decode(bytes);
-  if (decoded === null) {
-    return { kind: 'failed', reason: `the file is not ${type} text` };
-  }
-
-  const text = (HTML.has(type) ? fromHtml(decoded) : decoded).trim();
+  const text = found.text.trim();
   if (text === '') {
     return { kind: 'failed', reason: 'the file holds no text' };
   }
@@ -137,4 +193,41 @@ export function extractText(
     };
   }
   return { kind: 'text', text };
+}
+
+/** Which reader the type calls for, and what it says when there is none. */
+async function read(type: string, bytes: Uint8Array): Promise<Extraction> {
+  if (type === PDF) {
+    try {
+      return await fromPdf(bytes);
+    } catch (err) {
+      return { kind: 'failed', reason: reasonOf(err, 'this PDF could not be read') };
+    }
+  }
+  if (type === DOCX) {
+    try {
+      return await fromDocx(bytes);
+    } catch (err) {
+      return { kind: 'failed', reason: reasonOf(err, 'this document could not be read') };
+    }
+  }
+  if (PLAIN.has(type) || HTML.has(type) || type.startsWith('text/')) {
+    const decoded = decode(bytes);
+    if (decoded === null) {
+      return { kind: 'failed', reason: `the file is not ${type} text` };
+    }
+    return { kind: 'text', text: HTML.has(type) ? fromHtml(decoded) : decoded };
+  }
+  return { kind: 'unsupported', reason: `nothing here reads ${type || 'that type'}` };
+}
+
+/**
+ * What went wrong, in one line and without a stack.
+ *
+ * A parser's message is about a file somebody uploaded, so it goes on the row an
+ * operator reads. It is truncated because some of them quote the file.
+ */
+function reasonOf(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message : '';
+  return message ? `${fallback}: ${message.slice(0, 200)}` : fallback;
 }
