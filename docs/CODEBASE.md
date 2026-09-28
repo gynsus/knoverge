@@ -779,6 +779,39 @@ An uploaded file is served as a download and never as a page. `SECURITY.md` says
 why: an HTML file somebody uploaded, served inline, runs on this installation's
 origin with this installation's cookie.
 
+## Reading the text out of a file
+
+`AttachmentExtractor` writes **as the person or agent who uploaded the file**, and
+that is the whole of the policy question. A person who may write knowledge writes
+a `document` item. An agent proposes, and its document waits in the review queue
+exactly as its other writes do — a file is not a way around rule 5, and the
+duplicate check runs on that path too, so the same document uploaded twice does
+not become two items.
+
+The extraction itself is in `packages/attachments` and asks nothing of anybody: no
+provider, no network (rule 9). It is deliberately modest — scripts and styles go
+with their contents, block elements become line breaks, entities are decoded — and
+an installation that needs a faithful conversion still has the original file.
+
+Text longer than one item may hold is a failure and not a truncation. Half a
+document stored as if it were the whole one is the kind of thing nobody notices
+until they rely on it; splitting one file across several items is a decision for
+whoever needs it, not a side effect of a size limit.
+
+A file is claimed before it is read, and the claim is the state change: one
+statement moves a row from `pending` to `extracting`, so two workers sweeping the
+same minute cannot both take it and write the same document twice. Extraction is
+the first job in this product that is not idempotent — embedding the same chunk
+twice writes the same vector, and reading the same file twice writes two
+documents — which is why it is the first one that claims. A worker that dies
+holding a claim is noticed by its age: anything left `extracting` for ten minutes
+is taken again.
+
+Every ending is written to the row, including the ones that are not failures.
+`unsupported` is an answer — the file is kept and can be downloaded — and a file
+left `pending` because the sweep crashed on it is the one state the job must never
+leave behind, which is why the whole of it is inside the catch.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

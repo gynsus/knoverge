@@ -32,14 +32,18 @@ const store = {
   },
 } as unknown as AttachmentStore;
 
-const attachments = {
+const attachments: AttachmentRepository = {
   insert: async () => {
     throw new Error('no row should be inserted');
   },
   findById: async () => null,
   findByHash: async () => null,
   list: async () => [] as AttachmentRecord[],
-} as AttachmentRepository;
+  claimUnread: async () => [] as AttachmentRecord[],
+  setExtraction: async () => {
+    throw new Error('nothing should be settled');
+  },
+};
 
 function service(maxBytes = 1024) {
   return new AttachmentService({
