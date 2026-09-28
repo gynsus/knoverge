@@ -25,8 +25,8 @@ import { createServices, type Services } from '../src/services.ts';
 const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
 const ok = { status: 'ok' as const };
 
-/** Small, so the refusal is a test rather than a wait. */
-const MAX_BYTES = 4096;
+/** Small, so the refusal is a test rather than a wait — and past the fixtures. */
+const MAX_BYTES = 32_768;
 
 let container: StartedPostgreSqlContainer;
 let dataDir: string;
@@ -367,6 +367,22 @@ describe('the text inside a file', () => {
       await admin.post('/v1/knowledge_search', { query: 'Two workers, one document', limit: 10 })
     ).json() as { results: { title: string }[] };
     expect(found.results.filter((r) => r.title === 'two-workers')).toHaveLength(1);
+  });
+
+  it('reads a PDF, end to end', async () => {
+    const pdf = await readFile(
+      new URL('../../../packages/attachments/test/fixtures/runbook.pdf', import.meta.url),
+    );
+    const uploaded = AttachmentResponse.parse(
+      (await admin.upload({ filename: 'runbook.pdf', type: 'application/pdf', body: pdf })).json(),
+    );
+    const outcome = (await sweep()).find((o) => o.attachmentId === uploaded.attachment.id);
+    expect(outcome?.state, JSON.stringify(outcome)).toBe('extracted');
+
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome!.itemId}`)).json(),
+    ).item;
+    expect(item.body).toContain('one application container and PostgreSQL');
   });
 
   it('says a type it cannot read is a type it cannot read', async () => {
