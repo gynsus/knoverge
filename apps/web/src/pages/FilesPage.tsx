@@ -1,6 +1,6 @@
 import type { AttachmentSummary } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Paperclip, Upload } from 'lucide-react';
+import { Paperclip, RefreshCw, Upload } from 'lucide-react';
 import { useRef, useState, type DragEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearchParams } from 'react-router';
@@ -55,8 +55,23 @@ export function FilesPage() {
     },
   });
 
+  const reread = useMutation({
+    mutationFn: () => adminApi.attachments.reread({}),
+    onSuccess: () => client.invalidateQueries({ queryKey: ATTACHMENTS_KEY }),
+  });
+
   const all = files.data?.attachments ?? [];
   const mayWrite = workspaces.can('knowledge.write');
+  /**
+   * The files a newly connected model might now be able to read.
+   *
+   * The button only exists when there are some, because the thing it does is
+   * only worth offering to somebody who has just changed what this installation
+   * can read.
+   */
+  const unread = all.filter(
+    (file) => file.extraction_state === 'unsupported' || file.extraction_state === 'failed',
+  );
   const openId = params.get('file');
   const open = (id: string | null) => {
     const next = new URLSearchParams(params);
@@ -82,7 +97,7 @@ export function FilesPage() {
         <p className="max-w-2xl text-sm text-muted-foreground">{t('files.intro')}</p>
       </div>
 
-      <ErrorNotice error={files.error ?? upload.error} />
+      <ErrorNotice error={files.error ?? upload.error ?? reread.error} />
 
       {mayWrite && (
         <div
@@ -113,6 +128,23 @@ export function FilesPage() {
           <Button onClick={() => picker.current?.click()} disabled={upload.isPending}>
             {upload.isPending ? t('common.working') : t('files.choose')}
           </Button>
+        </div>
+      )}
+
+      {mayWrite && unread.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => reread.mutate()}
+            disabled={reread.isPending}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+            {t('files.reread_all', { count: unread.length })}
+          </Button>
+          {/* Why somebody would: a model assigned today cannot have read a file
+              that arrived last month, and the sweep only looks at new ones. */}
+          <p className="text-sm text-muted-foreground">{t('files.reread_hint')}</p>
         </div>
       )}
 

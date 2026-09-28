@@ -153,6 +153,38 @@ export class AttachmentService {
     return this.o.attachments.list(workspaceId, limit);
   }
 
+  /**
+   * Ask for files to be read again.
+   *
+   * The sweep only ever looks at files nobody has read yet, which is right until
+   * something changes underneath it: a vision model assigned in April cannot
+   * describe the picture that arrived in March, and a provider unreachable for a
+   * minute leaves a file `failed` for good. This is the way back into the queue,
+   * and the reading itself is the ordinary one.
+   *
+   * Only `unsupported` and `failed`. Asking for one that is neither says so
+   * rather than answering zero, because "nothing happened" and "that is not a
+   * thing to ask for" are different answers to somebody who just pressed a
+   * button.
+   *
+   * Not a ledger event. What is recorded is what happens to knowledge, and this
+   * changes a row from one kind of "no text yet" to another; the write it may
+   * lead to records itself, as every write does.
+   */
+  async reread(workspaceId: WorkspaceId, id?: AttachmentId): Promise<number> {
+    if (id !== undefined) {
+      const attachment = await this.get(workspaceId, id);
+      if (attachment.extractionState !== 'unsupported' && attachment.extractionState !== 'failed') {
+        throw new DomainError(
+          'VALIDATION_ERROR',
+          `this file is ${attachment.extractionState}; only a file that was not read can be read again`,
+          { objectIds: { attachment: id } },
+        );
+      }
+    }
+    return this.o.attachments.requeue(workspaceId, id);
+  }
+
   async get(workspaceId: WorkspaceId, id: AttachmentId): Promise<AttachmentRecord> {
     const attachment = await this.o.attachments.findById(workspaceId, id);
     if (!attachment) {

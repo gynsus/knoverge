@@ -955,6 +955,12 @@ when an agent uploaded it and a reviewer has the document instead — a file is 
 a way past rule 5. `unsupported` is not a failure but an answer: the file is kept
 and referred to.
 
+Both of those endings can be put back to `pending`, which is what
+`attachments.reread` does. The sweep only looks at files nobody has read yet, so a
+model assigned after a file arrived would never see it, and a provider unreachable
+for a minute would leave a file `failed` for good. Only those two states move:
+anything that already became an item would become a second one.
+
 The bytes are the only copy. An attachment is not in Git and cannot be rebuilt
 from anything, which is why `knoverge integrity check` reports a row whose file
 is missing (`attachment_missing`) and why the backup covers the whole data

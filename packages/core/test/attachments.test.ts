@@ -40,6 +40,9 @@ const attachments: AttachmentRepository = {
   findByHash: async () => null,
   list: async () => [] as AttachmentRecord[],
   claimUnread: async () => [] as AttachmentRecord[],
+  requeue: async () => {
+    throw new Error('nothing should be requeued');
+  },
   setExtraction: async () => {
     throw new Error('nothing should be settled');
   },

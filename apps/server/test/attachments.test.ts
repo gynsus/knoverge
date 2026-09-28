@@ -541,6 +541,94 @@ describe('the text inside a file', () => {
     expect(heard).toEqual([]);
   });
 
+  it('reads a file again when something that could not read it now can', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x44]);
+    const uploaded = AttachmentResponse.parse(
+      (await admin.upload({ filename: 'March.png', type: 'image/png', body: png })).json(),
+    );
+    expect((await sweep()).find((o) => o.attachmentId === uploaded.attachment.id)?.state).toBe(
+      'unsupported',
+    );
+    // A second sweep does nothing, which is the whole reason this exists: the
+    // queue is files nobody has read yet, and this one has been read.
+    expect((await sweep()).find((o) => o.attachmentId === uploaded.attachment.id)).toBeUndefined();
+
+    const asked = await admin.post('/v1/admin/attachments.reread', {
+      attachment_id: uploaded.attachment.id,
+    });
+    expect(asked.statusCode, asked.body).toBe(200);
+    expect(asked.json()).toEqual({ queued: 1 });
+
+    // Back in the queue, and with the model that could not be asked in March
+    // now assigned, the same file becomes a document.
+    const seeing = new AttachmentExtractor({
+      attachments: services.repositories.attachments,
+      actors: services.repositories.actors,
+      standingOf: async () => ({ role: 'owner' as const }),
+      store: new FileAttachmentStore(dataDir),
+      knowledge: services.knowledge,
+      proposals: services.proposals,
+      extract: extractText,
+      describe: async () => ({ text: 'A diagram of two boxes.', model: 'qwen2.5vl:7b' }),
+      maxCharacters: 200_000,
+    });
+    const outcome = (await seeing.extractPending()).find(
+      (o) => o.attachmentId === uploaded.attachment.id,
+    );
+    expect(outcome?.state).toBe('extracted');
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome!.itemId}`)).json(),
+    ).item;
+    expect(item.body).toContain('A diagram of two boxes.');
+  });
+
+  it('takes every file that was not read, for somebody who has just connected one', async () => {
+    const before = AttachmentsResponse.parse(
+      (await admin.get('/v1/admin/attachments.list')).json(),
+    ).attachments.filter(
+      (a) => a.extraction_state === 'unsupported' || a.extraction_state === 'failed',
+    );
+
+    const asked = await admin.post('/v1/admin/attachments.reread', {});
+    expect(asked.statusCode, asked.body).toBe(200);
+    // Somebody who assigns a model means every file it might now be able to
+    // read, not the one they happen to be looking at.
+    expect((asked.json() as { queued: number }).queued).toBe(before.length);
+    expect(before.length).toBeGreaterThan(0);
+
+    const after = AttachmentsResponse.parse(
+      (await admin.get('/v1/admin/attachments.list')).json(),
+    ).attachments;
+    for (const file of before) {
+      const now = after.find((a) => a.id === file.id);
+      expect(now?.extraction_state).toBe('pending');
+      // And the old reason goes with it: a file waiting to be read is not a
+      // file carrying last month's error.
+      expect(now?.extraction_error).toBeNull();
+    }
+  });
+
+  it('refuses to read again a file that already became something', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload({
+          filename: 'already-read.md',
+          type: 'text/markdown',
+          body: '# Read\n\nThis one already became an item.\n',
+        })
+      ).json(),
+    );
+    await sweep();
+
+    const refused = await admin.post('/v1/admin/attachments.reread', {
+      attachment_id: uploaded.attachment.id,
+    });
+    // Reading it again would write a second document from the same file.
+    // Answering zero would look like nothing happened; this says why.
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
   it('never sends a file anything here can read to a model', async () => {
     const uploaded = AttachmentResponse.parse(
       (

@@ -900,6 +900,23 @@ Every ending is written to the row, including the ones that are not failures.
 left `pending` because the sweep crashed on it is the one state the job must never
 leave behind, which is why the whole of it is inside the catch.
 
+And every ending that produced nothing can be asked again. The sweep only looks at
+files nobody has read yet, which is right until something changes underneath it: a
+vision model assigned in April cannot describe a picture that arrived in March, and
+a provider unreachable for a minute leaves a file `failed` for good.
+`attachments.reread` is the way back into the queue — `unsupported` and `failed`
+only, because a file that already became an item would become a second one, and
+without an id it takes every such file in the workspace, which is what somebody who
+has just connected a model means. The states are chosen inside the statement that
+moves them, so a file a worker claimed in between is not taken out from under it.
+It is not a ledger event: it moves a row from one kind of "no text yet" to another,
+and the write it may lead to records itself as every write does.
+
+It is not a tool either, though uploading, listing and fetching a file are. An
+agent that uploaded a file and got `unsupported` would get the same answer asking
+again: what makes the answer different is an operator assigning a model, and that
+is the person this is for.
+
 ## Files on screen
 
 `apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,
