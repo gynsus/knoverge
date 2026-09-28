@@ -117,6 +117,7 @@ const EMPTY = {
     generation_enabled: false,
     vision_enabled: false,
     transcription_enabled: false,
+    secret_storage_configured: true,
   },
 };
 
@@ -133,6 +134,7 @@ const CONNECTED = {
         updated_at: '2026-09-24T00:00:00.000Z',
         last_checked_at: '2026-09-24T00:00:00.000Z',
         last_error: null,
+        has_api_key: false,
       },
     ],
     assignments: [
@@ -147,6 +149,7 @@ const CONNECTED = {
     generation_enabled: false,
     vision_enabled: false,
     transcription_enabled: false,
+    secret_storage_configured: true,
   },
 };
 
@@ -166,6 +169,7 @@ const GENERATING = {
     generation_enabled: true,
     vision_enabled: false,
     transcription_enabled: false,
+    secret_storage_configured: true,
   },
 };
 
@@ -187,6 +191,7 @@ const WHISPERING = {
         updated_at: '2026-09-28T00:00:00.000Z',
         last_checked_at: '2026-09-28T00:00:00.000Z',
         last_error: null,
+        has_api_key: true,
       },
     ],
   },
@@ -282,7 +287,7 @@ describe('the connection wizard', () => {
     });
   });
 
-  it('connects a server that is not Ollama, and says where a key would have to go', async () => {
+  it('connects a server that is not Ollama, with the key that server wants', async () => {
     let settings: unknown = EMPTY;
     const calls = mockApi({
       ...SIGNED_IN,
@@ -307,23 +312,126 @@ describe('the connection wizard', () => {
     const dialog = await screen.findByRole('dialog');
     await user.selectOptions(within(dialog).getByLabelText(/kind/i), 'openai_compatible');
 
-    // A key cannot be typed here, and a server that needs one is given it in
-    // the environment (ADR 0021) — said rather than left as a missing field.
-    expect(within(dialog).getByText(/key cannot be set here/i)).toBeInTheDocument();
-    // And the suggested name follows the kind: a row called Ollama that is not
-    // one is a row an operator will misread later.
+    // The suggested name follows the kind: a row called Ollama that is not one
+    // is a row an operator will misread later.
     expect(within(dialog).getByLabelText(/^name/i)).toHaveValue('OpenAI-compatible');
+
+    const key = within(dialog).getByLabelText(/API key/i);
+    // A password field, so it is not read over a shoulder and a browser does
+    // not offer to remember it as text.
+    expect(key).toHaveAttribute('type', 'password');
+    await user.type(key, 'sk-live-1234');
 
     await user.type(within(dialog).getByLabelText(/address/i), 'http://whisper:8000');
     await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+    // The probe carries it, because a form that can only test what is already
+    // stored teaches people to store things that do not work.
+    expect(calls.find((c) => c.url.includes('providers.check'))?.body).toMatchObject({
+      api_key: 'sk-live-1234',
+    });
+
     await user.selectOptions(await within(dialog).findByLabelText(/embedding model/i), 'whisper-1');
     await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
 
     await waitFor(() => expect(calls.some((c) => c.url.includes('providers.save'))).toBe(true));
     expect(calls.find((c) => c.url.includes('providers.save'))?.body).toMatchObject({
       kind: 'openai_compatible',
-      name: 'OpenAI-compatible',
       base_url: 'http://whisper:8000',
+      api_key: 'sk-live-1234',
+    });
+  });
+
+  it('asks Ollama for no key, because Ollama wants none', async () => {
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(EMPTY) });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: /connect a provider/i }));
+    const dialog = await screen.findByRole('dialog');
+    // A field that could only be left empty is a question nobody should be
+    // asked.
+    expect(within(dialog).queryByLabelText(/API key/i)).not.toBeInTheDocument();
+  });
+
+  it('does not offer to type a key where there is nowhere to keep one', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () =>
+        json({ ai: { ...EMPTY.ai, secret_storage_configured: false } }),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: /connect a provider/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText(/kind/i), 'openai_compatible');
+    // The installation's answer, not the caller's. A field that refuses is
+    // worse than a line saying what to set.
+    expect(within(dialog).queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/no KNOVERGE_ENCRYPTION_KEY/i)).toBeInTheDocument();
+  });
+
+  it('keeps a stored key through a change nobody retyped it in', async () => {
+    const settings: unknown = WHISPERING;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () => json(CATALOGUE),
+      'POST /v1/admin/ai.providers.save': () => json(settings),
+      'POST /v1/admin/ai.assign': () => json(settings),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: 'Choose a transcription model' }));
+    const dialog = await screen.findByRole('dialog');
+    // Whether, never which: the key is not put back in a field for somebody to
+    // read off a screen.
+    expect(within(dialog).queryByLabelText(/API key/i)).not.toBeInTheDocument();
+    expect(within(dialog).getByText(/A key is kept for this provider/i)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+    await user.selectOptions(
+      await within(dialog).findByLabelText(/transcription model/i),
+      'gpt-oss:120b',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('providers.save'))).toBe(true));
+    const sent = calls.find((c) => c.url.includes('providers.save'))?.body;
+    // No `api_key` at all, which is what keeps it: sending null would clear it.
+    expect(sent).not.toHaveProperty('api_key');
+  });
+
+  it('clears a key when somebody replaces it with nothing', async () => {
+    const settings: unknown = WHISPERING;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () => json(CATALOGUE),
+      'POST /v1/admin/ai.providers.save': () => json(settings),
+      'POST /v1/admin/ai.assign': () => json(settings),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: 'Choose a transcription model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /Replace the key/i }));
+    // Left empty on purpose: a provider that stopped needing a key has to be
+    // able to say so.
+    expect(within(dialog).getByLabelText(/API key/i)).toHaveValue('');
+
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+    await user.selectOptions(
+      await within(dialog).findByLabelText(/transcription model/i),
+      'gpt-oss:120b',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('providers.save'))).toBe(true));
+    expect(calls.find((c) => c.url.includes('providers.save'))?.body).toMatchObject({
+      api_key: null,
     });
   });
 
@@ -467,6 +575,7 @@ describe('choosing a model that writes', () => {
             ],
             vision_enabled: true,
             transcription_enabled: false,
+            secret_storage_configured: true,
           },
         };
         return json(settings);
@@ -538,6 +647,7 @@ describe('choosing a model that writes', () => {
               },
             ],
             transcription_enabled: true,
+            secret_storage_configured: true,
           },
         };
         return json(settings);
@@ -588,6 +698,7 @@ describe('choosing a model that writes', () => {
           },
         ],
         vision_enabled: true,
+        secret_storage_configured: true,
       },
     };
     mockApi({

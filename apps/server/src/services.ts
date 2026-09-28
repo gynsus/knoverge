@@ -309,6 +309,18 @@ export function createServices(config: ServicesConfig) {
    * below asks `embeddingSource` rather than holding what was true at start-up
    * — and null, meaning nothing configured, stays the ordinary answer.
    */
+  /**
+   * The key to use for an address.
+   *
+   * What the provider itself holds comes first: it was configured here, for this
+   * address, by somebody who meant it. The environment is the fallback, so an
+   * installation that has been sending `KNOVERGE_EMBEDDING_API_KEY` since before
+   * the field existed keeps working without anybody re-entering anything (ADR
+   * 0033).
+   */
+  const keyFor = (spec: { baseUrl: string; apiKey?: string | undefined }) =>
+    spec.apiKey ?? config.apiKeyFor?.(spec.baseUrl);
+
   const ai = new AiSettingsService({
     repository: repositories.ai,
     embeddings: (spec) =>
@@ -316,23 +328,33 @@ export function createServices(config: ServicesConfig) {
         provider: spec.kind,
         baseUrl: spec.baseUrl,
         model: spec.model,
-        apiKey: config.apiKeyFor?.(spec.baseUrl),
+        apiKey: keyFor(spec),
       }),
     generation: (spec) =>
       createHttpGenerationProvider({
         provider: spec.kind,
         baseUrl: spec.baseUrl,
         model: spec.model,
-        apiKey: config.apiKeyFor?.(spec.baseUrl),
+        apiKey: keyFor(spec),
       }),
     transcription: (spec) =>
       createHttpTranscriptionProvider({
         provider: 'openai_compatible',
         baseUrl: spec.baseUrl,
         model: spec.model,
-        apiKey: config.apiKeyFor?.(spec.baseUrl),
+        apiKey: keyFor(spec),
       }),
-    probe: (spec) => probeProvider({ ...spec, apiKey: config.apiKeyFor?.(spec.baseUrl) }),
+    probe: (spec) => probeProvider({ ...spec, apiKey: keyFor(spec) }),
+    // Absent without a key, and then a provider key cannot be given at all —
+    // the same answer webhooks give about their signing secrets.
+    ...(config.encryptionKey
+      ? {
+          secrets: {
+            seal: (plaintext: string) => seal(config.encryptionKey as EncryptionKey, plaintext),
+            open: (sealed: string) => openSealed(config.encryptionKey as EncryptionKey, sealed),
+          },
+        }
+      : {}),
   });
   const embeddingSource = ai.embeddingSource;
   const embeddings = new EmbeddingService({

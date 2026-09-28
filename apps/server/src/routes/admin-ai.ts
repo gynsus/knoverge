@@ -33,6 +33,9 @@ function providerSummary(provider: AiProviderRecord): AiProviderSummary {
     updated_at: provider.updatedAt.toISOString(),
     last_checked_at: provider.lastCheckedAt?.toISOString() ?? null,
     last_error: provider.lastError,
+    // Whether, never which: the key goes out to the provider and comes back to
+    // nobody (ADR 0033).
+    has_api_key: provider.apiKeyCiphertext !== null,
   };
 }
 
@@ -49,6 +52,7 @@ function settings(view: AiSettingsView): AiSettings {
     generation_enabled: view.generationEnabled,
     vision_enabled: view.visionEnabled,
     transcription_enabled: view.transcriptionEnabled,
+    secret_storage_configured: view.secretStorageConfigured,
   };
 }
 
@@ -88,6 +92,9 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
         kind: request.body.kind,
         name: request.body.name,
         baseUrl: request.body.base_url,
+        // Absent keeps the key the provider has, so a rename does not drop it;
+        // null removes it.
+        ...(request.body.api_key === undefined ? {} : { apiKey: request.body.api_key }),
       });
       // Not a ledger event: the ledger is keyed by a per-workspace sequence
       // and a provider belongs to the installation. The log is where this is
@@ -130,6 +137,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
       const outcome = await services.ai.check({
         kind: request.body.kind,
         baseUrl: request.body.base_url,
+        apiKey: request.body.api_key,
       });
       return outcome;
     },
@@ -190,6 +198,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
         baseUrl: request.body.base_url,
         model: request.body.model,
         text: request.body.text,
+        apiKey: request.body.api_key,
       });
       return {
         ok: outcome.ok,
@@ -214,6 +223,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
         kind: request.body.kind,
         baseUrl: request.body.base_url,
         model: request.body.model,
+        apiKey: request.body.api_key,
       });
       return {
         ok: outcome.ok,
@@ -240,6 +250,7 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
         baseUrl: request.body.base_url,
         model: request.body.model,
         text: request.body.text,
+        apiKey: request.body.api_key,
       });
       return {
         ok: outcome.ok,

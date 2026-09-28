@@ -134,7 +134,7 @@ Hosted MCP clients such as ChatGPT connectors and Claude.ai connectors require O
 KNOVERGE_SESSION_SECRET    signs/derives session material
 KNOVERGE_TOKEN_PEPPER      peppers agent token hashes
 KNOVERGE_LEDGER_KEY        HMAC key of the event ledger; never stored in PostgreSQL
-KNOVERGE_ENCRYPTION_KEY    encrypts recoverable secrets (webhook signing secrets, later provider keys)
+KNOVERGE_ENCRYPTION_KEY    encrypts recoverable secrets (webhook signing secrets, AI provider keys)
 ```
 
 Rules:

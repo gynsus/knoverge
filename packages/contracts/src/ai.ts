@@ -65,6 +65,14 @@ export const AiProviderSummary = z.object({
   last_checked_at: z.iso.datetime().nullable(),
   /** Why the last probe failed, or null when it did not. */
   last_error: z.string().nullable(),
+  /**
+   * Whether a key is kept for this provider.
+   *
+   * Whether, never which: the key goes out to the provider and comes back to
+   * nobody. A screen that showed it would put a credential in a browser's
+   * history, a screenshot and a support ticket (ADR 0033).
+   */
+  has_api_key: z.boolean(),
 });
 export type AiProviderSummary = z.infer<typeof AiProviderSummary>;
 
@@ -98,8 +106,26 @@ export const AiSettings = z.object({
   vision_enabled: z.boolean(),
   /** Whether anything here can listen to a recording. */
   transcription_enabled: z.boolean(),
+  /**
+   * Whether this installation can keep a provider key at all.
+   *
+   * False without a `KNOVERGE_ENCRYPTION_KEY`: a key would have nowhere safe to
+   * be, and a field that stored one in clear would be worse than no field. The
+   * same answer webhooks give about their signing secrets.
+   */
+  secret_storage_configured: z.boolean(),
 });
 export type AiSettings = z.infer<typeof AiSettings>;
+
+/**
+ * A key for a provider that wants one.
+ *
+ * Write-only, like a webhook's signing secret: given here, sealed at rest, and
+ * never served back. Absent keeps whatever the provider has, so a rename does
+ * not silently drop a key; `null` removes it, which is how a provider that
+ * stopped needing one says so.
+ */
+export const ProviderApiKey = z.string().trim().min(1).max(400);
 
 export const SaveAiProviderRequest = z.object({
   /** Absent creates; present replaces what that provider is. */
@@ -107,6 +133,7 @@ export const SaveAiProviderRequest = z.object({
   kind: AiProviderKind,
   name: ProviderName,
   base_url: ProviderBaseUrl,
+  api_key: ProviderApiKey.nullish(),
 });
 export type SaveAiProviderRequest = z.infer<typeof SaveAiProviderRequest>;
 
@@ -122,6 +149,13 @@ export type RemoveAiProviderRequest = z.infer<typeof RemoveAiProviderRequest>;
 export const CheckAiProviderRequest = z.object({
   kind: AiProviderKind,
   base_url: ProviderBaseUrl,
+  /**
+   * The key to probe with, when the wizard is holding one nobody saved yet.
+   *
+   * Without it the probe uses whatever the provider at that address already has,
+   * which is what reopening the wizard on a configured provider means.
+   */
+  api_key: ProviderApiKey.optional(),
 });
 export type CheckAiProviderRequest = z.infer<typeof CheckAiProviderRequest>;
 
@@ -168,6 +202,8 @@ export const TestAiModelRequest = z.object({
   kind: AiProviderKind,
   base_url: ProviderBaseUrl,
   model: ModelName,
+  /** The same as the probe's: what the wizard holds, or what is stored. */
+  api_key: ProviderApiKey.optional(),
   /** Absent uses a fixed phrase; a caller may send their own. */
   text: z.string().trim().min(1).max(2000).optional(),
 });
@@ -197,6 +233,7 @@ export const TestAiVisionRequest = z.object({
   kind: AiProviderKind,
   base_url: z.string().url(),
   model: z.string().min(1).max(200),
+  api_key: ProviderApiKey.optional(),
 });
 export type TestAiVisionRequest = z.infer<typeof TestAiVisionRequest>;
 
