@@ -9,6 +9,53 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.3.0 — 2026-09-28
+
+Milestone 11: a workspace can hold the documents its knowledge came from.
+
+### Added
+
+- **Files.** Bring a document in through the interface, over HTTP as multipart, or
+  over MCP as base64. Its text becomes an ordinary `document` knowledge item —
+  searched, reviewed, versioned and superseded like anything else — and the file
+  itself stays under the hash of its contents, beside the repositories and never in
+  Git (ADR 0008).
+- **An agent's file is not a way past review.** The item is written as the person
+  or agent who uploaded the file, so an agent's document goes to the review queue
+  exactly as its other writing does, duplicate check included (rule 5).
+- **Text, Markdown, HTML, PDF and Word** are read, with no provider and no network
+  (rule 9). A PDF with no text layer is a scan: kept and downloadable, and reading
+  one is a later milestone rather than a failure now.
+- **A Files screen** that leads with the state — waiting to be read, being read,
+  read, waiting for review, not readable here, could not be read — explains what
+  each means, and asks again by itself while the answer is still coming.
+- **Three tools**: `attachment_upload`, `attachment_list` and `attachment_get`,
+  defined once like every other tool, so MCP and `POST /v1/<tool_name>` are the
+  same operation. The manifest reports `max_attachment_bytes`: what actually fits
+  through a tool call, base64 included.
+- `knoverge integrity check` reports `attachment_missing`: a row whose file is not
+  in the store. An attachment is not in Git and cannot be rebuilt from anything, so
+  it is the unrepairable kind.
+- `.github/dependabot.yml`, which Milestone 0 asked for and nothing had done:
+  packages, workflow actions and base images, weekly and grouped.
+
+### Changed
+
+- The line that says the job runner started names the queues it actually started,
+  including webhook delivery and attachment extraction.
+- The webhook form no longer redraws forty checkboxes per keystroke.
+- `docs/IMPLEMENTATION_PLAN.md` says where this is: which milestones are delivered
+  and in which release.
+- `SPEC_INDEX.md` is gone. The README's documentation map is the only index, and a
+  test fails when a document under `docs/` is missing from it.
+
+### Compatibility
+
+Two additive migrations. Two new configuration variables with defaults
+(`KNOVERGE_ATTACHMENT_MAX_MB`, capped at 128 because an upload is held in memory
+while it is hashed). Three new tools and one new field in the manifest's limits;
+nothing existing changed shape.
+
 ## v0.2.0 — 2026-09-28
 
 ### Added
