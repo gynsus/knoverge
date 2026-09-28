@@ -97,7 +97,7 @@ Responsibilities:
 - policy rules editor;
 - activity digests;
 - sync-session inspection;
-- attachments (later milestone).
+- files, with what became of the text inside each.
 
 All strings come from message catalogues (English source, Russian first). See `I18N.md`.
 
@@ -143,7 +143,7 @@ Every invocation names its repository explicitly and runs in an allowlisted envi
 
 ### Attachment store
 
-Original uploaded files (later milestone) live on the local filesystem under `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`, content-addressed. They are not committed to Git. Text extracted from them becomes ordinary `document` knowledge items. See ADR 0008.
+Original uploaded files live on the local filesystem under `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`, content-addressed, beside the repositories and never committed to Git. `packages/attachments` is the whole of that storage — the path is the hash, so there is no column saying where a file is — and the text inside becomes an ordinary `document` knowledge item, written as the person or agent who uploaded it and therefore through the same policy as anything else they write. What links the two is a source of type `attachment` on the item, carrying the attachment's id and the hash of the bytes the text was read from. See ADR 0008.
 
 ## 4. Cross-store consistency
 
@@ -379,7 +379,7 @@ Jobs:
 - digest generation;
 - webhook delivery;
 - integrity checks;
-- attachment text extraction (later);
+- attachment text extraction;
 - transcription and image description (later).
 
 Do not require Redis for the first release.

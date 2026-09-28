@@ -80,7 +80,7 @@ Example:
 
 ### `document`
 
-A larger source/document represented inside the knowledge system as Markdown. When the document originates from an uploaded file, the item links to the attachment and to the original location. See ADR 0008.
+A larger source/document represented inside the knowledge system as Markdown. When it came out of an uploaded file, the item carries a source of type `attachment` naming that file and the hash of the bytes the text was read from — which is the whole of the link, in the item and in its frontmatter. See ADR 0008.
 
 ## 2a. Granularity rule
 
