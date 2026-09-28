@@ -44,6 +44,24 @@ const EMBEDDING_SCHEDULE = '*/5 * * * *';
  */
 export const WEBHOOK_QUEUE = 'webhook.deliver';
 
+/**
+ * The queues this process actually started, for the line that says it started.
+ *
+ * Webhook delivery runs only where a signing secret can be opened, so an
+ * installation with no encryption key runs three of these and one with a key runs
+ * four. The line used to name three either way, which told an operator who had
+ * just configured a webhook that nothing was going to deliver it.
+ */
+export function startedQueues(deliveringWebhooks: boolean): string[] {
+  return [
+    MAINTENANCE_QUEUE,
+    SYNC_REFINE_QUEUE,
+    EMBEDDING_QUEUE,
+    `${EMBEDDING_QUEUE}.sweep`,
+    ...(deliveringWebhooks ? [WEBHOOK_QUEUE] : []),
+  ];
+}
+
 /** Every minute, and a failing endpoint waits longer than that by its own backoff. */
 const WEBHOOK_SCHEDULE = '* * * * *';
 
@@ -164,7 +182,7 @@ export function createJobs(
 
       started = true;
       logger.info(
-        { schema: JOBS_SCHEMA, queues: [MAINTENANCE_QUEUE, SYNC_REFINE_QUEUE, EMBEDDING_QUEUE] },
+        { schema: JOBS_SCHEMA, queues: startedQueues(deliver !== undefined) },
         'job runner started',
       );
     },
