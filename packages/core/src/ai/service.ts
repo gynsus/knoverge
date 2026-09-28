@@ -10,6 +10,8 @@ import type {
   EmbeddingSource,
   GenerationProvider,
   GenerationSource,
+  TranscriptionProvider,
+  TranscriptionSource,
 } from '@knoverge/intelligence';
 
 import { DomainError } from '../errors.ts';
@@ -24,6 +26,12 @@ export type EmbeddingFactory = (spec: {
   baseUrl: string;
   model: string;
 }) => EmbeddingProvider;
+
+/** And for one that listens. No kind: only an OpenAI-compatible provider has one. */
+export type TranscriptionFactory = (spec: {
+  baseUrl: string;
+  model: string;
+}) => TranscriptionProvider;
 
 /** The same, for a model that writes rather than one that measures. */
 export type GenerationFactory = (spec: {
@@ -48,6 +56,11 @@ export interface AiSettingsServiceOptions {
    * which is the same answer as nothing assigned.
    */
   generation?: GenerationFactory;
+  /**
+   * Optional in the same way, and absent more often: only an OpenAI-compatible
+   * provider has an endpoint that listens.
+   */
+  transcription?: TranscriptionFactory;
   probe: CatalogueProbe;
   clock?: Clock;
 }
@@ -59,6 +72,7 @@ export interface AiSettingsView {
   embeddingsEnabled: boolean;
   generationEnabled: boolean;
   visionEnabled: boolean;
+  transcriptionEnabled: boolean;
 }
 
 export interface SaveProviderInput {
@@ -175,6 +189,16 @@ export class AiSettingsService {
       // model that can be handed a picture.
       visionEnabled:
         this.o.generation !== undefined && assignments.some((a) => a.purpose === 'vision'),
+      // And the provider's shape as well, which the other two do not need: only
+      // an OpenAI-compatible provider has an endpoint that listens, and a
+      // provider can be changed into one that has not after it was assigned.
+      transcriptionEnabled:
+        this.o.transcription !== undefined &&
+        assignments.some(
+          (a) =>
+            a.purpose === 'transcription' &&
+            providers.find((p) => p.id === a.providerId)?.kind === 'openai_compatible',
+        ),
     };
   }
 
@@ -267,7 +291,17 @@ export class AiSettingsService {
     providerId: AiProviderId;
     model: string;
   }): Promise<AiAssignmentRecord> {
-    await this.expect(input.providerId);
+    const provider = await this.expect(input.providerId);
+    // Refused rather than stored and quietly never used: Ollama has no endpoint
+    // that takes a recording, and an assignment the settings page shows while
+    // nothing listens is worse than no assignment at all.
+    if (input.purpose === 'transcription' && provider.kind !== 'openai_compatible') {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'transcription needs an OpenAI-compatible provider; this one has no endpoint that listens',
+        { objectIds: { provider_id: provider.id } },
+      );
+    }
     const record: AiAssignmentRecord = {
       purpose: input.purpose,
       providerId: input.providerId,
@@ -436,6 +470,22 @@ export class AiSettingsService {
    * while the product runs (ADR 0021).
    */
   readonly visionSource: GenerationSource = async () => this.chat('vision');
+
+  /**
+   * What listens now, or null when nothing does.
+   *
+   * A factory of its own, unlike vision: transcription is a different endpoint
+   * with a different body, and an installation whose only provider is Ollama has
+   * nothing that answers it.
+   */
+  readonly transcriptionSource: TranscriptionSource = async () => {
+    if (!this.o.transcription) return null;
+    const assignment = await this.o.repository.assignment('transcription');
+    if (!assignment) return null;
+    const provider = await this.o.repository.findProvider(assignment.providerId);
+    if (!provider || provider.kind !== 'openai_compatible') return null;
+    return this.o.transcription({ baseUrl: provider.baseUrl, model: assignment.model });
+  };
 
   private async chat(purpose: 'generation' | 'vision') {
     if (!this.o.generation) return null;

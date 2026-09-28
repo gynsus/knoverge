@@ -574,18 +574,27 @@ things that do not work. The model list is filtered by the capabilities the
 provider reports, so a generative model cannot be chosen to make vectors nor an
 embedding model to write text.
 
-There are two purposes and they are chosen separately, because they are separate
-questions. `embedding` feeds the vector half of search and the semantic steps of
-duplicate detection and reconciliation; `generation` writes summaries and the
-optional narrative on a digest. One provider can hold both, and stopping one
-leaves the other alone.
+There are four purposes and each is chosen separately, because they are separate
+questions and, on most installations, separate models. `embedding` feeds the
+vector half of search and the semantic steps of duplicate detection and
+reconciliation; `generation` writes summaries and the optional narrative on a
+digest; `vision` looks at a picture; `transcription` listens to a recording. One
+provider can hold several, and stopping one leaves the others alone.
 
-The second check differs by purpose because there is no one answer for both. For
-an embedding model it reports the dimension — the number the whole index hangs
-from and the one nobody configures. For a generation model it reports the
+`transcription` is the one purpose that is not offered from every provider.
+Ollama has no endpoint that takes a recording, so the screen offers it from the
+providers that could answer it, the service refuses an assignment to one that
+could not, and `transcription_enabled` reads the assigned provider's kind rather
+than the assignment alone — a provider can be edited into a different kind after
+it was assigned.
+
+The second check differs by purpose because there is no one answer for all four.
+For an embedding model it reports the dimension — the number the whole index
+hangs from and the one nobody configures. For a generation model it reports the
 sentence the model actually wrote, because a model that answers in a hundred
-milliseconds and says nothing useful has not worked, and a tick would say it
-had.
+milliseconds and says nothing useful has not worked, and a tick would say it had.
+For a vision model it sends a red square and shows the answer. For a
+transcription model there is no check at all, and the wizard says so.
 
 `packages/intelligence/src/generation.ts` keeps the instruction and the material
 in separate messages: one is the product's instruction and the other is
@@ -820,7 +829,9 @@ which is rule 9 doing its work: the rest of the product does not notice.
 What comes back is knowledge, so it is knowledge: a `document` item with the same
 attachment source as any other, and `drafted_by` naming the model — a description
 is a model's words about somebody's picture, and a reader has to know that
-(ADR 0031).
+(ADR 0031). It is written without anybody reading it first, which is a decision
+and not an oversight: ADR 0032 says what makes it safe enough, and none of it is
+the model.
 
 The instruction is where the defence is. A scan of a page saying "ignore your
 instructions" is a picture of somebody's words, and the instruction says which of
@@ -834,6 +845,39 @@ drawn here rather than fetched from anywhere. The screen shows what the model sa
 about it and the operator judges — the same shape as the generation test, and for
 the same reason.
 
+## Listening to a recording
+
+`MediaTranscriber` is the same shape as the describer and asked on the same terms:
+only about a file nothing here could read, and only after the readers have said so.
+One or the other answers, never both — a picture is looked at and a recording is
+listened to — so an image is never sent to an endpoint that would charge for it and
+refuse it.
+
+The file goes as it arrived, audio or video, under its own name. A container this
+product cannot open is one a transcription server opens every day, and demuxing it
+here would put a media toolchain in the image for a job somebody else's server
+already does; the filename goes too, because it is how a provider guesses the
+container when the media type is vague. Nothing is said about the language: what
+was spoken is not something this product knows, a workspace's own language is a
+guess about somebody else's recording, and these endpoints detect it.
+
+What comes back is a `document` item with `drafted_by` naming the model, for the
+reason a description carries one — a transcript is a model's account of somebody's
+recording (ADR 0031).
+
+`createHttpTranscriptionProvider` posts multipart to `<base>/v1/audio/transcriptions`,
+the shape OpenAI defined and every local Whisper server imitates. Only
+`openai_compatible`: Ollama has no endpoint that listens, so the settings screen
+offers this purpose from the providers that could answer it and says why the others
+cannot, rather than letting somebody assign a model that can never be asked. An
+error carries the status and nothing else, because the body may quote what was
+heard and what was heard is somebody's recording.
+
+There is no probe for this one. A phrase can be embedded, a sentence written and a
+red square looked at, but speech is the one thing that cannot be made up here — a
+synthesised clip would test the synthesiser — so the wizard says outright that the
+first recording is the test instead of showing a tick it did not earn.
+
 Text longer than one item may hold is a failure and not a truncation. Half a
 document stored as if it were the whole one is the kind of thing nobody notices
 until they rely on it; splitting one file across several items is a decision for
@@ -845,8 +889,11 @@ same minute cannot both take it and write the same document twice. Extraction is
 the first job in this product that is not idempotent — embedding the same chunk
 twice writes the same vector, and reading the same file twice writes two
 documents — which is why it is the first one that claims. A worker that dies
-holding a claim is noticed by its age: anything left `extracting` for ten minutes
-is taken again.
+holding a claim is noticed by its age: anything left `extracting` for half an hour
+is taken again. Half an hour and not ten minutes because the window has to outlast
+the longest a single file can take, and the longest is a recording — a
+transcription provider is given ten minutes before it is given up on, and a window
+equal to that would let the next sweep take a file still being transcribed.
 
 Every ending is written to the row, including the ones that are not failures.
 `unsupported` is an answer — the file is kept and can be downloaded — and a file

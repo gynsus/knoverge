@@ -30,3 +30,15 @@ export {
   type ProbeOptions,
   type ProviderCatalogue,
 } from './catalogue.ts';
+export {
+  TRANSCRIPTION_TIMEOUT_MS,
+  TranscriptionError,
+  createHttpTranscriptionProvider,
+  fixedTranscriptionSource,
+  type HttpTranscriptionOptions,
+  type TranscriptionProfile,
+  type TranscriptionProvider,
+  type TranscriptionRequest,
+  type TranscriptionResult,
+  type TranscriptionSource,
+} from './transcription.ts';

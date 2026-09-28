@@ -280,10 +280,12 @@ Two things the first part left for the rest of the milestone, both deliberate:
 
 ## Milestone 12 - media understanding
 
-_In progress: an image is described by an assigned vision model, which is also how
-the text in a screenshot is read. Audio and video transcription is not built, and
-neither is a scanned PDF — a page inside one has to be rendered to an image first,
-and rendering needs a canvas this product does not have._
+_Done, except one case. An image is described by an assigned vision model, which is
+also how the text in a screenshot is read, and an audio or video file becomes what
+was said in it when a transcription model is assigned — an OpenAI-compatible one,
+since Ollama has no endpoint that listens. A scanned PDF is still `unsupported`: a
+page inside one has to be rendered to an image first, and rendering needs a canvas
+this product does not have._
 
 Deliver through the intelligence provider abstraction:
 

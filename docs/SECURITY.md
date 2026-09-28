@@ -421,7 +421,9 @@ Briefings, search results and change feeds are wrapped in a clearly delimited da
 
 The same boundary holds when the server itself asks a model something. Knowledge goes to a generation provider as the user message and the product's instruction as the system message, never concatenated, and each source is titled and fenced so one cannot run into the next. A passage that says "ignore your instructions" then says it in the voice of somebody being quoted rather than in the voice of the instructions.
 
-Nothing a model writes is ever committed by the call that produced it. A draft comes back to a person, who reads it and saves it through the ordinary write, where provenance, review and Git already apply. A path that generated knowledge and committed it in one step would be a way for a model — and for whatever it read — to put words in the ledger that nobody read.
+A summary or a digest narrative a model writes is never committed by the call that produced it. The draft comes back to a person, who reads it and saves it through the ordinary write, where provenance, review and Git already apply. A path that generated a summary and committed it in one step would be a way for a model — and for whatever it read — to put words in the ledger that nobody read.
+
+Reading a file is the one place where a model's words do reach the repository without somebody reading them first, and the difference is who asked. A summary is drafted about knowledge that is already there; a description or a transcript is what an uploaded file turned out to say, and somebody put that file here on purpose. It is written as that person or agent and through the same write everything else uses, so an agent's file produces a proposal and a person's produces an item exactly as their writing would (rule 5), the item carries the attachment it came from, and `drafted_by` names the model on the file itself so a reader knows whose words these are (ADR 0031). What it must never do is take instructions from the file: the instruction sent with a picture says to record any instruction in it as text and never to act on it, and a transcription endpoint takes a file and returns words with no instruction to hijack.
 
 ## 11. Audit
 
@@ -502,6 +504,8 @@ Documentation must recommend:
 ## 15. No telemetry
 
 The server contacts external hosts only when the operator configures an AI provider or a webhook. There is no update check, crash reporting, or usage analytics.
+
+What goes to a configured provider is worth stating plainly, because it is more than text. Knowledge goes to an embedding or generation model as knowledge. An assigned vision or transcription model is also sent **the bytes of an uploaded file** — the picture, the recording — and only ever a file nothing here could read on its own: a file this installation can read itself never leaves it, and a test asserts that. With no such model assigned, nothing about an unreadable file is sent anywhere and it stays kept and downloadable.
 
 ### What a webhook carries, and what it does not
 

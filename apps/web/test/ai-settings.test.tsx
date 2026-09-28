@@ -100,6 +100,15 @@ const CATALOGUE = {
   ],
 };
 
+/** The same machine, once somebody has pulled a second model that writes. */
+const TWO_WRITERS = {
+  ...CATALOGUE,
+  models: [
+    ...CATALOGUE.models,
+    { name: 'qwen2.5vl:7b', size: 6_000_000_000, capabilities: ['completion', 'vision'] },
+  ],
+};
+
 const EMPTY = {
   ai: {
     providers: [],
@@ -107,6 +116,7 @@ const EMPTY = {
     embeddings_enabled: false,
     generation_enabled: false,
     vision_enabled: false,
+    transcription_enabled: false,
   },
 };
 
@@ -136,6 +146,7 @@ const CONNECTED = {
     embeddings_enabled: true,
     generation_enabled: false,
     vision_enabled: false,
+    transcription_enabled: false,
   },
 };
 
@@ -154,6 +165,30 @@ const GENERATING = {
     ],
     generation_enabled: true,
     vision_enabled: false,
+    transcription_enabled: false,
+  },
+};
+
+const WHISPER_ID = 'aip_01J8Z3M4Q9V0X7K2B5N6P8R1T4';
+
+/** An installation whose provider speaks the shape that has a listening endpoint. */
+const WHISPERING = {
+  ai: {
+    ...CONNECTED.ai,
+    providers: [
+      ...CONNECTED.ai.providers,
+      {
+        id: WHISPER_ID,
+        kind: 'openai_compatible',
+        name: 'The transcription box',
+        base_url: 'http://whisper:8000',
+        origin: 'interface',
+        created_at: '2026-09-28T00:00:00.000Z',
+        updated_at: '2026-09-28T00:00:00.000Z',
+        last_checked_at: '2026-09-28T00:00:00.000Z',
+        last_error: null,
+      },
+    ],
   },
 };
 
@@ -175,6 +210,7 @@ describe('fixtures match the contracts', () => {
     expect(() => AiSettingsResponse.parse(EMPTY)).not.toThrow();
     expect(() => AiSettingsResponse.parse(CONNECTED)).not.toThrow();
     expect(() => AiSettingsResponse.parse(GENERATING)).not.toThrow();
+    expect(() => AiSettingsResponse.parse(WHISPERING)).not.toThrow();
   });
 });
 
@@ -246,6 +282,51 @@ describe('the connection wizard', () => {
     });
   });
 
+  it('connects a server that is not Ollama, and says where a key would have to go', async () => {
+    let settings: unknown = EMPTY;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () =>
+        json({
+          reachable: true,
+          version: null,
+          models: [{ name: 'whisper-1', capabilities: [] }],
+          error: null,
+        }),
+      'POST /v1/admin/ai.providers.save': () => {
+        settings = WHISPERING;
+        return json(settings);
+      },
+      'POST /v1/admin/ai.assign': () => json(settings),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: /connect a provider/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.selectOptions(within(dialog).getByLabelText(/kind/i), 'openai_compatible');
+
+    // A key cannot be typed here, and a server that needs one is given it in
+    // the environment (ADR 0021) — said rather than left as a missing field.
+    expect(within(dialog).getByText(/key cannot be set here/i)).toBeInTheDocument();
+    // And the suggested name follows the kind: a row called Ollama that is not
+    // one is a row an operator will misread later.
+    expect(within(dialog).getByLabelText(/^name/i)).toHaveValue('OpenAI-compatible');
+
+    await user.type(within(dialog).getByLabelText(/address/i), 'http://whisper:8000');
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+    await user.selectOptions(await within(dialog).findByLabelText(/embedding model/i), 'whisper-1');
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.includes('providers.save'))).toBe(true));
+    expect(calls.find((c) => c.url.includes('providers.save'))?.body).toMatchObject({
+      kind: 'openai_compatible',
+      name: 'OpenAI-compatible',
+      base_url: 'http://whisper:8000',
+    });
+  });
+
   it('names each step once, and keeps the name for a screen reader', async () => {
     // The step indicator shows the labels from `sm` up, so a legend saying the
     // same words is the same words twice. It stays in the accessibility tree
@@ -311,9 +392,12 @@ describe('choosing a model that writes', () => {
     // A control that could only fail is worse than one that says why it is off.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(EMPTY) });
     renderApp('/settings/ai');
-    // Both purposes that need a model of their own: writing and reading pictures.
-    const choose = await screen.findAllByRole('button', { name: /choose a (model|vision model)/i });
-    expect(choose).toHaveLength(2);
+    // Every purpose that needs a model of its own: writing, reading pictures
+    // and listening to recordings.
+    const choose = await screen.findAllByRole('button', {
+      name: /choose a (model|vision model|transcription model)/i,
+    });
+    expect(choose).toHaveLength(3);
     for (const button of choose) expect(button).toBeDisabled();
     expect(screen.getAllByText(/connect a provider above first/i).length).toBeGreaterThan(0);
   });
@@ -382,6 +466,7 @@ describe('choosing a model that writes', () => {
               },
             ],
             vision_enabled: true,
+            transcription_enabled: false,
           },
         };
         return json(settings);
@@ -414,6 +499,114 @@ describe('choosing a model that writes', () => {
       purpose: 'vision',
       model: 'gpt-oss:120b',
     });
+  });
+
+  it('says why a recording cannot be listened to, rather than offering a model that cannot', async () => {
+    // A provider exists and works. It simply has no endpoint that takes a
+    // recording, and the page says which shape does instead of offering a
+    // choice that could only fail.
+    mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(CONNECTED) });
+    renderApp('/settings/ai');
+
+    expect(
+      await screen.findByRole('button', { name: 'Choose a transcription model' }),
+    ).toBeDisabled();
+    expect(screen.getByText(/needs an OpenAI-compatible provider/i)).toBeInTheDocument();
+    // The other two are offered from the same provider, which is what makes
+    // this one being off a statement about the provider and not about the page.
+    expect(screen.getByRole('button', { name: 'Choose a vision model' })).toBeEnabled();
+  });
+
+  it('chooses a model that listens, and says outright that it cannot be tested first', async () => {
+    let settings: unknown = WHISPERING;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () => json(CATALOGUE),
+      'POST /v1/admin/ai.providers.save': () => json(settings),
+      'POST /v1/admin/ai.assign': () => {
+        settings = {
+          ai: {
+            ...WHISPERING.ai,
+            assignments: [
+              ...WHISPERING.ai.assignments,
+              {
+                purpose: 'transcription',
+                provider_id: WHISPER_ID,
+                model: 'whisper-1',
+                updated_at: '2026-09-28T00:00:00.000Z',
+              },
+            ],
+            transcription_enabled: true,
+          },
+        };
+        return json(settings);
+      },
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: 'Choose a transcription model' }));
+    const dialog = await screen.findByRole('dialog');
+    // The one provider that could do this is where the wizard starts.
+    expect(within(dialog).getByLabelText(/address/i)).toHaveValue('http://whisper:8000');
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+
+    const models = await within(dialog).findByLabelText(/transcription model/i);
+    // Nothing is filtered out: no catalogue has a word for a model that
+    // listens, and a filter built on the two words that exist would hide every
+    // model that can do it.
+    expect(within(models).getByRole('option', { name: /bge-m3/i })).toBeInTheDocument();
+    expect(within(models).getByRole('option', { name: /gpt-oss/i })).toBeInTheDocument();
+
+    // And no probe. Speech is the one thing that cannot be made up here, so the
+    // wizard says what the test is instead of pretending to have run one.
+    expect(within(dialog).queryByRole('button', { name: /test this model/i })).toBeNull();
+    expect(within(dialog).getByText(/no test for this one/i)).toBeInTheDocument();
+
+    await user.selectOptions(models, 'gpt-oss:120b');
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+    await waitFor(() => expect(screen.getByText(/Listening with whisper-1/i)).toBeInTheDocument());
+    expect(calls.find((c) => c.url.includes('ai.assign'))?.body).toMatchObject({
+      purpose: 'transcription',
+      provider_id: WHISPER_ID,
+      model: 'gpt-oss:120b',
+    });
+  });
+
+  it('reopens a purpose on the model that purpose is using, not on another one', async () => {
+    const SEEING = {
+      ai: {
+        ...CONNECTED.ai,
+        assignments: [
+          ...CONNECTED.ai.assignments,
+          {
+            purpose: 'vision',
+            provider_id: PROVIDER_ID,
+            model: 'qwen2.5vl:7b',
+            updated_at: '2026-09-28T00:00:00.000Z',
+          },
+        ],
+        vision_enabled: true,
+      },
+    };
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(SEEING),
+      'POST /v1/admin/ai.providers.check': () => json(TWO_WRITERS),
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    // The row for this purpose, not the provider's own Change above it.
+    const row = await screen.findByRole('region', { name: /reading pictures/i });
+    await user.click(await within(row).findByRole('button', { name: /change/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+
+    // The model this purpose is already using, and not the one embedding uses:
+    // pressing Change on a row opens on what that row says.
+    expect(await within(dialog).findByLabelText(/generation model/i)).toHaveValue('qwen2.5vl:7b');
   });
 
   it('stops using it without touching what measures', async () => {

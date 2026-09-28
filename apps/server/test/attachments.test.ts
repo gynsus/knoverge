@@ -450,6 +450,97 @@ describe('the text inside a file', () => {
     );
   });
 
+  it('becomes a transcript when something here can listen to a recording', async () => {
+    const clip = Buffer.from([0x49, 0x44, 0x33, 0x04, 0x00, 0x00, 0x00, 0x00]);
+    const uploaded = AttachmentResponse.parse(
+      (await admin.upload({ filename: 'standup.mp3', type: 'audio/mpeg', body: clip })).json(),
+    );
+    // Nothing here opens an MP3, so without a transcription model this is where
+    // it stops, and the recording is kept and can be downloaded.
+    const before = (await sweep()).find((o) => o.attachmentId === uploaded.attachment.id);
+    expect(before?.state).toBe('unsupported');
+
+    const heard: { mediaType: string; filename: string }[] = [];
+    const looked: string[] = [];
+    const listening = new AttachmentExtractor({
+      attachments: services.repositories.attachments,
+      actors: services.repositories.actors,
+      standingOf: async () => ({ role: 'owner' as const }),
+      store: new FileAttachmentStore(dataDir),
+      knowledge: services.knowledge,
+      proposals: services.proposals,
+      extract: extractText,
+      describe: async (mediaType) => {
+        looked.push(mediaType);
+        return null;
+      },
+      transcribe: async (mediaType, _bytes, filename) => {
+        heard.push({ mediaType, filename });
+        return { text: 'Support closes at five, every weekday.', model: 'whisper-1' };
+      },
+      maxCharacters: 200_000,
+    });
+    const record = await services.repositories.attachments.findById(
+      workspaceId,
+      uploaded.attachment.id,
+    );
+    const outcome = await listening.extract({ ...record!, extractionState: 'pending' });
+    expect(outcome.state).toBe('extracted');
+
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome.itemId}`)).json(),
+    ).item;
+    expect(item.body).toContain('Support closes at five');
+    // A transcript is a model's account of somebody's recording, so the item
+    // says which model made it (ADR 0031).
+    expect(item.drafted_by).toBe('whisper-1');
+    expect(item.sources.find((s) => s.type === 'attachment')?.external_key).toBe(
+      uploaded.attachment.id,
+    );
+    // Under its own name, because that is how a provider guesses the container.
+    expect(heard).toEqual([{ mediaType: 'audio/mpeg', filename: 'standup.mp3' }]);
+    // The describer was asked and said no, which is what makes the recording
+    // reach the listener at all: one file, one answer, whichever gives it.
+    expect(looked).toEqual(['audio/mpeg']);
+  });
+
+  it('asks one model or the other about a file, never both', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x33]);
+    const uploaded = AttachmentResponse.parse(
+      (await admin.upload({ filename: 'sketch.png', type: 'image/png', body: png })).json(),
+    );
+    const heard: string[] = [];
+    const both = new AttachmentExtractor({
+      attachments: services.repositories.attachments,
+      actors: services.repositories.actors,
+      standingOf: async () => ({ role: 'owner' as const }),
+      store: new FileAttachmentStore(dataDir),
+      knowledge: services.knowledge,
+      proposals: services.proposals,
+      extract: extractText,
+      describe: async () => ({ text: 'A sketch of two boxes.', model: 'qwen2.5vl:7b' }),
+      transcribe: async (mediaType) => {
+        heard.push(mediaType);
+        return { text: 'nobody said this', model: 'whisper-1' };
+      },
+      maxCharacters: 200_000,
+    });
+    const record = await services.repositories.attachments.findById(
+      workspaceId,
+      uploaded.attachment.id,
+    );
+    const outcome = await both.extract({ ...record!, extractionState: 'pending' });
+
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome.itemId}`)).json(),
+    ).item;
+    // One or the other, never both: a picture is looked at, and the recording
+    // endpoint is never sent a PNG to be charged for and refuse.
+    expect(item.body).toContain('A sketch of two boxes.');
+    expect(item.drafted_by).toBe('qwen2.5vl:7b');
+    expect(heard).toEqual([]);
+  });
+
   it('never sends a file anything here can read to a model', async () => {
     const uploaded = AttachmentResponse.parse(
       (

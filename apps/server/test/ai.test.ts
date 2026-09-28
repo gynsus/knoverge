@@ -500,6 +500,91 @@ describe('once a model is at work', () => {
     expect(stopped.ai.embeddings_enabled).toBe(true);
   });
 
+  it('puts a model to work looking at pictures, which is a row of its own', async () => {
+    const settings = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    const providerId = settings.ai.providers[0]?.id;
+
+    const assigned = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.assign', {
+          purpose: 'vision',
+          provider_id: providerId,
+          model: 'gpt-oss:120b',
+        })
+      ).json(),
+    );
+    expect(assigned.ai.vision_enabled).toBe(true);
+    expect(assigned.ai.assignments.find((a) => a.purpose === 'vision')?.model).toBe('gpt-oss:120b');
+
+    const stopped = AiSettingsResponse.parse(
+      (await admin.post('/v1/admin/ai.unassign', { purpose: 'vision' })).json(),
+    );
+    expect(stopped.ai.vision_enabled).toBe(false);
+    expect(stopped.ai.embeddings_enabled).toBe(true);
+  });
+
+  it('refuses to put a model that cannot listen to work listening', async () => {
+    const settings = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    const providerId = settings.ai.providers[0]?.id;
+
+    const refused = await admin.post('/v1/admin/ai.assign', {
+      purpose: 'transcription',
+      provider_id: providerId,
+      model: 'gpt-oss:120b',
+    });
+    // Ollama has no endpoint that takes a recording. Stored and quietly never
+    // used, this would be a settings page saying a model is listening while
+    // nothing is — worse than no assignment at all.
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+    const after = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    expect(after.ai.assignments.some((a) => a.purpose === 'transcription')).toBe(false);
+    expect(after.ai.transcription_enabled).toBe(false);
+  });
+
+  it('stops reporting a listener when its provider is changed into one that cannot', async () => {
+    const saved = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.providers.save', {
+          kind: 'openai_compatible',
+          name: 'The transcription box',
+          base_url: 'http://whisper.invalid:8000',
+        })
+      ).json(),
+    );
+    const whisper = saved.ai.providers.find((p) => p.kind === 'openai_compatible');
+    const assigned = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.assign', {
+          purpose: 'transcription',
+          provider_id: whisper?.id,
+          model: 'whisper-1',
+        })
+      ).json(),
+    );
+    expect(assigned.ai.transcription_enabled).toBe(true);
+
+    // The same row, made into an Ollama. The assignment survives the edit, and
+    // an Ollama has no endpoint that takes a recording — so the page must stop
+    // claiming anything is listening rather than keep the word from before.
+    const changed = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.providers.save', {
+          provider_id: whisper?.id,
+          kind: 'ollama',
+          name: 'The transcription box',
+          base_url: 'http://whisper.invalid:8000',
+        })
+      ).json(),
+    );
+    expect(changed.ai.assignments.some((a) => a.purpose === 'transcription')).toBe(true);
+    expect(changed.ai.transcription_enabled).toBe(false);
+
+    // Removing it takes its assignment with it, so the tests after this one see
+    // the installation the tests before it left.
+    await admin.post('/v1/admin/ai.providers.remove', { provider_id: whisper?.id });
+  });
+
   it('stops embedding when the provider is disconnected, and says so', async () => {
     const settings = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
     const providerId = settings.ai.providers[0]?.id;

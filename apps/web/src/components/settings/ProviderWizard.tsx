@@ -37,7 +37,7 @@ export interface WizardResult {
 }
 
 /** Which job the model is being chosen for. */
-export type WizardPurpose = 'embedding' | 'generation' | 'vision';
+export type WizardPurpose = 'embedding' | 'generation' | 'vision' | 'transcription';
 
 /**
  * Connecting a provider, in the order somebody actually does it.
@@ -79,7 +79,7 @@ export function ProviderWizard({
   const { t } = useTranslation();
   const [step, setStep] = useState(0);
   const [kind, setKind] = useState<AiProviderKind>(existing?.kind ?? 'ollama');
-  const [name, setName] = useState(existing?.name ?? 'Ollama');
+  const [name, setName] = useState(existing?.name ?? SUGGESTED_NAME.ollama);
   const [baseUrl, setBaseUrl] = useState(existing?.base_url ?? '');
   const [model, setModel] = useState(currentModel ?? '');
   const [catalogue, setCatalogue] = useState<CheckAiProviderResponse | null>(null);
@@ -129,6 +129,15 @@ export function ProviderWizard({
   };
 
   const usable = modelsFor(purpose, catalogue?.models ?? []);
+  /**
+   * Whether this purpose can be tried before it is saved.
+   *
+   * Everything else can: a phrase to embed, a sentence to write, a red square to
+   * look at. A transcription model needs speech, and speech is the one thing
+   * this product cannot make up — a synthesised clip would test the synthesiser.
+   * So the wizard says what the test is instead of pretending to have run one.
+   */
+  const testable = purpose !== 'transcription';
   const outcome =
     purpose !== 'embedding'
       ? wrote && {
@@ -181,19 +190,26 @@ export function ProviderWizard({
                 <Select
                   value={kind}
                   onChange={(e) => {
-                    setKind(e.target.value as AiProviderKind);
+                    const next = e.target.value as AiProviderKind;
+                    // The name follows the kind while it is still the suggested
+                    // one: a provider called Ollama that is not one is a row an
+                    // operator will misread later.
+                    if (name === SUGGESTED_NAME[kind]) setName(SUGGESTED_NAME[next]);
+                    setKind(next);
                     setCatalogue(null);
                   }}
                 >
                   <option value="ollama">{t('ai.kinds.ollama')}</option>
-                  {/* Visible and not selectable: a provider that needs an API
-                      key needs somewhere to keep one, and there is nowhere
-                      yet. Hiding it would read as "not supported". */}
-                  <option value="openai_compatible" disabled>
-                    {t('ai.kinds.openai_compatible_not_yet')}
-                  </option>
+                  <option value="openai_compatible">{t('ai.kinds.openai_compatible')}</option>
                 </Select>
               </Field>
+              {/* Said here rather than in a field that does not exist: a key
+                  cannot be typed in, and a server that needs one has to be
+                  given it in the environment (ADR 0021). Most of the servers
+                  people run at home need none. */}
+              {kind === 'openai_compatible' && (
+                <p className="text-sm text-muted-foreground">{t('ai.wizard.key_hint')}</p>
+              )}
               <Field label={t('ai.wizard.name')} hint={t('ai.wizard.name_hint')}>
                 <Input
                   value={name}
@@ -236,18 +252,7 @@ export function ProviderWizard({
                   models: t('ai.n_models', { count: catalogue?.models.length ?? 0 }),
                 })}
               />
-              <Field
-                label={t(
-                  purpose === 'embedding' ? 'ai.wizard.model' : 'ai.wizard.model_generation',
-                )}
-                hint={t(
-                  purpose === 'embedding'
-                    ? 'ai.wizard.model_hint'
-                    : purpose === 'vision'
-                      ? 'ai.wizard.model_vision_hint'
-                      : 'ai.wizard.model_generation_hint',
-                )}
-              >
+              <Field label={t(MODEL_LABEL[purpose])} hint={t(MODEL_HINT[purpose])}>
                 <Select
                   value={model}
                   onChange={(e) => {
@@ -269,27 +274,29 @@ export function ProviderWizard({
                 </Select>
               </Field>
               {usable.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {t(
-                    purpose === 'embedding'
-                      ? 'ai.wizard.no_models'
-                      : 'ai.wizard.no_models_generation',
-                  )}
-                </p>
+                <p className="text-sm text-muted-foreground">{t(NO_MODELS[purpose])}</p>
               )}
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={!model || test.isPending}
-                  onClick={() => test.mutate()}
-                >
-                  {test.isPending && <Loader2 aria-hidden="true" className="size-4 animate-spin" />}
-                  {t('ai.wizard.test_model')}
-                </Button>
-                {outcome && <Outcome ok={outcome.ok} text={outcome.text} />}
-              </div>
+              {testable ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!model || test.isPending}
+                    onClick={() => test.mutate()}
+                  >
+                    {test.isPending && (
+                      <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+                    )}
+                    {t('ai.wizard.test_model')}
+                  </Button>
+                  {outcome && <Outcome ok={outcome.ok} text={outcome.text} />}
+                </div>
+              ) : (
+                /* Said rather than left as a missing button, so that saving this
+                   does not feel like skipping a step somebody else got. */
+                <p className="text-sm text-muted-foreground">{t('ai.wizard.no_test')}</p>
+              )}
               <ErrorNotice error={test.error} />
               <ErrorNotice error={error} />
             </FieldGroup>
@@ -314,6 +321,34 @@ export function ProviderWizard({
   );
 }
 
+/** What a provider of each kind is called before anybody renames it. */
+const SUGGESTED_NAME: Record<AiProviderKind, string> = {
+  ollama: 'Ollama',
+  openai_compatible: 'OpenAI-compatible',
+};
+
+/** What the model field is called, and what it says underneath, per purpose. */
+const MODEL_LABEL: Record<WizardPurpose, string> = {
+  embedding: 'ai.wizard.model',
+  generation: 'ai.wizard.model_generation',
+  vision: 'ai.wizard.model_generation',
+  transcription: 'ai.wizard.model_transcription',
+};
+
+const MODEL_HINT: Record<WizardPurpose, string> = {
+  embedding: 'ai.wizard.model_hint',
+  generation: 'ai.wizard.model_generation_hint',
+  vision: 'ai.wizard.model_vision_hint',
+  transcription: 'ai.wizard.model_transcription_hint',
+};
+
+const NO_MODELS: Record<WizardPurpose, string> = {
+  embedding: 'ai.wizard.no_models',
+  generation: 'ai.wizard.no_models_generation',
+  vision: 'ai.wizard.no_models_generation',
+  transcription: 'ai.wizard.no_models_transcription',
+};
+
 /**
  * The models worth offering for a purpose.
  *
@@ -326,6 +361,10 @@ export function ProviderWizard({
  * offering one for the other job is offering a test that cannot pass.
  */
 function modelsFor(purpose: WizardPurpose, models: readonly CatalogueModel[]): CatalogueModel[] {
+  // Nothing is filtered out for transcription. A model that listens is not a
+  // model that writes, no catalogue has a word for what it is, and a filter
+  // built on the two words that exist would hide every model that can do it.
+  if (purpose === 'transcription') return [...models];
   // A model that looks at pictures is a model that writes, so the same
   // capability is what a catalogue reports for it. Which of those can actually
   // see is not something a list of names says — the test is what finds out.

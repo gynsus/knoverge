@@ -9,6 +9,7 @@ import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
 import type { Description } from './description.ts';
+import type { Transcript } from './transcription.ts';
 import type { AttachmentRecord, AttachmentRepository } from './repository.ts';
 import type { AttachmentStore } from './service.ts';
 
@@ -47,6 +48,17 @@ export interface AttachmentExtractorOptions {
    * kept, downloadable, and `unsupported` (rule 9).
    */
   describe?: (mediaType: string, bytes: Uint8Array) => Promise<Description | null>;
+  /**
+   * A model that can listen to a recording, when the installation has one.
+   *
+   * Asked on the same terms as the describer, and answering null leaves the file
+   * where it was: kept, downloadable and `unsupported`.
+   */
+  transcribe?: (
+    mediaType: string,
+    bytes: Uint8Array,
+    filename: string,
+  ) => Promise<Transcript | null>;
   /** The most one knowledge item may hold. */
   maxCharacters: number;
   clock?: Clock;
@@ -68,8 +80,14 @@ export const DOCUMENT_TYPE = 'document' as const;
  *
  * Long enough that a slow file is not taken twice, short enough that a worker
  * killed mid-read does not strand a file until somebody notices.
+ *
+ * It has to be longer than the longest a single file can take, and the longest
+ * is a recording: `TRANSCRIPTION_TIMEOUT_MS` in the transcription provider gives one
+ * ten minutes before it gives up. A window equal to that would let the next
+ * sweep take a file the first worker is still transcribing — the same recording
+ * paid for twice, and two documents from it.
  */
-export const STALE_CLAIM_MS = 10 * 60_000;
+export const STALE_CLAIM_MS = 30 * 60_000;
 
 /**
  * Turning a file into knowledge somebody can find.
@@ -141,11 +159,8 @@ export class AttachmentExtractor {
     // Nothing here could read it, so ask whatever can look at it. A description
     // is a model's words about somebody's picture, so the item it becomes says
     // which model wrote them (ADR 0031).
-    const described =
-      read.kind === 'unsupported' && this.o.describe
-        ? await this.o.describe(attachment.mediaType, bytes)
-        : null;
-    const found: Extraction = described ? { kind: 'text', text: described.text } : read;
+    const asked = read.kind === 'unsupported' ? await this.ask(attachment, bytes) : null;
+    const found: Extraction = asked ? { kind: 'text', text: asked.text } : read;
     if (found.kind !== 'text') {
       await this.settle(attachment, found.kind, found.reason);
       return {
@@ -161,7 +176,7 @@ export class AttachmentExtractor {
       title: titleOf(attachment.filename),
       body: found.text.endsWith('\n') ? found.text : `${found.text}\n`,
       type: DOCUMENT_TYPE,
-      ...(described ? { draftedBy: described.model } : {}),
+      ...(asked ? { draftedBy: asked.model } : {}),
       sources: [
         {
           type: 'attachment' as const,
@@ -198,6 +213,26 @@ export class AttachmentExtractor {
     const result = await this.o.knowledge.create(actor, input);
     await this.settle(attachment, 'extracted', null);
     return { attachmentId: attachment.id, state: 'extracted', itemId: result.item.id };
+  }
+
+  /**
+   * Whatever can be asked about a file nothing here could read.
+   *
+   * One or the other, never both: a picture is looked at and a recording is
+   * listened to, and a file that is neither is simply kept.
+   */
+  private async ask(
+    attachment: AttachmentRecord,
+    bytes: Uint8Array,
+  ): Promise<Description | Transcript | null> {
+    if (this.o.describe) {
+      const described = await this.o.describe(attachment.mediaType, bytes);
+      if (described) return described;
+    }
+    if (this.o.transcribe) {
+      return this.o.transcribe(attachment.mediaType, bytes, attachment.filename);
+    }
+    return null;
   }
 
   private async bytes(attachment: AttachmentRecord): Promise<Uint8Array> {

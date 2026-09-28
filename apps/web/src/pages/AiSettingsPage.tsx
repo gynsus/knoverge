@@ -79,7 +79,16 @@ export function AiSettingsPage() {
   const embedding = ai?.assignments.find((a) => a.purpose === 'embedding');
   const generation = ai?.assignments.find((a) => a.purpose === 'generation');
   const vision = ai?.assignments.find((a) => a.purpose === 'vision');
+  const transcription = ai?.assignments.find((a) => a.purpose === 'transcription');
   const providers = ai?.providers ?? [];
+  /**
+   * The providers that could listen.
+   *
+   * Only the OpenAI-compatible shape has an endpoint that takes a recording.
+   * Ollama does not, so offering its models here would be offering a choice
+   * that cannot be asked anything.
+   */
+  const listeners = providers.filter((p) => p.kind === 'openai_compatible');
   /** The provider the generation model lives at, when it is still configured. */
   const generatingAt = providers.find((p) => p.id === generation?.provider_id);
   /** Where a purpose row's wizard starts: the only provider, when there is one. */
@@ -211,13 +220,30 @@ export function AiSettingsPage() {
         stopping={stop.isPending}
       />
 
+      {/* The same row again, for the model that hears rather than sees. Its
+          list of providers is narrower than the others', and the reason is in
+          the line the section shows when that list is empty. */}
+      <Purpose
+        purpose="transcription"
+        assignment={transcription}
+        at={providers.find((p) => p.id === transcription?.provider_id)}
+        providers={listeners}
+        only={listeners.length === 1 ? listeners[0] : undefined}
+        loading={settings.isPending}
+        onChoose={(existing) =>
+          setWizard({ purpose: 'transcription', ...(existing ? { existing } : {}) })
+        }
+        onStop={() => stop.mutate('transcription')}
+        stopping={stop.isPending}
+      />
+
       {wizard && (
         <ProviderWizard
           open
           onOpenChange={(next) => !next && setWizard(null)}
           existing={wizard.existing}
           purpose={wizard.purpose}
-          currentModel={currentModelFor(wizard, embedding, generation)}
+          currentModel={currentModelFor(wizard, ai?.assignments ?? [])}
           onFinish={(result) => connect.mutate({ result, purpose: wizard.purpose })}
           saving={connect.isPending}
           error={connect.error}
@@ -314,10 +340,11 @@ function Purpose({
   onStop,
   stopping,
 }: {
-  purpose: 'vision';
+  purpose: 'vision' | 'transcription';
   assignment: AiAssignment | undefined;
   /** The provider it lives at, when it is still configured. */
   at: AiProviderSummary | undefined;
+  /** The providers that could do this job, which is not always all of them. */
   providers: readonly AiProviderSummary[];
   /** Where the wizard starts when there is only one provider to start from. */
   only: AiProviderSummary | undefined;
@@ -369,7 +396,7 @@ function Purpose({
             {t(`ai.${purpose}.choose`)}
           </Button>
           {providers.length === 0 && (
-            <p className="text-xs text-muted-foreground">{t('ai.generation.connect_first')}</p>
+            <p className="text-xs text-muted-foreground">{t(`ai.${purpose}.connect_first`)}</p>
           )}
         </div>
       )}
@@ -400,15 +427,16 @@ function trimSlashes(url: string): string {
 /**
  * The model the wizard should open on.
  *
- * The one already doing that job at that provider, so reopening starts where
- * things are rather than at an empty select.
+ * The one already doing *that* job at *that* provider, so reopening starts where
+ * things are rather than at an empty select — and never the model doing some
+ * other job, which is what offering the embedding model to a purpose that has
+ * none would do.
  */
 function currentModelFor(
   wizard: { existing?: AiProviderSummary; purpose: WizardPurpose },
-  embedding: AiAssignment | undefined,
-  generation: AiAssignment | undefined,
+  assignments: readonly AiAssignment[],
 ): string | undefined {
-  const assignment = wizard.purpose === 'generation' ? generation : embedding;
+  const assignment = assignments.find((a) => a.purpose === wizard.purpose);
   if (!assignment || !wizard.existing) return undefined;
   return assignment.provider_id === wizard.existing.id ? assignment.model : undefined;
 }

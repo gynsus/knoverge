@@ -148,6 +148,13 @@
       "when": 1790593702345,
       "tag": "0020_attachment_extraction",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790621103670,
+      "tag": "0021_ai_purposes",
+      "breakpoints": true
     }
   ]
 }

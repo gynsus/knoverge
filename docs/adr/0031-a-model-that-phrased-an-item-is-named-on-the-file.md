@@ -60,6 +60,11 @@ phrased it. `knowledge_get` answers it, the item's drawer shows it, and the brow
 sends it for a summary it drafted, which is the one place in the product where a model
 writes text a person then keeps.
 
+The claim that this is the only place a model writes text a person keeps stopped
+being true in Milestone 12: a description of a picture and a transcript of a
+recording carry the same field and are written without being read first. ADR 0032
+records that.
+
 It is not a review state and does not weaken one: `human_reviewed` and `drafted_by`
 together are the ordinary case for a drafted summary, and they say different things —
 who checked it, and what produced the first version of it.

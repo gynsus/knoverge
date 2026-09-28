@@ -272,12 +272,19 @@ without a base URL and a model is refused at startup rather than run
 half-configured, because an installation that silently embedded nothing would
 report `semantic_search: false` and give an operator nothing to look at.
 
-API keys are the one thing the interface cannot set. Storing one needs
-encryption at rest, a key to encrypt it with, and an answer for what happens
-when that is lost; until that exists, a key stays in `KNOVERGE_EMBEDDING_API_KEY`
-and is sent to the provider whose address matches
-`KNOVERGE_EMBEDDING_BASE_URL`. Ollama needs no key, which is why it is the one
-the wizard can connect on its own.
+API keys are the one thing the interface cannot set. A key stays in
+`KNOVERGE_EMBEDDING_API_KEY` and is sent to the provider whose address matches
+`KNOVERGE_EMBEDDING_BASE_URL` — so a second provider at a different address gets
+no key, whatever it is for. The wizard connects either kind and says so where the
+key would have gone: most servers an operator runs themselves — Ollama, a local
+Whisper server, a llama.cpp build — need none, and refusing to connect them at
+all because some servers need a key would be refusing the usual case.
+
+What used to stand in the way of a field here was that there was nowhere safe to
+put what it held. That is no longer true: `KNOVERGE_ENCRYPTION_KEY` and the
+sealing that keeps webhook signing secrets arrived with webhooks, and a provider
+key would be kept the same way. Nobody has built the field yet, which is the only
+reason it is not there.
 
 The dimension is not configured — it is read from the model's own first answer.
 Changing model is safe: the new one fills a profile of its own while the old
