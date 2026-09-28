@@ -6,6 +6,7 @@ import {
   RemoveAiProviderRequest,
   SaveAiProviderRequest,
   TestAiGenerationRequest,
+  TestAiVisionRequest,
   TestAiGenerationResponse,
   TestAiModelRequest,
   TestAiModelResponse,
@@ -46,6 +47,7 @@ function settings(view: AiSettingsView): AiSettings {
     })),
     embeddings_enabled: view.embeddingsEnabled,
     generation_enabled: view.generationEnabled,
+    vision_enabled: view.visionEnabled,
   };
 }
 
@@ -191,6 +193,30 @@ export function registerAdminAiRoutes(app: FastifyInstance, services: Services):
       return {
         ok: outcome.ok,
         dimensions: outcome.dimensions,
+        latency_ms: outcome.latencyMs,
+        error: outcome.error,
+      };
+    },
+  );
+
+  r.post(
+    '/v1/admin/ai.test_vision',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { body: TestAiVisionRequest, response: { 200: TestAiGenerationResponse } },
+    },
+    async (request) => {
+      await requirePermission(services, request, 'workspace.admin');
+      // The same answer shape as a generation test, because it is the same kind
+      // of answer: what the model said, and how long it took to say it.
+      const outcome = await services.ai.testVision({
+        kind: request.body.kind,
+        baseUrl: request.body.base_url,
+        model: request.body.model,
+      });
+      return {
+        ok: outcome.ok,
+        text: outcome.text,
         latency_ms: outcome.latencyMs,
         error: outcome.error,
       };

@@ -58,6 +58,7 @@ export interface AiSettingsView {
   assignments: AiAssignmentRecord[];
   embeddingsEnabled: boolean;
   generationEnabled: boolean;
+  visionEnabled: boolean;
 }
 
 export interface SaveProviderInput {
@@ -109,6 +110,19 @@ const TEST_INSTRUCTION =
   'Reply with one short sentence describing what the text says. Add nothing else.';
 
 /** A ceiling for the test, so a model that will not stop does not hold the page. */
+/** What the probe asks, in the fewest words a model can get wrong. */
+const VISION_TEST_INSTRUCTION =
+  'Look at the image. Answer with the colour of the square in it, in one word.';
+
+/**
+ * The probe: a red square on white, 64 by 64, a hundred and forty-six bytes.
+ *
+ * Drawn rather than fetched, because a test that reached for a picture on the
+ * internet would be this product contacting a host nobody configured (rule 12).
+ */
+const PROBE_IMAGE_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAWUlEQVR42u3ZQQ0AMAgEQZTgXwqa+qqKEmjmsgbmfXGWLwAAAAAAAAAAAAAA2gCV+TQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgHkADw0AAAAAAAAAAADAN4ALS+86SmaX/BIAAAAASUVORK5CYII=';
+
 const TEST_MAX_TOKENS = 120;
 
 /** How much of a test answer is worth carrying back to a form. */
@@ -157,6 +171,10 @@ export class AiSettingsService {
       // report the feature as on and refuse every use of it.
       generationEnabled:
         this.o.generation !== undefined && assignments.some((a) => a.purpose === 'generation'),
+      // The same two halves, and the same factory: a vision model is a chat
+      // model that can be handed a picture.
+      visionEnabled:
+        this.o.generation !== undefined && assignments.some((a) => a.purpose === 'vision'),
     };
   }
 
@@ -357,15 +375,71 @@ export class AiSettingsService {
   }
 
   /**
+   * Whether a model can actually look at a picture.
+   *
+   * A catalogue lists names and sometimes capabilities, and neither says which
+   * models can see — so this sends one. The picture is a red square on white and
+   * the question is what colour the shape is: an answer a person reads in a
+   * second, and one a model that cannot see gets wrong out loud rather than
+   * quietly. What the screen shows is the answer itself, not a tick.
+   */
+  async testVision(input: {
+    kind: AiProviderKind;
+    baseUrl: string;
+    model: string;
+  }): Promise<GenerationTestOutcome> {
+    const started = this.clock.now().getTime();
+    const since = () => Math.max(0, this.clock.now().getTime() - started);
+    if (!this.o.generation) {
+      return { ok: false, text: null, latencyMs: null, error: 'this build cannot generate text' };
+    }
+    try {
+      const model = this.o.generation({
+        kind: input.kind,
+        baseUrl: input.baseUrl.replace(/\/+$/u, ''),
+        model: input.model,
+      });
+      const answer = await model.generate({
+        instruction: VISION_TEST_INSTRUCTION,
+        input: '',
+        image: { mediaType: 'image/png', base64: PROBE_IMAGE_BASE64 },
+        maxOutputTokens: TEST_MAX_TOKENS,
+      });
+      if (answer.text.trim() === '') {
+        return { ok: false, text: null, latencyMs: since(), error: 'the model said nothing' };
+      }
+      return {
+        ok: true,
+        text: answer.text.slice(0, TEST_ANSWER_LIMIT),
+        latencyMs: since(),
+        error: null,
+      };
+    } catch (error) {
+      return { ok: false, text: null, latencyMs: since(), error: oneLine(error) };
+    }
+  }
+
+  /**
    * What generates now, or null when nothing does.
    *
    * Built fresh each time rather than cached, unlike the embedding one: a
    * generation provider learns nothing from its first answer, so there is no
    * state to lose and nothing to keep.
    */
-  readonly generationSource: GenerationSource = async () => {
+  readonly generationSource: GenerationSource = async () => this.chat('generation');
+
+  /**
+   * What looks at a picture now, or null when nothing does.
+   *
+   * The same factory as generation, because the difference is the model and not
+   * the protocol — and asked again on every use, because an operator assigns one
+   * while the product runs (ADR 0021).
+   */
+  readonly visionSource: GenerationSource = async () => this.chat('vision');
+
+  private async chat(purpose: 'generation' | 'vision') {
     if (!this.o.generation) return null;
-    const assignment = await this.o.repository.assignment('generation');
+    const assignment = await this.o.repository.assignment(purpose);
     if (!assignment) return null;
     const provider = await this.o.repository.findProvider(assignment.providerId);
     if (!provider) return null;
@@ -374,7 +448,7 @@ export class AiSettingsService {
       baseUrl: provider.baseUrl,
       model: assignment.model,
     });
-  };
+  }
 
   /**
    * What embeds now, or null when nothing does.

@@ -19,6 +19,7 @@ import {
   AgentService,
   AttachmentExtractor,
   AttachmentService,
+  MediaDescriber,
   MAX_BODY_BYTES,
   AuthorizationAdminService,
   DomainError,
@@ -431,6 +432,10 @@ export function createServices(config: ServicesConfig) {
     knowledge,
     proposals,
     extract: extractText,
+    // Asked only about what nothing here could read, and only if an operator has
+    // assigned a model that can look at a picture (rule 9).
+    describe: (mediaType, bytes) =>
+      new MediaDescriber({ vision: ai.visionSource }).describe(mediaType, bytes),
     maxCharacters: MAX_BODY_BYTES,
   });
   const taxonomy = new TaxonomyService({

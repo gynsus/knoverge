@@ -135,7 +135,8 @@ async function fromPdf(bytes: Uint8Array): Promise<Extraction> {
     // the file is kept for whoever can read it.
     return {
       kind: 'unsupported',
-      reason: 'this PDF has no text layer; it is a scan, and reading one needs OCR',
+      reason:
+        'this PDF has no text layer; it is a scan, and a page inside one would have to be rendered to an image before anything could look at it',
     };
   }
   return { kind: 'text', text: trimmed };

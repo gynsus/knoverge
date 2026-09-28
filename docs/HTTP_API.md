@@ -124,6 +124,9 @@ POST /v1/admin/ai.assign                    puts a model to work for a purpose
 POST /v1/admin/ai.unassign                  stops using one; the vectors already written stay
 POST /v1/admin/ai.test                      one embedding of one short text: dimensions and latency
 POST /v1/admin/ai.test_generation           one short answer from a model that writes: the text and latency
+POST /v1/admin/ai.test_vision               whether a model can see: a red square is sent and what it
+                                            said about it comes back, because a catalogue never says
+                                            which models look
 
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant

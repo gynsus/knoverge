@@ -280,7 +280,10 @@ Two things the first part left for the rest of the milestone, both deliberate:
 
 ## Milestone 12 - media understanding
 
-_Not started._
+_In progress: an image is described by an assigned vision model, which is also how
+the text in a screenshot is read. Audio and video transcription is not built, and
+neither is a scanned PDF — a page inside one has to be rendered to an image first,
+and rendering needs a canvas this product does not have._
 
 Deliver through the intelligence provider abstraction:
 

@@ -8,6 +8,7 @@ import type { ProposalService } from '../proposals/service.ts';
 import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
+import type { Description } from './description.ts';
 import type { AttachmentRecord, AttachmentRepository } from './repository.ts';
 import type { AttachmentStore } from './service.ts';
 
@@ -37,6 +38,15 @@ export interface AttachmentExtractorOptions {
     bytes: Uint8Array,
     maxCharacters: number,
   ) => Extraction | Promise<Extraction>;
+  /**
+   * A model that can look at a picture, when the installation has one.
+   *
+   * Asked only about what nothing here can read on its own, and only after that
+   * answer is in: reading is free and looking is somebody else's GPU. Null when
+   * no vision model is assigned, which leaves the file exactly where it was —
+   * kept, downloadable, and `unsupported` (rule 9).
+   */
+  describe?: (mediaType: string, bytes: Uint8Array) => Promise<Description | null>;
   /** The most one knowledge item may hold. */
   maxCharacters: number;
   clock?: Clock;
@@ -127,7 +137,15 @@ export class AttachmentExtractor {
       throw new DomainError('NOT_FOUND', 'the file for this attachment is not in the store');
     }
     const bytes = await this.bytes(attachment);
-    const found = await this.o.extract(attachment.mediaType, bytes, this.o.maxCharacters);
+    const read = await this.o.extract(attachment.mediaType, bytes, this.o.maxCharacters);
+    // Nothing here could read it, so ask whatever can look at it. A description
+    // is a model's words about somebody's picture, so the item it becomes says
+    // which model wrote them (ADR 0031).
+    const described =
+      read.kind === 'unsupported' && this.o.describe
+        ? await this.o.describe(attachment.mediaType, bytes)
+        : null;
+    const found: Extraction = described ? { kind: 'text', text: described.text } : read;
     if (found.kind !== 'text') {
       await this.settle(attachment, found.kind, found.reason);
       return {
@@ -143,6 +161,7 @@ export class AttachmentExtractor {
       title: titleOf(attachment.filename),
       body: found.text.endsWith('\n') ? found.text : `${found.text}\n`,
       type: DOCUMENT_TYPE,
+      ...(described ? { draftedBy: described.model } : {}),
       sources: [
         {
           type: 'attachment' as const,
