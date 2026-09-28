@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { KnowledgeResponse, TERMS_VERSION, type WorkspaceId } from '@knoverge/contracts';
+import { FileAttachmentStore } from '@knoverge/attachments';
 import { IntegrityService, parseLedgerKey } from '@knoverge/core';
 import {
   TAXONOMY_PATH,
@@ -34,6 +35,7 @@ let services: Services;
 let app: FastifyInstance;
 let admin: Browser;
 let integrity: IntegrityService;
+let attachmentStore: FileAttachmentStore;
 let workspaceId: WorkspaceId;
 
 class Browser {
@@ -108,6 +110,7 @@ beforeAll(async () => {
   // Composed here rather than in the server: nothing in the server calls it, and
   // the command line is where it belongs. What it needs is the repositories and a
   // git store over the same data directory.
+  attachmentStore = new FileAttachmentStore(dataDir);
   integrity = new IntegrityService({
     workspaces: services.repositories.workspaces,
     items: services.repositories.knowledge,
@@ -115,6 +118,8 @@ beforeAll(async () => {
     categories: services.repositories.categories,
     operations: services.repositories.operations,
     versions: services.repositories.taxonomyVersions,
+    attachments: services.repositories.attachments,
+    holdsFile: (workspace, hash) => attachmentStore.has(workspace, hash),
     ledger: services.ledger,
     git: createGitStore({ dataDir }),
     parseItem,
@@ -365,5 +370,39 @@ describe('knoverge integrity check', () => {
     const finding = report.findings.find((f) => f.kind === 'head_unknown');
     expect(finding, JSON.stringify(report.findings)).toBeDefined();
     expect(finding?.detail).toContain('no revision and no taxonomy version');
+  });
+
+  it('finds a file a row claims and the store does not hold', async () => {
+    const bytes = new TextEncoder().encode('The only copy there is.\n');
+    const stored = await attachmentStore.put(workspaceId, bytes);
+    const actor = (await services.repositories.actors.listForWorkspace(workspaceId))[0]!;
+    await services.uow.run((tx) =>
+      services.repositories.attachments.insert(tx, {
+        id: 'att_01J8Z3M4Q9V0X7K2B5N6P8R1TG' as never,
+        workspaceId,
+        contentHash: stored.hash,
+        mediaType: 'text/plain',
+        sizeBytes: bytes.byteLength,
+        filename: 'only-copy.txt',
+        originalUri: null,
+        extractionState: 'pending',
+        extractionError: null,
+        documentItemId: null,
+        uploadedByActorId: actor.id,
+        createdAt: new Date(),
+      }),
+    );
+    expect(
+      (await integrity.check([workspaceId])).findings.some((f) => f.kind === 'attachment_missing'),
+    ).toBe(false);
+
+    // An attachment is not in Git and cannot be rebuilt from anything: the bytes
+    // are the only copy, so a row without them is the unrepairable kind and the
+    // check has to say so rather than pass a workspace whose files are gone.
+    await attachmentStore.remove(workspaceId, stored.hash);
+    const report = await integrity.check([workspaceId]);
+    const finding = report.findings.find((f) => f.kind === 'attachment_missing');
+    expect(finding, JSON.stringify(report.findings)).toBeDefined();
+    expect(finding?.detail).toContain(stored.hash);
   });
 });

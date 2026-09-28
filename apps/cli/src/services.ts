@@ -27,6 +27,7 @@ import {
   keyring,
   parseLedgerKey,
 } from '@knoverge/core';
+import { FileAttachmentStore } from '@knoverge/attachments';
 import { createDatabase, createRepositories, createUnitOfWork } from '@knoverge/db';
 import {
   TAXONOMY_PATH,
@@ -173,6 +174,8 @@ export function createServices() {
     });
   });
   const git = lazy(() => createGitStore({ dataDir: required('KNOVERGE_DATA_DIR') }));
+  /** The same directory the repositories are under; attachments sit beside them. */
+  const attachmentStore = lazy(() => new FileAttachmentStore(required('KNOVERGE_DATA_DIR')));
   const crossStore = lazy(
     () =>
       new CrossStoreWriter({
@@ -227,6 +230,11 @@ export function createServices() {
         categories: repositories.categories,
         operations: repositories.operations,
         versions: repositories.taxonomyVersions,
+        attachments: repositories.attachments,
+        // The same store the server writes with, over the same data directory:
+        // the check asks whether a file a row claims is on disk, and a second
+        // idea of where files live would answer for the wrong directory.
+        holdsFile: (workspace, hash) => attachmentStore().has(workspace, hash),
         ledger: ledger(),
         git: git(),
         parseItem,

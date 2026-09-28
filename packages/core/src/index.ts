@@ -1,4 +1,12 @@
 export type { ActorContext } from './actor-context.ts';
+export type { AttachmentRecord, AttachmentRepository } from './attachments/repository.ts';
+export {
+  AttachmentService,
+  type AttachmentServiceOptions,
+  type AttachmentStore,
+  type UploadAttachmentInput,
+  type UploadResult,
+} from './attachments/service.ts';
 export type { WebhookPatch, WebhookRecord, WebhookRepository } from './webhooks/repository.ts';
 export {
   DELIVERY_TIMEOUT_MS,

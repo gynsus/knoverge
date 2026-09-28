@@ -16,12 +16,13 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@knoverge/attachments": "workspace:*",
     "@knoverge/auth": "workspace:*",
-    "@modelcontextprotocol/sdk": "catalog:",
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",
     "@knoverge/git-store": "workspace:*",
+    "@modelcontextprotocol/sdk": "catalog:",
     "@node-rs/argon2": "catalog:",
     "commander": "catalog:",
     "drizzle-orm": "catalog:",

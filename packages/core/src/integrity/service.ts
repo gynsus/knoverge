@@ -2,6 +2,7 @@ import type { ItemStatus, KnowledgeItemId, RevisionId, WorkspaceId } from '@knov
 
 import type { Frontmatter } from '@knoverge/contracts';
 
+import type { AttachmentRepository } from '../attachments/repository.ts';
 import { compareFrontmatter } from '../knowledge/frontmatter.ts';
 import type { KnowledgeRepository, RevisionRepository } from '../knowledge/repository.ts';
 import type { EventLedger } from '../ledger/ledger.ts';
@@ -36,7 +37,16 @@ export type FindingKind =
    * hashes to what it should — so the only way to notice one is to look at HEAD.
    * `GIT_REPOSITORY.md` names this as the gap the guard cannot see.
    */
-  | 'head_unknown';
+  | 'head_unknown'
+  /**
+   * A row says this workspace holds a file, and the file is not there.
+   *
+   * The bytes are the only copy — an attachment is not in Git and cannot be
+   * rebuilt from anything — so this is the unrepairable kind, like a knowledge
+   * file that does not hash to what was recorded. What it usually means is a data
+   * directory restored from a backup older than the row (ADR 0008).
+   */
+  | 'attachment_missing';
 
 export interface Finding {
   workspaceId: WorkspaceId;
@@ -83,6 +93,9 @@ export interface IntegrityOptions {
   };
   /** Where the taxonomy lives in a repository. */
   taxonomyPath: string;
+  /** Every file a workspace claims to hold, and whether it is on disk. */
+  attachments: AttachmentRepository;
+  holdsFile: (workspaceId: WorkspaceId, contentHash: string) => Promise<boolean>;
 }
 
 /** How many items to read at a time; a workspace may hold a great many. */
@@ -152,6 +165,7 @@ export class IntegrityService {
 
     await this.checkTaxonomy(workspaceId, say);
     await this.checkHead(workspaceId, say);
+    await this.checkAttachments(workspaceId, say);
 
     let items = 0;
     let after: KnowledgeItemId | undefined;
@@ -173,6 +187,29 @@ export class IntegrityService {
     }
 
     return { workspaceId, slug, items, events: chain.count, findings };
+  }
+
+  /**
+   * Every file this workspace says it holds, against the store.
+   *
+   * The other direction — a file on disk with no row — is not a finding: an
+   * upload writes the bytes before the row on purpose, so a crash between the two
+   * leaves a few kilobytes nobody asked for rather than a record of something
+   * that is not there. Unreferenced bytes cost disk; a missing file costs the
+   * file.
+   */
+  private async checkAttachments(
+    workspaceId: WorkspaceId,
+    say: (kind: FindingKind, objectId: string, detail: string) => void,
+  ): Promise<void> {
+    for (const attachment of await this.o.attachments.list(workspaceId, 10_000)) {
+      if (await this.o.holdsFile(workspaceId, attachment.contentHash)) continue;
+      say(
+        'attachment_missing',
+        attachment.id,
+        `${attachment.contentHash} is recorded and not in the store`,
+      );
+    }
   }
 
   /**

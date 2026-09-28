@@ -252,7 +252,8 @@ ADR required before implementation.
 
 ## Milestone 11 - documents and attachments
 
-_Not started._
+_In progress: storage, the record and the HTTP surface are in; text extraction,
+the interface and the MCP tools are not._
 
 Deliver:
 
@@ -265,6 +266,17 @@ Deliver:
 See ADR 0008. Files live at `KNOVERGE_DATA_DIR/attachments/<workspace_id>/<sha256>`,
 beside `repositories/<workspace_id>` and the way `ARCHITECTURE.md` has always
 described them.
+
+Two things the first part left for the rest of the milestone, both deliberate:
+
+- **The item made from a file meets the policy like any other write.** An agent
+  holding `knowledge.write` may put a file here, because a file is not knowledge.
+  What the file *says* becomes a `document` item, and that write goes through the
+  policy — an agent's upload produces a proposal, not canonical knowledge (rule 5).
+  Extraction is where that is decided, and it has to be decided there.
+- **An upload is held in memory while it is hashed and written**, which is why
+  `KNOVERGE_ATTACHMENT_MAX_MB` is capped at 128. Streaming it through the store
+  would remove the ceiling; it is not built, and nothing needs it yet.
 
 ## Milestone 12 - media understanding
 

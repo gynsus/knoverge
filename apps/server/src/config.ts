@@ -88,6 +88,16 @@ const EnvSchema = z.object({
   KNOVERGE_EMBEDDING_BASE_URL: z.string().url().optional(),
   KNOVERGE_EMBEDDING_API_KEY: z.string().min(1).optional(),
   KNOVERGE_EMBEDDING_MODEL: z.string().min(1).optional(),
+  /**
+   * The largest file this installation takes in, in megabytes.
+   *
+   * A limit rather than none: an upload is written to the data directory, and a
+   * self-hosted installation's disk is the operator's disk. The ceiling is 128
+   * because an upload is held in memory while it is hashed and written, so this
+   * is a limit on memory as much as on disk — streaming it through the store
+   * would remove that, and is not built.
+   */
+  KNOVERGE_ATTACHMENT_MAX_MB: z.coerce.number().int().min(1).max(128).default(25),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 });
 
@@ -128,6 +138,8 @@ export interface Config {
   trustProxy: boolean;
   /** What this build calls itself; the source tree's own number when unset. */
   version: string | undefined;
+  /** The largest file an upload may carry, in bytes. */
+  attachmentMaxBytes: number;
   /** What one agent credential may spend, per minute and at once. */
   agentBudgets: AgentBudgets;
   /** Null unless an operator configured a provider, which is the default. */
@@ -206,6 +218,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     logLevel: e.KNOVERGE_LOG_LEVEL,
     trustProxy: e.KNOVERGE_TRUST_PROXY,
     version: e.KNOVERGE_VERSION,
+    attachmentMaxBytes: e.KNOVERGE_ATTACHMENT_MAX_MB * 1024 * 1024,
     agentBudgets: {
       readsPerMinute: e.KNOVERGE_AGENT_READS_PER_MINUTE,
       writesPerMinute: e.KNOVERGE_AGENT_WRITES_PER_MINUTE,

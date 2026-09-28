@@ -233,6 +233,7 @@ apps/
   cli/      knoverge command line
 
 packages/
+  attachments/
   auth/
   contracts/
   core/
@@ -299,6 +300,20 @@ Responsibility: everything about the repository as a file format and as a Git re
 Built so far: hashing, slugs, `taxonomy.yaml`, and the repository itself — create, write, remove, commit, history, read at a revision. Markdown serialisation, frontmatter parsing, diff and restore arrive with knowledge items.
 
 Not here: the write lock. It is a PostgreSQL advisory lock held by the unit of work, because exclusion has to hold across processes.
+
+### `packages/attachments`
+
+Files kept by the hash of their contents under
+`KNOVERGE_DATA_DIR/attachments/<workspace id>/<sha256>`, beside the repositories
+and never in Git (ADR 0008). Paths, atomic writes, reading back, and whether a
+file is there.
+
+A package rather than a file in the server because the command line needs it too:
+`knoverge integrity check` asks whether the file a row claims is on disk, and two
+ideas of where files live would answer for two directories.
+
+Not here: what a file *means*. Text extracted from one becomes an ordinary
+`document` knowledge item with the usual provenance and review.
 
 ### `packages/search`
 
