@@ -10,6 +10,7 @@ import { ReviewPage } from './pages/ReviewPage.tsx';
 import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { AiSettingsPage } from './pages/AiSettingsPage.tsx';
+import { FilesPage } from './pages/FilesPage.tsx';
 import { WebhooksSettingsPage } from './pages/WebhooksSettingsPage.tsx';
 import { AccountSettingsPage } from './pages/AccountSettingsPage.tsx';
 import { SecuritySettingsPage } from './pages/SecuritySettingsPage.tsx';
@@ -33,6 +34,7 @@ export function App() {
         <Route element={<RequireAuth />}>
           <Route path="/" element={<HomePage />} />
           <Route path="/knowledge" element={<KnowledgePage />} />
+          <Route path="/files" element={<FilesPage />} />
           <Route path="/review" element={<ReviewPage />} />
           <Route path="/sync" element={<SyncPage />} />
           <Route path="/taxonomy" element={<TaxonomyPage />} />

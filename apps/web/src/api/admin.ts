@@ -58,6 +58,9 @@ import type {
   UpdateKnowledgeRequest,
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
+  AttachmentResponse,
+  AttachmentsResponse,
+  SingleAttachmentResponse,
   UpsertWebhookRequest,
   UpsertWebhookResponse,
   DeleteWebhookRequest,
@@ -66,7 +69,7 @@ import type {
   WorkspacesResponse,
 } from '@knoverge/contracts';
 
-import { apiGet, apiPost } from './client.ts';
+import { apiGet, apiPost, apiUpload } from './client.ts';
 
 export const adminApi = {
   ai: {
@@ -84,6 +87,25 @@ export const adminApi = {
     test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
     testGeneration: (body: TestAiGenerationRequest) =>
       apiPost<TestAiGenerationResponse>('/v1/admin/ai.test_generation', body),
+  },
+  attachments: {
+    list: (signal?: AbortSignal) =>
+      apiGet<AttachmentsResponse>('/v1/admin/attachments.list', signal),
+    get: (attachmentId: string, signal?: AbortSignal) =>
+      apiGet<SingleAttachmentResponse>(
+        `/v1/admin/attachments.get?attachment_id=${encodeURIComponent(attachmentId)}`,
+        signal,
+      ),
+    upload: (file: File, originalUri?: string) => {
+      const form = new FormData();
+      if (originalUri) form.append('original_uri', originalUri);
+      // Last, because the parser reads the parts in order and a field after the
+      // file would arrive after the route has already taken it.
+      form.append('file', file);
+      return apiUpload<AttachmentResponse>('/v1/admin/attachments.upload', form);
+    },
+    downloadUrl: (attachmentId: string) =>
+      `/v1/admin/attachments.download?attachment_id=${encodeURIComponent(attachmentId)}`,
   },
   webhooks: {
     list: (signal?: AbortSignal) => apiGet<WebhooksResponse>('/v1/admin/webhooks.list', signal),

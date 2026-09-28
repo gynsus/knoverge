@@ -96,6 +96,32 @@ export async function apiPost<T>(url: string, body: unknown, workspace?: string)
   return (await res.json()) as T;
 }
 
+/**
+ * POST a file, which is the one request this product sends that is not JSON.
+ *
+ * The same CSRF handling as `apiPost` and no `content-type` of its own: the
+ * browser writes the boundary into it, and a header set here would replace the
+ * one part of it the parser needs.
+ */
+export async function apiUpload<T>(url: string, form: FormData): Promise<T> {
+  const cached = csrfToken;
+  const send = (token: string) =>
+    fetch(url, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { accept: 'application/json', 'x-csrf-token': token, ...scopeHeaders() },
+      body: form,
+    });
+  const res = await send(cached ?? (await fetchCsrfToken()));
+  if (res.status === 403 && cached !== undefined) {
+    const retried = await send(await fetchCsrfToken());
+    if (!retried.ok) throw await parseError(retried);
+    return (await retried.json()) as T;
+  }
+  if (!res.ok) throw await parseError(res);
+  return (await res.json()) as T;
+}
+
 function postOnce(
   url: string,
   body: unknown,

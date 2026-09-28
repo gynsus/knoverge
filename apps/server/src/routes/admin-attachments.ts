@@ -11,6 +11,7 @@ import { DomainError } from '@knoverge/core';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
+import { summary as itemSummary } from './knowledge.ts';
 import { requirePermission } from '../plugins/actor-context.ts';
 import { csrfUnlessBearer } from '../plugins/security.ts';
 import type { Services } from '../services.ts';
@@ -120,7 +121,10 @@ export function registerAdminAttachmentRoutes(app: FastifyInstance, services: Se
         actor.context.workspaceId,
         request.query['attachment_id'],
       );
-      return { attachment: summary(attachment) };
+      // What came out of the file, read from the item's own side: the source is
+      // the link, so this is the same fact the frontmatter carries.
+      const items = await services.knowledge.itemsFromAttachment(actor.context, attachment.id);
+      return { attachment: summary(attachment), items: items.map(itemSummary) };
     },
   );
 

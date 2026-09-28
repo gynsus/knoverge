@@ -936,6 +936,9 @@ the second upload says `created: false`. Per workspace rather than globally,
 because "you already have this" would otherwise tell one workspace what another
 holds.
 
+`source_references.attachment_id` is what a source of type `attachment` fills in,
+and it is how "which items came out of this file" is answered.
+
 There is no column pointing at what the text became either. The item made from a
 file carries a source of type `attachment` with the attachment's id as
 `external_key` and the hash of the bytes it was read from as `content_hash`, and

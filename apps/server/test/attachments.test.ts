@@ -314,6 +314,9 @@ describe('the text inside a file', () => {
       (await admin.get(`/v1/admin/attachments.get?attachment_id=${uploaded.attachment.id}`)).json(),
     );
     expect(state.attachment.extraction_state).toBe('extracted');
+    // Read from the item's side, because that is where the link is. Somebody
+    // looking at a file wants the one question answered: what came out of it.
+    expect(state.items.map((i) => i.id)).toEqual([mine!.itemId]);
   });
 
   it('is read once, not on every sweep', async () => {
@@ -430,6 +433,13 @@ describe('the text inside a file', () => {
     // exactly as anything else the agent writes does.
     expect(outcome?.state).toBe('proposed');
     expect(outcome?.itemId).toBeNull();
+
+    // And nothing came out of the file yet, which is the honest answer while a
+    // reviewer is holding the text.
+    const held = SingleAttachmentResponse.parse(
+      (await admin.get(`/v1/admin/attachments.get?attachment_id=${uploaded.attachment.id}`)).json(),
+    );
+    expect(held.items).toEqual([]);
 
     const proposals = (await admin.get('/v1/proposal.list?status=pending')).json() as {
       proposals: { title: string; proposed_by_actor_id: string }[];

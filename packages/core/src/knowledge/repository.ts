@@ -198,6 +198,17 @@ export interface KnowledgeRepository {
   ): Promise<KnowledgeItemRecord | null>;
   list(workspaceId: WorkspaceId, options?: ListItemsOptions): Promise<KnowledgeItemRecord[]>;
   /**
+   * The items whose current revision rests on this file.
+   *
+   * The link between a file and what came out of it is the source on the item and
+   * nothing else (ADR 0008), so this is the question read from that side.
+   */
+  listFromAttachment(
+    workspaceId: WorkspaceId,
+    attachmentId: string,
+    limit?: number,
+  ): Promise<KnowledgeItemRecord[]>;
+  /**
    * Every item whose file sits under a directory, itself or nested.
    *
    * What a taxonomy change needs when a category path moves: the files under

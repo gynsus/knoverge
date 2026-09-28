@@ -269,6 +269,41 @@
     "workspace_slug": "Workspace identifier",
     "workspace_slug_hint": "Lower-case letters, digits and hyphens; used in URLs and the repository."
   },
+  "files": {
+    "title": "Files",
+    "intro": "Files this workspace holds. What a file says becomes an ordinary knowledge item — searched, reviewed and versioned like anything else — and the file itself stays here for anybody who wants the original.",
+    "drop_hint": "Drop a file here, or choose one. Text, Markdown, HTML, PDF and Word documents are read; anything else is kept and can be downloaded.",
+    "choose": "Choose a file",
+    "empty": "No files yet.",
+    "file": "File",
+    "state": "State",
+    "size": "Size",
+    "added": "Added",
+    "added_when": "Added {{when}}.",
+    "details": "File",
+    "made_from_this": "Made from this file",
+    "nothing_yet": "Nothing yet.",
+    "original": "The original",
+    "original_hint": "Kept exactly as it arrived, under the hash of its contents.",
+    "download": "Download",
+    "error": "What went wrong: {{error}}",
+    "states": {
+      "pending": "Waiting to be read",
+      "extracting": "Being read",
+      "extracted": "Read",
+      "proposed": "Waiting for review",
+      "unsupported": "Not readable here",
+      "failed": "Could not be read"
+    },
+    "explained": {
+      "pending": "A sweep reads new files about once a minute.",
+      "extracting": "A worker has it now.",
+      "extracted": "Its text is a knowledge item.",
+      "proposed": "An agent brought this file, so its text is waiting in the review queue like anything else an agent writes.",
+      "unsupported": "Nothing here reads this kind of file — a picture, a scanned PDF, an archive. It is kept and can be downloaded, and a later version may learn to read it.",
+      "failed": "The file could not be read. It is kept, and downloading it is the way to find out why."
+    }
+  },
   "home": {
     "workspaces": "Your workspaces"
   },
@@ -414,6 +449,7 @@
     },
     "shortcuts": "Keys",
     "show_changes": "See what changed",
+    "source_attachment": "Download the file",
     "source_moved": "changed since",
     "source_role": "What it is to this item",
     "source_type": "Kind of source",
@@ -526,6 +562,7 @@
   },
   "nav": {
     "agents": "Agents",
+    "files": "Files",
     "home": "Overview",
     "knowledge": "Knowledge",
     "label": "Sections",

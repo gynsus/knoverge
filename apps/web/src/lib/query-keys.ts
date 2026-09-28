@@ -19,3 +19,7 @@ export const AI_SETTINGS_KEY = ['ai-settings'] as const;
 
 /** Where this workspace pushes word that something happened. */
 export const WEBHOOKS_KEY = ['admin', 'webhooks'] as const;
+
+/** Files a workspace holds, and one of them. */
+export const ATTACHMENTS_KEY = ['admin', 'attachments'] as const;
+export const ATTACHMENT_KEY = ['admin', 'attachment'] as const;

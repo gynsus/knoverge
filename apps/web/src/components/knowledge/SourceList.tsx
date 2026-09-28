@@ -3,6 +3,8 @@ import { EvidenceRole as Roles, SourceType as Types } from '@knoverge/contracts'
 import { Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { adminApi } from '../../api/admin.ts';
+
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,7 +37,16 @@ export function SourceList({ sources }: { sources: readonly FrontmatterSource[] 
                 where it is reachable it is reachable from here. What is not
                 a web address — a repository path, a ticket, a session — is
                 text, which is what it was. */}
-            {isOpenable(source.uri) ? (
+            {/* A file this installation holds is reachable without leaving it,
+                and an attachment id is not something a reader can act on. */}
+            {source.type === 'attachment' && source.external_key ? (
+              <a
+                href={adminApi.attachments.downloadUrl(source.external_key)}
+                className="min-w-0 break-all underline-offset-4 hover:underline"
+              >
+                {t('knowledge.source_attachment')}
+              </a>
+            ) : isOpenable(source.uri) ? (
               <ExternalLink href={source.uri}>{source.uri}</ExternalLink>
             ) : detail ? (
               <span className="min-w-0 break-all">{detail}</span>
