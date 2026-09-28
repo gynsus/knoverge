@@ -323,7 +323,7 @@
       "extracting": "A worker has it now.",
       "extracted": "Its text is a knowledge item.",
       "proposed": "An agent brought this file, so its text is waiting in the review queue like anything else an agent writes.",
-      "unsupported": "Nothing here reads this kind of file — a picture, a scanned PDF, an archive. It is kept and can be downloaded, and a later version may learn to read it.",
+      "unsupported": "Nothing here read this file on its own, and no model was able to either. Connect a vision model under Settings and a picture becomes a knowledge item; connect a transcription model and a recording does. A scanned PDF still does not — a page in one has to be rendered to an image first. The file is kept and can be downloaded.",
       "failed": "The file could not be read. It is kept, and downloading it is the way to find out why."
     }
   },
