@@ -16,3 +16,6 @@ export const SESSIONS_KEY = ['account', 'sessions'] as const;
 
 /** The AI settings, which every step of the wizard refreshes. */
 export const AI_SETTINGS_KEY = ['ai-settings'] as const;
+
+/** Where this workspace pushes word that something happened. */
+export const WEBHOOKS_KEY = ['admin', 'webhooks'] as const;

@@ -735,6 +735,22 @@ secrets do not look equal in the column, and an authentication tag so an edited 
 fails to open rather than opening to something else. Without the key a webhook cannot
 be created: refusing beats storing a signing secret an operator believes is encrypted.
 
+Which is a refusal the screen has to make before the form, not after the save, so
+`webhooks.list` answers `secret_storage_configured` as well as the endpoints. It is
+decided in `createServices` from the configuration rather than in the domain: whether
+a key was given to this process is a fact about how it was started, and the sealing
+functions that throw without one are already the same answer given later. "You cannot
+do this here" and "you may not do this" are different sentences, and only the second
+one is about the caller.
+
+`apps/web/src/pages/WebhooksSettingsPage.tsx` is the other half of rule 12. The door
+this product calls out through was open only to an operator who would write the
+request by hand, and asking for permission in a form nobody can find is not asking.
+The screen leads with what leaves — the event and never the knowledge — because
+somebody pointing this at a third party is deciding exactly that. The health each row
+shows was in `webhooks.list` from the first day and was displayed nowhere, so an
+endpoint that stopped working stopped working silently.
+
 ## The web interface
 
 Styling is Tailwind CSS; components are shadcn/ui copied into

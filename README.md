@@ -22,12 +22,11 @@ Knoverge is at **v0.1.0**, the first tagged release. Milestones 0 to 9 of
 - **Time and disagreement** — a claim can say when it holds; a contradiction is recorded once and shows at both ends; evidence state is derived from the sources rather than asserted.
 - **Summaries and digests** — a summary keeps the exact revisions it was made from and goes stale when one of them moves; a model can draft its text and a person saves it, and the file says which model phrased it. The activity digest has a screen, and an optional narrative of the period.
 - **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers only the models that can embed, and reports what one returns before it is chosen. Everything above works with none configured.
-- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge, and recovery for a write that reached Git and no further.
+- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, and recovery for a write that reached Git and no further.
 
 Not yet: OAuth for hosted connectors (Milestone 10), attachments and documents
 (11), media understanding (12), export and import (13), knowledge gardening (14).
-Webhooks are configured through the API or the command line and have no screen,
-and there are no end-to-end browser tests.
+There are no end-to-end browser tests.
 
 ## Trying it
 

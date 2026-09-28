@@ -381,6 +381,13 @@ verifiable.
 
 ### Pushing a notification somewhere
 
+**Settings → Webhooks** is where one is added: the address, which event types it is
+told about, whether it is delivering, and the signing secret, which is shown once.
+The same screen is where an endpoint that stopped working says so — the consecutive
+failures, when the next attempt is due and what went wrong last.
+
+The request below does the same thing, for an installation configured by a script:
+
 ```bash
 openssl rand -hex 32   # KNOVERGE_ENCRYPTION_KEY, if the installation has none yet
 docker compose exec knoverge curl -sS localhost:3000/v1/admin/webhooks.upsert \
@@ -406,8 +413,9 @@ failing endpoint is retried further and further apart, up to half an hour, and
 starts from the current sequence: adding one asks for what happens next, not for a
 replay of the workspace's history.
 
-`event_types` empty means every type. Redirects are refused, and private addresses
-are not blocked — see `SECURITY.md`.
+`event_types` empty means every type, including a type a later version adds, which is
+what the screen's "everything that happens" sends. Redirects are refused, and private
+addresses are not blocked — see `SECURITY.md`.
 
 ### Whether the two stores still agree
 

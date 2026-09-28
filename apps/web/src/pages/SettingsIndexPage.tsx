@@ -1,4 +1,4 @@
-import { Bot, Database, Network, Server, ShieldCheck, UserRound } from 'lucide-react';
+import { Bot, Database, Network, Server, ShieldCheck, UserRound, Webhook } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -28,6 +28,7 @@ const PERSONAL: Section[] = [
 
 const INSTANCE: Section[] = [
   { key: 'ai', icon: Bot, to: '/settings/ai' },
+  { key: 'webhooks', icon: Webhook, to: '/settings/webhooks' },
   { key: 'storage', icon: Database },
   { key: 'network', icon: Network },
   { key: 'system', icon: Server },

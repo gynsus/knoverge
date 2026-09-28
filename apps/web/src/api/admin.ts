@@ -58,6 +58,10 @@ import type {
   UpdateKnowledgeRequest,
   UpdateMemberRequest,
   UpdateWorkspaceRequest,
+  UpsertWebhookRequest,
+  UpsertWebhookResponse,
+  DeleteWebhookRequest,
+  WebhooksResponse,
   WorkspaceResponse,
   WorkspacesResponse,
 } from '@knoverge/contracts';
@@ -80,6 +84,12 @@ export const adminApi = {
     test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
     testGeneration: (body: TestAiGenerationRequest) =>
       apiPost<TestAiGenerationResponse>('/v1/admin/ai.test_generation', body),
+  },
+  webhooks: {
+    list: (signal?: AbortSignal) => apiGet<WebhooksResponse>('/v1/admin/webhooks.list', signal),
+    save: (body: UpsertWebhookRequest) =>
+      apiPost<UpsertWebhookResponse>('/v1/admin/webhooks.upsert', body),
+    remove: (body: DeleteWebhookRequest) => apiPost<OkResponse>('/v1/admin/webhooks.delete', body),
   },
   events: {
     // A tool, so it is `POST /v1/<tool_name>` like every other one (rule 11).

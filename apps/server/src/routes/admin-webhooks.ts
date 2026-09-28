@@ -30,6 +30,7 @@ function summary(webhook: WebhookRecord): WebhookSummary {
     cursor: webhook.cursor,
     failures: webhook.failures,
     last_delivery_at: webhook.lastDeliveryAt?.toISOString() ?? null,
+    next_attempt_at: webhook.nextAttemptAt?.toISOString() ?? null,
     last_error: webhook.lastError,
     created_at: webhook.createdAt.toISOString(),
     updated_at: webhook.updatedAt.toISOString(),
@@ -52,7 +53,10 @@ export function registerAdminWebhookRoutes(app: FastifyInstance, services: Servi
     async (request) => {
       const actor = await requirePermission(services, request, 'workspace.admin');
       const webhooks = await services.webhooks.list(actor.context.workspaceId);
-      return { webhooks: webhooks.map(summary) };
+      return {
+        webhooks: webhooks.map(summary),
+        secret_storage_configured: services.secretStorage,
+      };
     },
   );
 

@@ -46,10 +46,17 @@ class Browser {
   cookies = new Map<string, string>();
   csrf: string | undefined;
 
+  /** Which installation this browser is talking to; the main one by default. */
+  constructor(private readonly instance?: FastifyInstance) {}
+
   async request(opts: InjectOptions & { url: string }) {
     const headers: Record<string, string> = { ...(opts.headers as Record<string, string>) };
     if (this.csrf) headers['x-csrf-token'] = this.csrf;
-    const res = await app.inject({ ...opts, headers, cookies: Object.fromEntries(this.cookies) });
+    const res = await (this.instance ?? app).inject({
+      ...opts,
+      headers,
+      cookies: Object.fromEntries(this.cookies),
+    });
     for (const c of res.cookies) {
       if (c.value === '') this.cookies.delete(c.name);
       else this.cookies.set(c.name, c.value);
@@ -293,6 +300,14 @@ describe('where a workspace pushes word that something happened', () => {
     expect(now[0]!.events.every((e) => e.event_type === 'category.created')).toBe(true);
   });
 
+  it('says whether this installation can keep a secret at all', async () => {
+    const listed = WebhooksResponse.parse((await admin.get('/v1/admin/webhooks.list')).json());
+    // The screen asks before it offers a form: "you cannot do this here" and
+    // "you may not do this" are different sentences, and only one of them is
+    // about the caller.
+    expect(listed.secret_storage_configured).toBe(true);
+  });
+
   it('is removed when an operator says so', async () => {
     const created = await createWebhook();
     expect(
@@ -301,5 +316,56 @@ describe('where a workspace pushes word that something happened', () => {
     ).toBe(200);
     const listed = WebhooksResponse.parse((await admin.get('/v1/admin/webhooks.list')).json());
     expect(listed.webhooks.find((w) => w.id === created.webhook.id)).toBeUndefined();
+  });
+});
+
+describe('an installation with no encryption key', () => {
+  let bare: Services;
+  let bareApp: FastifyInstance;
+  let bareAdmin: Browser;
+
+  beforeAll(async () => {
+    // The same database, read by a process that was started without a key: what
+    // this asks is what such a process answers, and that is decided at start-up
+    // rather than by anything in the rows.
+    bare = createServices({
+      databaseUrl: container.getConnectionUri(),
+      dataDir,
+      ledgerKey: parseLedgerKey('d4'.repeat(32)),
+      tokenPepper: 'e5'.repeat(32),
+      poolMax: 2,
+    });
+    bareApp = await buildApp({
+      loggerInstance: pino({ level: 'error' }),
+      version: 'test',
+      probes: { database: async () => ok, dataDir: async () => ok },
+      services: bare,
+      security: { sessionSecret: 'f6'.repeat(32), cookieSecure: false },
+    });
+    bareAdmin = new Browser(bareApp);
+    bareAdmin.csrf = ((await bareAdmin.get('/v1/auth/csrf')).json() as { token: string }).token;
+    const signedIn = await bareAdmin.post('/v1/auth/login', {
+      email: 'owner@example.com',
+      password: 'correct horse battery staple',
+    });
+    expect(signedIn.statusCode, signedIn.body).toBe(200);
+  });
+
+  afterAll(async () => {
+    await bareApp?.close();
+    await bare?.close();
+  });
+
+  it('says it cannot keep a secret, and refuses to create one', async () => {
+    const listed = WebhooksResponse.parse((await bareAdmin.get('/v1/admin/webhooks.list')).json());
+    expect(listed.secret_storage_configured).toBe(false);
+
+    // Refusing beats pretending: a webhook whose signing secret is stored in
+    // clear is worse than one that was never created.
+    const refused = await bareAdmin.post('/v1/admin/webhooks.upsert', {
+      url: 'https://example.com/hook',
+    });
+    expect(refused.statusCode, refused.body).toBe(400);
+    expect(refused.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
   });
 });
