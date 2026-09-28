@@ -1076,6 +1076,7 @@
     "last_error": "Last error: {{error}}",
     "never_delivered": "Nothing delivered yet.",
     "next_attempt": "Next attempt {{when}}.",
+    "next_attempt_due": "Due to be tried again.",
     "no_key": "A webhook is signed, and the secret has to be stored encrypted. Set this variable to 32 random bytes as hex and restart; until then an endpoint cannot be created, which is better than keeping its secret in clear.",
     "no_key_title": "This installation cannot keep a signing secret",
     "remove": "Remove",

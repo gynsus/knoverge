@@ -29,3 +29,14 @@ export function standingOf(webhook: WebhookSummary): Standing {
 export function isPlaintext(url: string): boolean {
   return url.startsWith('http://');
 }
+
+/**
+ * Whether the next attempt is already due.
+ *
+ * `now` is a parameter with a default, like `relativeTime`'s: a component may
+ * not call the clock while it renders, and a test that pins a moment is the same
+ * thing from the other side.
+ */
+export function isDue(when: string, now = Date.now()): boolean {
+  return new Date(when).getTime() <= now;
+}
