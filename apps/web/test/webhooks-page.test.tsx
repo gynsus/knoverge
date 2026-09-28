@@ -353,6 +353,30 @@ describe('an endpoint that already exists', () => {
     expect(screen.getByText(/Item created/)).toBeInTheDocument();
   });
 
+  it('does not say "now" about an attempt that has not happened', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/webhooks.list': () =>
+        json({
+          webhooks: [
+            {
+              ...ENDPOINT,
+              failures: 1,
+              // Due a second ago. The sweep takes it when the sweep runs, and a
+              // reader told "now" reloads and decides the product is stuck.
+              next_attempt_at: new Date(Date.now() - 1000).toISOString(),
+              last_error: 'fetch failed',
+            },
+          ],
+          secret_storage_configured: true,
+        }),
+    });
+    renderApp('/settings/webhooks');
+
+    expect(await screen.findByText(/Due to be tried again/)).toBeInTheDocument();
+    expect(screen.queryByText(/Next attempt now/)).not.toBeInTheDocument();
+  });
+
   it('keeps the secret it has when something else is changed', async () => {
     const calls = mockApi({
       ...SIGNED_IN,

@@ -21,7 +21,7 @@ import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { SettingsHeader } from '../components/settings/SettingsHeader.tsx';
-import { standingOf, type Standing } from '../components/webhooks/delivery.ts';
+import { isDue, standingOf, type Standing } from '../components/webhooks/delivery.ts';
 import { WebhookForm } from '../components/webhooks/WebhookForm.tsx';
 import { WebhookSecret } from '../components/webhooks/WebhookSecret.tsx';
 
@@ -235,6 +235,7 @@ function Endpoint({
   const { t, i18n } = useTranslation();
   const standing = standingOf(webhook);
   const types = webhook.event_types;
+  const due = webhook.next_attempt_at !== null && isDue(webhook.next_attempt_at);
 
   return (
     <div className="grid gap-3 rounded-lg border border-border p-4 sm:grid-cols-[1fr_auto] sm:items-start">
@@ -269,9 +270,17 @@ function Endpoint({
           <p className="text-sm text-destructive">
             {t('webhooks.failing', { count: webhook.failures })}
             {webhook.next_attempt_at &&
-              ` ${t('webhooks.next_attempt', {
-                when: relativeTime(webhook.next_attempt_at, i18n.language),
-              })}`}
+              ` ${
+                // A wait that has already elapsed is not "in 0 minutes": the
+                // endpoint is due, and the next sweep takes it. Saying "now" of
+                // something that has not happened invites a reader to reload and
+                // conclude the product is stuck.
+                due
+                  ? t('webhooks.next_attempt_due')
+                  : t('webhooks.next_attempt', {
+                      when: relativeTime(webhook.next_attempt_at, i18n.language),
+                    })
+              }`}
           </p>
         )}
         {webhook.last_error && (
