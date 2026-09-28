@@ -10,7 +10,7 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.2.0**. Milestones 0 to 9 of
+Knoverge is at **v0.3.0**. Milestones 0 to 9 and 11 of
 [the plan](docs/IMPLEMENTATION_PLAN.md) are complete, and
 [CHANGELOG.md](CHANGELOG.md) says what each release contains.
 
@@ -46,7 +46,7 @@ the secrets for you: an installation that came up with a password somebody else
 could guess would be worse than one that did not come up.
 
 To run a released image instead of building from source, replace the `build` block
-in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.2.0`. See
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.3.0`. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,
