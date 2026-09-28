@@ -218,6 +218,12 @@ over `TOOLS` and the handler behind it is the same one HTTP calls (rule 11):
 `apps/server/test/mcp.test.ts` is that test. A tool whose MCP behaviour is not the
 generic one would need its own, and there is none today.
 
+A `CHECK` listing values and a `z.enum` are the same list written twice, so
+`packages/db/test/migrations.test.ts` reads every one of those constraints out of
+`pg_constraint` and asserts it accepts every value its contract allows. Without it
+a value can pass validation, pass the repository and be refused by the database,
+which is how the `vision` purpose reached `main` unable to be assigned at all.
+
 ## 8. Internationalisation tests
 
 - `ru` catalogue has every key present in `en`;
