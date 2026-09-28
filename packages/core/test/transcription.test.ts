@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import { TRANSCRIPTION_TIMEOUT_MS } from '@knoverge/intelligence';
+
+import { STALE_CLAIM_MS } from '../src/attachments/extraction.ts';
 import { MediaTranscriber, isHearable } from '../src/attachments/transcription.ts';
 
 const CLIP = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x24, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56]);
@@ -77,5 +80,13 @@ describe('turning a recording into words', () => {
       ),
     ).toBeNull();
     expect(heard.calls).toHaveLength(0);
+  });
+});
+
+describe('how long a file may take', () => {
+  it('is less than how long its claim is believed', () => {
+    // Otherwise the next sweep takes a recording the first worker is still
+    // transcribing: the same file paid for twice, and two documents from it.
+    expect(TRANSCRIPTION_TIMEOUT_MS).toBeLessThan(STALE_CLAIM_MS);
   });
 });

@@ -80,8 +80,14 @@ export const DOCUMENT_TYPE = 'document' as const;
  *
  * Long enough that a slow file is not taken twice, short enough that a worker
  * killed mid-read does not strand a file until somebody notices.
+ *
+ * It has to be longer than the longest a single file can take, and the longest
+ * is a recording: `TRANSCRIPTION_TIMEOUT_MS` in the transcription provider gives one
+ * ten minutes before it gives up. A window equal to that would let the next
+ * sweep take a file the first worker is still transcribing — the same recording
+ * paid for twice, and two documents from it.
  */
-export const STALE_CLAIM_MS = 10 * 60_000;
+export const STALE_CLAIM_MS = 30 * 60_000;
 
 /**
  * Turning a file into knowledge somebody can find.

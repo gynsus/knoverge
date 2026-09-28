@@ -887,8 +887,11 @@ same minute cannot both take it and write the same document twice. Extraction is
 the first job in this product that is not idempotent — embedding the same chunk
 twice writes the same vector, and reading the same file twice writes two
 documents — which is why it is the first one that claims. A worker that dies
-holding a claim is noticed by its age: anything left `extracting` for ten minutes
-is taken again.
+holding a claim is noticed by its age: anything left `extracting` for half an hour
+is taken again. Half an hour and not ten minutes because the window has to outlast
+the longest a single file can take, and the longest is a recording — a
+transcription provider is given ten minutes before it is given up on, and a window
+equal to that would let the next sweep take a file still being transcribed.
 
 Every ending is written to the row, including the ones that are not failures.
 `unsupported` is an answer — the file is kept and can be downloaded — and a file

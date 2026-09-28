@@ -31,6 +31,7 @@ export {
   type ProviderCatalogue,
 } from './catalogue.ts';
 export {
+  TRANSCRIPTION_TIMEOUT_MS,
   TranscriptionError,
   createHttpTranscriptionProvider,
   fixedTranscriptionSource,

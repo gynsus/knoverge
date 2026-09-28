@@ -46,12 +46,18 @@ export interface HttpTranscriptionOptions {
   baseUrl: string;
   model: string;
   apiKey?: string | undefined;
-  /** Generous: an hour of audio is minutes of work on somebody's own machine. */
+  /**
+   * Generous: an hour of audio is minutes of work on somebody's own machine.
+   *
+   * Whatever this is, it has to stay under the window a file's claim is believed
+   * for — `STALE_CLAIM_MS` in the extractor — or a sweep takes a recording that
+   * is still being transcribed.
+   */
   timeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 }
 
-const DEFAULT_TIMEOUT_MS = 600_000;
+export const TRANSCRIPTION_TIMEOUT_MS = 600_000;
 
 /** What can be sent, or null when nothing here can talk to that provider. */
 export type TranscriptionSource = () => Promise<TranscriptionProvider | null>;
@@ -75,7 +81,7 @@ export function createHttpTranscriptionProvider(
   options: HttpTranscriptionOptions,
 ): TranscriptionProvider {
   const call = options.fetch ?? globalThis.fetch;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const timeoutMs = options.timeoutMs ?? TRANSCRIPTION_TIMEOUT_MS;
   const base = options.baseUrl.replace(/\/+$/u, '');
 
   return {
