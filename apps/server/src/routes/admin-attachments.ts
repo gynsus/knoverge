@@ -1,14 +1,16 @@
 import {
+  type AttachmentListInput,
   AttachmentQuery,
   AttachmentResponse,
   AttachmentsResponse,
   SingleAttachmentResponse,
   type AttachmentSummary,
   type ExtractionState,
+  type UploadAttachmentInput,
 } from '@knoverge/contracts';
 import type { AttachmentRecord } from '@knoverge/core';
 import { DomainError } from '@knoverge/core';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 
 import { summary as itemSummary } from './knowledge.ts';
@@ -52,6 +54,66 @@ function served(reply: FastifyReply, attachment: AttachmentRecord): FastifyReply
       'content-disposition',
       `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
     );
+}
+
+/**
+ * The same three operations, as tools.
+ *
+ * A browser sends a file as multipart because it has a file input; an agent sends
+ * base64 because MCP is JSON. One service under both, and one shape of answer
+ * (rule 11, ADR 0011).
+ */
+export async function attachmentUpload(
+  services: Services,
+  request: FastifyRequest,
+  input: UploadAttachmentInput,
+): Promise<AttachmentResponse> {
+  const actor = await requirePermission(services, request, 'knowledge.write');
+  const bytes = decodeBase64(input.content_base64);
+  const result = await services.attachments.upload(actor.context, {
+    filename: input.filename,
+    mediaType: input.media_type,
+    bytes,
+    ...(input.original_uri ? { originalUri: input.original_uri } : {}),
+  });
+  return { attachment: summary(result.attachment), created: result.created };
+}
+
+export async function attachmentList(
+  services: Services,
+  request: FastifyRequest,
+  input: AttachmentListInput,
+): Promise<AttachmentsResponse> {
+  const actor = await requirePermission(services, request, 'knowledge.read');
+  const held = await services.attachments.list(actor.context.workspaceId, input.limit);
+  return { attachments: held.map(summary) };
+}
+
+export async function attachmentGet(
+  services: Services,
+  request: FastifyRequest,
+  input: AttachmentQuery,
+): Promise<SingleAttachmentResponse> {
+  const actor = await requirePermission(services, request, 'knowledge.read');
+  const attachment = await services.attachments.get(actor.context.workspaceId, input.attachment_id);
+  const items = await services.knowledge.itemsFromAttachment(actor.context, attachment.id);
+  return { attachment: summary(attachment), items: items.map(itemSummary) };
+}
+
+/**
+ * Base64 in, bytes out, and a refusal that says which field was wrong.
+ *
+ * `Buffer.from` is famously forgiving — it drops what it cannot read and returns
+ * whatever is left — so a file that arrives mangled would otherwise be stored as
+ * a shorter file under the hash of something nobody sent.
+ */
+function decodeBase64(encoded: string): Uint8Array {
+  const trimmed = encoded.trim();
+  const bytes = Buffer.from(trimmed, 'base64');
+  if (bytes.toString('base64').replace(/=+$/u, '') !== trimmed.replace(/=+$/u, '')) {
+    throw new DomainError('VALIDATION_ERROR', 'content_base64 is not valid base64');
+  }
+  return new Uint8Array(bytes);
 }
 
 /**

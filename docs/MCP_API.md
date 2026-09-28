@@ -308,6 +308,28 @@ The answer carries `disputed` and, alongside `relations`, `disputed_by`: the ite
 
 The browser's `GET /v1/knowledge.get` asks for the whole body rather than a slice, because the editor writes back what it was given and a slice would be saved over the rest.
 
+#### `attachment_upload`, `attachment_list`, `attachment_get`
+
+A file, as an agent can send one. `attachment_upload` takes base64 and needs
+`knowledge.write`; the other two are reads.
+
+What happens next is what happens to anything an agent writes. The text inside the
+file becomes a `document` item through the policy — a proposal unless a rule says
+otherwise — so a file is not a way past rule 5. `attachment_get` answers with the
+items made from it, and `extraction_state` says why there are none yet: `pending`
+until the sweep runs, `proposed` while a reviewer has the text, `unsupported` for a
+file nothing here reads.
+
+The bytes travel inside the request body, so the manifest's
+`limits.max_attachment_bytes` is what actually fits — smaller than
+`max_request_bytes`, because base64 costs a third. A larger file goes to
+`POST /v1/admin/attachments.upload` as multipart, where the installation's own
+limit is the only one that applies.
+
+There is no tool that hands a file back. What a file *says* is the `document`
+item, which every read already reaches; the bytes are for a person, and
+`GET /v1/admin/attachments.download` is where they are.
+
 #### `knowledge_index`
 
 Returns compact index pages for reconciliation.

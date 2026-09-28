@@ -252,8 +252,8 @@ ADR required before implementation.
 
 ## Milestone 11 - documents and attachments
 
-_In progress: storage, the record, the HTTP surface, text extraction — text,
-Markdown, HTML, PDF and DOCX — and the Files screen are in; the MCP tools are not._
+_Delivered. Storage, the record, the HTTP surface, text extraction (text,
+Markdown, HTML, PDF, DOCX), the Files screen and the three MCP tools._
 
 Deliver:
 

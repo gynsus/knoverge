@@ -134,6 +134,9 @@ describe('what an agent may ask for', () => {
       concurrent_requests: DEFAULT_AGENT_LIMITS.concurrent,
       pending_proposals: DEFAULT_AGENT_LIMITS.pendingProposals,
       max_request_bytes: MAX_TOOL_BODY_BYTES,
+      // Smaller than the request it travels in, because base64 costs a third: a
+      // client that sized a file by `max_request_bytes` would send one too large.
+      max_attachment_bytes: Math.floor(((MAX_TOOL_BODY_BYTES - 4096) * 3) / 4),
     });
   });
 

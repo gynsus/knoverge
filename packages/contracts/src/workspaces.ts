@@ -274,6 +274,15 @@ export const WorkspaceManifest = z.object({
     pending_proposals: z.number().int().positive(),
     /** The largest body a tool call may carry. */
     max_request_bytes: z.number().int().positive(),
+    /**
+     * The largest file `attachment_upload` can take.
+     *
+     * Smaller than either limit it comes from: the bytes travel base64 inside the
+     * request body, which costs a third in encoding. A file past this goes to
+     * `POST /v1/admin/attachments.upload` as multipart, where the installation's
+     * own limit is the only one that applies.
+     */
+    max_attachment_bytes: z.number().int().nonnegative(),
   }),
 });
 export type WorkspaceManifest = z.infer<typeof WorkspaceManifest>;

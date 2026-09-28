@@ -108,6 +108,13 @@ export async function workspaceManifest(
       concurrent_requests: budgets.concurrent,
       pending_proposals: budgets.pendingProposals,
       max_request_bytes: MAX_TOOL_BODY_BYTES,
+      // What actually fits through `attachment_upload`: base64 costs a third,
+      // and the rest of the call needs room too. Whichever is smaller — this or
+      // the installation's own limit on a file — is the answer.
+      max_attachment_bytes: Math.min(
+        services.attachmentMaxBytes,
+        Math.floor(((MAX_TOOL_BODY_BYTES - 4096) * 3) / 4),
+      ),
     },
   } as WorkspaceManifest;
 }

@@ -34,6 +34,7 @@ import {
   proposalReject,
   proposalWithdraw,
 } from './proposals.ts';
+import { attachmentGet, attachmentList, attachmentUpload } from './admin-attachments.ts';
 import { taxonomyList, taxonomyPropose } from './taxonomy.ts';
 
 /**
@@ -81,6 +82,9 @@ const HANDLERS: Record<ToolName, ToolHandler> = {
   sync_get_matches: syncGetMatches as ToolHandler,
   sync_status: syncStatus as ToolHandler,
   sync_complete: syncComplete as ToolHandler,
+  attachment_upload: attachmentUpload as ToolHandler,
+  attachment_list: attachmentList as ToolHandler,
+  attachment_get: attachmentGet as ToolHandler,
 };
 
 /** The handler a tool runs, for the MCP adapter as well as for HTTP. */

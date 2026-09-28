@@ -453,6 +453,128 @@ describe('the text inside a file', () => {
   });
 });
 
+describe('a file brought in by a tool', () => {
+  const asAgent = (token: string, tool: string, payload: unknown) =>
+    app.inject({
+      method: 'POST',
+      url: `/v1/${tool}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: payload as Record<string, unknown>,
+    });
+
+  it('arrives as base64 and lands where a multipart upload lands', async () => {
+    const agent = await uploadingAgent('Tooling agent');
+    const res = await asAgent(agent.token, 'attachment_upload', {
+      filename: 'from-a-tool.md',
+      media_type: 'text/markdown',
+      content_base64: Buffer.from('# Read me\n\nBrought in by a tool.\n').toString('base64'),
+      original_uri: 'https://example.com/read-me',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const { attachment, created } = AttachmentResponse.parse(res.json());
+    expect(created).toBe(true);
+    expect(attachment.filename).toBe('from-a-tool.md');
+
+    // The same store and the same row a multipart upload produces: one service
+    // under two shapes of request (rule 11).
+    const path = join(
+      dataDir,
+      'attachments',
+      workspaceId,
+      attachment.content_hash.replace('sha256:', ''),
+    );
+    expect(await readFile(path, 'utf8')).toContain('Brought in by a tool.');
+
+    const outcome = (await services.attachmentExtractor.extractPending()).find(
+      (o) => o.attachmentId === attachment.id,
+    );
+    // And the text goes the way everything an agent writes goes.
+    expect(outcome?.state).toBe('proposed');
+  });
+
+  it('refuses content that is not base64 rather than storing what survived', async () => {
+    const agent = await uploadingAgent('Mangling agent');
+    const res = await asAgent(agent.token, 'attachment_upload', {
+      filename: 'mangled.txt',
+      media_type: 'text/plain',
+      // `Buffer.from` drops what it cannot read and returns the rest, which would
+      // store a shorter file under the hash of something nobody sent.
+      content_base64: 'this is not base64 !!!',
+    });
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('refuses a file past what this installation accepts', async () => {
+    const agent = await uploadingAgent('Oversized agent');
+    const res = await asAgent(agent.token, 'attachment_upload', {
+      filename: 'big.bin',
+      media_type: 'application/octet-stream',
+      content_base64: Buffer.alloc(MAX_BYTES + 1, 3).toString('base64'),
+    });
+    // The domain's own limit, on the one path where nothing truncates first.
+    expect(res.statusCode, res.body).toBe(400);
+    expect(res.json()).toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('answers what became of a file, without a second call to find out', async () => {
+    const agent = await uploadingAgent('Asking agent');
+    const uploaded = AttachmentResponse.parse(
+      (
+        await asAgent(agent.token, 'attachment_upload', {
+          filename: 'asked-about.txt',
+          media_type: 'text/plain',
+          content_base64: Buffer.from('What became of this file.\n').toString('base64'),
+        })
+      ).json(),
+    );
+    const listed = AttachmentsResponse.parse(
+      (await asAgent(agent.token, 'attachment_list', {})).json(),
+    );
+    expect(listed.attachments.some((a) => a.id === uploaded.attachment.id)).toBe(true);
+
+    const read = SingleAttachmentResponse.parse(
+      (
+        await asAgent(agent.token, 'attachment_get', { attachment_id: uploaded.attachment.id })
+      ).json(),
+    );
+    // Nothing yet, and the state is what says why: the sweep has not run.
+    expect(read.attachment.extraction_state).toBe('pending');
+    expect(read.items).toEqual([]);
+  });
+
+  it('is refused to an agent that may only propose', async () => {
+    const created = await admin.post('/v1/admin/agents.create', {
+      name: 'Tooling proposer',
+      trust_tier: 'propose',
+    });
+    expect(created.statusCode, created.body).toBe(200);
+    const agentId = (created.json() as { agent: { id: string } }).agent.id;
+    const issued = await admin.post('/v1/admin/agents.credentials.issue', { agent_id: agentId });
+    const token = (issued.json() as { token: string }).token;
+
+    const res = await asAgent(token, 'attachment_upload', {
+      filename: 'not-allowed.txt',
+      media_type: 'text/plain',
+      content_base64: Buffer.from('Not allowed here.\n').toString('base64'),
+    });
+    // The permission is the same one the multipart route asks for, because it is
+    // the same operation in a different shape (rule 11).
+    expect(res.statusCode, res.body).toBe(403);
+  });
+
+  it('says how big a file may be, in the answer a client reads first', async () => {
+    const agent = await uploadingAgent('Measuring agent');
+    const manifest = (await asAgent(agent.token, 'workspace_manifest', {})).json() as {
+      limits: { max_request_bytes: number; max_attachment_bytes: number };
+    };
+    // Base64 costs a third, and the rest of the call needs room: a client that
+    // checked the request limit would send a file a third too large.
+    expect(manifest.limits.max_attachment_bytes).toBeLessThan(manifest.limits.max_request_bytes);
+    expect(manifest.limits.max_attachment_bytes).toBeLessThanOrEqual(MAX_BYTES);
+  });
+});
+
 describe('who may bring a file in', () => {
   async function agentToken(tier: string, name: string) {
     const created = await admin.post('/v1/admin/agents.create', { name, trust_tier: tier });
