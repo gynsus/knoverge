@@ -19,7 +19,15 @@ export type AiProviderKind = z.infer<typeof AiProviderKind>;
  * duplicate detection and reconciliation. `generation` writes text: summaries,
  * and the optional narrative on a digest. Neither is required (rule 9).
  */
-export const AiPurpose = z.enum(['embedding', 'generation']);
+/**
+ * What a model is for here.
+ *
+ * `vision` is a model that can look at a picture: it reads the text on a scan
+ * and says what an image shows, so a file that holds neither Markdown nor a text
+ * layer can still become knowledge. Separate from `generation` because they are
+ * separate models on most installations — one writes, one looks.
+ */
+export const AiPurpose = z.enum(['embedding', 'generation', 'vision']);
 export type AiPurpose = z.infer<typeof AiPurpose>;
 
 /**
@@ -85,6 +93,8 @@ export const AiSettings = z.object({
    * of it a surprise.
    */
   generation_enabled: z.boolean(),
+  /** Whether anything here can look at a picture. */
+  vision_enabled: z.boolean(),
 });
 export type AiSettings = z.infer<typeof AiSettings>;
 
@@ -174,6 +184,19 @@ export type TestAiModelResponse = z.infer<typeof TestAiModelResponse>;
  * The same shape as the embedding test and for the same reason: testing a model
  * is testing an address and a model together, before either is stored.
  */
+/**
+ * Asking whether a model can see.
+ *
+ * No text to send: the picture is the product's own, so that the answer is about
+ * the model rather than about what somebody typed.
+ */
+export const TestAiVisionRequest = z.object({
+  kind: AiProviderKind,
+  base_url: z.string().url(),
+  model: z.string().min(1).max(200),
+});
+export type TestAiVisionRequest = z.infer<typeof TestAiVisionRequest>;
+
 export const TestAiGenerationRequest = TestAiModelRequest;
 export type TestAiGenerationRequest = z.infer<typeof TestAiGenerationRequest>;
 

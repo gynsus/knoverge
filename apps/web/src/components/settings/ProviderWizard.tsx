@@ -37,7 +37,7 @@ export interface WizardResult {
 }
 
 /** Which job the model is being chosen for. */
-export type WizardPurpose = 'embedding' | 'generation';
+export type WizardPurpose = 'embedding' | 'generation' | 'vision';
 
 /**
  * Connecting a provider, in the order somebody actually does it.
@@ -106,6 +106,12 @@ export function ProviderWizard({
         setWrote(await adminApi.ai.testGeneration({ kind, base_url: baseUrl, model }));
         return;
       }
+      if (purpose === 'vision') {
+        // A picture of a red square and one question about it. A catalogue says
+        // which models exist, never which of them can see.
+        setWrote(await adminApi.ai.testVision({ kind, base_url: baseUrl, model }));
+        return;
+      }
       setTested(await adminApi.ai.test({ kind, base_url: baseUrl, model }));
     },
   });
@@ -124,7 +130,7 @@ export function ProviderWizard({
 
   const usable = modelsFor(purpose, catalogue?.models ?? []);
   const outcome =
-    purpose === 'generation'
+    purpose !== 'embedding'
       ? wrote && {
           ok: wrote.ok,
           // What it said, not a tick. A model that answers in a hundred
@@ -232,12 +238,14 @@ export function ProviderWizard({
               />
               <Field
                 label={t(
-                  purpose === 'generation' ? 'ai.wizard.model_generation' : 'ai.wizard.model',
+                  purpose === 'embedding' ? 'ai.wizard.model' : 'ai.wizard.model_generation',
                 )}
                 hint={t(
-                  purpose === 'generation'
-                    ? 'ai.wizard.model_generation_hint'
-                    : 'ai.wizard.model_hint',
+                  purpose === 'embedding'
+                    ? 'ai.wizard.model_hint'
+                    : purpose === 'vision'
+                      ? 'ai.wizard.model_vision_hint'
+                      : 'ai.wizard.model_generation_hint',
                 )}
               >
                 <Select
@@ -263,9 +271,9 @@ export function ProviderWizard({
               {usable.length === 0 && (
                 <p className="text-sm text-muted-foreground">
                   {t(
-                    purpose === 'generation'
-                      ? 'ai.wizard.no_models_generation'
-                      : 'ai.wizard.no_models',
+                    purpose === 'embedding'
+                      ? 'ai.wizard.no_models'
+                      : 'ai.wizard.no_models_generation',
                   )}
                 </p>
               )}
@@ -318,7 +326,10 @@ export function ProviderWizard({
  * offering one for the other job is offering a test that cannot pass.
  */
 function modelsFor(purpose: WizardPurpose, models: readonly CatalogueModel[]): CatalogueModel[] {
-  const wanted = purpose === 'generation' ? 'completion' : 'embedding';
+  // A model that looks at pictures is a model that writes, so the same
+  // capability is what a catalogue reports for it. Which of those can actually
+  // see is not something a list of names says — the test is what finds out.
+  const wanted = purpose === 'embedding' ? 'embedding' : 'completion';
   const declared = models.filter((model) => model.capabilities.length > 0);
   if (declared.length === 0) return [...models];
   return models.filter(

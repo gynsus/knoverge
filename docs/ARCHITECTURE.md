@@ -379,8 +379,9 @@ Jobs:
 - digest generation;
 - webhook delivery;
 - integrity checks;
-- attachment text extraction;
-- transcription and image description (later).
+- attachment text extraction, including a description of a picture when a vision
+  model is assigned;
+- transcription (later).
 
 Do not require Redis for the first release.
 

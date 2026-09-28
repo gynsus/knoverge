@@ -142,6 +142,14 @@
       "interface": "Configured here"
     },
     "recheck": "Check again",
+    "vision": {
+      "title": "Reading pictures",
+      "description": "A model that can look at an image: it reads the text on a scan and says what a picture shows, so a file with no text layer can still become knowledge. Without one, images are kept and downloadable and nothing is sent anywhere.",
+      "in_use": "Reading pictures with {{model}}.",
+      "none": "Nothing here can look at a picture. Images, scanned PDFs and screenshots are kept as files and no text is taken out of them.",
+      "choose": "Choose a vision model",
+      "stop": "Stop reading pictures"
+    },
     "wizard": {
       "address": "Address",
       "address_example": "http://ollama:11434",
@@ -158,6 +166,7 @@
       "model_generation_hint": "Only models the provider says can complete text. Changing it later changes nothing already written; a summary keeps the model it was made with.",
       "model_hint": "Only models the provider says can embed. Changing this later re-embeds the workspace; the old model keeps answering until it is done.",
       "model_placeholder": "Choose a model",
+      "model_vision_hint": "A model that can be shown a picture. The test sends one — a red square — and asks what colour it is.",
       "model_works": "{{dimensions}} numbers per vector, in {{ms}} ms.",
       "model_wrote": "Answered in {{ms}} ms: “{{text}}”",
       "name": "Name",

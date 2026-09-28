@@ -33,6 +33,15 @@ export interface GenerationRequest {
   instruction: string;
   /** The material it may use, and nothing else. */
   input: string;
+  /**
+   * A picture, when the material is one.
+   *
+   * Sent as part of the same user message the text goes in, so the instruction
+   * stays where it was: in the system role. What an image *says* — a scan of a
+   * page telling the model to ignore its instructions — arrives as material like
+   * any other, in the voice of the thing being looked at.
+   */
+  image?: { mediaType: string; base64: string };
   /** A ceiling, because a model that will not stop must not fill a file. */
   maxOutputTokens?: number;
   /** Low by default: this summarises knowledge rather than inventing prose. */
@@ -102,12 +111,39 @@ export function createHttpGenerationProvider(options: HttpGenerationOptions): Ge
       const instruction = request.instruction.trim();
       const input = request.input.trim();
       if (instruction === '') throw new GenerationError('a generation needs an instruction');
+      if (input === '' && !request.image) {
+        throw new GenerationError('a generation needs something to work from');
+      }
       const maxTokens = request.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
       const temperature = request.temperature ?? DEFAULT_TEMPERATURE;
-      const messages = [
-        { role: 'system', content: instruction },
-        { role: 'user', content: input },
-      ];
+      // Two shapes again, and the image is where they differ most: the OpenAI
+      // body carries it as a part of the user message, Ollama as a field beside
+      // the message's text.
+      const messages =
+        request.image && options.provider !== 'ollama'
+          ? [
+              { role: 'system', content: instruction },
+              {
+                role: 'user',
+                content: [
+                  ...(input === '' ? [] : [{ type: 'text', text: input }]),
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:${request.image.mediaType};base64,${request.image.base64}`,
+                    },
+                  },
+                ],
+              },
+            ]
+          : [
+              { role: 'system', content: instruction },
+              {
+                role: 'user',
+                content: input,
+                ...(request.image ? { images: [request.image.base64] } : {}),
+              },
+            ];
       const url =
         options.provider === 'ollama' ? `${base}/api/chat` : `${base}/v1/chat/completions`;
       const body =

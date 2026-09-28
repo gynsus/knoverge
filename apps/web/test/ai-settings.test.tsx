@@ -101,7 +101,13 @@ const CATALOGUE = {
 };
 
 const EMPTY = {
-  ai: { providers: [], assignments: [], embeddings_enabled: false, generation_enabled: false },
+  ai: {
+    providers: [],
+    assignments: [],
+    embeddings_enabled: false,
+    generation_enabled: false,
+    vision_enabled: false,
+  },
 };
 
 const CONNECTED = {
@@ -129,6 +135,7 @@ const CONNECTED = {
     ],
     embeddings_enabled: true,
     generation_enabled: false,
+    vision_enabled: false,
   },
 };
 
@@ -146,6 +153,7 @@ const GENERATING = {
       },
     ],
     generation_enabled: true,
+    vision_enabled: false,
   },
 };
 
@@ -303,9 +311,11 @@ describe('choosing a model that writes', () => {
     // A control that could only fail is worse than one that says why it is off.
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/ai.settings': () => json(EMPTY) });
     renderApp('/settings/ai');
-    const choose = await screen.findByRole('button', { name: /choose a model/i });
-    expect(choose).toBeDisabled();
-    expect(screen.getByText(/connect a provider above first/i)).toBeInTheDocument();
+    // Both purposes that need a model of their own: writing and reading pictures.
+    const choose = await screen.findAllByRole('button', { name: /choose a (model|vision model)/i });
+    expect(choose).toHaveLength(2);
+    for (const button of choose) expect(button).toBeDisabled();
+    expect(screen.getAllByText(/connect a provider above first/i).length).toBeGreaterThan(0);
   });
 
   it('tests a model by reading what it wrote, and assigns it to generation', async () => {
@@ -325,7 +335,7 @@ describe('choosing a model that writes', () => {
     const user = userEvent.setup();
     renderApp('/settings/ai');
 
-    await user.click(await screen.findByRole('button', { name: /choose a model/i }));
+    await user.click(await screen.findByRole('button', { name: 'Choose a model' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
 
@@ -345,6 +355,63 @@ describe('choosing a model that writes', () => {
     await waitFor(() => expect(screen.getByText(/Writing with gpt-oss/i)).toBeInTheDocument());
     expect(calls.find((c) => c.url.includes('ai.assign'))?.body).toMatchObject({
       purpose: 'generation',
+      model: 'gpt-oss:120b',
+    });
+  });
+
+  it('chooses a model that sees by showing it a picture', async () => {
+    let settings: unknown = CONNECTED;
+    const calls = mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/ai.settings': () => json(settings),
+      'POST /v1/admin/ai.providers.check': () => json(CATALOGUE),
+      'POST /v1/admin/ai.providers.save': () => json(settings),
+      'POST /v1/admin/ai.test_vision': () =>
+        json({ ok: true, text: 'Red.', latency_ms: 1502, error: null }),
+      'POST /v1/admin/ai.assign': () => {
+        settings = {
+          ai: {
+            ...CONNECTED.ai,
+            assignments: [
+              ...CONNECTED.ai.assignments,
+              {
+                purpose: 'vision',
+                provider_id: PROVIDER_ID,
+                model: 'gpt-oss:120b',
+                updated_at: '2026-09-28T00:00:00.000Z',
+              },
+            ],
+            vision_enabled: true,
+          },
+        };
+        return json(settings);
+      },
+    });
+    const user = userEvent.setup({ delay: null });
+    renderApp('/settings/ai');
+
+    await user.click(await screen.findByRole('button', { name: 'Choose a vision model' }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /check the connection/i }));
+    await user.selectOptions(
+      await within(dialog).findByLabelText(/generation model/i),
+      'gpt-oss:120b',
+    );
+    await user.click(within(dialog).getByRole('button', { name: /test this model/i }));
+
+    // A catalogue lists names and sometimes capabilities, and neither says which
+    // models can see. The test sends a picture of a red square and shows what
+    // came back, so the operator judges rather than a tick.
+    expect(await within(dialog).findByText(/Red\./)).toBeInTheDocument();
+    expect(calls.some((c) => c.url.endsWith('/v1/admin/ai.test_vision'))).toBe(true);
+    expect(calls.some((c) => c.url.endsWith('/v1/admin/ai.test_generation'))).toBe(false);
+
+    await user.click(within(dialog).getByRole('button', { name: /save and use it/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Reading pictures with gpt-oss/i)).toBeInTheDocument(),
+    );
+    expect(calls.find((c) => c.url.includes('ai.assign'))?.body).toMatchObject({
+      purpose: 'vision',
       model: 'gpt-oss:120b',
     });
   });

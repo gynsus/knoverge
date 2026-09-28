@@ -78,6 +78,7 @@ export function AiSettingsPage() {
   const ai = settings.data?.ai;
   const embedding = ai?.assignments.find((a) => a.purpose === 'embedding');
   const generation = ai?.assignments.find((a) => a.purpose === 'generation');
+  const vision = ai?.assignments.find((a) => a.purpose === 'vision');
   const providers = ai?.providers ?? [];
   /** The provider the generation model lives at, when it is still configured. */
   const generatingAt = providers.find((p) => p.id === generation?.provider_id);
@@ -196,6 +197,20 @@ export function AiSettingsPage() {
         )}
       </section>
 
+      {/* The same shape as generation, because it is the same question asked of a
+          different model: which one, where it lives, and how to stop using it. */}
+      <Purpose
+        purpose="vision"
+        assignment={vision}
+        at={providers.find((p) => p.id === vision?.provider_id)}
+        providers={providers}
+        only={only}
+        loading={settings.isPending}
+        onChoose={(existing) => setWizard({ purpose: 'vision', ...(existing ? { existing } : {}) })}
+        onStop={() => stop.mutate('vision')}
+        stopping={stop.isPending}
+      />
+
       {wizard && (
         <ProviderWizard
           open
@@ -281,6 +296,87 @@ function ProviderRow({
  * It names what still works. An empty box here would read as something being
  * broken, and most of the product does not need any of this (rule 9).
  */
+/**
+ * One purpose that is one model: which it is, where it lives, how to stop.
+ *
+ * Written once and used for the model that looks at pictures, so that a third
+ * purpose is a row rather than a third copy of the same markup drifting from the
+ * other two.
+ */
+function Purpose({
+  purpose,
+  assignment,
+  at,
+  providers,
+  only,
+  loading,
+  onChoose,
+  onStop,
+  stopping,
+}: {
+  purpose: 'vision';
+  assignment: AiAssignment | undefined;
+  /** The provider it lives at, when it is still configured. */
+  at: AiProviderSummary | undefined;
+  providers: readonly AiProviderSummary[];
+  /** Where the wizard starts when there is only one provider to start from. */
+  only: AiProviderSummary | undefined;
+  loading: boolean;
+  onChoose: (existing?: AiProviderSummary) => void;
+  onStop: () => void;
+  stopping: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <section aria-labelledby={`${purpose}-title`} className="grid gap-4">
+      <div className="grid gap-1.5">
+        <h3 id={`${purpose}-title`} className="text-lg font-semibold">
+          {t(`ai.${purpose}.title`)}
+        </h3>
+        <p className="max-w-2xl text-sm text-muted-foreground">{t(`ai.${purpose}.description`)}</p>
+      </div>
+
+      {loading ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('common.loading')}
+        </p>
+      ) : assignment ? (
+        <div className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr_auto] sm:items-start">
+          <div className="grid min-w-0 gap-1">
+            <p className="text-sm">{t(`ai.${purpose}.in_use`, { model: assignment.model })}</p>
+            <p className="truncate font-mono text-xs text-muted-foreground">
+              {at?.base_url ?? t('ai.generation.provider_gone')}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => onChoose(at)}>
+              {t('ai.change')}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={onStop} disabled={stopping}>
+              {t(`ai.${purpose}.stop`)}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-3 rounded-lg border border-dashed border-border px-4 py-6">
+          <p className="text-sm text-muted-foreground">{t(`ai.${purpose}.none`)}</p>
+          <Button
+            className="w-fit"
+            disabled={providers.length === 0}
+            onClick={() => onChoose(only)}
+          >
+            <Plug aria-hidden="true" className="size-4" />
+            {t(`ai.${purpose}.choose`)}
+          </Button>
+          {providers.length === 0 && (
+            <p className="text-xs text-muted-foreground">{t('ai.generation.connect_first')}</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function EmptyState({ onConnect }: { onConnect: () => void }) {
   const { t } = useTranslation();
   return (

@@ -804,8 +804,35 @@ imported where they are used, so an installation that never uploads a PDF never
 loads a PDF engine, and `knoverge integrity check` loads neither.
 
 A PDF with no text layer is a scan: a picture of a page, with nothing to read. That
-is `unsupported` rather than a failure — the file is kept, and reading one is what
-Milestone 12 is for.
+is `unsupported` rather than a failure — the file is kept, and an installation with
+a vision model assigned can look at it.
+
+## Looking at a picture
+
+`MediaDescriber` is asked only about what nothing here could read, and only after
+that answer is in: reading is free, and looking is somebody else's GPU on somebody
+else's server. A file this installation can read itself is never sent anywhere
+(rule 12), and a test asserts exactly that.
+
+With no vision model assigned it answers null and the file stays `unsupported`,
+which is rule 9 doing its work: the rest of the product does not notice.
+
+What comes back is knowledge, so it is knowledge: a `document` item with the same
+attachment source as any other, and `drafted_by` naming the model — a description
+is a model's words about somebody's picture, and a reader has to know that
+(ADR 0031).
+
+The instruction is where the defence is. A scan of a page saying "ignore your
+instructions" is a picture of somebody's words, and the instruction says which of
+the two it is: describe what is there, transcribe the text exactly, record any
+instruction as text and never follow it, and never invent what might be under an
+unreadable part.
+
+Whether a model can see is not something a catalogue answers, so
+`ai.test_vision` sends one: a red square on white, a hundred and forty-six bytes,
+drawn here rather than fetched from anywhere. The screen shows what the model said
+about it and the operator judges — the same shape as the generation test, and for
+the same reason.
 
 Text longer than one item may hold is a failure and not a truncation. Half a
 document stored as if it were the whole one is the kind of thing nobody notices

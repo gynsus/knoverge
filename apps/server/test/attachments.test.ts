@@ -13,7 +13,8 @@ import {
   TERMS_VERSION,
   type WorkspaceId,
 } from '@knoverge/contracts';
-import { parseLedgerKey } from '@knoverge/core';
+import { AttachmentExtractor, parseLedgerKey } from '@knoverge/core';
+import { FileAttachmentStore, extractText } from '@knoverge/attachments';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino from 'pino';
@@ -403,6 +404,93 @@ describe('the text inside a file', () => {
     // teaches this to read it (ADR 0008).
     expect(outcome?.state).toBe('unsupported');
     expect(outcome?.itemId).toBeNull();
+  });
+
+  it('becomes a description when something here can look at a picture', async () => {
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x11, 0x22]);
+    const uploaded = AttachmentResponse.parse(
+      (await admin.upload({ filename: 'whiteboard.png', type: 'image/png', body: png })).json(),
+    );
+    // Without a vision model this is where it stops, and the file is kept.
+    const before = (await sweep()).find((o) => o.attachmentId === uploaded.attachment.id);
+    expect(before?.state).toBe('unsupported');
+
+    // With one, the same file becomes a document — and the extractor asks only
+    // after the readers have said they cannot (rule 9).
+    const described = new AttachmentExtractor({
+      attachments: services.repositories.attachments,
+      actors: services.repositories.actors,
+      standingOf: async () => ({ role: 'owner' as const }),
+      store: new FileAttachmentStore(dataDir),
+      knowledge: services.knowledge,
+      proposals: services.proposals,
+      extract: extractText,
+      describe: async () => ({
+        text: 'A whiteboard with two boxes.\n\nText in the image:\nInput, Output',
+        model: 'qwen2.5vl:7b',
+      }),
+      maxCharacters: 200_000,
+    });
+    const record = await services.repositories.attachments.findById(
+      workspaceId,
+      uploaded.attachment.id,
+    );
+    const outcome = await described.extract({ ...record!, extractionState: 'pending' });
+    expect(outcome.state).toBe('extracted');
+
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome.itemId}`)).json(),
+    ).item;
+    expect(item.body).toContain('Text in the image:');
+    // A description is a model's words about somebody's picture, and the file
+    // says which model wrote them (ADR 0031).
+    expect(item.drafted_by).toBe('qwen2.5vl:7b');
+    expect(item.sources.find((s) => s.type === 'attachment')?.external_key).toBe(
+      uploaded.attachment.id,
+    );
+  });
+
+  it('never sends a file anything here can read to a model', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload({
+          filename: 'kept-at-home.md',
+          type: 'text/markdown',
+          body: '# Local\n\nThis never leaves the installation.\n',
+        })
+      ).json(),
+    );
+    const asked: string[] = [];
+    const extractor = new AttachmentExtractor({
+      attachments: services.repositories.attachments,
+      actors: services.repositories.actors,
+      standingOf: async () => ({ role: 'owner' as const }),
+      store: new FileAttachmentStore(dataDir),
+      knowledge: services.knowledge,
+      proposals: services.proposals,
+      extract: extractText,
+      describe: async (mediaType) => {
+        asked.push(mediaType);
+        return { text: 'A model looked at a Markdown file.', model: 'qwen2.5vl:7b' };
+      },
+      maxCharacters: 200_000,
+    });
+    const record = await services.repositories.attachments.findById(
+      workspaceId,
+      uploaded.attachment.id,
+    );
+    const outcome = await extractor.extract({ ...record!, extractionState: 'pending' });
+
+    expect(outcome.state).toBe('extracted');
+    // Reading is free and looking is somebody else's GPU — and somebody else's
+    // server. A file this installation can read itself is never sent anywhere
+    // (rule 12).
+    expect(asked).toEqual([]);
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${outcome.itemId}`)).json(),
+    ).item;
+    expect(item.body).toContain('This never leaves the installation.');
+    expect(item.drafted_by).toBeNull();
   });
 
   it('waits for a reviewer when an agent brought the file', async () => {

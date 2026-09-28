@@ -102,7 +102,7 @@ describe('the text inside a file', () => {
     const blank = await readFile(new URL('fixtures/scan.pdf', import.meta.url));
     const result = await extractText('application/pdf', blank, LIMIT);
     expect(result.kind).toBe('unsupported');
-    expect(result.kind === 'unsupported' && result.reason).toContain('OCR');
+    expect(result.kind === 'unsupported' && result.reason).toContain('rendered to an image');
   });
 
   it('is a failure for a PDF that is not a PDF', async () => {

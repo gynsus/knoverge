@@ -7,6 +7,7 @@ import type {
   RemoveAiProviderRequest,
   SaveAiProviderRequest,
   TestAiGenerationRequest,
+  TestAiVisionRequest,
   TestAiGenerationResponse,
   TestAiModelRequest,
   TestAiModelResponse,
@@ -87,6 +88,8 @@ export const adminApi = {
     test: (body: TestAiModelRequest) => apiPost<TestAiModelResponse>('/v1/admin/ai.test', body),
     testGeneration: (body: TestAiGenerationRequest) =>
       apiPost<TestAiGenerationResponse>('/v1/admin/ai.test_generation', body),
+    testVision: (body: TestAiVisionRequest) =>
+      apiPost<TestAiGenerationResponse>('/v1/admin/ai.test_vision', body),
   },
   attachments: {
     list: (signal?: AbortSignal) =>
