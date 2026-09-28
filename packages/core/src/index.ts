@@ -1,6 +1,12 @@
 export type { ActorContext } from './actor-context.ts';
 export type { AttachmentRecord, AttachmentRepository } from './attachments/repository.ts';
 export {
+  MediaTranscriber,
+  isHearable,
+  type MediaTranscriberOptions,
+  type Transcript,
+} from './attachments/transcription.ts';
+export {
   DESCRIPTION_INSTRUCTION,
   MediaDescriber,
   isDescribable,
@@ -107,6 +113,7 @@ export {
   type CheckOutcome,
   type EmbeddingFactory,
   type GenerationFactory,
+  type TranscriptionFactory,
   type GenerationTestOutcome,
   type SaveProviderInput,
   type TestOutcome,

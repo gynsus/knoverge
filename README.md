@@ -10,9 +10,9 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.3.0**. Milestones 0 to 9 and 11 of
-[the plan](docs/IMPLEMENTATION_PLAN.md) are complete, and
-[CHANGELOG.md](CHANGELOG.md) says what each release contains.
+Knoverge is at **v0.3.0**. Milestones 0 to 9, 11 and 12 of
+[the plan](docs/IMPLEMENTATION_PLAN.md) are complete — 12 bar the scanned PDF —
+and [CHANGELOG.md](CHANGELOG.md) says what each release contains.
 
 - **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
 - **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-six tools at `POST /v1/<tool_name>`, from one contract. Per-credential budgets for reads, writes, inventory batches and requests in flight, and a backlog budget for proposals waiting on review.
@@ -21,13 +21,14 @@ Knoverge is at **v0.3.0**. Milestones 0 to 9 and 11 of
 - **Finding things** — hybrid search over a chunked index: language-aware full text, trigrams, and optional embeddings fused by reciprocal rank. A compact index for reconciliation, a briefing that fits a budget, an audit feed and a change feed.
 - **Time and disagreement** — a claim can say when it holds; a contradiction is recorded once and shows at both ends; evidence state is derived from the sources rather than asserted.
 - **Summaries and digests** — a summary keeps the exact revisions it was made from and goes stale when one of them moves; a model can draft its text and a person saves it, and the file says which model phrased it. The activity digest has a screen, and an optional narrative of the period.
-- **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers only the models that can embed, and reports what one returns before it is chosen. Everything above works with none configured.
-- **Files** — bring a document in through the interface, HTTP or MCP and its text becomes an ordinary knowledge item: searched, reviewed and versioned like anything else, and an agent's file goes to the review queue exactly as an agent's writing does. Text, Markdown, HTML, PDF and Word are read; anything else is kept and can be downloaded. The file itself stays under the hash of its contents, beside the repositories and never in Git.
+- **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers the models that can do the job being chosen for, and reports what one returns before it is chosen. Four jobs, each its own model: embedding, writing, looking at a picture, listening to a recording. Everything above works with none configured.
+- **Files** — bring a document in through the interface, HTTP or MCP and its text becomes an ordinary knowledge item: searched, reviewed and versioned like anything else, and an agent's file goes to the review queue exactly as an agent's writing does. Text, Markdown, HTML, PDF and Word are read here, with no provider and no network. With a vision model assigned a picture is described and the text on a screenshot is read; with a transcription model an audio or video file becomes what was said in it, and the item says which model phrased it. Anything left over is kept and can be downloaded. The file itself stays under the hash of its contents, beside the repositories and never in Git.
 - **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, and recovery for a write that reached Git and no further.
 
-Not yet: OAuth for hosted connectors (Milestone 10), media understanding — a
-scanned PDF, an image, a recording (12), export and import (13), knowledge
-gardening (14). There are no end-to-end browser tests.
+Not yet: OAuth for hosted connectors (Milestone 10), a scanned PDF — a page in
+one has to be rendered to an image first, and nothing here renders (12), export
+and import (13), knowledge gardening (14). There are no end-to-end browser
+tests.
 
 ## Trying it
 

@@ -24,10 +24,11 @@ export type AiProviderKind = z.infer<typeof AiProviderKind>;
  *
  * `vision` is a model that can look at a picture: it reads the text on a scan
  * and says what an image shows, so a file that holds neither Markdown nor a text
- * layer can still become knowledge. Separate from `generation` because they are
- * separate models on most installations — one writes, one looks.
+ * layer can still become knowledge. `transcription` is a model that listens to a
+ * recording. Each is separate from `generation` because they are separate models
+ * on most installations — one writes, one looks, one hears.
  */
-export const AiPurpose = z.enum(['embedding', 'generation', 'vision']);
+export const AiPurpose = z.enum(['embedding', 'generation', 'vision', 'transcription']);
 export type AiPurpose = z.infer<typeof AiPurpose>;
 
 /**
@@ -95,6 +96,8 @@ export const AiSettings = z.object({
   generation_enabled: z.boolean(),
   /** Whether anything here can look at a picture. */
   vision_enabled: z.boolean(),
+  /** Whether anything here can listen to a recording. */
+  transcription_enabled: z.boolean(),
 });
 export type AiSettings = z.infer<typeof AiSettings>;
 

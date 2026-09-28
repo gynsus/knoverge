@@ -132,8 +132,7 @@
     "intro": "Knoverge does not need an AI provider. Connect one and search also finds knowledge that says the same thing in different words; without one, everything else works exactly as it does now.",
     "kinds": {
       "ollama": "Ollama",
-      "openai_compatible": "OpenAI-compatible",
-      "openai_compatible_not_yet": "OpenAI-compatible — needs an API key, not yet"
+      "openai_compatible": "OpenAI-compatible"
     },
     "n_models_one": "{{count}} model",
     "n_models_other": "{{count}} models",
@@ -142,13 +141,23 @@
       "interface": "Configured here"
     },
     "recheck": "Check again",
+    "transcription": {
+      "title": "Listening to recordings",
+      "description": "A model that listens: an audio or video file becomes the words spoken in it, so a recorded meeting can be searched like anything else. Without one, recordings are kept and downloadable and nothing is sent anywhere.",
+      "in_use": "Listening with {{model}}.",
+      "none": "Nothing here can listen to a recording. Audio and video files are kept as files, and no words are taken out of them.",
+      "choose": "Choose a transcription model",
+      "stop": "Stop transcribing",
+      "connect_first": "This one needs an OpenAI-compatible provider — a Whisper server, or a gateway in front of one. Ollama has no endpoint that takes a recording."
+    },
     "vision": {
       "title": "Reading pictures",
       "description": "A model that can look at an image: it reads the text on a scan and says what a picture shows, so a file with no text layer can still become knowledge. Without one, images are kept and downloadable and nothing is sent anywhere.",
       "in_use": "Reading pictures with {{model}}.",
       "none": "Nothing here can look at a picture. Images, scanned PDFs and screenshots are kept as files and no text is taken out of them.",
       "choose": "Choose a vision model",
-      "stop": "Stop reading pictures"
+      "stop": "Stop reading pictures",
+      "connect_first": "Connect a provider above first."
     },
     "wizard": {
       "address": "Address",
@@ -158,6 +167,7 @@
       "check": "Check the connection",
       "finish": "Save and use it",
       "intro": "Nothing is saved until the last step. Both checks run against the address you type.",
+      "key_hint": "A key cannot be set here. If the server needs one it goes in the environment, where it is matched to this address; most servers people run themselves need none.",
       "kind": "Kind",
       "kind_hint": "How the product talks to it. OpenAI-compatible means the /v1/embeddings shape, whoever is behind it.",
       "model": "Embedding model",
@@ -166,6 +176,8 @@
       "model_generation_hint": "Only models the provider says can complete text. Changing it later changes nothing already written; a summary keeps the model it was made with.",
       "model_hint": "Only models the provider says can embed. Changing this later re-embeds the workspace; the old model keeps answering until it is done.",
       "model_placeholder": "Choose a model",
+      "model_transcription": "Transcription model",
+      "model_transcription_hint": "Every model the provider lists. No catalogue has a word for a model that listens, so nothing is hidden here; whisper-1 is what most servers call theirs.",
       "model_vision_hint": "A model that can be shown a picture. The test sends one — a red square — and asks what colour it is.",
       "model_works": "{{dimensions}} numbers per vector, in {{ms}} ms.",
       "model_wrote": "Answered in {{ms}} ms: “{{text}}”",
@@ -173,6 +185,8 @@
       "name_hint": "What you call this machine, so a list of providers reads as places rather than addresses.",
       "no_models": "This provider holds no model that can embed. Pull one — bge-m3 and nomic-embed-text are the usual choices — and check again.",
       "no_models_generation": "This provider holds no model that can write. Pull one and check again.",
+      "no_models_transcription": "This provider lists no models at all. Check the address and try again.",
+      "no_test": "There is no test for this one: speech is the one thing that cannot be made up here, and a synthesised clip would test the synthesiser. Save it, upload a recording, and the file’s page shows what came back.",
       "no_version": "unknown",
       "reached": "Answered — version {{version}}, {{models}}.",
       "step_model": "Which model",

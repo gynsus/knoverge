@@ -276,8 +276,10 @@ API keys are the one thing the interface cannot set. Storing one needs
 encryption at rest, a key to encrypt it with, and an answer for what happens
 when that is lost; until that exists, a key stays in `KNOVERGE_EMBEDDING_API_KEY`
 and is sent to the provider whose address matches
-`KNOVERGE_EMBEDDING_BASE_URL`. Ollama needs no key, which is why it is the one
-the wizard can connect on its own.
+`KNOVERGE_EMBEDDING_BASE_URL`. The wizard connects either kind and says so where
+the key would have gone: most servers an operator runs themselves — Ollama, a
+local Whisper server, a llama.cpp build — need none, and refusing to connect
+them at all because some servers need a key would be refusing the usual case.
 
 The dimension is not configured — it is read from the model's own first answer.
 Changing model is safe: the new one fills a profile of its own while the old

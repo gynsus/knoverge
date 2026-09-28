@@ -2,6 +2,7 @@ import type { WorkspaceId } from '@knoverge/contracts';
 import {
   createHttpEmbeddingProvider,
   createHttpGenerationProvider,
+  createHttpTranscriptionProvider,
   probeProvider,
 } from '@knoverge/intelligence';
 
@@ -20,6 +21,7 @@ import {
   AttachmentExtractor,
   AttachmentService,
   MediaDescriber,
+  MediaTranscriber,
   MAX_BODY_BYTES,
   AuthorizationAdminService,
   DomainError,
@@ -323,6 +325,13 @@ export function createServices(config: ServicesConfig) {
         model: spec.model,
         apiKey: config.apiKeyFor?.(spec.baseUrl),
       }),
+    transcription: (spec) =>
+      createHttpTranscriptionProvider({
+        provider: 'openai_compatible',
+        baseUrl: spec.baseUrl,
+        model: spec.model,
+        apiKey: config.apiKeyFor?.(spec.baseUrl),
+      }),
     probe: (spec) => probeProvider({ ...spec, apiKey: config.apiKeyFor?.(spec.baseUrl) }),
   });
   const embeddingSource = ai.embeddingSource;
@@ -436,6 +445,12 @@ export function createServices(config: ServicesConfig) {
     // assigned a model that can look at a picture (rule 9).
     describe: (mediaType, bytes) =>
       new MediaDescriber({ vision: ai.visionSource }).describe(mediaType, bytes),
+    transcribe: (mediaType, bytes, filename) =>
+      new MediaTranscriber({ transcription: ai.transcriptionSource }).transcribe(
+        mediaType,
+        bytes,
+        filename,
+      ),
     maxCharacters: MAX_BODY_BYTES,
   });
   const taxonomy = new TaxonomyService({

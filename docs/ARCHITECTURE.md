@@ -380,8 +380,7 @@ Jobs:
 - webhook delivery;
 - integrity checks;
 - attachment text extraction, including a description of a picture when a vision
-  model is assigned;
-- transcription (later).
+  model is assigned and the words of a recording when a transcription model is.
 
 Do not require Redis for the first release.
 

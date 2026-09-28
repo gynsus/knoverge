@@ -48,6 +48,7 @@ function settings(view: AiSettingsView): AiSettings {
     embeddings_enabled: view.embeddingsEnabled,
     generation_enabled: view.generationEnabled,
     vision_enabled: view.visionEnabled,
+    transcription_enabled: view.transcriptionEnabled,
   };
 }
 
