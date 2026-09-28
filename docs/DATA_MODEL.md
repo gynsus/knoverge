@@ -989,6 +989,40 @@ Signing secrets are encrypted, not hashed, because the server must recover them 
 
 A webhook carries a notification and not the knowledge (ADR 0029): the body is a batch of the same event summaries `events_list` serves, and a receiver that wants an item fetches it with a credential of its own. `cursor` is the per-workspace sequence, so a delivery that fails leaves it where it was and the next attempt resends rather than skips; deliveries are at least once and in order, keyed on an event id that does not change. A new webhook starts at the workspace's current sequence, because an operator adding one wants what happens next rather than a replay.
 
-## 33. Jobs
+## 33. AI provider
+
+```text
+AiProvider
+- id
+- kind: ollama | openai_compatible
+- name
+- base_url                    unique; one row per address
+- origin: environment | interface   who configured it (ADR 0021)
+- api_key_ciphertext nullable (AES-256-GCM under KNOVERGE_ENCRYPTION_KEY; sent on every call)
+- last_checked_at nullable
+- last_error nullable         one line, never a body
+- created_at
+- updated_at
+
+AiAssignment
+- purpose: embedding | generation | vision | transcription   the primary key
+- provider_id                 cascades: removing a provider removes what it was doing
+- model
+- updated_at
+```
+
+Instance-level, with no workspace column: one Ollama server is not a property of a
+workspace. The purpose is the key, so there is one answer to "what embeds" rather
+than a list to choose from.
+
+The API key is sealed and not hashed, for the reason a webhook's signing secret is:
+it goes out on every call, so it has to be readable again (ADR 0033). It is
+write-only — the settings page says whether a provider has one, never which — and
+null on a provider that needs none, which is the usual case for a server an
+operator runs themselves. Without a `KNOVERGE_ENCRYPTION_KEY` a key cannot be
+stored at all, and `KNOVERGE_EMBEDDING_API_KEY` remains the fallback for the one
+address it names.
+
+## 34. Jobs
 
 pg-boss manages its own tables in the `pgboss` schema. Drizzle keeps its migration log in `drizzle.__drizzle_migrations`. Domain tables never reference job ids.

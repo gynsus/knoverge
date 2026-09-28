@@ -81,13 +81,35 @@ function build(options: {
   probe?: () => Promise<{ version?: string; models: { name: string; capabilities: string[] }[] }>;
   /** Absent on purpose in some tests: a build that cannot generate text. */
   generation?: (spec: { kind: string; baseUrl: string; model: string }) => GenerationProvider;
+  /** Absent on purpose in some tests: an installation with no encryption key. */
+  secrets?: { seal: (plaintext: string) => string; open: (sealed: string) => string };
 }) {
   return new AiSettingsService({
     repository: options.repository,
     embeddings: options.embeddings ?? (() => embedder(1024)),
     ...(options.generation ? { generation: options.generation as never } : {}),
+    ...(options.secrets ? { secrets: options.secrets } : {}),
     probe: options.probe ?? (async () => ({ version: '0.32.13', models: [] })),
   });
+}
+
+/**
+ * Sealing as a reversible marker rather than as cryptography.
+ *
+ * What the service has to get right is which value goes where and when: the real
+ * AES lives in `packages/auth` and is tested there.
+ */
+function sealing() {
+  return {
+    // Encoded rather than wrapped, so that a test asserting the key is not in a
+    // value cannot pass because the marker happens to quote it.
+    seal: (plaintext: string) => `sealed:${Buffer.from(plaintext, 'utf8').toString('base64url')}`,
+    open: (sealed: string) => {
+      if (!sealed.startsWith('sealed:'))
+        throw new Error('this secret was not sealed by this version');
+      return Buffer.from(sealed.slice('sealed:'.length), 'base64url').toString('utf8');
+    },
+  };
 }
 
 describe('with nothing configured', () => {
@@ -443,5 +465,174 @@ describe('removing a provider', () => {
     await expect(ai.remove('aip_01M2XNOTHINGNOTHINGNOTH1' as AiProviderId)).rejects.toThrow(
       DomainError,
     );
+  });
+});
+
+describe('a provider that needs a key', () => {
+  /** Where the key ended up, as the thing that builds a provider sees it. */
+  function spy() {
+    const seen: (string | undefined)[] = [];
+    return {
+      seen,
+      embeddings: (spec: { kind: string; baseUrl: string; model: string; apiKey?: string }) => {
+        seen.push(spec.apiKey);
+        return embedder(1024);
+      },
+    };
+  }
+
+  it('keeps it sealed, and never gives it back', async () => {
+    const repo = repository();
+    const ai = service({ repository: repo, secrets: sealing() });
+    const provider = await ai.save({
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-live-1234',
+    });
+    // Sealed at rest: the column never holds what was typed, and nothing the
+    // service hands back carries it either.
+    expect(provider.apiKeyCiphertext).not.toBeNull();
+    expect(provider.apiKeyCiphertext).not.toContain('sk-live-1234');
+    expect(JSON.stringify(await ai.settings())).not.toContain('sk-live-1234');
+  });
+
+  it('sends it on the calls it authorises, and nothing else', async () => {
+    const repo = repository();
+    const watcher = spy();
+    const ai = service({ repository: repo, embeddings: watcher.embeddings, secrets: sealing() });
+    const paid = await ai.save({
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-live-1234',
+    });
+    const free = await ai.save({ kind: 'ollama', name: 'Ollama', baseUrl: 'http://ollama:11434' });
+
+    await ai.assign({ purpose: 'embedding', providerId: paid.id, model: 'text-embedding-3' });
+    await (await ai.embeddingSource())?.embed(['x']);
+    expect(watcher.seen).toEqual(['sk-live-1234']);
+
+    // And a provider with no key gets none, rather than the other one's.
+    await ai.assign({ purpose: 'embedding', providerId: free.id, model: 'bge-m3' });
+    await (await ai.embeddingSource())?.embed(['x']);
+    expect(watcher.seen).toEqual(['sk-live-1234', undefined]);
+  });
+
+  it('is built again when somebody else changes the key, not answered from the cache', async () => {
+    // Two services over one database, which is what `KNOVERGE_ROLE` splits a
+    // deployment into: the key is changed on the settings page and the worker
+    // has to notice. Its own `save` would clear its cache; another process's
+    // does not, so the sealed value is part of what the cache is keyed by.
+    const repo = repository();
+    const watcher = spy();
+    const worker = service({
+      repository: repo,
+      embeddings: watcher.embeddings,
+      secrets: sealing(),
+    });
+    const settings = service({ repository: repo, secrets: sealing() });
+
+    const provider = await settings.save({
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-old',
+    });
+    await settings.assign({
+      purpose: 'embedding',
+      providerId: provider.id,
+      model: 'text-embedding-3',
+    });
+    await (await worker.embeddingSource())?.embed(['x']);
+
+    await settings.save({
+      providerId: provider.id,
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-new',
+    });
+    await (await worker.embeddingSource())?.embed(['x']);
+    // A cached provider holding a revoked credential would fail every call
+    // until a restart.
+    expect(watcher.seen).toEqual(['sk-old', 'sk-new']);
+  });
+
+  it('keeps the key through a rename, and drops it only when asked', async () => {
+    const repo = repository();
+    const ai = service({ repository: repo, secrets: sealing() });
+    const provider = await ai.save({
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-live-1234',
+    });
+
+    const renamed = await ai.save({
+      providerId: provider.id,
+      kind: 'openai_compatible',
+      name: 'The gateway',
+      baseUrl: 'https://gateway.test',
+    });
+    // Leaving the field out is not the same as clearing it: a rename that
+    // silently dropped a credential would break embedding an hour later.
+    expect(renamed.apiKeyCiphertext).toBe(provider.apiKeyCiphertext);
+
+    const cleared = await ai.save({
+      providerId: provider.id,
+      kind: 'openai_compatible',
+      name: 'The gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: null,
+    });
+    expect(cleared.apiKeyCiphertext).toBeNull();
+  });
+
+  it('refuses the key rather than storing it in clear', async () => {
+    // No `KNOVERGE_ENCRYPTION_KEY`, so there is nowhere safe to put one. The
+    // same answer webhooks give about their signing secrets.
+    const ai = service();
+    await expect(
+      ai.save({
+        kind: 'openai_compatible',
+        name: 'A gateway',
+        baseUrl: 'https://gateway.test',
+        apiKey: 'sk-live-1234',
+      }),
+    ).rejects.toThrow(DomainError);
+    expect((await ai.settings()).secretStorageConfigured).toBe(false);
+    expect((await service({ secrets: sealing() }).settings()).secretStorageConfigured).toBe(true);
+  });
+
+  it('probes with the key it holds when the caller brings none', async () => {
+    const repo = repository();
+    const asked: (string | undefined)[] = [];
+    const ai = service({
+      repository: repo,
+      secrets: sealing(),
+      probe: (async (spec: { apiKey?: string }) => {
+        asked.push(spec.apiKey);
+        return { version: '1', models: [] };
+      }) as never,
+    });
+    await ai.save({
+      kind: 'openai_compatible',
+      name: 'A gateway',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-live-1234',
+    });
+
+    // Reopening the wizard on a configured provider must not need the key
+    // typed again to find out whether it still answers.
+    await ai.check({ kind: 'openai_compatible', baseUrl: 'https://gateway.test' });
+    // And a key the caller does bring wins, because that is somebody testing a
+    // new one before saving it.
+    await ai.check({
+      kind: 'openai_compatible',
+      baseUrl: 'https://gateway.test',
+      apiKey: 'sk-typed',
+    });
+    expect(asked).toEqual(['sk-live-1234', 'sk-typed']);
   });
 });

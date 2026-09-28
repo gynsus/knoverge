@@ -1,4 +1,4 @@
-import { pgTable, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
+import { pgTable, text, uniqueIndex, varchar } from 'drizzle-orm/pg-core';
 
 import { id, timestampTz } from './common.ts';
 
@@ -17,6 +17,11 @@ export const aiProviders = pgTable(
     baseUrl: varchar('base_url', { length: 512 }).notNull(),
     /** `environment` when a first start read the variables, else `interface`. */
     origin: varchar('origin', { length: 16 }).notNull(),
+    /**
+     * AES-256-GCM under `KNOVERGE_ENCRYPTION_KEY`, or null when the provider
+     * needs no key. Never served: the settings page says whether there is one.
+     */
+    apiKeyCiphertext: text('api_key_ciphertext'),
     lastCheckedAt: timestampTz('last_checked_at'),
     /** One line, never a body: this is somebody else's server. */
     lastError: varchar('last_error', { length: 500 }),

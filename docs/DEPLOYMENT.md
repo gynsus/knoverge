@@ -272,19 +272,20 @@ without a base URL and a model is refused at startup rather than run
 half-configured, because an installation that silently embedded nothing would
 report `semantic_search: false` and give an operator nothing to look at.
 
-API keys are the one thing the interface cannot set. A key stays in
-`KNOVERGE_EMBEDDING_API_KEY` and is sent to the provider whose address matches
-`KNOVERGE_EMBEDDING_BASE_URL` — so a second provider at a different address gets
-no key, whatever it is for. The wizard connects either kind and says so where the
-key would have gone: most servers an operator runs themselves — Ollama, a local
-Whisper server, a llama.cpp build — need none, and refusing to connect them at
-all because some servers need a key would be refusing the usual case.
+An API key is set in the interface, in the wizard, for the one kind of provider
+that has any use for one. It is sealed with `KNOVERGE_ENCRYPTION_KEY` exactly as a
+webhook's signing secret is, and never shown again: the page says whether a
+provider has one, never which (ADR 0033). Most servers an operator runs
+themselves — Ollama, a local Whisper build, llama.cpp — need none.
 
-What used to stand in the way of a field here was that there was nowhere safe to
-put what it held. That is no longer true: `KNOVERGE_ENCRYPTION_KEY` and the
-sealing that keeps webhook signing secrets arrived with webhooks, and a provider
-key would be kept the same way. Nobody has built the field yet, which is the only
-reason it is not there.
+Without a `KNOVERGE_ENCRYPTION_KEY` there is nowhere safe to put a key, so the
+field is not offered and the server refuses one rather than storing it in clear.
+The screen says which variable to set.
+
+`KNOVERGE_EMBEDDING_API_KEY` still works and is second: what the provider itself
+holds wins, and the variable reaches the provider whose address matches
+`KNOVERGE_EMBEDDING_BASE_URL`, so an installation configured before the field
+existed keeps working without anybody re-entering anything.
 
 The dimension is not configured — it is read from the model's own first answer.
 Changing model is safe: the new one fills a profile of its own while the old

@@ -34,6 +34,12 @@ export interface WizardResult {
   name: string;
   baseUrl: string;
   model: string;
+  /**
+   * What to do with the key: a string sets one, `null` clears it, and undefined
+   * keeps whatever the provider has — so reopening the wizard and pressing save
+   * does not drop a key nobody retyped.
+   */
+  apiKey?: string | null | undefined;
 }
 
 /** Which job the model is being chosen for. */
@@ -60,6 +66,7 @@ export function ProviderWizard({
   existing,
   currentModel,
   purpose = 'embedding',
+  canKeepSecrets = true,
   onFinish,
   saving,
   error,
@@ -72,6 +79,8 @@ export function ProviderWizard({
   currentModel?: string | undefined;
   /** Which job the model is for. Decides what is offered and how it is tested. */
   purpose?: WizardPurpose;
+  /** False without a `KNOVERGE_ENCRYPTION_KEY`: a key has nowhere safe to be. */
+  canKeepSecrets?: boolean;
   onFinish: (result: WizardResult) => void;
   saving: boolean;
   error: unknown;
@@ -81,13 +90,24 @@ export function ProviderWizard({
   const [kind, setKind] = useState<AiProviderKind>(existing?.kind ?? 'ollama');
   const [name, setName] = useState(existing?.name ?? SUGGESTED_NAME.ollama);
   const [baseUrl, setBaseUrl] = useState(existing?.base_url ?? '');
+  const [apiKey, setApiKey] = useState('');
+  /** Whether the key is being replaced, when there is one to replace. */
+  const [replacing, setReplacing] = useState(false);
   const [model, setModel] = useState(currentModel ?? '');
   const [catalogue, setCatalogue] = useState<CheckAiProviderResponse | null>(null);
   const [tested, setTested] = useState<TestAiModelResponse | null>(null);
   const [wrote, setWrote] = useState<TestAiGenerationResponse | null>(null);
 
+  /**
+   * The key to send with a probe or a test.
+   *
+   * Only what was typed. Leaving it out means "use what is stored", which is
+   * what reopening the wizard on a configured provider wants.
+   */
+  const typedKey = apiKey.trim() === '' ? {} : { api_key: apiKey.trim() };
+
   const check = useMutation({
-    mutationFn: () => adminApi.ai.check({ kind, base_url: baseUrl }),
+    mutationFn: () => adminApi.ai.check({ kind, base_url: baseUrl, ...typedKey }),
     onSuccess: (answer) => {
       setCatalogue(answer);
       if (answer.reachable) {
@@ -103,16 +123,16 @@ export function ProviderWizard({
   const test = useMutation({
     mutationFn: async () => {
       if (purpose === 'generation') {
-        setWrote(await adminApi.ai.testGeneration({ kind, base_url: baseUrl, model }));
+        setWrote(await adminApi.ai.testGeneration({ kind, base_url: baseUrl, model, ...typedKey }));
         return;
       }
       if (purpose === 'vision') {
         // A picture of a red square and one question about it. A catalogue says
         // which models exist, never which of them can see.
-        setWrote(await adminApi.ai.testVision({ kind, base_url: baseUrl, model }));
+        setWrote(await adminApi.ai.testVision({ kind, base_url: baseUrl, model, ...typedKey }));
         return;
       }
-      setTested(await adminApi.ai.test({ kind, base_url: baseUrl, model }));
+      setTested(await adminApi.ai.test({ kind, base_url: baseUrl, model, ...typedKey }));
     },
   });
 
@@ -164,7 +184,16 @@ export function ProviderWizard({
       check.mutate();
       return;
     }
-    onFinish({ providerId: existing?.id, kind, name, baseUrl, model });
+    onFinish({
+      providerId: existing?.id,
+      kind,
+      name,
+      baseUrl,
+      model,
+      // Undefined keeps what is stored; an empty field while replacing clears
+      // it, which is how a provider that stopped needing a key says so.
+      ...(apiKey.trim() !== '' ? { apiKey: apiKey.trim() } : replacing ? { apiKey: null } : {}),
+    });
   };
 
   return (
@@ -203,13 +232,45 @@ export function ProviderWizard({
                   <option value="openai_compatible">{t('ai.kinds.openai_compatible')}</option>
                 </Select>
               </Field>
-              {/* Said here rather than in a field that does not exist: a key
-                  cannot be typed in, and a server that needs one has to be
-                  given it in the environment (ADR 0021). Most of the servers
-                  people run at home need none. */}
-              {kind === 'openai_compatible' && (
-                <p className="text-sm text-muted-foreground">{t('ai.wizard.key_hint')}</p>
-              )}
+              {/* Only for the kind that has any use for one. Ollama needs no
+                  key, and a field that could only be left empty is a question
+                  nobody should be asked. */}
+              {kind === 'openai_compatible' &&
+                (canKeepSecrets ? (
+                  existing?.has_api_key && !replacing ? (
+                    <div className="grid justify-items-start gap-2">
+                      <p className="text-sm text-muted-foreground">{t('ai.wizard.key_kept')}</p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setReplacing(true)}
+                      >
+                        {t('ai.wizard.key_replace')}
+                      </Button>
+                    </div>
+                  ) : (
+                    <Field
+                      label={t('ai.wizard.key')}
+                      hint={replacing ? t('ai.wizard.key_clear_hint') : t('ai.wizard.key_hint')}
+                    >
+                      <Input
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        // A password field, so it is not read over a shoulder
+                        // and a browser does not offer to remember it as text.
+                        type="password"
+                        autoComplete="off"
+                        maxLength={400}
+                        placeholder={t('ai.wizard.key_placeholder')}
+                      />
+                    </Field>
+                  )
+                ) : (
+                  /* No `KNOVERGE_ENCRYPTION_KEY`, so a key would have nowhere
+                     safe to be. Said rather than shown as a field that refuses. */
+                  <p className="text-sm text-muted-foreground">{t('ai.wizard.key_nowhere')}</p>
+                ))}
               <Field label={t('ai.wizard.name')} hint={t('ai.wizard.name_hint')}>
                 <Input
                   value={name}

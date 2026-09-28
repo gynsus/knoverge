@@ -21,27 +21,30 @@ import { systemClock } from '../ports/clock.ts';
 import type { AiAssignmentRecord, AiProviderRecord, AiRepository } from './repository.ts';
 
 /** How an adapter builds a provider from what is stored. */
-export type EmbeddingFactory = (spec: {
+export type EmbeddingFactory = (spec: ProviderSpec) => EmbeddingProvider;
+
+/**
+ * What an adapter needs to build a provider.
+ *
+ * The key is in the open here and nowhere else: it is sealed in the database and
+ * opened at the moment of the call, so the only place it exists in clear is
+ * between this service and the request it authorises.
+ */
+export interface ProviderSpec {
   kind: AiProviderKind;
   baseUrl: string;
   model: string;
-}) => EmbeddingProvider;
+  apiKey?: string | undefined;
+}
 
 /** And for one that listens. No kind: only an OpenAI-compatible provider has one. */
-export type TranscriptionFactory = (spec: {
-  baseUrl: string;
-  model: string;
-}) => TranscriptionProvider;
+export type TranscriptionFactory = (spec: Omit<ProviderSpec, 'kind'>) => TranscriptionProvider;
 
 /** The same, for a model that writes rather than one that measures. */
-export type GenerationFactory = (spec: {
-  kind: AiProviderKind;
-  baseUrl: string;
-  model: string;
-}) => GenerationProvider;
+export type GenerationFactory = (spec: ProviderSpec) => GenerationProvider;
 
 /** How an adapter asks an address what it is and what it holds. */
-export type CatalogueProbe = (spec: { kind: AiProviderKind; baseUrl: string }) => Promise<{
+export type CatalogueProbe = (spec: Omit<ProviderSpec, 'model'>) => Promise<{
   version?: string;
   models: CatalogueModel[];
 }>;
@@ -62,6 +65,15 @@ export interface AiSettingsServiceOptions {
    */
   transcription?: TranscriptionFactory;
   probe: CatalogueProbe;
+  /**
+   * Sealing and opening a provider's key, when this installation can.
+   *
+   * Absent without a `KNOVERGE_ENCRYPTION_KEY`, and then a key cannot be given
+   * here at all — the same answer webhooks give about their signing secrets, and
+   * for the same reason: a credential in a column in clear is worse than a
+   * feature that is not configured (ADR 0033).
+   */
+  secrets?: { seal: (plaintext: string) => string; open: (sealed: string) => string };
   clock?: Clock;
 }
 
@@ -73,6 +85,8 @@ export interface AiSettingsView {
   generationEnabled: boolean;
   visionEnabled: boolean;
   transcriptionEnabled: boolean;
+  /** Whether a key can be kept at all: there is a `KNOVERGE_ENCRYPTION_KEY`. */
+  secretStorageConfigured: boolean;
 }
 
 export interface SaveProviderInput {
@@ -80,6 +94,12 @@ export interface SaveProviderInput {
   kind: AiProviderKind;
   name: string;
   baseUrl: string;
+  /**
+   * What to do with the key: a string sets one, `null` removes it, and leaving
+   * it out keeps whatever the provider has — so renaming a provider does not
+   * quietly drop the credential it was working with.
+   */
+  apiKey?: string | null | undefined;
   /** `environment` only for the seed on a first start. */
   origin?: AiProviderOrigin;
 }
@@ -199,6 +219,7 @@ export class AiSettingsService {
             a.purpose === 'transcription' &&
             providers.find((p) => p.id === a.providerId)?.kind === 'openai_compatible',
         ),
+      secretStorageConfigured: this.o.secrets !== undefined,
     };
   }
 
@@ -214,6 +235,13 @@ export class AiSettingsService {
       );
     }
     const now = this.clock.now();
+    // Undefined keeps what is there, null clears it, a string replaces it.
+    const sealed =
+      input.apiKey === undefined
+        ? undefined
+        : input.apiKey === null
+          ? null
+          : this.sealing().seal(input.apiKey);
     if (input.providerId) {
       const existing = await this.expect(input.providerId);
       // Anything changed here was changed by somebody, whatever the first
@@ -223,6 +251,7 @@ export class AiSettingsService {
         name: input.name,
         baseUrl,
         origin: input.origin ?? ('interface' as const),
+        ...(sealed === undefined ? {} : { apiKeyCiphertext: sealed }),
         updatedAt: now,
       };
       await this.o.repository.updateProvider(existing.id, patch);
@@ -237,6 +266,7 @@ export class AiSettingsService {
       name: input.name,
       baseUrl,
       origin: input.origin ?? 'interface',
+      apiKeyCiphertext: sealed ?? null,
       lastCheckedAt: null,
       lastError: null,
       createdAt: now,
@@ -244,6 +274,41 @@ export class AiSettingsService {
     };
     await this.o.repository.insertProvider(record);
     return record;
+  }
+
+  /**
+   * The sealing, or the reason there is none.
+   *
+   * Refused rather than stored in clear: a key in a column anybody with the
+   * database can read is worse than an operator finding out they need to set
+   * `KNOVERGE_ENCRYPTION_KEY` (ADR 0033).
+   */
+  private sealing(): NonNullable<AiSettingsServiceOptions['secrets']> {
+    if (!this.o.secrets) {
+      throw new DomainError(
+        'VALIDATION_ERROR',
+        'this installation has no KNOVERGE_ENCRYPTION_KEY, so it cannot keep a provider key',
+      );
+    }
+    return this.o.secrets;
+  }
+
+  /**
+   * A provider's key in clear, for the call that is about to use it.
+   *
+   * Null when the provider has none, which is the usual case for a server an
+   * operator runs themselves. A row that cannot be opened is a wrong key or an
+   * edited column, and both mean stopping rather than calling with nothing.
+   */
+  /** The key of whatever is configured at an address, for a probe or a test. */
+  private async storedKeyAt(baseUrl: string): Promise<string | undefined> {
+    const known = await this.o.repository.findProviderByUrl(baseUrl);
+    return known ? this.keyOf(known) : undefined;
+  }
+
+  private keyOf(provider: AiProviderRecord): string | undefined {
+    if (!provider.apiKeyCiphertext) return undefined;
+    return this.sealing().open(provider.apiKeyCiphertext);
   }
 
   async remove(providerId: AiProviderId): Promise<void> {
@@ -261,11 +326,19 @@ export class AiSettingsService {
    * typed before it is stored. When the address happens to be one already
    * configured, the outcome is recorded against it.
    */
-  async check(spec: { kind: AiProviderKind; baseUrl: string }): Promise<CheckOutcome> {
+  async check(spec: {
+    kind: AiProviderKind;
+    baseUrl: string;
+    apiKey?: string | undefined;
+  }): Promise<CheckOutcome> {
     const baseUrl = spec.baseUrl.replace(/\/+$/u, '');
+    // What the caller typed, or what the provider at that address already has:
+    // reopening the wizard on a configured provider must not need the key typed
+    // again to find out whether it still answers.
+    const apiKey = spec.apiKey ?? (await this.storedKeyAt(baseUrl));
     let outcome: CheckOutcome;
     try {
-      const catalogue = await this.o.probe({ kind: spec.kind, baseUrl });
+      const catalogue = await this.o.probe({ kind: spec.kind, baseUrl, apiKey });
       outcome = {
         reachable: true,
         version: catalogue.version ?? null,
@@ -340,13 +413,16 @@ export class AiSettingsService {
     baseUrl: string;
     model: string;
     text?: string | undefined;
+    apiKey?: string | undefined;
   }): Promise<TestOutcome> {
     const started = this.clock.now().getTime();
     try {
+      const baseUrl = input.baseUrl.replace(/\/+$/u, '');
       const embedder = this.o.embeddings({
         kind: input.kind,
-        baseUrl: input.baseUrl.replace(/\/+$/u, ''),
+        baseUrl,
         model: input.model,
+        apiKey: input.apiKey ?? (await this.storedKeyAt(baseUrl)),
       });
       const [vector] = await embedder.embed([input.text ?? TEST_TEXT]);
       const latencyMs = Math.max(0, this.clock.now().getTime() - started);
@@ -377,6 +453,7 @@ export class AiSettingsService {
     baseUrl: string;
     model: string;
     text?: string | undefined;
+    apiKey?: string | undefined;
   }): Promise<GenerationTestOutcome> {
     const started = this.clock.now().getTime();
     const since = () => Math.max(0, this.clock.now().getTime() - started);
@@ -384,10 +461,12 @@ export class AiSettingsService {
       return { ok: false, text: null, latencyMs: null, error: 'this build cannot generate text' };
     }
     try {
+      const baseUrl = input.baseUrl.replace(/\/+$/u, '');
       const model = this.o.generation({
         kind: input.kind,
-        baseUrl: input.baseUrl.replace(/\/+$/u, ''),
+        baseUrl,
         model: input.model,
+        apiKey: input.apiKey ?? (await this.storedKeyAt(baseUrl)),
       });
       const answer = await model.generate({
         instruction: TEST_INSTRUCTION,
@@ -421,6 +500,7 @@ export class AiSettingsService {
     kind: AiProviderKind;
     baseUrl: string;
     model: string;
+    apiKey?: string | undefined;
   }): Promise<GenerationTestOutcome> {
     const started = this.clock.now().getTime();
     const since = () => Math.max(0, this.clock.now().getTime() - started);
@@ -428,10 +508,12 @@ export class AiSettingsService {
       return { ok: false, text: null, latencyMs: null, error: 'this build cannot generate text' };
     }
     try {
+      const baseUrl = input.baseUrl.replace(/\/+$/u, '');
       const model = this.o.generation({
         kind: input.kind,
-        baseUrl: input.baseUrl.replace(/\/+$/u, ''),
+        baseUrl,
         model: input.model,
+        apiKey: input.apiKey ?? (await this.storedKeyAt(baseUrl)),
       });
       const answer = await model.generate({
         instruction: VISION_TEST_INSTRUCTION,
@@ -484,7 +566,11 @@ export class AiSettingsService {
     if (!assignment) return null;
     const provider = await this.o.repository.findProvider(assignment.providerId);
     if (!provider || provider.kind !== 'openai_compatible') return null;
-    return this.o.transcription({ baseUrl: provider.baseUrl, model: assignment.model });
+    return this.o.transcription({
+      baseUrl: provider.baseUrl,
+      model: assignment.model,
+      apiKey: this.keyOf(provider),
+    });
   };
 
   private async chat(purpose: 'generation' | 'vision') {
@@ -497,6 +583,7 @@ export class AiSettingsService {
       kind: provider.kind,
       baseUrl: provider.baseUrl,
       model: assignment.model,
+      apiKey: this.keyOf(provider),
     });
   }
 
@@ -518,12 +605,20 @@ export class AiSettingsService {
     // Everything the answer depends on is in the key and nothing that does
     // not: a change of kind, of address or of model builds a new one, and a
     // provider that was only renamed keeps the dimension it learned.
-    const key = [provider.kind, provider.baseUrl, assignment.model].join('|');
+    const key = [
+      provider.kind,
+      provider.baseUrl,
+      assignment.model,
+      // The sealed form, not the key itself: it changes when the key changes,
+      // and a cached provider holding a revoked credential would keep failing.
+      provider.apiKeyCiphertext ?? '',
+    ].join('|');
     if (this.cached?.key === key) return this.cached.provider;
     const built = this.o.embeddings({
       kind: provider.kind,
       baseUrl: provider.baseUrl,
       model: assignment.model,
+      apiKey: this.keyOf(provider),
     });
     this.cached = { key, provider: built };
     return built;

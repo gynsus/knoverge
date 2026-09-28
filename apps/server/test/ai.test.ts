@@ -14,6 +14,7 @@ import {
   TestAiGenerationResponse,
   TestAiModelResponse,
 } from '@knoverge/contracts';
+import { parseEncryptionKey } from '@knoverge/auth';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
 import type { FastifyInstance, InjectOptions } from 'fastify';
@@ -68,9 +69,14 @@ class Browser {
  * tested is that the product's requests are ones an Ollama would recognise,
  * and a stub that answers whatever it is asked cannot say that.
  */
+const authorizations: (string | undefined)[] = [];
+
 function startOllama(): Promise<{ server: Server; url: string }> {
   const server = createServer((request, response) => {
     const url = request.url ?? '';
+    // What a provider that wants a key would read. Recorded rather than
+    // required, because most of these tests are an Ollama, which wants none.
+    authorizations.push(request.headers.authorization);
     const send = (body: unknown) => {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(JSON.stringify(body));
@@ -153,6 +159,7 @@ beforeAll(async () => {
     dataDir,
     ledgerKey: parseLedgerKey('a1'.repeat(32)),
     tokenPepper: 'b2'.repeat(32),
+    encryptionKey: parseEncryptionKey('d4'.repeat(32)),
     poolMax: 4,
   });
   await runMigrations(services.database.db, migrationsFolder);
@@ -602,6 +609,48 @@ describe('once a model is at work', () => {
       embedded: 0,
       remaining: 0,
     });
+  });
+
+  it('sends a key to the provider that has one, and gives it back to nobody', async () => {
+    // Before anything is saved: the wizard probes an address with the key
+    // somebody just typed, because a form that can only test what is already
+    // stored teaches people to store things that do not work (ADR 0021).
+    authorizations.length = 0;
+    await admin.post('/v1/admin/ai.providers.check', {
+      kind: 'openai_compatible',
+      base_url: ollamaUrl,
+      api_key: 'sk-typed-not-yet-saved',
+    });
+    expect(authorizations).toContain('Bearer sk-typed-not-yet-saved');
+
+    const saved = AiSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/ai.providers.save', {
+          kind: 'openai_compatible',
+          name: 'A gateway',
+          base_url: ollamaUrl.replace('127.0.0.1', 'localhost'),
+          api_key: 'sk-live-not-in-any-answer',
+        })
+      ).json(),
+    );
+    const gateway = saved.ai.providers.find((p) => p.name === 'A gateway');
+    // Whether, never which. The key goes out to the provider and comes back to
+    // nobody, so no screen, screenshot or support ticket can carry it.
+    expect(gateway?.has_api_key).toBe(true);
+    expect(JSON.stringify(saved)).not.toContain('sk-live-not-in-any-answer');
+    expect(saved.ai.secret_storage_configured).toBe(true);
+
+    // And it reaches the server it authorises: a probe carries it.
+    authorizations.length = 0;
+    await admin.post('/v1/admin/ai.providers.check', {
+      kind: 'openai_compatible',
+      base_url: gateway?.base_url,
+    });
+    expect(authorizations).toContain('Bearer sk-live-not-in-any-answer');
+
+    const again = AiSettingsResponse.parse((await admin.get('/v1/admin/ai.settings')).json());
+    expect(JSON.stringify(again)).not.toContain('sk-live-not-in-any-answer');
+    await admin.post('/v1/admin/ai.providers.remove', { provider_id: gateway?.id });
   });
 
   it('still answers a search, because none of this was required', async () => {

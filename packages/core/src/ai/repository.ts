@@ -12,6 +12,14 @@ export interface AiProviderRecord {
   name: string;
   baseUrl: string;
   origin: AiProviderOrigin;
+  /**
+   * The key, sealed, or null when the provider needs none.
+   *
+   * Sealed and not hashed for the reason a webhook's signing secret is: it goes
+   * out on every call, so it has to be readable again. Never served — the
+   * settings page says whether there is one, never which (ADR 0033).
+   */
+  apiKeyCiphertext: string | null;
   lastCheckedAt: Date | null;
   lastError: string | null;
   createdAt: Date;
@@ -39,7 +47,12 @@ export interface AiRepository {
   insertProvider(record: AiProviderRecord): Promise<void>;
   updateProvider(
     id: AiProviderId,
-    patch: Partial<Pick<AiProviderRecord, 'kind' | 'name' | 'baseUrl' | 'origin' | 'updatedAt'>>,
+    patch: Partial<
+      Pick<
+        AiProviderRecord,
+        'kind' | 'name' | 'baseUrl' | 'origin' | 'apiKeyCiphertext' | 'updatedAt'
+      >
+    >,
   ): Promise<void>;
   recordCheck(id: AiProviderId, outcome: ProviderCheckOutcome): Promise<void>;
   deleteProvider(id: AiProviderId): Promise<void>;

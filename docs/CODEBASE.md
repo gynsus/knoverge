@@ -601,10 +601,20 @@ in separate messages: one is the product's instruction and the other is
 knowledge somebody else wrote, and concatenating them is how material saying
 "ignore your instructions" gets to say it in the same voice as the instructions.
 
+A provider's API key is kept the way a webhook's signing secret is: sealed with
+`KNOVERGE_ENCRYPTION_KEY`, sent on every call, never served back (ADR 0033). The
+wizard offers the field only for `openai_compatible`, because Ollama has no use
+for one, and only when the installation has an encryption key — otherwise it says
+which variable to set rather than showing a field that refuses. A save that leaves
+the field out keeps the stored key, so a rename does not drop a credential; `null`
+clears it.
+
 `packages/core/src/ai/service.ts` holds the built embedding provider between
 calls. That is not an optimisation: `EmbeddingProvider` learns its dimension from
 the model's first answer, and a fresh instance per call would report zero for
-ever, which is how a profile fails to be recognised. The generation provider is
+ever, which is how a profile fails to be recognised. What it is keyed by includes
+the sealed key, so a key changed on the settings page is noticed by a worker in
+another process rather than after a restart. The generation provider is
 built fresh every time, because it learns nothing and so has nothing to lose.
 
 ## Agents in the browser

@@ -1,0 +1,11 @@
+-- Where a provider's API key lives.
+--
+-- Sealed, not hashed, for the reason a webhook's signing secret is: the server
+-- has to send it on every call, so it has to be able to read it back. The key
+-- that opens it is `KNOVERGE_ENCRYPTION_KEY` and stays in the environment, out
+-- of the database it protects (ADR 0033, and ADR 0029 for the shape).
+--
+-- Nullable, and null on every existing row: most providers an operator runs
+-- themselves need no key, and `KNOVERGE_EMBEDDING_API_KEY` still reaches the
+-- provider whose address matches it.
+ALTER TABLE "ai_providers" ADD COLUMN "api_key_ciphertext" text;

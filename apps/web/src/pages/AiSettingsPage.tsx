@@ -48,6 +48,9 @@ export function AiSettingsPage() {
         kind: result.kind,
         name: result.name,
         base_url: result.baseUrl,
+        // Left out keeps the key the provider has: reopening the wizard and
+        // pressing save must not drop a credential nobody retyped.
+        ...(result.apiKey === undefined ? {} : { api_key: result.apiKey }),
       });
       const provider = saved.ai.providers.find((p) => p.base_url === trimSlashes(result.baseUrl));
       if (!provider) return saved;
@@ -243,6 +246,9 @@ export function AiSettingsPage() {
           onOpenChange={(next) => !next && setWizard(null)}
           existing={wizard.existing}
           purpose={wizard.purpose}
+          // The installation's answer, not the caller's: without an encryption
+          // key a provider key would have nowhere safe to be.
+          canKeepSecrets={ai?.secret_storage_configured ?? true}
           currentModel={currentModelFor(wizard, ai?.assignments ?? [])}
           onFinish={(result) => connect.mutate({ result, purpose: wizard.purpose })}
           saving={connect.isPending}
