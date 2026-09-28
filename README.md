@@ -470,6 +470,7 @@ Thank you.
 - [docs/KNOWLEDGE_LIFECYCLE.md](docs/KNOWLEDGE_LIFECYCLE.md) - proposal/review/supersession rules
 - [docs/SECURITY.md](docs/SECURITY.md) - authentication, permissions, policy, audit
 - [docs/I18N.md](docs/I18N.md) - what is translated and how
+- [docs/WEB_UI.md](docs/WEB_UI.md) - the rules the interface is built to
 - [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) - local/server installation
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) - build sequence
 - [docs/TESTING.md](docs/TESTING.md) - required tests
