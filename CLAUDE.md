@@ -312,8 +312,12 @@ A package rather than a file in the server because the command line needs it too
 `knoverge integrity check` asks whether the file a row claims is on disk, and two
 ideas of where files live would answer for two directories.
 
-Not here: what a file *means*. Text extracted from one becomes an ordinary
-`document` knowledge item with the usual provenance and review.
+Also here: getting the text out of one, which asks nothing of anybody — no
+provider and no network (rule 9).
+
+Not here: what that text *becomes*. It is an ordinary `document` knowledge item
+with the usual provenance and review, written by the domain as the person or agent
+who uploaded the file.
 
 ### `packages/search`
 

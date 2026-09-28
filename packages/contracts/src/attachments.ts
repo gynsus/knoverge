@@ -1,16 +1,25 @@
 import { z } from 'zod';
 
-import { ActorId, AttachmentId, KnowledgeItemId, WorkspaceId } from './ids.ts';
+import { ActorId, AttachmentId, WorkspaceId } from './ids.ts';
 
 /**
  * What became of the text inside a file.
  *
- * `pending` until the extraction job has looked at it, and `unsupported` for a
- * file this installation cannot read text out of — an image today, an archive
- * always. Neither is a failure: the file is kept and referred to, which is what
- * ADR 0008 says happens to anything that cannot be interpreted.
+ * `pending` until a worker takes it, `extracting` while one has it. `extracted` once the text
+ * is a `document` item, and `proposed` when the uploader was an agent and a
+ * reviewer has the text instead — an agent's file is not a way past rule 5.
+ * `unsupported` is for a file this installation cannot read text out of: an image
+ * today, an archive always. Neither of those is a failure — the file is kept and
+ * referred to, which is what ADR 0008 says happens to anything uninterpretable.
  */
-export const ExtractionState = z.enum(['pending', 'extracted', 'unsupported', 'failed']);
+export const ExtractionState = z.enum([
+  'pending',
+  'extracting',
+  'extracted',
+  'proposed',
+  'unsupported',
+  'failed',
+]);
 export type ExtractionState = z.infer<typeof ExtractionState>;
 
 /**
@@ -34,8 +43,6 @@ export const AttachmentSummary = z.object({
   extraction_state: ExtractionState,
   /** What went wrong, when extraction failed. */
   extraction_error: z.string().nullable(),
-  /** The `document` item made from its text, once there is one. */
-  document_item_id: KnowledgeItemId.nullable(),
   uploaded_by_actor_id: ActorId,
   created_at: z.iso.datetime({ offset: true }),
 });

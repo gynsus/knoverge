@@ -1,8 +1,8 @@
+import { sql } from 'drizzle-orm';
 import { bigint, index, pgTable, text, unique, varchar } from 'drizzle-orm/pg-core';
 
 import { id, timestampTz } from './common.ts';
 import { actors } from './actors.ts';
-import { knowledgeItems } from './knowledge.ts';
 import { workspaces } from './workspaces.ts';
 
 /**
@@ -11,7 +11,8 @@ import { workspaces } from './workspaces.ts';
  * The bytes live on the filesystem under their own hash; this row is everything
  * else about them — what they were called, what they are, where they came from,
  * and what became of the text inside. It is not knowledge: what the file says
- * becomes a `document` item, and `document_item_id` is the one made from this.
+ * becomes a `document` item, and that item carries a source naming this
+ * attachment. The source is the link, in one place and in the file itself.
  *
  * Unique per workspace by content hash, so the same file uploaded twice is one
  * row. Deduplication stops at the workspace boundary on purpose: one workspace
@@ -38,15 +39,13 @@ export const attachments = pgTable(
     /** What went wrong, when extraction failed. Never the file's contents. */
     extractionError: text('extraction_error'),
     /**
-     * The `document` item made from the text inside.
+     * When a worker took this file to read it.
      *
-     * Set null when that item is purged rather than taken with it: the file is
-     * still here and still readable, and a row that vanished with the item it
-     * produced would leave bytes on disk nothing points at.
+     * The claim is the state change — one statement moves a row from `pending` to
+     * `extracting` — so two workers cannot write the same document twice. This is
+     * how a worker that died is noticed: a row left `extracting` is claimed again.
      */
-    documentItemId: id('document_item_id').references(() => knowledgeItems.id, {
-      onDelete: 'set null',
-    }),
+    extractionStartedAt: timestampTz('extraction_started_at'),
     uploadedByActorId: id('uploaded_by_actor_id')
       .notNull()
       .references(() => actors.id),
@@ -55,6 +54,9 @@ export const attachments = pgTable(
   (t) => [
     unique('attachments_workspace_content_key').on(t.workspaceId, t.contentHash),
     index('attachments_workspace_idx').on(t.workspaceId),
-    index('attachments_document_idx').on(t.documentItemId),
+    // The sweep's own index: what has not been read yet, oldest first.
+    index('attachments_unread_idx')
+      .on(t.createdAt)
+      .where(sql`${t.extractionState} IN ('pending', 'extracting')`),
   ],
 );

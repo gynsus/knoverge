@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   AttachmentResponse,
+  KnowledgeResponse,
+  SingleAttachmentResponse,
   AttachmentsResponse,
   EventsListResponse,
   TERMS_VERSION,
@@ -147,7 +149,6 @@ describe('a file a workspace holds', () => {
     expect(attachment.size_bytes).toBe(27);
     // Nothing has read it yet, and the row says so rather than guessing.
     expect(attachment.extraction_state).toBe('pending');
-    expect(attachment.document_item_id).toBeNull();
 
     // On disk where ADR 0008 says, which is what a reader with the data
     // directory and no application has to be able to find.
@@ -260,6 +261,169 @@ describe('a file a workspace holds', () => {
       '/v1/admin/attachments.get?attachment_id=att_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
     );
     expect(res.statusCode).toBe(404);
+  });
+});
+
+/** An agent that may write knowledge, which is what putting a file here takes. */
+async function uploadingAgent(name: string): Promise<{ token: string; actorId: string }> {
+  const created = await admin.post('/v1/admin/agents.create', { name, trust_tier: 'trusted' });
+  expect(created.statusCode, created.body).toBe(200);
+  const agent = (created.json() as { agent: { id: string; actor_id: string } }).agent;
+  const issued = await admin.post('/v1/admin/agents.credentials.issue', { agent_id: agent.id });
+  expect(issued.statusCode, issued.body).toBe(200);
+  return { token: (issued.json() as { token: string }).token, actorId: agent.actor_id };
+}
+
+describe('the text inside a file', () => {
+  /** The sweep, run on demand rather than waited for. */
+  const sweep = () => services.attachmentExtractor.extractPending();
+
+  it('becomes a document with a source that says which file it was', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload(
+          {
+            filename: 'escalation-path.md',
+            type: 'text/markdown',
+            body: '# Escalation\n\nSupport, then the on-call engineer.\n',
+          },
+          { original_uri: 'https://intranet.example.com/escalation' },
+        )
+      ).json(),
+    );
+    const outcomes = await sweep();
+    const mine = outcomes.find((o) => o.attachmentId === uploaded.attachment.id);
+    expect(mine?.state).toBe('extracted');
+
+    const item = KnowledgeResponse.parse(
+      (await admin.get(`/v1/knowledge.get?item_id=${mine!.itemId}`)).json(),
+    ).item;
+    // The filename without its extension: a title is the field a reader scans,
+    // and it is what somebody called the thing.
+    expect(item.title).toBe('escalation-path');
+    expect(item.type).toBe('document');
+    expect(item.body).toContain('Support, then the on-call engineer.');
+    // The link between the file and what came out of it, in the item and in the
+    // file on disk: which attachment, and which bytes it was read from.
+    const source = item.sources.find((s) => s.type === 'attachment');
+    expect(source?.external_key).toBe(uploaded.attachment.id);
+    expect(source?.content_hash).toBe(uploaded.attachment.content_hash);
+    expect(source?.uri).toBe('https://intranet.example.com/escalation');
+
+    const state = SingleAttachmentResponse.parse(
+      (await admin.get(`/v1/admin/attachments.get?attachment_id=${uploaded.attachment.id}`)).json(),
+    );
+    expect(state.attachment.extraction_state).toBe('extracted');
+  });
+
+  it('is read once, not on every sweep', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload({
+          filename: 'read-once.txt',
+          type: 'text/plain',
+          body: 'Read this once.\n',
+        })
+      ).json(),
+    );
+    await sweep();
+    const second = await sweep();
+    // Nothing pending means nothing to do: a sweep that re-read what it had
+    // already read would make a second document every minute.
+    expect(second.some((o) => o.attachmentId === uploaded.attachment.id)).toBe(false);
+  });
+
+  it('is read by one worker even when two sweep at once', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload({
+          filename: 'two-workers.txt',
+          type: 'text/plain',
+          body: 'Two workers, one document.\n',
+        })
+      ).json(),
+    );
+    // A second container with KNOVERGE_ROLE=worker is a documented deployment, and
+    // extraction is not idempotent: two workers reading one file would write the
+    // same document twice. The claim is what stops it, so the claim is what this
+    // asks about — one statement moves the row out of reach of the second worker.
+    const stale = new Date(Date.now() - 60 * 60_000);
+    const claimed = await services.repositories.attachments.claimUnread(10, stale, new Date());
+    expect(claimed.map((a) => a.id)).toContain(uploaded.attachment.id);
+    expect(claimed.find((a) => a.id === uploaded.attachment.id)?.extractionState).toBe(
+      'extracting',
+    );
+
+    const second = await services.repositories.attachments.claimUnread(10, stale, new Date());
+    expect(second.map((a) => a.id)).not.toContain(uploaded.attachment.id);
+
+    // And the file still gets read: the worker holding it finishes, and what it
+    // wrote is one document.
+    const outcome = await services.attachmentExtractor.extract(
+      claimed.find((a) => a.id === uploaded.attachment.id)!,
+    );
+    expect(outcome.state).toBe('extracted');
+    const found = (
+      await admin.post('/v1/knowledge_search', { query: 'Two workers, one document', limit: 10 })
+    ).json() as { results: { title: string }[] };
+    expect(found.results.filter((r) => r.title === 'two-workers')).toHaveLength(1);
+  });
+
+  it('says a type it cannot read is a type it cannot read', async () => {
+    const uploaded = AttachmentResponse.parse(
+      (
+        await admin.upload({
+          filename: 'diagram.png',
+          type: 'image/png',
+          body: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        })
+      ).json(),
+    );
+    const outcome = (await sweep()).find((o) => o.attachmentId === uploaded.attachment.id);
+    // Not a failure. The file is kept and can be downloaded; a later milestone
+    // teaches this to read it (ADR 0008).
+    expect(outcome?.state).toBe('unsupported');
+    expect(outcome?.itemId).toBeNull();
+  });
+
+  it('waits for a reviewer when an agent brought the file', async () => {
+    const agent = await uploadingAgent('Filing agent');
+    const boundary = '----knovergeAgentFile';
+    const payload = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="agent-notes.txt"\r\n` +
+          'Content-Type: text/plain\r\n\r\n',
+      ),
+      Buffer.from('What the agent read somewhere, in its own words.\n'),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/attachments.upload',
+      headers: {
+        authorization: `Bearer ${agent.token}`,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+      payload,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const uploaded = AttachmentResponse.parse(res.json());
+
+    const outcome = (await sweep()).find((o) => o.attachmentId === uploaded.attachment.id);
+    // A file is not a way past rule 5: the document goes to the review queue
+    // exactly as anything else the agent writes does.
+    expect(outcome?.state).toBe('proposed');
+    expect(outcome?.itemId).toBeNull();
+
+    const proposals = (await admin.get('/v1/proposal.list?status=pending')).json() as {
+      proposals: { title: string; proposed_by_actor_id: string }[];
+    };
+    const waiting = proposals.proposals.find((p) => p.title === 'agent-notes');
+    expect(waiting).toBeDefined();
+    // Proposed by the agent that brought the file, not by the server and not by
+    // whoever happens to be reviewing: the one write in this product that cannot
+    // be traced to somebody would be this one (rule 3).
+    expect(waiting?.proposed_by_actor_id).toBe(agent.actorId);
   });
 });
 

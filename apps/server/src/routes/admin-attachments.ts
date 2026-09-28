@@ -26,7 +26,6 @@ function summary(attachment: AttachmentRecord): AttachmentSummary {
     original_uri: attachment.originalUri,
     extraction_state: attachment.extractionState as ExtractionState,
     extraction_error: attachment.extractionError,
-    document_item_id: attachment.documentItemId,
     uploaded_by_actor_id: attachment.uploadedByActorId,
     created_at: attachment.createdAt.toISOString(),
   } as AttachmentSummary;

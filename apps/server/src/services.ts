@@ -17,7 +17,9 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  AttachmentExtractor,
   AttachmentService,
+  MAX_BODY_BYTES,
   AuthorizationAdminService,
   DomainError,
   AuthorizationService,
@@ -47,7 +49,7 @@ import {
   type LedgerKey,
   type LedgerKeyring,
 } from '@knoverge/core';
-import { FileAttachmentStore } from '@knoverge/attachments';
+import { FileAttachmentStore, extractText } from '@knoverge/attachments';
 import {
   createDatabase,
   createRepositories,
@@ -405,6 +407,32 @@ export function createServices(config: ServicesConfig) {
     ledger,
     ...(config.pendingPerActor === undefined ? {} : { pendingPerActor: config.pendingPerActor }),
   });
+
+  /**
+   * Reading the text out of files, as the person or agent who uploaded them.
+   *
+   * After the knowledge and proposal services because it writes through both: a
+   * person's file becomes a document, an agent's becomes a proposal, and which of
+   * the two is not this job's decision (rule 5).
+   */
+  const attachmentExtractor = new AttachmentExtractor({
+    attachments: repositories.attachments,
+    actors: repositories.actors,
+    standingOf: async (actor) => {
+      if (actor.actorType === 'agent' && actor.agentId) {
+        const agent = await repositories.agents.findById(actor.workspaceId, actor.agentId);
+        return agent ? { trustTier: agent.trustTier } : {};
+      }
+      const members = await repositories.memberships.listForWorkspace(actor.workspaceId);
+      const member = members.find((m) => m.actorId === actor.actorId);
+      return member ? { role: member.role } : {};
+    },
+    store: attachmentStore,
+    knowledge,
+    proposals,
+    extract: extractText,
+    maxCharacters: MAX_BODY_BYTES,
+  });
   const taxonomy = new TaxonomyService({
     uow,
     categories: repositories.categories,
@@ -531,6 +559,7 @@ export function createServices(config: ServicesConfig) {
     knowledge,
     proposals,
     attachments,
+    attachmentExtractor,
     /** The largest file an upload may carry; the multipart parser needs it too. */
     attachmentMaxBytes,
     webhooks,

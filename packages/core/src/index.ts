@@ -1,6 +1,14 @@
 export type { ActorContext } from './actor-context.ts';
 export type { AttachmentRecord, AttachmentRepository } from './attachments/repository.ts';
 export {
+  AttachmentExtractor,
+  DOCUMENT_TYPE,
+  titleOf,
+  type AttachmentExtractorOptions,
+  type Extraction,
+  type ExtractionOutcome,
+} from './attachments/extraction.ts';
+export {
   AttachmentService,
   type AttachmentServiceOptions,
   type AttachmentStore,

@@ -44,6 +44,15 @@ const EMBEDDING_SCHEDULE = '*/5 * * * *';
  */
 export const WEBHOOK_QUEUE = 'webhook.deliver';
 
+/** Reading the text out of files nobody has read yet. */
+export const EXTRACTION_QUEUE = 'attachment.extract';
+
+/**
+ * Often enough that a file is searchable while the person who uploaded it is
+ * still looking at the screen, and rarely enough to be a sweep and not a poll.
+ */
+const EXTRACTION_SCHEDULE = '* * * * *';
+
 /**
  * The queues this process actually started, for the line that says it started.
  *
@@ -58,6 +67,7 @@ export function startedQueues(deliveringWebhooks: boolean): string[] {
     SYNC_REFINE_QUEUE,
     EMBEDDING_QUEUE,
     `${EMBEDDING_QUEUE}.sweep`,
+    EXTRACTION_QUEUE,
     ...(deliveringWebhooks ? [WEBHOOK_QUEUE] : []),
   ];
 }
@@ -104,6 +114,8 @@ export interface JobsOptions {
    * would fill the log with the operator's own decision.
    */
   deliverWebhooks?: () => Promise<{ webhookId: string; delivered: number; ok: boolean }[]>;
+  /** Reads the text out of whatever has been uploaded and not looked at yet. */
+  extractAttachments: () => Promise<{ attachmentId: string; state: string; reason?: string }[]>;
 }
 
 export function createJobs(
@@ -164,6 +176,17 @@ export function createJobs(
       });
       await boss.createQueue(`${EMBEDDING_QUEUE}.sweep`);
       await boss.schedule(`${EMBEDDING_QUEUE}.sweep`, EMBEDDING_SCHEDULE);
+
+      await boss.createQueue(EXTRACTION_QUEUE);
+      await boss.work(EXTRACTION_QUEUE, async () => {
+        for (const outcome of await options.extractAttachments()) {
+          // Every ending, including the ones that are not failures: an operator
+          // looking for why a file produced no document needs the reason, and
+          // `unsupported` is a reason.
+          logger.info(outcome, 'attachment extracted');
+        }
+      });
+      await boss.schedule(EXTRACTION_QUEUE, EXTRACTION_SCHEDULE);
 
       const deliver = options.deliverWebhooks;
       if (deliver) {

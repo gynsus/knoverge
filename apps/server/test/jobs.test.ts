@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   EMBEDDING_QUEUE,
+  EXTRACTION_QUEUE,
   MAINTENANCE_QUEUE,
   SYNC_REFINE_QUEUE,
   WEBHOOK_QUEUE,
@@ -18,6 +19,7 @@ describe('the line that says the job runner started', () => {
       SYNC_REFINE_QUEUE,
       EMBEDDING_QUEUE,
       `${EMBEDDING_QUEUE}.sweep`,
+      EXTRACTION_QUEUE,
       WEBHOOK_QUEUE,
     ]);
   });
@@ -30,6 +32,9 @@ describe('the line that says the job runner started', () => {
       SYNC_REFINE_QUEUE,
       EMBEDDING_QUEUE,
       `${EMBEDDING_QUEUE}.sweep`,
+      // Extraction runs whether or not a webhook can be kept: a file's text is
+      // not a notification and needs no key.
+      EXTRACTION_QUEUE,
     ]);
   });
 });

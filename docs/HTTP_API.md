@@ -198,7 +198,10 @@ POST /v1/admin/attachments.upload           multipart; the part is named `file`,
                                             `knowledge.write`. Answers with the attachment and
                                             `created`, which is false when the workspace already
                                             held those bytes
-GET  /v1/admin/attachments.list             what this workspace holds
+GET  /v1/admin/attachments.list             what this workspace holds, and what became of the
+                                            text inside each: pending, extracted, proposed (an
+                                            agent brought it and a reviewer has the document),
+                                            unsupported or failed
 GET  /v1/admin/attachments.get              one of them, by id
 GET  /v1/admin/attachments.download         the file itself, always as a download and never
                                             rendered: `Content-Disposition: attachment`,

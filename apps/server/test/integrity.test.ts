@@ -387,7 +387,7 @@ describe('knoverge integrity check', () => {
         originalUri: null,
         extractionState: 'pending',
         extractionError: null,
-        documentItemId: null,
+        extractionStartedAt: null,
         uploadedByActorId: actor.id,
         createdAt: new Date(),
       }),

@@ -86,6 +86,7 @@ async function main(): Promise<void> {
           (await services.repositories.workspaces.list()).map((workspace) => workspace.id),
         // Only where a secret can be kept. Without the key a webhook cannot be
         // created, so a sweep would have nothing to do and nothing to say.
+        extractAttachments: () => services.attachmentExtractor.extractPending(),
         ...(config.encryptionKey ? { deliverWebhooks: () => services.webhooks.deliverDue() } : {}),
       })
     : undefined;

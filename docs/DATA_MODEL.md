@@ -917,9 +917,9 @@ Attachment
 - size_bytes
 - filename                what it was called when it arrived
 - original_uri nullable   where it came from, when the uploader said
-- extraction_state: pending | extracted | unsupported | failed
+- extraction_state: pending | extracting | extracted | proposed | unsupported | failed
 - extraction_error nullable
-- document_item_id nullable
+- extraction_started_at nullable   when a worker took it to read it
 - uploaded_by_actor_id
 - created_at
 
@@ -936,12 +936,21 @@ the second upload says `created: false`. Per workspace rather than globally,
 because "you already have this" would otherwise tell one workspace what another
 holds.
 
-`document_item_id` is the `document` item made from the text inside. It is set
-null rather than cascading when that item is purged: the file is still here and
-still readable, and a row that vanished with the item it produced would leave
-bytes on disk with nothing pointing at them. `extraction_state` is `pending`
-until the extraction job has looked at the file; `unsupported` is not a failure
-but an answer — the file is kept and referred to.
+There is no column pointing at what the text became either. The item made from a
+file carries a source of type `attachment` with the attachment's id as
+`external_key` and the hash of the bytes it was read from as `content_hash`, and
+that source is the link: canonical, in the frontmatter, and still true in a
+repository read without this software. A column pointing the other way would be
+the same fact twice, and after an agent's proposal was approved only one of the
+two would be right.
+
+`extraction_state` is `pending` until a worker takes the file and `extracting`
+while one has it — the claim is a state change, so two workers cannot read one
+file and write the same document twice, and `extraction_started_at` is what says
+the worker holding it has died. `extracted` once the text is an item; `proposed`
+when an agent uploaded it and a reviewer has the document instead — a file is not
+a way past rule 5. `unsupported` is not a failure but an answer: the file is kept
+and referred to.
 
 The bytes are the only copy. An attachment is not in Git and cannot be rebuilt
 from anything, which is why `knoverge integrity check` reports a row whose file

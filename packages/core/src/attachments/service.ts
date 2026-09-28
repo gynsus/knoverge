@@ -124,7 +124,7 @@ export class AttachmentService {
       // extraction job, and until it runs this says so rather than guessing.
       extractionState: 'pending',
       extractionError: null,
-      documentItemId: null,
+      extractionStartedAt: null,
       uploadedByActorId: actor.actorId,
       createdAt: this.clock.now(),
     };
