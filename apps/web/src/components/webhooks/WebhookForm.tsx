@@ -1,6 +1,6 @@
 import type { EventType, WebhookSummary } from '@knoverge/contracts';
 import { useMutation } from '@tanstack/react-query';
-import { useMemo, useState, type FormEvent } from 'react';
+import { memo, useMemo, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Button } from '@/components/ui/button';
@@ -245,8 +245,13 @@ export function WebhookForm({
  * Grouped the way the ledger screen groups them, and by the same function: a
  * second grouping would put `knowledge.proposed_create` with the knowledge here
  * and with the proposals there, and a reader would be right to trust neither.
+ *
+ * Memoised, because there are forty-odd checkboxes in here and the address field
+ * is above them: without this, every character typed into that field redraws all
+ * of them. It was slow enough on a loaded machine to time a test out, and a form
+ * that stutters while somebody types a URL is the same fault in a nicer suit.
  */
-function EventPicker({
+const EventPicker = memo(function EventPicker({
   chosen,
   onChange,
 }: {
@@ -312,4 +317,4 @@ function EventPicker({
       })}
     </div>
   );
-}
+});

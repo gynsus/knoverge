@@ -160,7 +160,10 @@ describe('adding an endpoint', () => {
         return json({ webhook: ENDPOINT, secret: 'whsec_the_only_copy_there_will_ever_be' });
       },
     });
-    const user = userEvent.setup();
+    // No artificial delay between events: this form holds forty-odd checkboxes,
+    // and a test that waits a macrotask per keystroke spends its budget on the
+    // waiting rather than on the form.
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks');
 
     await user.click(await screen.findByRole('button', { name: /add an endpoint/i }));
@@ -200,7 +203,7 @@ describe('adding an endpoint', () => {
       'GET /v1/admin/webhooks.list': () => json(NONE),
       'POST /v1/admin/webhooks.upsert': () => json({ webhook: ENDPOINT, secret: null }),
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks?new');
 
     const form = await screen.findByRole('dialog');
@@ -225,7 +228,7 @@ describe('adding an endpoint', () => {
       'GET /v1/admin/webhooks.list': () => json(NONE),
       'POST /v1/admin/webhooks.upsert': () => json({ webhook: ENDPOINT, secret: null }),
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks?new');
 
     const form = await screen.findByRole('dialog');
@@ -252,7 +255,7 @@ describe('adding an endpoint', () => {
 describe('a form that cannot be saved yet', () => {
   it('says which answer is missing rather than only greying the button', async () => {
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/webhooks.list': () => json(NONE) });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks?new');
 
     const form = await screen.findByRole('dialog');
@@ -271,7 +274,7 @@ describe('a form that cannot be saved yet', () => {
 
   it('shows a group as partly chosen when it is', async () => {
     mockApi({ ...SIGNED_IN, 'GET /v1/admin/webhooks.list': () => json(NONE) });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks?new');
 
     const form = await screen.findByRole('dialog');
@@ -294,7 +297,7 @@ describe('replacing a signing secret', () => {
       // Null, as the server answers for a secret the caller brought.
       'POST /v1/admin/webhooks.upsert': () => json({ webhook: ENDPOINT, secret: null }),
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp(`/settings/webhooks?webhook=${WEBHOOK_ID}`);
 
     const form = await screen.findByRole('dialog');
@@ -383,7 +386,7 @@ describe('an endpoint that already exists', () => {
       'GET /v1/admin/webhooks.list': () => json(ONE),
       'POST /v1/admin/webhooks.upsert': () => json({ webhook: ENDPOINT, secret: null }),
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp(`/settings/webhooks?webhook=${WEBHOOK_ID}`);
 
     const form = await screen.findByRole('dialog');
@@ -413,7 +416,7 @@ describe('an endpoint that already exists', () => {
       'GET /v1/admin/webhooks.list': () => json(ONE),
       'POST /v1/admin/webhooks.delete': () => json({ ok: true }),
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderApp('/settings/webhooks');
 
     await user.click(await screen.findByRole('button', { name: 'Remove' }));
