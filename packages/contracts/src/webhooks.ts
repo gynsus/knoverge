@@ -27,6 +27,14 @@ export const WebhookSummary = z.object({
   /** Consecutive failures; the wait before the next attempt grows with it. */
   failures: z.number().int().nonnegative(),
   last_delivery_at: z.iso.datetime({ offset: true }).nullable(),
+  /**
+   * When the next attempt is due, while an endpoint is being backed off.
+   *
+   * Served so that a screen can say when a failing endpoint will be tried again
+   * without working the wait out for itself: how long a failure costs is the
+   * server's rule, and a second copy of it in a browser would be a second rule.
+   */
+  next_attempt_at: z.iso.datetime({ offset: true }).nullable(),
   /** What went wrong last. Never a secret and never a response body. */
   last_error: z.string().nullable(),
   created_at: z.iso.datetime({ offset: true }),
@@ -34,7 +42,19 @@ export const WebhookSummary = z.object({
 });
 export type WebhookSummary = z.infer<typeof WebhookSummary>;
 
-export const WebhooksResponse = z.object({ webhooks: z.array(WebhookSummary) });
+export const WebhooksResponse = z.object({
+  webhooks: z.array(WebhookSummary),
+  /**
+   * Whether this installation can keep a signing secret at all.
+   *
+   * False without a `KNOVERGE_ENCRYPTION_KEY`: the secret would have nowhere safe
+   * to live, so a webhook cannot be created. It is in the answer because the
+   * screen has to say so before somebody fills in a form that will be refused,
+   * and because "you cannot do this here" and "you may not do this" are different
+   * sentences — this one is about the installation, not about the caller.
+   */
+  secret_storage_configured: z.boolean(),
+});
 export type WebhooksResponse = z.infer<typeof WebhooksResponse>;
 
 /**

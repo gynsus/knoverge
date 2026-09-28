@@ -301,6 +301,27 @@ that narrows one band is drawn inside that band; a filter that narrows the page
 is drawn once at the top. A test holds the ledger's two apart: choosing a period
 refetches the digest and must leave the feed's request count where it was.
 
+## 2o. A door out of the installation is opened in the product
+
+Anything that makes this software talk to a machine outside it — an AI provider, a
+webhook — is configured on a screen, not in a file an operator edits and a process
+they restart. Rule 12 says nothing leaves unless the operator asked for it, and a
+permission that can only be given by writing a request by hand is not much of a
+question: it is asked of whoever already knows the answer.
+
+Such a screen leads with what leaves rather than with the address field. Pointing a
+webhook at a third party is a decision about what that third party gets to see, and
+"an event, never the knowledge itself" is the whole of that decision.
+
+It also shows how the thing is going. An outbound connection is the one part of this
+product that fails for reasons inside somebody else's building, and a list that shows
+only the address is a list that looks the same whether every delivery is arriving or
+none of them are.
+
+And when the installation cannot do it at all — a signing secret needs a key to be
+sealed with — the screen says so above the button rather than behind it, in the words
+an operator can act on, including the name of the variable to set.
+
 ## 3. A dialog is never turned off with a CSS class
 
 A `Sheet` or `Dialog` hidden with `lg:hidden` is still open. Its overlay is a

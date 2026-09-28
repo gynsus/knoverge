@@ -506,6 +506,14 @@ export function createServices(config: ServicesConfig) {
     knowledge,
     proposals,
     webhooks,
+    /**
+     * Whether a webhook signing secret has somewhere to live.
+     *
+     * A fact about how this process was started rather than a domain rule, which
+     * is why it is decided here: the sealing functions above throw when asked to
+     * work without a key, and this is the same answer given before being asked.
+     */
+    secretStorage: config.encryptionKey !== undefined,
     taxonomy,
     sync,
     search,

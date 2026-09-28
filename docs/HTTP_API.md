@@ -183,7 +183,10 @@ POST /v1/admin/taxonomy.merge               folds one category into another
 POST /v1/admin/knowledge.rename_slug        (not scheduled; a slug changes today only by changing
                                             the title, which moves the file)
 POST /v1/admin/embedding_profile.set        (Milestone 6)
-GET  /v1/admin/webhooks.list                where this workspace pushes notifications
+GET  /v1/admin/webhooks.list                where this workspace pushes notifications, with
+                                            `secret_storage_configured`: false when the
+                                            installation has no `KNOVERGE_ENCRYPTION_KEY` and
+                                            therefore cannot create one at all
 POST /v1/admin/webhooks.upsert              creates or changes one; the secret is shown once
 POST /v1/admin/webhooks.delete
                                             (no integrity route: the check reads the
