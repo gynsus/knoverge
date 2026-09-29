@@ -101,6 +101,39 @@ describe('a folder of Markdown, read as candidates', () => {
     expect(top?.categoryPaths).toEqual([]);
   });
 
+  it('collects the tags a person wrote, in either of the two places they write them', () => {
+    const [list, oneLine, yamlList, inText] = read([
+      { path: 'a.md', text: '---\ntags: [ops, on-call]\n---\n\nText.\n' },
+      { path: 'b.md', text: '---\ntags: ops\n---\n\nText.\n' },
+      { path: 'c.md', text: '---\ntags:\n  - ops\n  - on-call\n---\n\nText.\n' },
+      { path: 'd.md', text: '# Note\n\nSee #ops and #on-call about this.\n' },
+    ]);
+    // All four are how people write tags, and an importer that understood one
+    // of them would drop the others silently.
+    expect(list?.tags).toEqual(['on-call', 'ops']);
+    expect(oneLine?.tags).toEqual(['ops']);
+    expect(yamlList?.tags).toEqual(['on-call', 'ops']);
+    expect(inText?.tags).toEqual(['on-call', 'ops']);
+  });
+
+  it('does not mistake a heading or a fragment for a tag', () => {
+    const [candidate] = read([
+      {
+        path: 'n.md',
+        text: '---\ntitle: Note\n---\n\n# A heading\n\nWe use C# and https://x.test/a#b, tagged #real.\n',
+      },
+    ]);
+    // A `#` at the start of a line is a heading; one inside a word is part of
+    // the word. Neither is a tag, and a note that came back tagged `b` would be
+    // worse than one with no tags at all.
+    expect(candidate?.tags).toEqual(['real']);
+  });
+
+  it('counts a tag written both ways once', () => {
+    const [candidate] = read([{ path: 'n.md', text: '---\ntags: [Ops]\n---\n\nSee #ops.\n' }]);
+    expect(candidate?.tags).toEqual(['ops']);
+  });
+
   it('carries the first paragraph, so a reviewer reads something', () => {
     const [candidate] = read([
       { path: 'n.md', text: '# Heading\n\nThe first thing it says.\n\nThe second.\n' },

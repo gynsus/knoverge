@@ -189,7 +189,7 @@ beforeAll(async () => {
   await mkdir(join(folder, 'Pixel Brisbane'), { recursive: true });
   await writeFile(
     join(folder, 'Pixel Brisbane', 'auth.md'),
-    '---\ntitle: Authentication\n---\n\nPasswordless, with a six-digit code.\n',
+    '---\ntitle: Authentication\ntags: [security, login]\n---\n\nPasswordless, with a six-digit code. See #auth.\n',
     'utf8',
   );
   // And the things a folder has that are not notes.
@@ -286,6 +286,37 @@ describe('knoverge propose-from-session', () => {
     } finally {
       await writeFile(join(folder, 'rota.md'), '# Rota\n\nWho is on call this week.\n', 'utf8');
     }
+  });
+
+  it('carries the tags the note was written with', async () => {
+    const session = await importFolder(services, {
+      workspaceId,
+      agentId,
+      from: folder,
+      sourceSystem: 'markdown-folder',
+      namespace: 'with-tags',
+      requestId: 'req-inventory-5',
+    });
+    await proposeFromSession(services, {
+      workspaceId,
+      sessionId: session.sessionId,
+      from: folder,
+      requestId: 'req-propose-5',
+    });
+
+    const proposals = await services.repositories.proposals.list(workspaceId, { limit: 50 });
+    const auth = proposals.find(
+      (proposal) => (proposal.proposedPayload as { title?: string }).title === 'Authentication',
+    );
+    // Both places a person writes a tag: the frontmatter list and the `#tag` in
+    // the text. A tag is part of the note, even though it is no part of an
+    // inventory — what a note is tagged does not help decide whether the
+    // workspace already holds it.
+    expect((auth?.proposedPayload as { tags?: string[] }).tags?.sort()).toEqual([
+      'auth',
+      'login',
+      'security',
+    ]);
   });
 
   it('proposes without a category the taxonomy does not have', async () => {

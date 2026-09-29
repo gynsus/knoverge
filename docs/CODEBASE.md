@@ -1001,6 +1001,18 @@ the text, because this product's own files keep the title in the frontmatter
 it, not saying it twice. Both were found by a test that expected a match and did
 not get one.
 
+Tags are read from both places people write them and are carried on the candidate
+rather than in the inventory: what a note is tagged does not help decide whether
+the workspace already holds it, so it is no part of the question — but it is part
+of the note, and whatever proposes it has the tags without reading the file again.
+
+That is also the answer to what an Obsidian vault needs: nothing of its own. A
+vault is a folder of Markdown with tags and a `.obsidian/` directory that is
+skipped like every dot-directory, so it is the same command. The one thing it
+carries that this does not understand is `[[wikilinks]]` — relations between notes
+rather than text — and those stay in the body until relations are resolved after
+a run, which needs both ends to exist first.
+
 `apps/cli/src/propose-from-session.ts` is the other half, and it is a separate
 command rather than a flag for the reason the ADR gives: an inventory is a
 question. It acts on `new_candidate` only, re-reads each file and refuses one

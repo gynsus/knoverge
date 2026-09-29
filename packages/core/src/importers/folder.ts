@@ -27,6 +27,15 @@ export interface FolderCandidate {
   sourceHash: string;
   /** The first paragraph, so a reviewer reads something before opening it. */
   abstract: string;
+  /**
+   * The tags the note carries, from its frontmatter and from its text.
+   *
+   * Not part of an inventory either: what a note is tagged does not help decide
+   * whether the workspace already holds it. Carried for the same reason the body
+   * is — whatever proposes the candidate has them without reading the file
+   * again.
+   */
+  tags: string[];
 }
 
 export interface ReadFolderOptions {
@@ -66,6 +75,7 @@ export function readMarkdownFolder(options: ReadFolderOptions): FolderCandidate[
       contentHash: options.contentHash(title, text),
       sourceHash: options.sourceHash(file.text),
       abstract: abstractOf(text),
+      tags: tagsOf(frontmatter, text),
     });
   }
   return candidates;
@@ -161,6 +171,57 @@ function slugSegment(segment: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/gu, '-')
     .replace(/^-+|-+$/gu, '');
+}
+
+/**
+ * The tags a note carries.
+ *
+ * Two places, because a person writing notes uses both: `tags:` in the
+ * frontmatter, as a list or as one line, and `#tag` in the text, which is what
+ * Obsidian and most editors do. A tag written both ways is one tag.
+ *
+ * `#` at the start of a line is a heading and not a tag, and a `#` inside a word
+ * — `C#`, a URL fragment — is not one either.
+ */
+function tagsOf(frontmatter: string, body: string): string[] {
+  const found = new Set<string>();
+  // `[^\S\n]` and not `\s`: `\s` matches a newline, so `tags:` followed by a
+  // list on the lines below would swallow the first item as if it were written
+  // on the same line.
+  const declared = /^tags:[^\S\n]*(.*)$/mu.exec(frontmatter);
+  if (declared) {
+    const inline = declared[1]?.trim() ?? '';
+    if (inline.startsWith('[')) {
+      for (const value of inline.slice(1, inline.lastIndexOf(']')).split(',')) {
+        add(found, value);
+      }
+    } else if (inline !== '') {
+      add(found, inline);
+    } else {
+      // A YAML list on the lines below, which is the other way people write it.
+      // Past the end of the `tags:` line itself, which is where the list is.
+      const below = frontmatter.slice(declared.index + declared[0].length).replace(/^\n/u, '');
+      for (const line of below.split('\n')) {
+        const item = /^\s*-\s*(.+?)\s*$/u.exec(line);
+        if (!item) break;
+        add(found, item[1] ?? '');
+      }
+    }
+  }
+  for (const match of body.matchAll(/(^|[\s(])#([\p{L}\p{N}][\p{L}\p{N}/_-]*)/gmu)) {
+    add(found, match[2] ?? '');
+  }
+  return [...found].sort();
+}
+
+/** One tag, normalised the way a tag is written here: lowercase, trimmed. */
+function add(into: Set<string>, value: string): void {
+  const tag = value
+    .trim()
+    .replace(/^['"]|['"]$/gu, '')
+    .replace(/^#/u, '')
+    .toLowerCase();
+  if (tag !== '' && tag.length <= 64) into.add(tag);
 }
 
 /** The first paragraph that is not a heading, trimmed to something readable. */

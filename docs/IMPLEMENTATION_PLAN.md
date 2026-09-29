@@ -304,8 +304,11 @@ a manifest and, when asked for, the attachments (ADR 0034); `knoverge import` pu
 a workspace back on another installation with its history and provenance, and
 adopts none of the exporting installation's people or permissions (ADR 0035). The
 importers that produce reconciliation sessions have started: a folder of Markdown
-arrives as a session (ADR 0036), and an Obsidian vault, a ChatGPT export and
-generic JSON are the same shape with a different parser._
+arrives as a session and `propose-from-session` turns what it found into proposals
+(ADR 0036). An Obsidian vault is the same command — a vault is a folder of Markdown
+with tags, and tags are carried; `[[wikilinks]]` are not yet. A ChatGPT export and
+generic JSON are next, and the harder question in the export is what counts as one
+piece of knowledge rather than how to parse it._
 
 Deliver:
 
