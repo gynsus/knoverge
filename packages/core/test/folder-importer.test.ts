@@ -134,6 +134,31 @@ describe('a folder of Markdown, read as candidates', () => {
     expect(candidate?.tags).toEqual(['ops']);
   });
 
+  it('reads what a note links to, however the link is dressed up', () => {
+    const [candidate] = read([
+      {
+        path: 'n.md',
+        text: '# Auth\n\nSee [[Escalation path]], [[Rota|the rota]] and [[Runbook#On call]].\n',
+      },
+    ]);
+    // The display text and the heading are about how a link reads, not about
+    // what it points at.
+    expect(candidate?.links).toEqual(['Escalation path', 'Rota', 'Runbook']);
+  });
+
+  it('does not read a link out of a code block, or a tag either', () => {
+    const [candidate] = read([
+      {
+        path: 'n.md',
+        text: '# Syntax\n\nWrite `[[Target]]` for a link and `#tag` for a tag.\n\n```\n[[Another]]\n#alsonot\n```\n',
+      },
+    ]);
+    // A note about wiki syntax is not a note that links to anything, and one
+    // about tagging is not tagged.
+    expect(candidate?.links).toEqual([]);
+    expect(candidate?.tags).toEqual([]);
+  });
+
   it('carries the first paragraph, so a reviewer reads something', () => {
     const [candidate] = read([
       { path: 'n.md', text: '# Heading\n\nThe first thing it says.\n\nThe second.\n' },

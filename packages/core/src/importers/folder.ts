@@ -36,6 +36,14 @@ export interface FolderCandidate {
    * again.
    */
   tags: string[];
+  /**
+   * What the note links to, as written: `[[Another note]]`.
+   *
+   * Targets and not relations: the note on the other end may not be an item yet,
+   * and a relation needs both ends. Resolving them is a second pass after a run,
+   * which is where these are turned into something the workspace can hold.
+   */
+  links: string[];
 }
 
 export interface ReadFolderOptions {
@@ -76,6 +84,7 @@ export function readMarkdownFolder(options: ReadFolderOptions): FolderCandidate[
       sourceHash: options.sourceHash(file.text),
       abstract: abstractOf(text),
       tags: tagsOf(frontmatter, text),
+      links: linksOf(text),
     });
   }
   return candidates;
@@ -174,6 +183,30 @@ function slugSegment(segment: string): string {
 }
 
 /**
+ * What a note links to.
+ *
+ * `[[Target]]`, `[[Target|shown as this]]` and `[[Target#a heading]]` are all one
+ * link to `Target`: the display text and the heading are about how the link
+ * reads, not about what it points at. A link inside a code fence is left alone,
+ * because a note about wiki syntax is not a note that links to anything.
+ */
+function linksOf(body: string): string[] {
+  const found = new Set<string>();
+  for (const match of withoutCode(body).matchAll(
+    /\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]/gu,
+  )) {
+    const target = (match[1] ?? '').trim();
+    if (target !== '' && target.length <= 512) found.add(target);
+  }
+  return [...found].sort();
+}
+
+/** The text with fenced and inline code taken out, so syntax is not content. */
+function withoutCode(body: string): string {
+  return body.replace(/```[\s\S]*?```/gu, '').replace(/`[^`\n]*`/gu, '');
+}
+
+/**
  * The tags a note carries.
  *
  * Two places, because a person writing notes uses both: `tags:` in the
@@ -208,7 +241,7 @@ function tagsOf(frontmatter: string, body: string): string[] {
       }
     }
   }
-  for (const match of body.matchAll(/(^|[\s(])#([\p{L}\p{N}][\p{L}\p{N}/_-]*)/gmu)) {
+  for (const match of withoutCode(body).matchAll(/(^|[\s(])#([\p{L}\p{N}][\p{L}\p{N}/_-]*)/gmu)) {
     add(found, match[2] ?? '');
   }
   return [...found].sort();
