@@ -114,6 +114,19 @@ Issuing an access token from a refresh token is an authentication, and rule 4
 says authentications are not ledger events — there would be one every hour per
 connector, and they would say nothing that the grant does not already say.
 
+**A client identifier is a registration, not a URL to go and read.** There is a
+newer way for a client to say who it is — Client ID Metadata Documents, where the
+`client_id` is an `https` URL and the authorization server fetches the metadata
+from it. ChatGPT prefers it and keeps dynamic registration "supported when
+configured", so registration is enough to be reachable, and the difference is
+one this product cannot be neutral about: honouring a metadata document means
+making an outbound request to a URL an unauthenticated caller chose. Rule 12
+says the server contacts nothing the operator did not configure, and an
+attacker-chosen fetch is also the plainest server-side request forgery there is —
+this process can reach the database and whatever else the network puts near it.
+Not supported. If a connector one day requires it, it arrives as an operator
+switch with an allowlist and its own ADR, not as a default.
+
 **A client nobody consented to expires.** Registration is unauthenticated, so
 registrations accumulate. One that has never completed an authorization is
 deleted after a short while by the job runner, and the endpoint is rate limited
@@ -173,6 +186,16 @@ Closes the unauthenticated registration endpoint, which is genuinely the largest
 piece of new surface. Rejected because the hosted connectors do not offer it — a
 person adding a connector in ChatGPT has no way to send an operator a client id
 first — so it would close the endpoint and the milestone with it.
+
+### Client ID Metadata Documents
+
+The direction the ecosystem is moving, and it removes the unauthenticated
+registration endpoint entirely, which is the surface this design likes least.
+Rejected for now on rule 12: the server would fetch a URL chosen by whoever sent
+the request. That can be made safe — an operator allowlist, a resolved-address
+check, no redirects, a size and time bound — but every one of those is a decision
+somebody has to be able to read later, and none of them is needed while dynamic
+registration still works.
 
 ### Being an OAuth client of an external identity provider instead
 
