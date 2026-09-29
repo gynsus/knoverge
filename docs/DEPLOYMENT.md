@@ -253,6 +253,13 @@ nothing without review until somebody says otherwise.
 Connections are listed and ended in the same place. Ending one revokes every
 token it issued, at once.
 
+Ending it **there** is what ends it. Disconnecting inside ChatGPT or Claude.ai
+makes that product forget its tokens; it does not tell this server anything, so
+the connection stays live here. Reconnecting afterwards is recognised as the
+same connector — the connection it had is retired and it keeps the agent it
+already was, which the consent screen says before you press anything — but a
+connector you meant to be rid of is only gone once it is gone from here.
+
 ### Maintenance
 
 Three tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response; session rows, which stop working at their expiry or when revoked; and operation rows, which stop being interesting once decided. A container running the worker role removes all three once an hour, and in the same pass empties the proposed text of proposals resolved more than 90 days ago, keeping the rows themselves so the review trail survives. The same pass clears away OAuth registrations nobody consented to after a day, and codes and refresh tokens past their expiry.

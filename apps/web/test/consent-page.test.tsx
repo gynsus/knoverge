@@ -82,6 +82,7 @@ const PENDING = {
   workspaces: [
     { workspace_id: WORKSPACE_ID, workspace_slug: 'personal', workspace_name: 'Personal' },
   ],
+  replaces: {},
 };
 
 /** The address the authorization endpoint sends the browser to. */
@@ -164,6 +165,21 @@ describe('the consent screen', () => {
 
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Connect' })).toBeDisabled();
+  });
+
+  it('names the connection it would replace, before anything is replaced', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/oauth.pending': () =>
+        json({ ...PENDING, replaces: { [WORKSPACE_ID]: 'Claude (Owner)' } }),
+    });
+    renderApp(REQUEST);
+
+    // A hosted connector registers itself again whenever it is reconnected, so
+    // the one being added is usually the one already here. It is replaced
+    // either way; saying so first is the difference between reconnecting and
+    // finding out afterwards.
+    await waitFor(() => expect(screen.getByText(/Claude \(Owner\)/)).toBeInTheDocument());
   });
 
   it('refuses an address that is missing part of the request', async () => {

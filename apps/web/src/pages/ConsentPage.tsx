@@ -69,6 +69,11 @@ export function ConsentPage() {
   // stored: writing a default into state from an effect is a second render
   // whose only purpose is to say what this line already says.
   const workspaceId = chosen || (pending.data.workspaces[0]?.workspace_id ?? '');
+  // A hosted connector registers itself again every time it is reconnected, so
+  // the one being added is often the one already here. Saying so is the whole
+  // point: it is replaced either way, and a person should know before, not by
+  // finding two of them on the Agents screen afterwards.
+  const replacing = (pending.data.replaces as Record<string, string>)[workspaceId];
 
   const answer = async (allow: boolean) => {
     setBusy(true);
@@ -129,6 +134,10 @@ export function ConsentPage() {
                 ))}
               </select>
             </label>
+          )}
+
+          {replacing !== undefined && (
+            <p className="text-sm">{t('consent.replaces', { agent: replacing })}</p>
           )}
 
           <p className="text-sm text-muted-foreground">{t('consent.what_it_gets')}</p>

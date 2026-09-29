@@ -223,17 +223,18 @@
     "working": "Working..."
   },
   "consent": {
-    "title": "Connect {{client}}?",
-    "explain": "This will create an agent in the workspace you choose. The agent can read and search what is there, and propose changes; it cannot write anything without review.",
-    "name_label": "Calls itself",
-    "host_label": "Sends the token to",
-    "name_warning": "The name was chosen by whoever registered this connector, and anybody can register one. The host is where the token actually goes — check that you recognise it.",
-    "workspace_label": "Workspace",
-    "no_workspace": "You cannot connect anything yet: this needs a workspace where you may manage agents.",
-    "what_it_gets": "You can change what it may do, or disconnect it, on the Agents screen at any time.",
     "allow": "Connect",
     "deny": "Cancel",
-    "malformed": "This authorization request is incomplete. Start again from the application you were connecting."
+    "explain": "This will create an agent in the workspace you choose. The agent can read and search what is there, and propose changes; it cannot write anything without review.",
+    "host_label": "Sends the token to",
+    "malformed": "This authorization request is incomplete. Start again from the application you were connecting.",
+    "name_label": "Calls itself",
+    "name_warning": "The name was chosen by whoever registered this connector, and anybody can register one. The host is where the token actually goes — check that you recognise it.",
+    "no_workspace": "You cannot connect anything yet: this needs a workspace where you may manage agents.",
+    "replaces": "This replaces the connection you already have here: {{agent}}. Its tokens stop working at once.",
+    "title": "Connect {{client}}?",
+    "what_it_gets": "You can change what it may do, or disconnect it, on the Agents screen at any time.",
+    "workspace_label": "Workspace"
   },
   "errors": {
     "UNAUTHENTICATED": "Please sign in again, or check the details you entered.",

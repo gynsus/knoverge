@@ -135,6 +135,26 @@ as the grant is.
 
 ## Consequences
 
+**A connector that registers itself again is the connector it was.** This is the
+price of declining Client ID Metadata Documents, and it was found by connecting
+a real one: disconnecting in Claude.ai does not call the revocation endpoint,
+and reconnecting registers a second client. By client id those are two
+connectors, so without something else they become two agents, and the first
+connection stays live with a working refresh token that the person believes
+they ended.
+
+What identifies a returning connector, in the absence of a stable client id, is
+the name it calls itself together with the addresses it will accept a code at.
+Two genuinely different products would have to share both, and sharing a
+callback address means sharing the service behind it. So consent matches on
+exactly those two, retires the connection it finds, and keeps the agent: the
+new grant points at the agent the old one did, and the history reads as one
+connector rather than as a queue of them. The consent screen says which
+connection is being replaced before anything is.
+
+An exact match on both, or nothing. A near match is a guess, and the thing being
+guessed at is which agent somebody's knowledge is attributed to.
+
 ChatGPT and Claude.ai reach a self-hosted Knoverge with no operator step beyond
 the one that already exists — a person signs in and presses a button — and the
 result is an agent that proposes rather than writes, because rule 5 is not

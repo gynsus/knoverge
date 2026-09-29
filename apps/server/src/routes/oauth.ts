@@ -327,6 +327,7 @@ export function registerConsentRoutes(app: FastifyInstance, services: Services):
         });
       const memberships = await services.repositories.memberships.listForUser(human.user.id);
       const allowed = [];
+      const replaces: Record<string, string> = {};
       for (const membership of memberships) {
         const context = {
           workspaceId: membership.workspaceId,
@@ -342,6 +343,12 @@ export function registerConsentRoutes(app: FastifyInstance, services: Services):
             workspace_slug: membership.workspaceSlug,
             workspace_name: membership.workspaceName,
           });
+          const superseded = await services.oauth.replaces(
+            { client, params },
+            human.user.id,
+            membership.workspaceId,
+          );
+          if (superseded) replaces[membership.workspaceId] = superseded.agentName;
         }
       }
       return {
@@ -349,6 +356,7 @@ export function registerConsentRoutes(app: FastifyInstance, services: Services):
         redirect_host: new URL(params.redirect_uri).host,
         resource: params.resource,
         workspaces: allowed,
+        replaces,
       };
     },
   );

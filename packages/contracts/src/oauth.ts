@@ -147,6 +147,16 @@ export const PendingAuthorization = z.object({
   workspaces: z.array(
     z.object({ workspace_id: WorkspaceId, workspace_slug: z.string(), workspace_name: z.string() }),
   ),
+  /**
+   * The connection this would replace, per workspace, when there is one.
+   *
+   * A hosted connector registers itself again every time it is reconnected, so
+   * it arrives under a new client id and would otherwise become a second agent
+   * beside the one it already is. Consent retires the old connection; the
+   * screen says so first, because replacing something silently is how a person
+   * ends up with a live connection they cannot see.
+   */
+  replaces: z.record(WorkspaceId, z.string()),
 });
 export type PendingAuthorization = z.infer<typeof PendingAuthorization>;
 

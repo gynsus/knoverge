@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import {
   AuthorizationServerMetadata,
+  PendingAuthorization,
   ProtectedResourceMetadata,
   TERMS_VERSION,
 } from '@knoverge/contracts';
@@ -453,6 +454,136 @@ describe('what the ledger records', () => {
     // rule 4 keeps out of the ledger. One an hour per connector would bury the
     // feed in restatements of a decision made once.
     expect(now.length).toBe(before);
+  });
+});
+
+describe('a connector that registers itself again', () => {
+  it('is the connector it was, not a second one beside it', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const first = await registerClient('Returning');
+    await consent(owner, first, pkce().challenge);
+
+    // What a hosted connector does when somebody reconnects it: a new client
+    // id, the same name and the same callback. Nothing else identifies it,
+    // because the identity that would have is the one ADR 0038 declined.
+    const second = await registerClient('Returning');
+    expect(second).not.toBe(first);
+    await consent(owner, second, pkce().challenge);
+
+    const list = await owner.request({
+      method: 'GET',
+      url: '/v1/admin/agents.list',
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    const agents = (list.json() as { agents: { name: string }[] }).agents;
+    expect(agents.filter((a) => a.name.startsWith('Returning'))).toHaveLength(1);
+
+    const grants = await owner.request({
+      method: 'GET',
+      url: '/v1/admin/oauth.grants',
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    const live = (grants.json() as { grants: { client_name: string }[] }).grants.filter(
+      (g) => g.client_name === 'Returning',
+    );
+    // One live connection, not two. Otherwise a person who reconnects twice
+    // has three, two of which they cannot see without going looking.
+    expect(live).toHaveLength(1);
+  });
+
+  it('takes the tokens of the connection it replaced out of service', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const first = await registerClient('Superseded');
+    const { verifier, challenge } = pkce();
+    const code = await consent(owner, first, challenge);
+    const old = (
+      await form({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        redirect_uri: REDIRECT,
+        client_id: first,
+      })
+    ).json() as { access_token: string; refresh_token: string };
+
+    const second = await registerClient('Superseded');
+    await consent(owner, second, pkce().challenge);
+
+    const call = await app.inject({
+      method: 'POST',
+      url: '/mcp',
+      headers: {
+        authorization: `Bearer ${old.access_token}`,
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    });
+    expect(call.statusCode).toBe(401);
+    const refreshed = await form({
+      grant_type: 'refresh_token',
+      refresh_token: old.refresh_token,
+      client_id: first,
+    });
+    expect(refreshed.json()).toMatchObject({ error: 'invalid_grant' });
+  });
+
+  it('is not confused with a different connector that happens to share a name', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const mine = await registerClient('Ambiguous');
+    await consent(owner, mine, pkce().challenge);
+
+    // Same name, different callback. Two products may pick the same name;
+    // sharing a callback address means sharing the service behind it, so the
+    // match is on both or it is not a match.
+    const theirs = await app.inject({
+      method: 'POST',
+      url: '/oauth/register',
+      remoteAddress: fromSomewhere(),
+      payload: {
+        client_name: 'Ambiguous',
+        redirect_uris: ['https://elsewhere.example/callback'],
+      },
+    });
+    const otherId = (theirs.json() as { client_id: string }).client_id;
+    const res = await owner.post(
+      '/v1/admin/oauth.consent',
+      {
+        client_id: otherId,
+        redirect_uri: 'https://elsewhere.example/callback',
+        code_challenge: pkce().challenge,
+        code_challenge_method: 'S256',
+        resource: RESOURCE,
+        workspace_id: workspaceId,
+      },
+      { 'x-knoverge-workspace': workspaceId },
+    );
+    expect(res.statusCode, res.body).toBe(200);
+
+    const list = await owner.request({
+      method: 'GET',
+      url: '/v1/admin/agents.list',
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    const agents = (list.json() as { agents: { name: string }[] }).agents;
+    expect(agents.filter((a) => a.name.startsWith('Ambiguous'))).toHaveLength(2);
+  });
+
+  it('is named on the consent screen before anything is replaced', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const first = await registerClient('Announced');
+    await consent(owner, first, pkce().challenge);
+    const second = await registerClient('Announced');
+
+    const query = new URLSearchParams(params(second, pkce().challenge)).toString();
+    const pending = await owner.request({
+      method: 'GET',
+      url: `/v1/admin/oauth.pending?${query}`,
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    expect(pending.statusCode, pending.body).toBe(200);
+    const body = PendingAuthorization.parse(pending.json());
+    expect(body.replaces[workspaceId as never]).toBe('Announced (Owner)');
   });
 });
 

@@ -96,6 +96,14 @@ export interface OauthGrantRepository {
   ): Promise<OauthGrantRecord | null>;
   /** What a person has connected, for the screen that lets them disconnect it. */
   listForUser(userId: UserId): Promise<OauthGrantRecord[]>;
+  /**
+   * This person's live connections in one workspace.
+   *
+   * Read when somebody consents, to find the connection they are replacing: a
+   * hosted connector registers itself again every time it is reconnected, so
+   * the client id is new and the connector is not (ADR 0038).
+   */
+  listLiveForUserInWorkspace(userId: UserId, workspaceId: WorkspaceId): Promise<OauthGrantRecord[]>;
   listForWorkspace(workspaceId: WorkspaceId): Promise<OauthGrantRecord[]>;
   /** False when it was already revoked and nothing changed. */
   revoke(tx: Tx, id: OauthGrantId, at: Date): Promise<boolean>;

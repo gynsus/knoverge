@@ -178,6 +178,20 @@ export function createOauthGrantRepository(db: Database): OauthGrantRepository {
         .orderBy(desc(oauthGrants.createdAt));
       return rows.map(toGrant);
     },
+    async listLiveForUserInWorkspace(userId: UserId, workspaceId: WorkspaceId) {
+      const rows = await db
+        .select()
+        .from(oauthGrants)
+        .where(
+          and(
+            eq(oauthGrants.userId, userId),
+            eq(oauthGrants.workspaceId, workspaceId),
+            isNull(oauthGrants.revokedAt),
+          ),
+        )
+        .orderBy(desc(oauthGrants.createdAt));
+      return rows.map(toGrant);
+    },
     async listForWorkspace(workspaceId: WorkspaceId) {
       const rows = await db
         .select()
