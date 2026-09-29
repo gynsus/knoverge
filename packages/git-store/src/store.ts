@@ -78,5 +78,14 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     bundle(workspaceId: WorkspaceId, file: string) {
       return open(workspaceId).bundle(file);
     },
+    cloneFromBundle(workspaceId: WorkspaceId, file: string) {
+      return open(workspaceId).cloneFrom(file);
+    },
+    commits(workspaceId: WorkspaceId) {
+      return open(workspaceId).commits();
+    },
+    changedFiles(workspaceId: WorkspaceId, commitHash: string) {
+      return open(workspaceId).changedFiles(commitHash);
+    },
   };
 }

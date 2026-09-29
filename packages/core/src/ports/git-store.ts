@@ -113,4 +113,25 @@ export interface GitStore {
    * somebody takes away is one `git clone` reads, history and all.
    */
   bundle(workspaceId: WorkspaceId, file: string): Promise<void>;
+  /**
+   * Makes a workspace's repository from a bundle, refusing an existing one.
+   *
+   * What an import starts with (ADR 0035). A bundle is a whole repository, and
+   * putting one on top of another would leave a workspace whose files came from
+   * two places and whose history explains neither.
+   */
+  cloneFromBundle(workspaceId: WorkspaceId, file: string): Promise<void>;
+  /**
+   * Every commit, oldest first.
+   *
+   * What an import walks to put the revisions back in the order they were made.
+   */
+  commits(workspaceId: WorkspaceId): Promise<string[]>;
+  /**
+   * The files one commit changed.
+   *
+   * An import reads it to find the file a commit's `Knoverge-Change` is about:
+   * the trailer names the item, and the path is whatever that commit touched.
+   */
+  changedFiles(workspaceId: WorkspaceId, commitHash: string): Promise<string[]>;
 }
