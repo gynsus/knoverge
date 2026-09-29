@@ -806,8 +806,33 @@ heading and a `#` inside a word is part of the word — neither is a tag.
 
 That is also what an Obsidian vault is: the same command, because a vault is a
 folder of Markdown with tags in it and `.obsidian/` skipped like every other
-dot-directory. What it does not yet carry is `[[wikilinks]]`, which are relations
-between notes rather than text; they stay in the body for now.
+dot-directory.
+
+### The links between the notes
+
+```bash
+docker compose exec knoverge knoverge link-from-folder \
+  --from /import/vault --agent ag_01M3… --workspace personal
+```
+
+Run **after** the proposals a folder produced have been accepted, because a
+relation needs both ends to exist as items: when a note is proposed, the note it
+links to may still be in the queue.
+
+`[[Target]]`, `[[Target|shown as this]]` and `[[Target#a heading]]` are one link to
+`Target` — the display text and the heading are about how the link reads, not
+about what it points at. A link inside a code fence is left alone, because a note
+about wiki syntax is not a note that links to anything.
+
+Every link becomes `relates_to`. A wiki link says two notes are connected and
+nothing more precise; reading `supersedes` or `contradicts` into one would be
+inventing a claim the person never made.
+
+What cannot be resolved is named rather than dropped: a name no note has, a name
+two notes share — write the path in the link to say which — and a note nobody has
+accepted yet, which is not an item to attach anything to. A link a note makes to
+itself is not a relation, and one whose relation is already there is not a change,
+so neither produces a proposal nobody asked for.
 
 Titles come from the frontmatter, then from an opening heading, then from the
 filename. An opening heading that repeats the title is taken out of the text,

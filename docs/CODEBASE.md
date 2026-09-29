@@ -1008,10 +1008,12 @@ of the note, and whatever proposes it has the tags without reading the file agai
 
 That is also the answer to what an Obsidian vault needs: nothing of its own. A
 vault is a folder of Markdown with tags and a `.obsidian/` directory that is
-skipped like every dot-directory, so it is the same command. The one thing it
-carries that this does not understand is `[[wikilinks]]` — relations between notes
-rather than text — and those stay in the body until relations are resolved after
-a run, which needs both ends to exist first.
+skipped like every dot-directory, so it is the same command. Wikilinks are the one thing that needed a
+command of its own: `apps/cli/src/link-from-folder.ts` runs after the proposals
+have been accepted, because a relation needs both ends to exist as items. The
+parser collects the targets; resolving them is by path first and by the note's own
+name second, and an ambiguous name is reported rather than guessed. Every link
+becomes `relates_to`, because that is all a wiki link claims.
 
 `apps/cli/src/propose-from-session.ts` is the other half, and it is a separate
 command rather than a flag for the reason the ADR gives: an inventory is a
