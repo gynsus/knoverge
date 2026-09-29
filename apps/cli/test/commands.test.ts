@@ -8,6 +8,7 @@ import { dbCommand } from '../src/commands/db.ts';
 import { exportCommand } from '../src/commands/export.ts';
 import { importCommand } from '../src/commands/import.ts';
 import { importFolderCommand } from '../src/commands/import-folder.ts';
+import { proposeFromSessionCommand } from '../src/commands/propose-from-session.ts';
 import { integrityCommand } from '../src/commands/integrity.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
@@ -27,6 +28,7 @@ const EXPECTED: Record<string, string[]> = {
   export: [],
   import: [],
   'import-folder': [],
+  'propose-from-session': [],
   integrity: ['check'],
   mcp: ['check', 'stdio'],
   ledger: ['keys', 'verify'],
@@ -46,6 +48,7 @@ const commands = [
   exportCommand(),
   importCommand(),
   importFolderCommand(),
+  proposeFromSessionCommand(),
   integrityCommand(),
   ledgerCommand(),
   mcpCommand(),
@@ -105,6 +108,13 @@ describe('command surface', () => {
         .options.filter((o) => o.mandatory)
         .map((o) => o.long),
     ).toEqual(['--from', '--agent']);
+    // Both: the session says what to propose and the folder is where the text
+    // still is, and guessing either would propose the wrong thing.
+    expect(
+      proposeFromSessionCommand()
+        .options.filter((o) => o.mandatory)
+        .map((o) => o.long),
+    ).toEqual(['--session', '--from']);
   });
 
   it('never makes a credential a flag, so it cannot reach the process list', () => {

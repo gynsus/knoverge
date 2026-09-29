@@ -10,8 +10,10 @@ import {
   AgentService,
   AuthorizationService,
   CrossStoreWriter,
+  DuplicateMatcher,
   EventLedger,
   KnowledgeService,
+  ProposalService,
   SyncService,
   WorkspaceService,
   keyring,
@@ -37,6 +39,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { importFolder } from '../src/import-folder.ts';
+import { proposeFromSession } from '../src/propose-from-session.ts';
 import type { Services } from '../src/run.ts';
 
 const migrationsFolder = fileURLToPath(new URL('../../../packages/db/migrations', import.meta.url));
@@ -162,6 +165,21 @@ beforeAll(async () => {
       workspaces: repositories.workspaces,
       nearest: async () => [],
     }),
+    proposals: new ProposalService({
+      uow,
+      proposals: repositories.proposals,
+      knowledge,
+      knowledgeIndex: repositories.knowledge,
+      categories: repositories.categories,
+      authorization,
+      duplicates: new DuplicateMatcher({
+        items: repositories.knowledge,
+        contentHash,
+        nearest: async () => [],
+      }),
+      actors: repositories.actors,
+      ledger,
+    }),
   } as unknown as Services;
 
   // The folder: one note the workspace already has, one it does not, and one
@@ -184,6 +202,118 @@ afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
   for (const dir of [dataDir, folder]) if (dir) await rm(dir, { recursive: true, force: true });
+});
+
+describe('knoverge propose-from-session', () => {
+  it('proposes the new ones, leaves the known one alone, and writes nothing yet', async () => {
+    const session = await importFolder(services, {
+      workspaceId,
+      agentId,
+      from: folder,
+      sourceSystem: 'markdown-folder',
+      namespace: 'to-propose',
+      requestId: 'req-inventory',
+    });
+
+    const result = await proposeFromSession(services, {
+      workspaceId,
+      sessionId: session.sessionId,
+      from: folder,
+      requestId: 'req-propose',
+    });
+
+    // The two the workspace did not recognise become proposals; the one it
+    // already holds is left alone with the reason it was left alone.
+    expect(result.proposed).toBe(2);
+    // An agent proposes by default: rule 14 says a write waits for review
+    // unless a rule says otherwise, and no rule does here.
+    expect(result.written).toBe(0);
+    expect(result.skipped).toEqual([{ path: 'escalation.md', why: 'exact_known' }]);
+
+    // And they are in the queue, as an agent's writing is.
+    const pending = await services.repositories.proposals.list(workspaceId, { limit: 50 });
+    expect(pending.filter((proposal) => proposal.status === 'pending')).toHaveLength(2);
+  });
+
+  it('sends the same text the fingerprint was taken of', async () => {
+    const session = await importFolder(services, {
+      workspaceId,
+      agentId,
+      from: folder,
+      sourceSystem: 'markdown-folder',
+      namespace: 'same-text',
+      requestId: 'req-inventory-2',
+    });
+    await proposeFromSession(services, {
+      workspaceId,
+      sessionId: session.sessionId,
+      from: folder,
+      requestId: 'req-propose-2',
+    });
+
+    const proposals = await services.repositories.proposals.list(workspaceId, { limit: 50 });
+    const rota = proposals.find(
+      (proposal) => (proposal.proposedPayload as { title?: string }).title === 'Rota',
+    );
+    // The heading that was the title is not in the body twice, and the body is
+    // what the parser said it was — not a second reading of the same file.
+    expect((rota?.proposedPayload as { body?: string }).body).toBe('Who is on call this week.\n');
+  });
+
+  it('refuses to propose a file that changed since the session was taken', async () => {
+    const session = await importFolder(services, {
+      workspaceId,
+      agentId,
+      from: folder,
+      sourceSystem: 'markdown-folder',
+      namespace: 'moved-on',
+      requestId: 'req-inventory-3',
+    });
+    await writeFile(join(folder, 'rota.md'), '# Rota\n\nSomebody else this week.\n', 'utf8');
+    try {
+      const result = await proposeFromSession(services, {
+        workspaceId,
+        sessionId: session.sessionId,
+        from: folder,
+        requestId: 'req-propose-3',
+      });
+      // Proposing text the workspace never classified would make the session a
+      // record of something that did not happen.
+      expect(result.skipped).toContainEqual({
+        path: 'rota.md',
+        why: 'the file changed since the session was taken; run the importer again',
+      });
+    } finally {
+      await writeFile(join(folder, 'rota.md'), '# Rota\n\nWho is on call this week.\n', 'utf8');
+    }
+  });
+
+  it('proposes without a category the taxonomy does not have', async () => {
+    const session = await importFolder(services, {
+      workspaceId,
+      agentId,
+      from: folder,
+      sourceSystem: 'markdown-folder',
+      namespace: 'no-such-category',
+      requestId: 'req-inventory-4',
+    });
+    const result = await proposeFromSession(services, {
+      workspaceId,
+      sessionId: session.sessionId,
+      from: folder,
+      requestId: 'req-propose-4',
+    });
+    // `Pixel Brisbane/auth.md` suggests a category this workspace has never
+    // had. The folder structure is a suggestion, and creating categories is a
+    // separate decision with its own review — so the note arrives without one
+    // rather than being refused.
+    expect(result.proposed).toBeGreaterThan(0);
+    const proposals = await services.repositories.proposals.list(workspaceId, { limit: 50 });
+    const auth = proposals.find(
+      (proposal) => (proposal.proposedPayload as { title?: string }).title === 'Authentication',
+    );
+    expect((auth?.proposedPayload as { categories?: string[] }).categories ?? []).toEqual([]);
+  });
 });
 
 describe('knoverge import-folder', () => {

@@ -768,6 +768,37 @@ twice and inserted once. `--source-system` and `--namespace` name the tool and t
 folder, so two vaults imported into one workspace do not look like one vault that
 changed its mind.
 
+### Turning what it found into proposals
+
+```bash
+docker compose exec knoverge knoverge propose-from-session \
+  --session sync_01M3… --from /import/vault --workspace personal
+```
+
+```text
+188 waiting for review
+180 left alone: exact_known
+44 left alone: likely_match
+```
+
+Two commands with a person in between, because an inventory is a question and
+proposing is what somebody decides after reading the answer. Only `new_candidate`
+is acted on: `likely_match` means "read those items and decide", and deciding is
+not a thing to do in a loop.
+
+Each file is read again and checked against the fingerprint the session recorded.
+One that changed since is left alone with that as the reason — proposing text the
+workspace never classified would make the session a record of something that did
+not happen.
+
+A candidate suggesting a category the taxonomy does not have is proposed without
+it. The folder structure is a suggestion, and creating categories is a separate
+decision with its own review.
+
+What happens to a proposal is the agent's policy, not this command's: by default
+an agent's writing waits for review (rule 14), and an agent with `allow_direct`
+writes straight through. The output says which of the two happened.
+
 Titles come from the frontmatter, then from an opening heading, then from the
 filename. An opening heading that repeats the title is taken out of the text,
 because this product's own files keep the title in the frontmatter — without that,
