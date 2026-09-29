@@ -1,10 +1,8 @@
 import {
-  AttachmentId,
   ItemSlug,
   type ChangeKind,
   type Frontmatter,
   type FrontmatterRelation,
-  type FrontmatterSource,
   splitDependencyRef,
   type KnowledgeItemId,
   type ProposalId,
@@ -38,6 +36,7 @@ import type {
   RevisionRecord,
 } from './repository.ts';
 import { compareFrontmatter, evidenceFrom, tagList, type MetadataChange } from './frontmatter.ts';
+import { recordSources } from './sources.ts';
 import type {
   CreateItemInput,
   DeleteItemInput,
@@ -266,7 +265,14 @@ export class KnowledgeService {
           })),
         );
         await this.o.items.setTags(tx, actor.workspaceId, itemId, p.frontmatter.tags);
-        await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
+        await recordSources(
+          this.o.sources,
+          tx,
+          actor.workspaceId,
+          revisionId,
+          p.frontmatter.sources,
+          p.now,
+        );
         await this.writeRelations(tx, actor, itemId, p.frontmatter.relations, p.now);
         await this.writeSummaryOf(tx, itemId, p.frontmatter);
         await this.index(tx, actor.workspaceId, itemId, revisionId, p.frontmatter, p.body, p.now);
@@ -540,7 +546,14 @@ export class KnowledgeService {
           })),
         );
         await this.o.items.setTags(tx, actor.workspaceId, input.itemId, p.frontmatter.tags);
-        await this.writeSources(tx, actor.workspaceId, revisionId, p.frontmatter.sources, p.now);
+        await recordSources(
+          this.o.sources,
+          tx,
+          actor.workspaceId,
+          revisionId,
+          p.frontmatter.sources,
+          p.now,
+        );
         await this.writeRelations(tx, actor, input.itemId, p.frontmatter.relations, p.now);
         await this.writeSummaryOf(tx, input.itemId, p.frontmatter);
         await this.index(
@@ -950,7 +963,8 @@ export class KnowledgeService {
           );
           await this.o.items.setTags(tx, actor.workspaceId, newItemId, pNew.frontmatter.tags);
         }
-        await this.writeSources(
+        await recordSources(
+          this.o.sources,
           tx,
           actor.workspaceId,
           newRevisionId,
@@ -1588,53 +1602,6 @@ export class KnowledgeService {
         };
       },
     });
-  }
-
-  /**
-   * The sources a revision rested on. Attached to the revision rather than to
-   * the item, because which sources were cited is part of what the revision
-   * said — an older revision keeps its own even after the item moves on.
-   */
-  private async writeSources(
-    tx: Tx,
-    workspaceId: WorkspaceId,
-    revisionId: RevisionId,
-    sources: readonly FrontmatterSource[],
-    at: Date,
-  ): Promise<void> {
-    if (sources.length === 0) return;
-    const ids = await this.o.sources.ensure(
-      tx,
-      workspaceId,
-      sources.map((source) => ({
-        sourceType: source.type,
-        uri: source.uri ?? null,
-        externalSystem: source.client ?? null,
-        externalKey: source.external_key ?? null,
-        // The one source type that names something this installation holds. It
-        // is what makes "which items came out of this file" a question the
-        // database can answer, and the column has been here since the first
-        // migration waiting for it (ADR 0008).
-        attachmentId:
-          source.type === 'attachment' && AttachmentId.safeParse(source.external_key).success
-            ? (source.external_key ?? null)
-            : null,
-        sourceModifiedAt: null,
-        sourceContentHash: source.content_hash ?? null,
-        confidence: null,
-        metadata: source.session_id ? { session_id: source.session_id } : {},
-      })),
-      at,
-    );
-    await this.o.sources.attachToRevision(
-      tx,
-      ids.map((sourceReferenceId, index) => ({
-        revisionId,
-        sourceReferenceId,
-        evidenceRole: sources[index]!.role,
-        position: index,
-      })),
-    );
   }
 
   /**

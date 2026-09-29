@@ -25,8 +25,10 @@ import type {
   RelationRepository,
   RevisionRecord,
   RevisionRepository,
+  SourceRepository,
   SummaryRepository,
 } from './repository.ts';
+import { recordSources } from './sources.ts';
 
 /** `Knoverge-Change: kn_...@rev_... <kind>` */
 const CHANGE = /^(kn_[0-9A-HJKMNP-TV-Z]{26})@(rev_[0-9A-HJKMNP-TV-Z]{26})\s+([a-z_]+)$/;
@@ -52,6 +54,15 @@ export interface KnowledgeRecoveryOptions {
   revisions: RevisionRepository;
   categories: CategoryRepository;
   relations: RelationRepository;
+  /**
+   * What a revision rested on.
+   *
+   * Recovery used to leave these rows out, so an item rebuilt from its commit
+   * cited a file in its own frontmatter while the database said nothing rested
+   * on that file — and "which items came out of this attachment" answered
+   * nothing (ADR 0008).
+   */
+  sources: SourceRepository;
   summaries: SummaryRepository;
   search: SearchRepository;
   ledger: EventLedger;
@@ -340,6 +351,17 @@ export class KnowledgeRecovery {
         // What a summary was made from, for the same reason: the file carries
         // the portable copy, and a recovered summary with no dependency rows
         // reads as one that can never go stale.
+        // The provenance the file already carries, as rows the database can be
+        // asked about. The frontmatter is the portable copy and this is the
+        // queryable one, and a recovered revision needs both.
+        await recordSources(
+          this.o.sources,
+          tx,
+          operation.workspaceId,
+          plan.revisionId,
+          f.sources,
+          plan.now,
+        );
         await this.o.summaries.replaceForSummary(
           tx,
           plan.itemId,
