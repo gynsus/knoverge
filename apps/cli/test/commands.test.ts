@@ -5,6 +5,7 @@ import { auditCommand } from '../src/commands/audit.ts';
 import { backupCommand } from '../src/commands/backup.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
+import { exportCommand } from '../src/commands/export.ts';
 import { integrityCommand } from '../src/commands/integrity.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
@@ -21,6 +22,7 @@ const EXPECTED: Record<string, string[]> = {
   backup: [],
   bootstrap: [],
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
+  export: [],
   integrity: ['check'],
   mcp: ['check', 'stdio'],
   ledger: ['keys', 'verify'],
@@ -37,6 +39,7 @@ const commands = [
   backupCommand(),
   bootstrapCommand(),
   dbCommand(),
+  exportCommand(),
   integrityCommand(),
   ledgerCommand(),
   mcpCommand(),
@@ -76,6 +79,14 @@ describe('command surface', () => {
     expect(required('taxonomy', 'create')).toEqual(['--name']);
     expect(required('taxonomy', 'move')).toEqual(['--category']);
     expect(required('workspace', 'create')).toEqual(['--slug', '--name']);
+    // A command with no subcommands, so its own options are the ones to check:
+    // an export with no workspace and nowhere to write is not a default worth
+    // guessing at.
+    expect(
+      exportCommand()
+        .options.filter((o) => o.mandatory)
+        .map((o) => o.long),
+    ).toEqual(['--workspace', '--out']);
   });
 
   it('never makes a credential a flag, so it cannot reach the process list', () => {

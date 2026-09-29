@@ -13,6 +13,7 @@ import {
   MemberService,
   CrossStoreWriter,
   EventLedger,
+  ExportService,
   IdempotencyService,
   IntegrityService,
   KnowledgeRecovery,
@@ -310,6 +311,16 @@ export function createServices() {
         frontmatterHash,
       }),
   );
+  const exports_ = lazy(
+    () =>
+      new ExportService({
+        workspaces: repositories.workspaces,
+        actors: repositories.actors,
+        knowledge: repositories.knowledge,
+        attachments: repositories.attachments,
+        events: repositories.events,
+      }),
+  );
   const workspaces = lazy(
     () =>
       new WorkspaceService({
@@ -379,6 +390,15 @@ export function createServices() {
     },
     get sessions() {
       return sessions();
+    },
+    get exports() {
+      return exports_();
+    },
+    get attachmentStore() {
+      return attachmentStore();
+    },
+    get git() {
+      return git();
     },
     get workspaces() {
       return workspaces();

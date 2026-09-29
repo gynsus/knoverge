@@ -320,6 +320,23 @@ export class WorkspaceGitRepository {
     }
   }
 
+  /**
+   * The whole repository, every commit and every ref, in one file.
+   *
+   * `git bundle` and not an archive of the directory: a bundle is a transport
+   * format git itself understands, so the file an operator carries away is one
+   * `git clone` opens, history and all. An archive of `.git` would be this
+   * installation's repository directory, hooks and stale locks included.
+   *
+   * `--all` covers every ref rather than the current branch, so a repository
+   * that ever had another one does not quietly lose it. An empty repository has
+   * no refs and `git bundle` refuses, which is the honest answer: there is
+   * nothing to carry.
+   */
+  async bundle(file: string): Promise<void> {
+    await this.git(['bundle', 'create', file, '--all']);
+  }
+
   async headCommit(): Promise<string | null> {
     try {
       return (await this.git(['rev-parse', 'HEAD'])).trim();

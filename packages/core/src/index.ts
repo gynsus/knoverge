@@ -1,4 +1,10 @@
 export type { ActorContext } from './actor-context.ts';
+export {
+  ExportService,
+  type AttachmentToCopy,
+  type ExportManifest,
+  type ExportServiceOptions,
+} from './export/service.ts';
 export type { AttachmentRecord, AttachmentRepository } from './attachments/repository.ts';
 export {
   MediaTranscriber,

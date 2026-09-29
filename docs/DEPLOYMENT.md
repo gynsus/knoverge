@@ -652,7 +652,60 @@ repository, and that no unfinished operation came back to close the workspace. A
 backup nobody has restored is not a backup, and a restore procedure nothing runs
 is not a procedure.
 
-## 11. Upgrades
+## 11. Taking a workspace somewhere else
+
+A backup and an export answer different questions, and reaching for the wrong one
+is found out late. A **backup** is this installation: a PostgreSQL dump for a
+matching major version, the whole data directory, agents, credentials, permissions
+and a ledger keyed with this installation's `KNOVERGE_LEDGER_KEY`. An **export** is
+one workspace's knowledge and its history, in a form somebody can read with git and
+nothing else.
+
+```bash
+docker compose exec knoverge knoverge export --workspace personal --out /backups --attachments
+```
+
+What it writes:
+
+```text
+/backups/20260929T100000Z-ws_01M3…/repository.bundle  the knowledge and every revision
+/backups/20260929T100000Z-ws_01M3…/manifest.json      what the files cannot say
+/backups/20260929T100000Z-ws_01M3…/README.md          how to open it without this product
+/backups/20260929T100000Z-ws_01M3…/attachments/       with --attachments, by content hash
+```
+
+The bundle is the whole of it, and opening it needs nothing from here:
+
+```bash
+git clone repository.bundle workspace
+```
+
+Inside is what `GIT_REPOSITORY.md` describes: Markdown with YAML frontmatter, the
+category tree in `taxonomy.yaml`, and every revision as a commit whose trailers say
+which item and which revision it was. The manifest adds the workspace's slug, name
+and default language, where the ledger stood, and the display name of each actor a
+trailer names — so a reader can see who `act_01…` was without anybody's sign-in
+address leaving the installation.
+
+**Attachments are listed either way and carried with `--attachments`.** They are
+not in Git and cannot be rebuilt from anything (ADR 0008), so an export without
+them leaves items whose sources point at nothing — and they are the part that makes
+an export gigabytes. A row whose file is not in the store is named in the output and
+marked `included: false` in the manifest rather than quietly promised.
+
+**What an export leaves out**, each on purpose: agents, credentials, permissions and
+policy rules, because who may write is a statement about an installation; proposals
+and sync sessions, because work in flight belongs to the installation doing it; the
+event ledger, because its chain is keyed with a key that never leaves the
+environment — `knoverge audit export` writes it as evidence and evidence is what it
+stays; and embeddings, which the receiving installation rebuilds with whatever model
+it has. ADR 0034 has the reasoning.
+
+The workspace write lock is held for the read, so the bundle and the manifest
+describe one moment: an export taken while a write was landing would name a ledger
+sequence the bundle does not reach.
+
+## 12. Upgrades
 
 ### Released images
 
@@ -704,7 +757,7 @@ start (migrations run)
 run readiness/integrity checks
 ```
 
-## 12. Reverse proxy
+## 13. Reverse proxy
 
 A complete installation is one application container plus PostgreSQL. A proxy is not
 required and is not a dependency — but an installation reachable from the Internet
@@ -758,7 +811,7 @@ The application sends its own HSTS, CSP and frame headers, so the proxy adds non
 two sources for one header is how one of them ends up wrong. Compression is the
 exception, because the application does not do it.
 
-## 13. Resource target
+## 14. Resource target
 
 MVP should be comfortable on a modest single-server installation.
 

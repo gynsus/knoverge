@@ -299,7 +299,9 @@ each producing `document` items with provenance. Providers are optional; without
 
 ## Milestone 13 - export and import
 
-_Not started._
+_In progress: export is built — `knoverge export` writes a git bundle, a manifest
+and, when asked for, the attachments, and ADR 0034 says what it leaves out and why.
+Import and the reconciliation importers are next._
 
 Deliver:
 
