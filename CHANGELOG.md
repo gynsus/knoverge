@@ -9,6 +9,60 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## Unreleased
+
+Milestone 10: a hosted connector can let itself in, once a person says so.
+
+### Added
+
+- **Knoverge is its own OAuth 2.1 authorization server** (ADR 0038), because
+  ChatGPT and Claude.ai cannot be handed a pasted token. A connector given
+  nothing but the `/mcp` address finds the rest for itself: an unauthenticated
+  call answers `401` with a `WWW-Authenticate` header naming the protected
+  resource document, which names the authorization server, which names its
+  endpoints. Dynamic client registration is open and grants nothing — a
+  registration holds no workspace, no agent, no permission and no token.
+- **Consent is where a connector becomes an agent.** A person signs in, holds
+  `agent.manage` in the workspace they pick, and says yes; that creates the
+  agent the connector acts as, at the tier every agent starts at. It then sits
+  on the Agents screen beside every agent created by hand, and the connection
+  can be ended there, which revokes every token it issued. Consenting again
+  resumes the same connection rather than making a second actor, so a person
+  who reconnects three times is one name in the ledger.
+- **The consent screen names two things and says which is which.** The
+  connector's own `client_name`, chosen by whoever registered it, and the host
+  the token would actually go to — the one part of the request its author
+  cannot misrepresent.
+- **An access token is an ordinary agent credential**, with a shorter life and
+  the id of the grant that issued it. Nothing downstream of authentication has
+  a second case: the same permission checks, the same policy, the same budgets,
+  the same ledger.
+
+### Security
+
+- Authorization codes are spent by the first exchange whether or not that
+  exchange succeeded, so a stolen code buys no attempts at the verifier.
+- Refresh tokens rotate, and one presented twice revokes the whole grant: being
+  able to notice a captured token is not the same as doing something about it.
+- A redirect URI that does not match a registration is refused without a
+  redirect, because answering an unmatched URI is the open redirection the
+  specification warns about.
+- Client ID Metadata Documents are deliberately not supported: honouring one
+  means fetching a URL an unauthenticated caller chose, which rule 12 forbids.
+
+### Fixed
+
+- **Signing in dropped the query string of the page you were sent to.** Only
+  the path was kept, and an authorization request is a page whose query *is*
+  the request, so somebody not signed in came back to a consent screen with
+  nothing to consent to.
+
+### Compatibility
+
+One migration, additive. No new configuration: the authorization server calls
+itself whatever `KNOVERGE_BASE_URL` says, which an installation reachable from
+the internet already had to set correctly.
+
 ## v0.5.0 — 2026-09-29
 
 Milestone 13: knowledge can be taken somewhere else, brought in from somewhere

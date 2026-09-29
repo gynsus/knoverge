@@ -982,6 +982,37 @@ making a second copy of one (ADR 0035). Actors are recreated with new ids and no
 user or agent behind them: the interface still says who wrote something, and
 nobody gains the ability to write again.
 
+## Letting a hosted connector in
+
+`packages/core/src/oauth/service.ts` is an authorization server whose whole job is
+to end in a row `AgentService.authenticate` already knows how to read. An access
+token is an `agent_credentials` row with a shorter life and the id of the grant
+that issued it, so the routes, the policy, the budgets and the ledger acquire no
+second kind of caller (ADR 0038).
+
+`apps/server/src/routes/oauth.ts` holds the protocol surface in a Fastify scope of
+its own, for two reasons that both belong to the protocol rather than to this
+product: these endpoints answer in OAuth's error shape, and the token endpoint
+takes a form body. Encapsulating them keeps both out of every other route.
+
+Three decisions are the whole of its correctness, and each is a place where the
+obvious code is wrong.
+
+An authorization code is spent in a transaction of its own, **before** the
+verifier is checked. Spending it inside the transaction that also validates it
+means a failed check rolls the spending back, and somebody holding a stolen code
+can then try verifiers until it expires.
+
+A replayed refresh token revokes the grant **after** the rotation transaction has
+rolled back, not inside it. Revoking inside it would be undone by the same
+rollback that the refusal causes, so the server would notice the theft and do
+nothing about it.
+
+An unmatched redirect URI is refused without a redirect. The URI has not been
+matched against a registration yet, which makes it an attacker's URI, and
+answering it with an error is the open redirection the specification is warning
+about.
+
 ## What somebody committed by hand
 
 `packages/core/src/import/adopt.ts` is the database catching up to the repository,

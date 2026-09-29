@@ -1,6 +1,13 @@
 import type { ActorId, WorkspaceId } from '@knoverge/contracts';
 
-import type { OperationRepository, ProposalRepository, SyncRepository } from '../src/index.ts';
+import type {
+  OauthClientRepository,
+  OauthCodeRepository,
+  OauthRefreshTokenRepository,
+  OperationRepository,
+  ProposalRepository,
+  SyncRepository,
+} from '../src/index.ts';
 import { describe, expect, it, vi } from 'vitest';
 
 import {
@@ -10,6 +17,7 @@ import {
   IdempotencyService,
   MaintenanceService,
   SESSION_RETENTION_MS,
+  UNCONSENTED_CLIENT_TTL_MS,
   type ActorContext,
   type IdempotencyRecord,
   type IdempotencyRepository,
@@ -172,6 +180,7 @@ describe('MaintenanceService', () => {
     const decidedBefore: Date[] = [];
     const redactedBefore: Date[] = [];
     const candidatesBefore: Date[] = [];
+    const unconsentedBefore: Date[] = [];
     const service = new MaintenanceService({
       uow,
       sessions: {
@@ -204,6 +213,16 @@ describe('MaintenanceService', () => {
         },
       } as unknown as SyncRepository,
       idempotency: { purgeExpired: async () => 7 } as unknown as IdempotencyService,
+      oauthClients: {
+        deleteUnconsented: async (_tx: unknown, before: Date) => {
+          unconsentedBefore.push(before);
+          return 4;
+        },
+      } as unknown as OauthClientRepository,
+      oauthCodes: { deleteExpired: async () => 6 } as unknown as OauthCodeRepository,
+      oauthRefreshTokens: {
+        deleteExpired: async () => 1,
+      } as unknown as OauthRefreshTokenRepository,
       clock: { now: () => NOW },
     });
     const result = await service.prune();
@@ -213,6 +232,9 @@ describe('MaintenanceService', () => {
       operations: 5,
       redactedProposals: 2,
       syncCandidates: 11,
+      oauthClients: 4,
+      oauthCodes: 6,
+      oauthRefreshTokens: 1,
     });
     // A session row outlives the session itself, so the settings page can still
     // show where somebody was recently signed in.
@@ -227,5 +249,9 @@ describe('MaintenanceService', () => {
     // anybody's review trail, so it is removed rather than emptied — and what
     // the pass found survives in the session's stats.
     expect(NOW.getTime() - candidatesBefore[0]!.getTime()).toBe(SYNC_CANDIDATE_RETENTION_MS);
+    // A registration nobody consented to is kept a day: long enough for a slow
+    // person to finish signing in, short enough that an open endpoint does not
+    // become a table anybody can fill.
+    expect(NOW.getTime() - unconsentedBefore[0]!.getTime()).toBe(UNCONSENTED_CLIENT_TTL_MS);
   });
 });

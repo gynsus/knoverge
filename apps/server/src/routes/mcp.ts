@@ -15,6 +15,7 @@ import {
 } from '../plugins/agent-limits.ts';
 import type { CallMeta } from '../plugins/actor-decorators.ts';
 import type { Services } from '../services.ts';
+import { challengeFor } from './oauth.ts';
 import { handlerFor } from './tools.ts';
 
 /** The provenance fields of a call's `_meta`, ignoring everything else. */
@@ -140,7 +141,18 @@ export function registerMcpRoutes(
       // again when it runs, but a client with no credential would otherwise
       // connect, be handed the tool list, and be refused one call at a time
       // with no way to tell a bad token from a bad request.
-      await resolveWorkspaceActor(services, request);
+      try {
+        await resolveWorkspaceActor(services, request);
+      } catch (error) {
+        // A connector given nothing but this URL starts here: the challenge
+        // names the document that says which authorization server issues
+        // tokens for this endpoint, and that is the whole of how it finds its
+        // way in (RFC 9728, ADR 0038).
+        if (error instanceof DomainError && error.code === 'UNAUTHENTICATED') {
+          void reply.header('www-authenticate', challengeFor(services));
+        }
+        throw error;
+      }
       const server = serverFor(services, request, version);
       // The SDK documents `sessionIdGenerator: undefined` as stateless mode,
       // and `exactOptionalPropertyTypes` refuses an explicitly undefined

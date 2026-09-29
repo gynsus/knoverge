@@ -18,7 +18,13 @@ export function RequireAuth() {
     case 'setup':
       return <Navigate to="/setup" replace />;
     case 'anonymous':
-      return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+      // The search as well as the path. An authorization request arrives as a
+      // page whose query *is* the request — client, redirect, challenge — and
+      // sending somebody to sign in used to drop all of it, so they came back
+      // to a consent screen with nothing to consent to.
+      return (
+        <Navigate to="/login" replace state={{ from: `${location.pathname}${location.search}` }} />
+      );
     case 'error':
       return <p role="alert">{t('errors.NETWORK')}</p>;
     case 'authenticated':

@@ -229,9 +229,33 @@ docker compose exec knoverge knoverge taxonomy list
 
 Workspaces themselves can be listed and created with `knoverge workspace list` and `knoverge workspace create`. Give the latter `--owner <email>` naming an account that already exists: without an owner the workspace has no members, and the interface lists the workspaces you belong to, so nobody can open it. The command says so when the option is left out.
 
+### Connecting ChatGPT or Claude.ai
+
+Those connectors cannot be handed a pasted token, so they connect through
+OAuth instead, and the only thing an operator does is make the server
+reachable: a connector needs a **public HTTPS address**, will not talk to
+`http://localhost`, and issues tokens for whatever `KNOVERGE_BASE_URL` says
+this installation is. Set it to the address people actually use, behind the
+reverse proxy of section 13, or the addresses in the metadata documents will
+name a host the connector cannot reach.
+
+There is nothing to register. A person adds the connector in ChatGPT or
+Claude.ai with the URL of this installation's `/mcp`, and the connector finds
+the rest for itself: it is told where the authorization server is, registers
+itself, and sends the person here to be asked.
+
+What the person sees is a consent screen naming the connector and — beside it —
+the host the token would go to. Saying yes creates an agent in the workspace
+they pick, which needs `agent.manage` there, and that agent appears on the
+Agents screen like any other: it can read, search and propose, and it writes
+nothing without review until somebody says otherwise.
+
+Connections are listed and ended in the same place. Ending one revokes every
+token it issued, at once.
+
 ### Maintenance
 
-Three tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response; session rows, which stop working at their expiry or when revoked; and operation rows, which stop being interesting once decided. A container running the worker role removes all three once an hour, and in the same pass empties the proposed text of proposals resolved more than 90 days ago, keeping the rows themselves so the review trail survives.
+Three tables hold rows that stop being useful: idempotency records, which are no longer honoured after a day and hold a whole stored response; session rows, which stop working at their expiry or when revoked; and operation rows, which stop being interesting once decided. A container running the worker role removes all three once an hour, and in the same pass empties the proposed text of proposals resolved more than 90 days ago, keeping the rows themselves so the review trail survives. The same pass clears away OAuth registrations nobody consented to after a day, and codes and refresh tokens past their expiry.
 
 An installation that runs no worker, or an operator who wants it now, can run it directly:
 

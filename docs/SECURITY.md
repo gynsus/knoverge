@@ -124,9 +124,33 @@ Do not use one global MCP token for all agents.
 
 A credential belongs to exactly one agent in exactly one workspace.
 
-### OAuth 2.1 (later milestone)
+### OAuth 2.1 for hosted connectors
 
-Hosted MCP clients such as ChatGPT connectors and Claude.ai connectors require OAuth 2.1 with dynamic client registration and PKCE. Knoverge will act as its own authorization server in a dedicated milestone; the resulting access token resolves to the same agent identity model. See ADR 0004.
+Hosted MCP clients — the ChatGPT and Claude.ai connectors — cannot be handed a pasted token. Knoverge is its own OAuth 2.1 authorization server for them (ADR 0038), and the whole of it ends in an ordinary agent credential: an access token is a row in `agent_credentials` with a shorter life and the id of the grant that issued it, resolved by the same `authenticate` path as a `knv_` token. Nothing after authentication has a second case.
+
+What a connector walks:
+
+1. `POST /mcp` without a token answers `401` and `WWW-Authenticate: Bearer resource_metadata="…"`.
+2. `/.well-known/oauth-protected-resource` (and the RFC 9728 path form `/mcp`) names the resource and the authorization server.
+3. `/.well-known/oauth-authorization-server` names the endpoints.
+4. `POST /oauth/register` registers the client. Open, unauthenticated, and grants nothing: a registration holds no workspace, no agent, no permission and no token.
+5. `GET /oauth/authorize` checks the client, the redirect URI and the resource, then sends the browser to the consent screen. Anything refused here is refused **without** redirecting — an unmatched redirect URI is an attacker's URI, and sending it an error is an open redirect.
+6. A person signs in, holds `agent.manage` in the workspace they pick, and says yes. That creates the agent the connector acts as, at the `propose` tier like every other agent (rule 5), named for the client and the person. Consenting again resumes the same grant.
+7. `POST /oauth/token` exchanges the code, with PKCE `S256` — `plain` is refused by the database as well as by the code.
+
+Held to:
+
+- access tokens live an hour; refresh tokens rotate on every use and live a month;
+- a refresh token presented twice means it was captured, so the grant is revoked — every refresh token and every access token it issued;
+- an authorization code is spent by the first exchange **whether or not that exchange succeeded**, so a stolen code buys no attempts at the verifier;
+- redirect URIs are matched exactly, as whole strings, and must be `https` or a literal loopback;
+- a token is bound to this installation's MCP URI; a `resource` naming anything else is refused;
+- the `/oauth` endpoints answer in OAuth's error shape, not this product's, because their caller is a connector written against the specification;
+- registrations nobody consented to are removed by the maintenance pass after a day.
+
+The consent screen shows the client's own `client_name` **and** the host of the redirect URI, labelled as what they are. The name was chosen by whoever registered, and anybody may register; the host is where the token actually goes and is the one part of the request its author cannot misrepresent.
+
+Client ID Metadata Documents are not supported. Honouring one means fetching a URL chosen by an unauthenticated caller, which rule 12 forbids and which is server-side request forgery; ADR 0038 records what it would take to change that.
 
 ## 6. Secrets held by the server
 

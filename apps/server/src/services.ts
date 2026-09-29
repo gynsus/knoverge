@@ -18,6 +18,7 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  OauthService,
   AttachmentExtractor,
   AttachmentService,
   MediaDescriber,
@@ -74,6 +75,12 @@ import {
 
 export interface ServicesConfig {
   databaseUrl: string;
+  /**
+   * Where this installation answers, which is what the authorization server
+   * calls itself and what a token is good for (ADR 0038). A test that says
+   * nothing gets the same default the environment schema gives.
+   */
+  baseUrl?: URL;
   /**
    * Asks for a sync session's provisional candidates to be settled.
    *
@@ -199,6 +206,23 @@ export function createServices(config: ServicesConfig) {
     },
     authorization,
   });
+  const issuer = (config.baseUrl ?? new URL('http://localhost:3000')).href.replace(/\/$/u, '');
+  const oauth = new OauthService({
+    uow,
+    clients: repositories.oauthClients,
+    grants: repositories.oauthGrants,
+    codes: repositories.oauthCodes,
+    refreshTokens: repositories.oauthRefreshTokens,
+    credentials: repositories.credentials,
+    agents: repositories.agents,
+    actors: repositories.actors,
+    ledger,
+    tokens: {
+      generate: generateOpaqueToken,
+      hash: (token) => hashToken(token, config.tokenPepper),
+    },
+    resource: `${issuer}/mcp`,
+  });
   const workspaces = new WorkspaceService({
     uow,
     workspaces: repositories.workspaces,
@@ -223,6 +247,9 @@ export function createServices(config: ServicesConfig) {
     proposals: repositories.proposals,
     sync: repositories.sync,
     idempotency,
+    oauthClients: repositories.oauthClients,
+    oauthCodes: repositories.oauthCodes,
+    oauthRefreshTokens: repositories.oauthRefreshTokens,
   });
   const git = createGitStore({ dataDir: config.dataDir });
   const crossStore = new CrossStoreWriter({
@@ -591,6 +618,9 @@ export function createServices(config: ServicesConfig) {
     repositories,
     ledger,
     agents: agentService,
+    oauth,
+    /** The issuer, with no trailing slash: every OAuth document is built from it. */
+    issuer,
     summaryDrafter,
     digestNarrator,
     authorization,

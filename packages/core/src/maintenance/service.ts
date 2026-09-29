@@ -1,4 +1,10 @@
 import type { SessionRepository } from '../identity/repository.ts';
+import type {
+  OauthClientRepository,
+  OauthCodeRepository,
+  OauthRefreshTokenRepository,
+} from '../oauth/repository.ts';
+import { UNCONSENTED_CLIENT_TTL_MS } from '../oauth/service.ts';
 import type { OperationRepository } from '../operations/repository.ts';
 import type { ProposalRepository } from '../proposals/repository.ts';
 import type { SyncRepository } from '../sync/repository.ts';
@@ -52,6 +58,9 @@ export interface MaintenanceOptions {
   proposals: ProposalRepository;
   sync: SyncRepository;
   idempotency: IdempotencyService;
+  oauthClients: OauthClientRepository;
+  oauthCodes: OauthCodeRepository;
+  oauthRefreshTokens: OauthRefreshTokenRepository;
   clock?: Clock;
   sessionRetentionMs?: number;
   operationRetentionMs?: number;
@@ -67,6 +76,17 @@ export interface MaintenanceResult {
   redactedProposals: number;
   /** Candidates of finished passes removed; the passes themselves stay. */
   syncCandidates: number;
+  /**
+   * Registrations nobody consented to (ADR 0038).
+   *
+   * Dynamic client registration is unauthenticated, so registrations
+   * accumulate on their own. One that holds a grant is kept as long as the
+   * grant is, which the foreign key enforces rather than this promising it.
+   */
+  oauthClients: number;
+  /** Authorization codes and refresh tokens past their expiry. */
+  oauthCodes: number;
+  oauthRefreshTokens: number;
 }
 
 /**
@@ -128,6 +148,25 @@ export class MaintenanceService {
         new Date(now.getTime() - this.syncCandidateRetentionMs),
       ),
     );
-    return { idempotencyRecords, sessions, operations, redactedProposals, syncCandidates };
+    // The OAuth surface's own leavings, on the same pass and for the same
+    // reason: nothing reads a spent code or a registration nobody finished.
+    const oauth = await this.o.uow.run(async (tx) => ({
+      clients: await this.o.oauthClients.deleteUnconsented(
+        tx,
+        new Date(now.getTime() - UNCONSENTED_CLIENT_TTL_MS),
+      ),
+      codes: await this.o.oauthCodes.deleteExpired(tx, now),
+      refreshTokens: await this.o.oauthRefreshTokens.deleteExpired(tx, now),
+    }));
+    return {
+      idempotencyRecords,
+      sessions,
+      operations,
+      redactedProposals,
+      syncCandidates,
+      oauthClients: oauth.clients,
+      oauthCodes: oauth.codes,
+      oauthRefreshTokens: oauth.refreshTokens,
+    };
   }
 }
