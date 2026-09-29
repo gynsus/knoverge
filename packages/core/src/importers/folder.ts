@@ -1,0 +1,163 @@
+/**
+ * What one file in a folder turns into.
+ *
+ * Deliberately not a knowledge item: an inventory says what a candidate *is*
+ * and what it fingerprints to, never what it says. The bodies of the ones that
+ * turn out to be new are sent when they are proposed (ADR 0036).
+ */
+export interface FolderCandidate {
+  /** The path inside the folder, which is what stays the same between runs. */
+  path: string;
+  title: string;
+  /** The categories the folder structure suggests, deepest first entry. */
+  categoryPaths: string[];
+  /** Of the normalised title and body: does the workspace hold this text? */
+  contentHash: string;
+  /** Of the file as it was read: did my source change? */
+  sourceHash: string;
+  /** The first paragraph, so a reviewer reads something before opening it. */
+  abstract: string;
+}
+
+export interface ReadFolderOptions {
+  /** Relative path, file contents. Whatever walked the directory produces it. */
+  files: readonly { path: string; text: string }[];
+  contentHash: (title: string, body: string) => string;
+  sourceHash: (text: string) => string;
+}
+
+/**
+ * A folder of Markdown, read as candidates for a reconciliation session.
+ *
+ * The title is taken from the frontmatter when there is one, then from the first
+ * heading, and only then from the filename — in that order because each is a
+ * better statement of what the person meant than the next. A file that says
+ * nothing about itself is still a candidate under its own name.
+ *
+ * The body used for the content hash is the file without its frontmatter, so a
+ * note that gained a tag is the same text it was and matches what the workspace
+ * already holds. That is the same rule `GIT_REPOSITORY.md` section 5 states for
+ * this product's own files, and it has to be the same or nothing would ever
+ * match.
+ */
+export function readMarkdownFolder(options: ReadFolderOptions): FolderCandidate[] {
+  const candidates: FolderCandidate[] = [];
+  for (const file of options.files) {
+    if (!file.path.endsWith('.md') && !file.path.endsWith('.markdown')) continue;
+    const { frontmatter, body } = split(file.text);
+    const titled = titleOf(frontmatter, body, file.path);
+    if (titled.title === '') continue;
+    const { title, text } = titled;
+    candidates.push({
+      path: file.path,
+      title,
+      categoryPaths: categoriesOf(file.path),
+      contentHash: options.contentHash(title, text),
+      sourceHash: options.sourceHash(file.text),
+      abstract: abstractOf(text),
+    });
+  }
+  return candidates;
+}
+
+/**
+ * Frontmatter and body, when the file has frontmatter.
+ *
+ * Read as lines rather than parsed as YAML: what is wanted is a title if one is
+ * there, and a file whose frontmatter is not valid YAML is still a note somebody
+ * wrote. A parser here would refuse it.
+ */
+function split(text: string): { frontmatter: string; body: string } {
+  const normalised = text.replace(/\r\n?/gu, '\n');
+  if (!normalised.startsWith('---\n')) return { frontmatter: '', body: normalised };
+  const end = normalised.indexOf('\n---', 3);
+  if (end === -1) return { frontmatter: '', body: normalised };
+  const after = normalised.indexOf('\n', end + 1);
+  return {
+    frontmatter: normalised.slice(4, end),
+    // The blank line people leave under the frontmatter is punctuation, not
+    // text. Keeping it would make the same note hash differently depending on
+    // whether it has frontmatter at all, and then nothing an importer brings
+    // would ever match what the workspace holds.
+    body: after === -1 ? '' : normalised.slice(after + 1).replace(/^\n+/u, ''),
+  };
+}
+
+/** `title: something`, in the frontmatter, quoted or not. */
+const TITLE_LINE = /^title:\s*(.+?)\s*$/mu;
+/** The first ATX heading of any level. */
+const HEADING = /^#{1,6}\s+(.+?)\s*$/mu;
+
+/**
+ * The title, and the text left once it has been taken out.
+ *
+ * A note that opens with `# Its own title` is stating its title, not saying it
+ * twice — and this product's own files put the title in the frontmatter and not
+ * in the body (`GIT_REPOSITORY.md` section 4). Leaving the heading in the text
+ * would mean a note and the item made from it never hash the same, and then an
+ * importer could never tell a workspace that it already has something.
+ */
+function titleOf(frontmatter: string, body: string, path: string): { title: string; text: string } {
+  const declared = TITLE_LINE.exec(frontmatter)?.[1];
+  if (declared)
+    return { title: unquote(declared).slice(0, 300), text: withoutTitle(body, unquote(declared)) };
+  const heading = HEADING.exec(body);
+  if (heading?.[1] && heading.index === 0) {
+    return {
+      title: heading[1].slice(0, 300),
+      text: body.slice(heading[0].length).replace(/^\n+/u, ''),
+    };
+  }
+  if (heading?.[1]) return { title: heading[1].slice(0, 300), text: body };
+  const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.(md|markdown)$/u, '');
+  return { title: name.replace(/[-_]+/gu, ' ').trim().slice(0, 300), text: body };
+}
+
+/** Drops an opening heading that repeats the title the frontmatter declared. */
+function withoutTitle(body: string, title: string): string {
+  const heading = HEADING.exec(body);
+  if (heading?.index !== 0 || heading[1]?.trim() !== title.trim()) return body;
+  return body.slice(heading[0].length).replace(/^\n+/u, '');
+}
+
+function unquote(value: string): string {
+  const quoted = /^(['"])(.*)\1$/u.exec(value);
+  return quoted ? (quoted[2] as string) : value;
+}
+
+/**
+ * The directories above the file, as a category path.
+ *
+ * A folder is the closest thing a person's notes have to a taxonomy, and it is
+ * what they chose. Empty for a file at the top, which is a candidate with no
+ * suggestion rather than one in a category called nothing.
+ */
+function categoriesOf(path: string): string[] {
+  const cut = path.lastIndexOf('/');
+  if (cut === -1) return [];
+  const directory = path
+    .slice(0, cut)
+    .split('/')
+    .map((segment) => slugSegment(segment))
+    .filter((segment) => segment !== '')
+    .join('/');
+  return directory === '' ? [] : [directory];
+}
+
+/** A directory name as a category path segment: lowercase, hyphenated. */
+function slugSegment(segment: string): string {
+  return segment
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '');
+}
+
+/** The first paragraph that is not a heading, trimmed to something readable. */
+function abstractOf(body: string): string {
+  for (const paragraph of body.split(/\n\s*\n/u)) {
+    const text = paragraph.trim();
+    if (text === '' || text.startsWith('#')) continue;
+    return text.replace(/\s+/gu, ' ').slice(0, 1000);
+  }
+  return '';
+}

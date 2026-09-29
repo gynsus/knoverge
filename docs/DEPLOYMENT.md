@@ -732,6 +732,48 @@ reconciliation, not an import. And an installation that already holds these item
 item ids survive an export, so this is a move rather than a way to make a second
 copy beside the first — the command names the ids that are taken.
 
+### A folder of notes
+
+An export is this product's own file and its items cannot collide with anything
+here. A folder of somebody's notes is the opposite case: half of it is probably a
+restatement of what the workspace already holds. So it arrives the way an agent
+arrives — a session, an inventory, and an answer about each candidate (ADR 0036).
+
+```bash
+docker compose exec knoverge knoverge import-folder \
+  --from /import/vault --agent ag_01M3… --workspace personal
+```
+
+```text
+session sync_01M3…
+412 files read, 412 offered
+exact_known     180
+likely_match     44
+new_candidate   188
+nothing has been written; read the session and decide what to propose
+```
+
+**Nothing is written.** The inventory carries a title, a type and two
+fingerprints — the file as it was read, and the normalised title and body — never
+the text. What the workspace makes of each candidate appears on the Sync screen,
+and turning that into proposals is the next decision somebody makes.
+
+The agent is named on the command line and decides everything else: its policy
+says whether what follows needs review (rule 5, rule 14), and its trust tier is
+already configured. An operator who wants a folder to land directly grants that
+agent `allow_direct` and knows they did.
+
+The path inside the folder is the key, so a folder pointed at twice is classified
+twice and inserted once. `--source-system` and `--namespace` name the tool and the
+folder, so two vaults imported into one workspace do not look like one vault that
+changed its mind.
+
+Titles come from the frontmatter, then from an opening heading, then from the
+filename. An opening heading that repeats the title is taken out of the text,
+because this product's own files keep the title in the frontmatter — without that,
+a note and the item made from it would never fingerprint the same and the importer
+could never say "you already have this".
+
 A file the export listed but did not carry becomes an attachment row marked
 `failed`, saying so. The items that came out of it are there either way; what is
 missing is the original, and `knoverge integrity check` reports it as the
