@@ -337,6 +337,72 @@ export class WorkspaceGitRepository {
     await this.git(['bundle', 'create', file, '--all']);
   }
 
+  /**
+   * Every commit, oldest first.
+   *
+   * What an import walks: the bundle carries the whole past, and replaying it in
+   * the order it happened is how the revisions come back in the order they were
+   * made. `--reverse` rather than sorting here, because git already knows the
+   * topological order and a date sort would be wrong for a history that was ever
+   * rebased or imported.
+   */
+  async commits(): Promise<string[]> {
+    const out = await this.git(['log', '--format=%H', '--reverse', '--topo-order']);
+    return out.split('\n').filter((line) => line !== '');
+  }
+
+  /**
+   * The files one commit changed.
+   *
+   * What an import reads to find the file a commit's `Knoverge-Change` is about:
+   * the trailer names the item and the revision, and the path is whatever this
+   * commit touched. A commit changes one item's file and sometimes the taxonomy,
+   * so this is a short list rather than a walk of the tree.
+   */
+  async changedFiles(commitHash: string): Promise<string[]> {
+    this.requireHash(commitHash);
+    const out = await this.git([
+      'show',
+      '--format=',
+      '--name-only',
+      // A rename is two paths to the reader and one file to the import, and the
+      // one it needs is where the file ended up.
+      '--diff-filter=d',
+      commitHash,
+    ]);
+    return out.split('\n').filter((line) => line !== '');
+  }
+
+  /**
+   * Makes this repository from a bundle.
+   *
+   * Refuses an existing one rather than merging into it: a bundle is a whole
+   * repository, and putting one on top of another would leave a workspace whose
+   * files came from two places and whose history explains neither.
+   */
+  async cloneFrom(bundleFile: string): Promise<void> {
+    if (await this.exists()) {
+      throw new GitError(`a repository is already at ${this.root}`, '');
+    }
+    // The directory has to be there for the command to run in, and `git clone`
+    // refuses a directory with anything in it — which is the check that this is
+    // not being dropped on top of something.
+    await mkdir(this.root, { recursive: true });
+    // `clone` rather than `init` and `fetch`: it is one command, it verifies the
+    // file is a bundle, and the working tree it leaves is the state the export
+    // was taken at.
+    // `protocol.allow=never` is what keeps a repository from being cloned over
+    // the network by anything here, and a bundle is read over the `file`
+    // protocol — so that one is allowed for this command and nothing else.
+    // `protocol.<name>.allow` overrides the general setting, and a later `-c`
+    // overrides an earlier one.
+    await this.git(
+      ['-c', 'protocol.file.allow=always', 'clone', '--quiet', bundleFile, '.'],
+      {},
+      { discover: true },
+    );
+  }
+
   async headCommit(): Promise<string | null> {
     try {
       return (await this.git(['rev-parse', 'HEAD'])).trim();

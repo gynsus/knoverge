@@ -253,6 +253,15 @@ export interface KnowledgeRepository {
 
   /** How many items the workspace holds, for a manifest. */
   countFor(workspaceId: WorkspaceId): Promise<number>;
+  /**
+   * Which of these ids this installation already holds, in any workspace.
+   *
+   * Item ids are globally unique and survive an export, which is what makes two
+   * installations holding one id be holding one item. It also means an import
+   * cannot land somewhere the ids are already taken, and saying which ones is
+   * better than a primary key violation (ADR 0035).
+   */
+  existingIds(ids: readonly KnowledgeItemId[]): Promise<KnowledgeItemId[]>;
 
   /**
    * The sizes of the piles a person works through, for the list's quick views.

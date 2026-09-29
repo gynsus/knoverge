@@ -6,6 +6,7 @@ import { backupCommand } from '../src/commands/backup.ts';
 import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
 import { exportCommand } from '../src/commands/export.ts';
+import { importCommand } from '../src/commands/import.ts';
 import { integrityCommand } from '../src/commands/integrity.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
@@ -23,6 +24,7 @@ const EXPECTED: Record<string, string[]> = {
   bootstrap: [],
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
   export: [],
+  import: [],
   integrity: ['check'],
   mcp: ['check', 'stdio'],
   ledger: ['keys', 'verify'],
@@ -40,6 +42,7 @@ const commands = [
   bootstrapCommand(),
   dbCommand(),
   exportCommand(),
+  importCommand(),
   integrityCommand(),
   ledgerCommand(),
   mcpCommand(),
@@ -87,6 +90,11 @@ describe('command surface', () => {
         .options.filter((o) => o.mandatory)
         .map((o) => o.long),
     ).toEqual(['--workspace', '--out']);
+    expect(
+      importCommand()
+        .options.filter((o) => o.mandatory)
+        .map((o) => o.long),
+    ).toEqual(['--from']);
   });
 
   it('never makes a credential a flag, so it cannot reach the process list', () => {

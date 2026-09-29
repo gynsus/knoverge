@@ -14,6 +14,7 @@ import {
   CrossStoreWriter,
   EventLedger,
   ExportService,
+  ImportService,
   IdempotencyService,
   IntegrityService,
   KnowledgeRecovery,
@@ -322,6 +323,31 @@ export function createServices() {
         events: repositories.events,
       }),
   );
+  const imports_ = lazy(
+    () =>
+      new ImportService({
+        uow,
+        actors: repositories.actors,
+        items: repositories.knowledge,
+        revisions: repositories.revisions,
+        categories: repositories.categories,
+        relations: repositories.relations,
+        sources: repositories.sources,
+        summaries: repositories.summaries,
+        search: repositories.search,
+        operations: repositories.operations,
+        attachments: repositories.attachments,
+        aliases: repositories.aliases,
+        versions: repositories.taxonomyVersions,
+        ledger: ledger(),
+        git: git(),
+        parseItem,
+        parseTaxonomy,
+        taxonomyPath: TAXONOMY_PATH,
+        contentHash,
+        frontmatterHash,
+      }),
+  );
   const workspaces = lazy(
     () =>
       new WorkspaceService({
@@ -394,6 +420,9 @@ export function createServices() {
     },
     get exports() {
       return exports_();
+    },
+    get imports() {
+      return imports_();
     },
     get attachmentStore() {
       return attachmentStore();

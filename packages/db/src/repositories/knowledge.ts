@@ -288,6 +288,15 @@ export function createKnowledgeRepository(db: Database): KnowledgeRepository {
       return rows[0]?.total ?? 0;
     },
 
+    async existingIds(ids) {
+      if (ids.length === 0) return [];
+      const rows = await db
+        .select({ id: knowledgeItems.id })
+        .from(knowledgeItems)
+        .where(inArray(knowledgeItems.id, [...ids]));
+      return rows.map((row) => row.id as KnowledgeItemId);
+    },
+
     async pileSizes(workspaceId) {
       // One query, four numbers. Four queries would be four scans of the same
       // rows to draw one row of buttons.

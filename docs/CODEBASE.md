@@ -959,6 +959,29 @@ backup is, so a run that dies leaves nothing an import could mistake for a whole
 export. Attachments are copied under their content hash and listed either way,
 and a row whose file the store does not hold is named rather than promised.
 
+## Putting one back
+
+`knoverge import` reads what `knoverge export` wrote. `packages/core/src/import/service.ts`
+is the domain side and `apps/cli/src/import.ts` the order of operations, and the
+order is what makes it work: the workspace row first, because everything is scoped
+to it; the repository from the bundle, because it is where the knowledge is; the
+taxonomy, because a revision names its categories by path and the rows have to
+exist to be pointed at; the attachment rows, because an item made from a file
+names one and the source row points at it; then the commits, oldest first.
+
+Replaying a commit is the rebuild `KnowledgeRecovery` does from one commit, done
+over every commit — which is why the source writing is shared between them. What
+differs is where the pieces come from: recovery has an operation row that says the
+path, and an import has only the commit, so the file is found among what that
+commit changed and settled by the id in its own frontmatter.
+
+Item ids survive and are globally unique, so an import checks them before writing
+anything and says which are taken. An installation that still holds the items
+cannot import them again, which is the difference between moving a workspace and
+making a second copy of one (ADR 0035). Actors are recreated with new ids and no
+user or agent behind them: the interface still says who wrote something, and
+nobody gains the ability to write again.
+
 ## Files on screen
 
 `apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,

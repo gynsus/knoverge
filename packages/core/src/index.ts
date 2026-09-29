@@ -1,5 +1,11 @@
 export type { ActorContext } from './actor-context.ts';
 export {
+  ImportService,
+  type ImportManifest,
+  type ImportOutcome,
+  type ImportServiceOptions,
+} from './import/service.ts';
+export {
   ExportService,
   type AttachmentToCopy,
   type ExportManifest,

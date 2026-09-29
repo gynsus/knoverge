@@ -705,6 +705,38 @@ The workspace write lock is held for the read, so the bundle and the manifest
 describe one moment: an export taken while a write was landing would name a ledger
 sequence the bundle does not reach.
 
+### Bringing one in
+
+```bash
+docker compose exec knoverge knoverge import --from /backups/20260929T100000Z-ws_01M3… --slug moved
+```
+
+It creates the workspace, clones the bundle into place, restores the taxonomy and
+the attachment rows, and then walks the commits oldest first so the revisions come
+back in the order they were made. `--slug` is for when the name it came from is
+already taken here.
+
+What arrives is the knowledge, its history, its provenance and its taxonomy. What
+does not is everything about the other installation: no agents, no credentials, no
+permissions, no policy rules, no proposals. **Grant your people and agents access
+before anybody can use it** — the command says so when it finishes, and that step
+is where this installation states its own rules.
+
+The people the commits name are recreated as actors with their display names and
+nothing behind them, so the interface still says who wrote what and none of them
+can sign in or write again.
+
+Two things it refuses, and both are the same refusal in different words. A
+workspace that already holds knowledge: merging two that may share item ids is a
+reconciliation, not an import. And an installation that already holds these items:
+item ids survive an export, so this is a move rather than a way to make a second
+copy beside the first — the command names the ids that are taken.
+
+A file the export listed but did not carry becomes an attachment row marked
+`failed`, saying so. The items that came out of it are there either way; what is
+missing is the original, and `knoverge integrity check` reports it as the
+unrepairable kind.
+
 ## 12. Upgrades
 
 ### Released images
