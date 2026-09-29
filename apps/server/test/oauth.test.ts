@@ -13,6 +13,7 @@ import {
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
 import { runMigrations } from '@knoverge/db';
+import { sql } from 'drizzle-orm';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -526,6 +527,39 @@ describe('a connector that registers itself again', () => {
       client_id: first,
     });
     expect(refreshed.json()).toMatchObject({ error: 'invalid_grant' });
+  });
+
+  it('takes every connection it holds, not the newest of them', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const first = await registerClient('Doubled');
+    await consent(owner, first, pkce().challenge);
+    const second = await registerClient('Doubled');
+    await consent(owner, second, pkce().challenge);
+
+    // Two live connections from one connector, which is what an installation
+    // that ran before this behaviour existed is holding. Consent cannot
+    // produce it any more, so it is put back by hand rather than left
+    // untested: a connection missed here is a working refresh token nobody
+    // can see.
+    await services.database.db.execute(
+      sql`UPDATE oauth_grants SET revoked_at = NULL
+          WHERE id IN (SELECT og.id FROM oauth_grants og
+                       JOIN oauth_clients oc ON oc.id = og.client_id
+                       WHERE oc.name = 'Doubled')`,
+    );
+
+    const third = await registerClient('Doubled');
+    await consent(owner, third, pkce().challenge);
+
+    const grants = await owner.request({
+      method: 'GET',
+      url: '/v1/admin/oauth.grants',
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    const live = (grants.json() as { grants: { client_name: string }[] }).grants.filter(
+      (g) => g.client_name === 'Doubled',
+    );
+    expect(live).toHaveLength(1);
   });
 
   it('is not confused with a different connector that happens to share a name', async () => {
