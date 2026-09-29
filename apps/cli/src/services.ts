@@ -261,6 +261,7 @@ export function createServices() {
             revisions: repositories.revisions,
             categories: repositories.categories,
             relations: repositories.relations,
+            sources: repositories.sources,
             summaries: repositories.summaries,
             search: repositories.search,
             ledger: ledger(),

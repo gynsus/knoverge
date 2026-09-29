@@ -290,6 +290,17 @@ category in the committed file and is rebuilt from it; a delete is the change
 whose evidence is an absence, so recovery reads a *missing* entry as the delete
 having happened and removes the row.
 
+What recovery rebuilds from a commit is everything the file carries, and the list
+is worth stating because one of them was missing for a while: the item and its
+revision, its categories and tags, the search index, the relations, what a summary
+was made from — and the sources the revision rested on. The frontmatter is the
+portable copy of each of those and PostgreSQL is the queryable one, so a revision
+recovered without its source rows cites a page in its own text while the database
+says nothing rests on it, and "which items came out of this attachment" answers
+nothing (ADR 0008). `packages/core/src/knowledge/sources.ts` is the one place that
+writes them, shared by the ordinary write and by recovery, because the two have to
+agree.
+
 ## Working with the taxonomy in the browser
 
 `apps/web/src/pages/TaxonomyPage.tsx` is a tree beside a panel, not a list with

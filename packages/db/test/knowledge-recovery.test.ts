@@ -201,6 +201,7 @@ beforeAll(async () => {
         revisions: repositories.revisions,
         categories: repositories.categories,
         relations: repositories.relations,
+        sources: repositories.sources,
         summaries: repositories.summaries,
         search: repositories.search,
         ledger,
@@ -279,6 +280,38 @@ describe('a create that reached Git and no further', () => {
     await expect(
       knowledge.create(actor, { title: 'Unblocked', body: 'Body.', type: 'fact' }),
     ).resolves.toBeTruthy();
+  });
+
+  it('rebuilds what a revision rested on, which the database is the one asked about', async () => {
+    // The frontmatter carries the portable copy of a source and PostgreSQL
+    // carries the queryable one. A revision recovered without these rows cites
+    // a page in its own text while the database says nothing rests on it — and
+    // "which items came out of this attachment" answers nothing (ADR 0008).
+    await expect(
+      crashing.create(actor, {
+        title: 'A claim that rests on something',
+        body: 'It says what the page says.',
+        type: 'fact',
+        sources: [
+          { type: 'web_url', uri: 'https://example.com/spec', role: 'primary' },
+          { type: 'agent_session', client: 'claude-code', role: 'supporting' },
+        ],
+      }),
+    ).rejects.toThrow('the process stops here');
+
+    const [unfinished] = await repositories.operations.listUnfinished(workspaceId);
+    const itemId = unfinished!.objectIds['knowledge_item'] as string;
+    expect(await recovery.recover(workspaceId)).toMatchObject({ recovered: [unfinished!.id] });
+
+    const item = await repositories.knowledge.findById(workspaceId, itemId as never);
+    const cited = await repositories.sources.forRevision(item!.currentRevisionId as never);
+    // In the order the revision listed them, with the role each was cited in:
+    // which sources a revision rested on is part of what that revision said.
+    expect(cited.map((source) => [source.sourceType, source.role])).toEqual([
+      ['web_url', 'primary'],
+      ['agent_session', 'supporting'],
+    ]);
+    expect(cited[0]?.uri).toBe('https://example.com/spec');
   });
 
   it('rebuilds what a summary was made from, which only the file knew', async () => {
