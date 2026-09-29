@@ -18,7 +18,13 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { takeBackup } from '../src/backup.ts';
-import { SELF, restoreBackup, restoredWell, type RestoreTools } from '../src/restore.ts';
+import {
+  SELF,
+  inspectTarget,
+  restoreBackup,
+  restoredWell,
+  type RestoreTools,
+} from '../src/restore.ts';
 import type { Services } from '../src/run.ts';
 
 const run = promisify(execFile);
@@ -84,7 +90,33 @@ async function backupDirectory(now: Date): Promise<string> {
         run('tar', ['-czf', file, '-C', directory, '.']).then(() => undefined),
     },
   );
+  await dumpDisconnected();
   return result.path;
+}
+
+/**
+ * Waits for the dump's own connection to go.
+ *
+ * `pg_dump` runs inside the container, and while it does it is an ordinary
+ * client backend on this database — which is exactly what a restore refuses to
+ * start beside. Every test here takes a backup and restores it in the same
+ * breath, so the dump that has just finished can still be in
+ * `pg_stat_activity` when the restore looks, and the command refuses because
+ * the test is holding the thing it warns about.
+ *
+ * The wait belongs here and not in the command. An operator's restore never
+ * meets this, because nothing dumps while it runs; giving the check a grace
+ * period would weaken the one guard that stops a restore fighting a live
+ * server. So the test waits for the condition the command itself defines,
+ * through the command's own function.
+ */
+async function dumpDisconnected(): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    const { otherConnections } = await inspectTarget(handle.db, dataDir);
+    if (otherConnections === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error('a client was still connected five seconds after the dump');
 }
 
 beforeAll(async () => {
