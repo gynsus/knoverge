@@ -14,6 +14,8 @@ import {
   EvidenceState,
   ItemType,
   MembershipRole,
+  OauthCodeChallengeMethod,
+  OauthTokenEndpointAuthMethod,
   PermissionEffect,
   PolicyEffect,
   ProposalStatus,
@@ -149,6 +151,16 @@ const CONSTRAINED: { table: string; column: string; values: readonly string[] }[
   { table: 'source_references', column: 'source_type', values: SourceType.options },
   { table: 'revision_sources', column: 'evidence_role', values: EvidenceRole.options },
   { table: 'knowledge_revisions', column: 'change_kind', values: ChangeKind.options },
+  {
+    table: 'oauth_clients',
+    column: 'token_endpoint_auth_method',
+    values: OauthTokenEndpointAuthMethod.options,
+  },
+  {
+    table: 'oauth_authorization_codes',
+    column: 'code_challenge_method',
+    values: OauthCodeChallengeMethod.options,
+  },
 ];
 
 describe('the values a column allows', () => {

@@ -42,6 +42,13 @@ export const agentCredentials = pgTable(
     tokenHash: varchar('token_hash', { length: 128 }).notNull().unique(),
     tokenPrefix: varchar('token_prefix', { length: 32 }).notNull(),
     label: varchar('label', { length: 120 }),
+    /**
+     * The consent that issued this token, when it came through OAuth (ADR 0038).
+     * Null for one somebody was shown once and pasted into a configuration file.
+     * Revoking the grant revokes these, which is why the link is here and not
+     * only in the other direction.
+     */
+    oauthGrantId: id('oauth_grant_id'),
     createdByActorId: id('created_by_actor_id')
       .notNull()
       .references(() => actors.id),
@@ -50,5 +57,8 @@ export const agentCredentials = pgTable(
     revokedAt: timestampTz('revoked_at'),
     lastUsedAt: timestampTz('last_used_at'),
   },
-  (t) => [index('agent_credentials_agent_idx').on(t.agentId)],
+  (t) => [
+    index('agent_credentials_agent_idx').on(t.agentId),
+    index('agent_credentials_grant_idx').on(t.oauthGrantId),
+  ],
 );

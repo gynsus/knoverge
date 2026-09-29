@@ -1,4 +1,11 @@
-import type { ActorId, AgentId, AgentStatus, TrustTier, WorkspaceId } from '@knoverge/contracts';
+import type {
+  ActorId,
+  AgentId,
+  AgentStatus,
+  OauthGrantId,
+  TrustTier,
+  WorkspaceId,
+} from '@knoverge/contracts';
 
 import type { Tx } from '../ports/unit-of-work.ts';
 
@@ -41,6 +48,11 @@ export interface CredentialRecord {
   tokenHash: string;
   tokenPrefix: string;
   label: string | null;
+  /**
+   * The consent that issued it, when it came through OAuth (ADR 0038). Null for
+   * one somebody was shown once and pasted into a configuration file.
+   */
+  oauthGrantId: OauthGrantId | null;
   createdByActorId: ActorId;
   createdAt: Date;
   expiresAt: Date | null;
@@ -62,5 +74,7 @@ export interface CredentialRepository {
   countActive(agentId: AgentId, now: Date): Promise<number>;
   revoke(tx: Tx, id: string, at: Date): Promise<boolean>;
   revokeAllForAgent(tx: Tx, agentId: AgentId, at: Date): Promise<number>;
+  /** Revoking a grant revokes what it issued, in the same transaction. */
+  revokeAllForGrant(tx: Tx, grantId: OauthGrantId, at: Date): Promise<number>;
   touchLastUsed(id: string, at: Date): Promise<void>;
 }

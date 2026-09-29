@@ -161,6 +161,7 @@ AgentCredential
 - token_hash
 - token_prefix
 - label nullable
+- oauth_grant_id nullable
 - created_by_actor_id
 - created_at
 - expires_at
@@ -169,6 +170,8 @@ AgentCredential
 ```
 
 Store only hashed tokens. Successful authentications update `last_used_at` and are logged; they are not ledger events.
+
+`oauth_grant_id` is set when the token came from a consent screen rather than from somebody pressing a button and pasting the result (section 35, ADR 0038). It is the same row either way: an OAuth access token is an agent credential with a shorter life, so nothing downstream — permissions, policy, budgets, the ledger — acquires a second case.
 
 ## 8. Scope selector
 
@@ -1026,3 +1029,68 @@ address it names.
 ## 34. Jobs
 
 pg-boss manages its own tables in the `pgboss` schema. Drizzle keeps its migration log in `drizzle.__drizzle_migrations`. Domain tables never reference job ids.
+
+## 35. OAuth client, grant, code and refresh token
+
+The paperwork of a hosted connector's connection (ADR 0038). None of it is a new kind of caller: a grant is the consent that created an agent, and the access token it ends in is an ordinary `AgentCredential` carrying the grant's id.
+
+```text
+OauthClient
+- id
+- client_id            the identifier the client sends; the id column is ours
+- client_secret_hash   nullable; null for a public client
+- name                 the client's own client_name, supplied and untrusted
+- redirect_uris        matched exactly, as whole strings
+- token_endpoint_auth_method
+- created_at
+- last_used_at nullable
+```
+
+Registration is open and grants nothing. A row here holds no workspace, no agent, no permission and no token, and can do nothing but ask a person for consent. `last_used_at` stays null until one does, which is how the sweep finds registrations nobody finished.
+
+```text
+OauthGrant
+- id
+- client_id
+- user_id
+- workspace_id
+- agent_id             created by the consent that made this row
+- resource             the canonical URI the tokens are good for
+- scope nullable
+- created_at
+- revoked_at nullable
+```
+
+A partial unique index over `(client_id, user_id, workspace_id) WHERE revoked_at IS NULL` is what makes consenting twice resume the grant rather than make a second one. Without it a person who reconnects three times is three agents, and the ledger has three answers to who wrote something.
+
+Revoking a grant revokes the credentials it issued, in the same transaction. The foreign key from `OauthGrant.client_id` does not cascade: deleting a client that holds a grant fails, which is what keeps the sweep honest.
+
+```text
+OauthAuthorizationCode
+- id
+- grant_id
+- code_hash
+- redirect_uri
+- code_challenge
+- code_challenge_method   S256, and the database refuses the rest
+- resource
+- created_at
+- expires_at
+- consumed_at nullable
+```
+
+Stored hashed and good once. Whether it is unspent and unexpired is tested inside the `UPDATE` that spends it, so two token requests racing on one code cannot both be told yes; the second gets nothing and is a replay.
+
+```text
+OauthRefreshToken
+- id
+- grant_id
+- token_hash
+- created_at
+- expires_at
+- used_at nullable         set when exchanged; a token with this is spent
+- replaced_by_id nullable  unique: a rotation chain, not a tree
+- revoked_at nullable
+```
+
+Rotation is the same shape: retiring a token is an `UPDATE` that also decides whether it was still good. A caller told no is looking at a token that was already exchanged, which means it was captured, and the whole grant goes.

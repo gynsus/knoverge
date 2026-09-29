@@ -28,6 +28,12 @@ export {
 export { createRepositories, type Repositories } from './repositories/index.ts';
 export { createKnowledgeRepository, createRevisionRepository } from './repositories/knowledge.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
+export {
+  createOauthClientRepository,
+  createOauthCodeRepository,
+  createOauthGrantRepository,
+  createOauthRefreshTokenRepository,
+} from './repositories/oauth.ts';
 export { createProposalRepository } from './repositories/proposals.ts';
 export { createSearchRepository } from './repositories/search.ts';
 export { createRelationRepository, createSourceRepository } from './repositories/sources.ts';
