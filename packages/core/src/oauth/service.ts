@@ -198,16 +198,21 @@ export class OauthService {
     checked: CheckedRequest,
     userId: UserId,
     workspaceId: WorkspaceId,
-  ): Promise<{ grant: OauthGrantRecord; agentName: string } | null> {
+  ): Promise<{ grants: OauthGrantRecord[]; agentName: string } | null> {
+    // Newest first, which is the order the repository reads them in: the agent
+    // kept is the one the connector was most recently, and every other live
+    // connection it holds goes. All of them, not the first found — one left
+    // behind is a working refresh token nobody can see.
     const live = await this.o.grants.listLiveForUserInWorkspace(userId, workspaceId);
+    const mine: OauthGrantRecord[] = [];
     for (const grant of live) {
       if (grant.clientId === checked.client.id) continue;
       const client = await this.o.clients.findById(grant.clientId);
-      if (!client || !sameConnector(client, checked.client)) continue;
-      const agent = await this.o.agents.findById(workspaceId, grant.agentId);
-      return { grant, agentName: agent?.name ?? client.name };
+      if (client && sameConnector(client, checked.client)) mine.push(grant);
     }
-    return null;
+    if (mine.length === 0) return null;
+    const agent = await this.o.agents.findById(workspaceId, mine[0]!.agentId);
+    return { grants: mine, agentName: agent?.name ?? checked.client.name };
   }
 
   /**
@@ -246,14 +251,10 @@ export class OauthService {
           // already was, so its history reads as one connector rather than as
           // a queue of them, and the connection it held is retired here — the
           // client that registered again has already forgotten it.
-          agentId = superseded.grant.agentId;
-          await this.revokeGrantWithin(
-            tx,
-            superseded.grant,
-            now,
-            'replaced_by_reconnection',
-            actor,
-          );
+          agentId = superseded.grants[0]!.agentId;
+          for (const stale of superseded.grants) {
+            await this.revokeGrantWithin(tx, stale, now, 'replaced_by_reconnection', actor);
+          }
         } else {
           agentId = newId('ag') as AgentId;
           const agentActorId = newId('act') as ActorId;
