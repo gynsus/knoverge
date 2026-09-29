@@ -99,6 +99,16 @@ export interface OauthGrantRepository {
   listForWorkspace(workspaceId: WorkspaceId): Promise<OauthGrantRecord[]>;
   /** False when it was already revoked and nothing changed. */
   revoke(tx: Tx, id: OauthGrantId, at: Date): Promise<boolean>;
+  /**
+   * Every live grant this agent acts under, revoked, with their ids.
+   *
+   * Taking an agent out of service has to take its connections with it.
+   * Revoking only the credentials leaves the connector able to exchange its
+   * refresh token for a new one — which then fails on every call — and leaves
+   * the connection ready to work again the moment somebody re-enables the
+   * agent, without anybody having consented a second time.
+   */
+  revokeAllForAgent(tx: Tx, agentId: AgentId, at: Date): Promise<OauthGrantId[]>;
 }
 
 export interface OauthCodeRepository {

@@ -18,6 +18,7 @@ import type { Clock } from '../ports/clock.ts';
 import { systemClock } from '../ports/clock.ts';
 import type { UnitOfWork } from '../ports/unit-of-work.ts';
 import type { TokenService } from '../identity/ports.ts';
+import type { OauthGrantRepository, OauthRefreshTokenRepository } from '../oauth/repository.ts';
 import type { ActorRepository } from '../workspace/repository.ts';
 import type {
   AgentPatch,
@@ -44,6 +45,14 @@ export interface AgentServiceOptions {
   ledger: EventLedger;
   tokens: TokenService;
   authorization: AuthorizationService;
+  /**
+   * The connections an agent may hold (ADR 0038). Disabling it ends those too:
+   * a revoked credential alone leaves the connector refreshing its way to
+   * tokens that do not work, and leaves the connection ready to resume the
+   * moment somebody re-enables the agent.
+   */
+  oauthGrants: OauthGrantRepository;
+  oauthRefreshTokens: OauthRefreshTokenRepository;
   clock?: Clock;
 }
 
@@ -172,11 +181,17 @@ export class AgentService {
     const now = this.clock.now();
     await this.o.uow.run(async (tx) => {
       await this.o.agents.update(tx, actor.workspaceId, agent.id, patch);
-      // Disabling an agent takes its credentials out of service immediately.
-      const revoked =
-        patch.status === 'disabled'
-          ? await this.o.credentials.revokeAllForAgent(tx, agent.id, now)
-          : 0;
+      // Disabling an agent takes its credentials out of service immediately,
+      // and its OAuth connections with them.
+      let revoked = 0;
+      let disconnected: string[] = [];
+      if (patch.status === 'disabled') {
+        revoked = await this.o.credentials.revokeAllForAgent(tx, agent.id, now);
+        disconnected = await this.o.oauthGrants.revokeAllForAgent(tx, agent.id, now);
+        for (const grantId of disconnected) {
+          await this.o.oauthRefreshTokens.revokeAllForGrant(tx, grantId as never, now);
+        }
+      }
       await this.o.ledger.append(tx, actor.workspaceId, actor, {
         eventType: 'agent.updated',
         objectType: 'agent',
@@ -187,6 +202,7 @@ export class AgentService {
           ...(patch.trustTier ? { trust_tier: patch.trustTier } : {}),
           ...(patch.status ? { status: patch.status } : {}),
           ...(revoked ? { revoked_credentials: revoked } : {}),
+          ...(disconnected.length ? { revoked_oauth_grants: disconnected.length } : {}),
         },
       });
     });

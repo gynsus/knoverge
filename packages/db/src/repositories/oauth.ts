@@ -186,6 +186,14 @@ export function createOauthGrantRepository(db: Database): OauthGrantRepository {
         .orderBy(desc(oauthGrants.createdAt));
       return rows.map(toGrant);
     },
+    async revokeAllForAgent(tx: Tx, agentId: AgentId, at: Date) {
+      const rows = await asTx(tx)
+        .update(oauthGrants)
+        .set({ revokedAt: at })
+        .where(and(eq(oauthGrants.agentId, agentId), isNull(oauthGrants.revokedAt)))
+        .returning({ id: oauthGrants.id });
+      return rows.map((row) => row.id as OauthGrantId);
+    },
     async revoke(tx: Tx, id: OauthGrantId, at: Date) {
       const rows = await asTx(tx)
         .update(oauthGrants)

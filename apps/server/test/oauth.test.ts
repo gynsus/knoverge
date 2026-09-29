@@ -584,6 +584,66 @@ describe('the refresh token', () => {
   });
 });
 
+describe('disabling the agent a connector acts as', () => {
+  it('ends the connection, and re-enabling does not bring it back', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const clientId = await registerClient('Disablable');
+    const { verifier, challenge } = pkce();
+    const code = await consent(owner, clientId, challenge);
+    const issued = (
+      await form({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        redirect_uri: REDIRECT,
+        client_id: clientId,
+      })
+    ).json() as { refresh_token: string };
+
+    const list = await owner.request({
+      method: 'GET',
+      url: '/v1/admin/agents.list',
+      headers: { 'x-knoverge-workspace': workspaceId },
+    });
+    const agent = (list.json() as { agents: { id: string; name: string }[] }).agents.find(
+      (a) => a.name === 'Disablable (Owner)',
+    );
+    expect(agent).toBeDefined();
+
+    const off = await owner.post(
+      '/v1/admin/agents.update',
+      { agent_id: agent?.id, status: 'disabled' },
+      { 'x-knoverge-workspace': workspaceId },
+    );
+    expect(off.statusCode, off.body).toBe(200);
+
+    // Revoking the credentials alone would leave this succeeding, and the
+    // connector would go on exchanging its way to tokens that work nowhere.
+    const refused = await form({
+      grant_type: 'refresh_token',
+      refresh_token: issued.refresh_token,
+      client_id: clientId,
+    });
+    expect(refused.json()).toMatchObject({ error: 'invalid_grant' });
+
+    // A pasted credential does not come back when an agent is re-enabled: it
+    // was revoked, and somebody has to issue a new one. A connection is the
+    // same, and somebody has to consent again.
+    const on = await owner.post(
+      '/v1/admin/agents.update',
+      { agent_id: agent?.id, status: 'active' },
+      { 'x-knoverge-workspace': workspaceId },
+    );
+    expect(on.statusCode).toBe(200);
+    const still = await form({
+      grant_type: 'refresh_token',
+      refresh_token: issued.refresh_token,
+      client_id: clientId,
+    });
+    expect(still.json()).toMatchObject({ error: 'invalid_grant' });
+  });
+});
+
 describe('disconnecting', () => {
   it('stops the token working, and the connection is gone from the list', async () => {
     const owner = await signIn('owner@example.com', 'correct horse battery staple');
