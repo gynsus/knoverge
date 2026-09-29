@@ -91,6 +91,26 @@ export interface CheckedRequest {
   params: AuthorizationParams;
 }
 
+/**
+ * Whether two registrations are the same connector coming back.
+ *
+ * A hosted connector registers itself again every time somebody reconnects it,
+ * so its client id says nothing about whether it has been here before. What
+ * does: the name it calls itself and the addresses it will accept a code at.
+ * Two genuinely different products would have to share both, and sharing a
+ * callback address means sharing the service behind it.
+ *
+ * This is the price of declining Client ID Metadata Documents (ADR 0038),
+ * where the client id would have been stable. It is deliberately not a guess:
+ * an exact match on both, or nothing.
+ */
+function sameConnector(a: OauthClientRecord, b: OauthClientRecord): boolean {
+  if (a.name !== b.name) return false;
+  const left = [...a.redirectUris].sort();
+  const right = [...b.redirectUris].sort();
+  return left.length === right.length && left.every((uri, i) => uri === right[i]);
+}
+
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('base64url');
 }
@@ -168,11 +188,40 @@ export class OauthService {
   }
 
   /**
+   * The live connection this consent would replace, if there is one.
+   *
+   * Read before anything is written, because it is something the person has to
+   * be told: they are about to reconnect something they already have, and a
+   * screen that did not say so would leave them with two.
+   */
+  async replaces(
+    checked: CheckedRequest,
+    userId: UserId,
+    workspaceId: WorkspaceId,
+  ): Promise<{ grant: OauthGrantRecord; agentName: string } | null> {
+    const live = await this.o.grants.listLiveForUserInWorkspace(userId, workspaceId);
+    for (const grant of live) {
+      if (grant.clientId === checked.client.id) continue;
+      const client = await this.o.clients.findById(grant.clientId);
+      if (!client || !sameConnector(client, checked.client)) continue;
+      const agent = await this.o.agents.findById(workspaceId, grant.agentId);
+      return { grant, agentName: agent?.name ?? client.name };
+    }
+    return null;
+  }
+
+  /**
    * A person says yes, in one workspace.
    *
    * Creating the agent is what consent is: the connector had no identity here
    * until somebody gave it one, and from here it is an agent like any other,
    * on the Agents screen, at the tier every agent starts at (rule 5).
+   *
+   * Reconnecting is not a second connector. A hosted client registers itself
+   * again each time, so the same connector arrives under a new client id; the
+   * grant it had is retired and the new one points at the agent it already
+   * was. Otherwise a person who reconnects twice has three agents and two live
+   * connections they cannot see without going looking.
    */
   async consent(
     checked: CheckedRequest,
@@ -183,6 +232,7 @@ export class OauthService {
     const now = this.clock.now();
     const workspaceId = actor.workspaceId;
     const existing = await this.o.grants.findLive(client.id, userId, workspaceId);
+    const superseded = existing ? null : await this.replaces(checked, userId, workspaceId);
     const code = this.o.tokens.generate();
 
     await this.o.uow.run(async (tx) => {
@@ -190,43 +240,59 @@ export class OauthService {
       if (existing) {
         grantId = existing.id;
       } else {
-        const agentId = newId('ag') as AgentId;
-        const agentActorId = newId('act') as ActorId;
-        const name = await this.agentName(workspaceId, client.name, actor);
-        await this.o.actors.insert(tx, {
-          id: agentActorId,
-          workspaceId,
-          type: 'agent',
-          displayName: name,
-          userId: null,
-          agentId,
-          createdAt: now,
-          disabledAt: null,
-        });
-        await this.o.agents.insert(tx, {
-          id: agentId,
-          workspaceId,
-          actorId: agentActorId,
-          name,
-          description: null,
-          clientType: null,
-          trustTier: 'propose',
-          status: 'active',
-          createdByActorId: actor.actorId,
-          createdAt: now,
-          lastSeenAt: null,
-          metadata: {},
-        });
-        await this.o.ledger.append(tx, workspaceId, actor, {
-          eventType: 'agent.created',
-          objectType: 'agent',
-          objectId: agentId,
-          metadata: {
-            actor_id: agentActorId,
-            trust_tier: 'propose',
-            oauth_client_id: client.clientId,
-          },
-        });
+        let agentId: AgentId;
+        if (superseded) {
+          // The same connector under a new registration. It keeps the agent it
+          // already was, so its history reads as one connector rather than as
+          // a queue of them, and the connection it held is retired here — the
+          // client that registered again has already forgotten it.
+          agentId = superseded.grant.agentId;
+          await this.revokeGrantWithin(
+            tx,
+            superseded.grant,
+            now,
+            'replaced_by_reconnection',
+            actor,
+          );
+        } else {
+          agentId = newId('ag') as AgentId;
+          const agentActorId = newId('act') as ActorId;
+          const name = await this.agentName(workspaceId, client.name, actor);
+          await this.o.actors.insert(tx, {
+            id: agentActorId,
+            workspaceId,
+            type: 'agent',
+            displayName: name,
+            userId: null,
+            agentId,
+            createdAt: now,
+            disabledAt: null,
+          });
+          await this.o.agents.insert(tx, {
+            id: agentId,
+            workspaceId,
+            actorId: agentActorId,
+            name,
+            description: null,
+            clientType: null,
+            trustTier: 'propose',
+            status: 'active',
+            createdByActorId: actor.actorId,
+            createdAt: now,
+            lastSeenAt: null,
+            metadata: {},
+          });
+          await this.o.ledger.append(tx, workspaceId, actor, {
+            eventType: 'agent.created',
+            objectType: 'agent',
+            objectId: agentId,
+            metadata: {
+              actor_id: agentActorId,
+              trust_tier: 'propose',
+              oauth_client_id: client.clientId,
+            },
+          });
+        }
         grantId = newId('oagr') as OauthGrantId;
         const grant: OauthGrantRecord = {
           id: grantId,

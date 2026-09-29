@@ -147,6 +147,7 @@ Held to:
 - a token is bound to this installation's MCP URI; a `resource` naming anything else is refused;
 - the `/oauth` endpoints answer in OAuth's error shape, not this product's, because their caller is a connector written against the specification;
 - registrations nobody consented to are removed by the maintenance pass after a day;
+- a connector that registers itself again — which is what a hosted one does whenever it is reconnected — is recognised by the name it calls itself and the addresses it accepts a code at, keeps the agent it already was, and the connection it is replacing is retired; disconnecting inside the connector does **not** reach this server, so the Agents screen is where a connection actually ends;
 - the token a consent produces is a ledger event, the same `agent.credential_issued` a pasted credential gets; the ones a refresh produces are not, because a token exchanged for a refresh token is an authentication (rule 4) and one an hour per connector would bury the feed.
 
 The consent screen shows the client's own `client_name` **and** the host of the redirect URI, labelled as what they are. The name was chosen by whoever registered, and anybody may register; the host is where the token actually goes and is the one part of the request its author cannot misrepresent.

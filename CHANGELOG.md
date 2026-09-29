@@ -52,6 +52,17 @@ Milestone 10: a hosted connector can let itself in, once a person says so.
 
 ### Fixed
 
+- **Reconnecting a connector made a second one beside it.** A hosted client
+  registers itself again every time it is reconnected, so it arrived under a
+  new client id and became a new agent — while the connection it had stayed
+  live, with a working refresh token, because disconnecting in the connector
+  does not call this server's revocation endpoint. A person who reconnected
+  twice had three agents and two connections they could not see without going
+  looking. Consent now recognises a returning connector by the name it calls
+  itself and the addresses it accepts a code at, keeps the agent it already
+  was, and retires the connection it is replacing — which the consent screen
+  names first. Found by reconnecting a real connector and reading the tables
+  afterwards.
 - **Disabling an agent did not end its OAuth connections.** Its credentials
   were revoked and its grant was not, so the connector went on exchanging its
   refresh token for access tokens that failed every call — and re-enabling the
