@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+
 import { describe, expect, it } from 'vitest';
 
 import { adoptCommitsCommand } from '../src/commands/adopt-commits.ts';
@@ -153,6 +155,21 @@ describe('command surface', () => {
       '--workspace-slug',
       '--workspace-name',
     ]);
+  });
+});
+
+describe('the deployment guide', () => {
+  it('shows every command an operator is meant to run', () => {
+    // The surface test above keeps the code honest about what exists. This one
+    // keeps the guide honest about it: a command nobody documented is a command
+    // nobody runs, and it is found by reading the source rather than the guide.
+    const guide = readFileSync(new URL('../../../docs/DEPLOYMENT.md', import.meta.url), 'utf8');
+    // `db` and `ledger` are documented by their subcommands, and `mcp` is in
+    // the agent connection section under its own name.
+    const missing = commands
+      .map((command) => command.name())
+      .filter((name) => !guide.includes(`knoverge ${name}`));
+    expect(missing).toEqual([]);
   });
 });
 

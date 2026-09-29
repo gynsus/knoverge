@@ -374,21 +374,6 @@ export class WorkspaceGitRepository {
   }
 
   /**
-   * The commits after one, oldest first.
-   *
-   * What adoption walks: everything the database has not heard of, from the
-   * newest commit it knows up to the branch. With nothing known it is the whole
-   * history, which is the case of a repository that was never written by this
-   * product.
-   */
-  async commitsAfter(commitHash: string | null): Promise<string[]> {
-    if (commitHash !== null) this.requireHash(commitHash);
-    const range = commitHash === null ? 'HEAD' : `${commitHash}..HEAD`;
-    const out = await this.git(['log', '--format=%H', '--reverse', '--topo-order', range]);
-    return out.split('\n').filter((line) => line !== '');
-  }
-
-  /**
    * Makes this repository from a bundle.
    *
    * Refuses an existing one rather than merging into it: a bundle is a whole

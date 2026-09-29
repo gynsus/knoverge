@@ -9,6 +9,76 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.5.0 — 2026-09-29
+
+Milestone 13: knowledge can be taken somewhere else, brought in from somewhere
+else, and edited without this product at all.
+
+### Added
+
+- **`knoverge export`** writes one workspace as a git bundle, a manifest and, when
+  asked for, its attachments. Opening it takes `git clone` and nothing from here:
+  the bundle is the repository, with the Markdown, the taxonomy and every revision
+  as a commit. The manifest adds what the files cannot say — the workspace's slug,
+  where the ledger stood, and the display name of each actor the commits name —
+  and carries nobody's address. What it leaves out it leaves out on purpose:
+  credentials, permissions, proposals and the event ledger belong to the
+  installation that made them (ADR 0034).
+- **`knoverge import`** puts it back on another installation, with its history.
+  The commits are walked oldest first, so a workspace that was imported reads like
+  one that was used: history answers, a diff between any two revisions works, a
+  summary knows what it was made from. Actors are recreated with their names and
+  nothing behind them — the interface still says who wrote something, and nobody
+  gains the ability to sign in or write again. Item ids survive, which makes it a
+  move rather than a second copy: an installation that still holds those items
+  refuses the import and names the ids (ADR 0035).
+- **A folder of Markdown arrives as a reconciliation session**, not as an insert.
+  `knoverge import-folder` opens a session as an agent, submits a compact
+  inventory — a title, a type and two fingerprints, never the text — and reads
+  back which notes the workspace already holds, which look familiar and which are
+  new. Nothing is written until somebody reads that (ADR 0036).
+- **`knoverge propose-from-session`** is the deciding that follows. Only
+  `new_candidate`, each file re-read and checked against the fingerprint the
+  session recorded, and what happens to each proposal is the agent's policy rather
+  than the command's.
+- **An Obsidian vault is the same command.** A vault is a folder of Markdown with
+  tags, and tags come across from both places people write them: `tags:` in the
+  frontmatter and `#tag` in the text.
+- **`knoverge link-from-folder`** turns the `[[wikilinks]]` between accepted notes
+  into relations, so a vault arrives as the graph it was rather than as a thousand
+  loose notes. Every link becomes `relates_to`, because that is all a wiki link
+  claims.
+- **`knoverge import-json`** is the path for the exports nobody wrote a parser
+  for: a Notion export, a wiki dump, somebody's script. Forgiving about what
+  fields are called and strict about what a record has to be.
+- **`knoverge adopt-commits`** records what somebody committed to the repository
+  by hand. Rule 1 says the knowledge is editable without this product; until now
+  the answer to a commit made by hand was `head_unknown` and nothing else. The
+  file says which item it is, through the id in its frontmatter (ADR 0037).
+
+### Fixed
+
+- **Recovery lost the provenance of a revision it rebuilt.** A write that reached
+  Git and no further was rebuilt from its commit with its categories, tags, search
+  index, relations and summary dependencies — and without `source_references`. So
+  a recovered item cited a page in its own frontmatter while the database said
+  nothing rested on it, and "which items came out of this attachment" answered
+  nothing. Found while starting the import, which rebuilds the same way.
+- **The frontmatter parser required three fields the specification calls
+  optional.** `GIT_REPOSITORY.md` names seven required fields; `review`, `evidence`
+  and `disputed` were also demanded, so a file a person wrote in an editor was
+  refused. They are defaulted now, and each default is what its absence means.
+
+### Guards
+
+- Every command the code defines is asserted to appear in the deployment guide: a
+  command nobody documented is a command nobody runs.
+
+### Compatibility
+
+No migrations, no new configuration. Everything added is a command line
+operation; nothing existing changed shape.
+
 ## v0.4.0 — 2026-09-28
 
 Milestone 12: a workspace can read what its files say, whatever they are.
