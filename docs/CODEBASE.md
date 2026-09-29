@@ -927,6 +927,27 @@ agent that uploaded a file and got `unsupported` would get the same answer askin
 again: what makes the answer different is an operator assigning a model, and that
 is the person this is for.
 
+## Taking a workspace somewhere else
+
+`knoverge export` is not `knoverge backup` under another name, and ADR 0034 is
+about why. A backup is this installation — a dump for a matching PostgreSQL major
+version, credentials, permissions, and a ledger keyed with a key that never leaves
+the environment. An export is one workspace's knowledge and its history, in a form
+`git clone` opens.
+
+The split follows the usual one. `packages/core/src/export/service.ts` decides
+*what an export contains*, because that is a rule about this product;
+`apps/cli/src/export.ts` writes the directory, because where bytes land is not.
+The bundle comes from `git bundle create --all` through the `GitStore` port — a
+transport format git itself opens, rather than an archive of this installation's
+`.git` with its hooks and stale locks.
+
+The write lock is held for the read, so the bundle and the manifest describe one
+moment. The directory is built as `.partial` and renamed at the end, the way a
+backup is, so a run that dies leaves nothing an import could mistake for a whole
+export. Attachments are copied under their content hash and listed either way,
+and a row whose file the store does not hold is named rather than promised.
+
 ## Files on screen
 
 `apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,

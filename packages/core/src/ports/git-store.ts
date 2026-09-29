@@ -105,4 +105,12 @@ export interface GitStore {
     from: { commitHash: string; path: string },
     to: { commitHash: string; path: string },
   ): Promise<string>;
+  /**
+   * The whole repository, every commit and every ref, written to one file.
+   *
+   * What an export carries (ADR 0034). A bundle rather than an archive of the
+   * directory, because a bundle is a transport format git itself opens: the file
+   * somebody takes away is one `git clone` reads, history and all.
+   */
+  bundle(workspaceId: WorkspaceId, file: string): Promise<void>;
 }

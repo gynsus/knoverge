@@ -75,5 +75,8 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     headCommit(workspaceId: WorkspaceId) {
       return open(workspaceId).headCommit();
     },
+    bundle(workspaceId: WorkspaceId, file: string) {
+      return open(workspaceId).bundle(file);
+    },
   };
 }
