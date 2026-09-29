@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { adoptCommitsCommand } from '../src/commands/adopt-commits.ts';
 import { agentCommand } from '../src/commands/agent.ts';
 import { auditCommand } from '../src/commands/audit.ts';
 import { backupCommand } from '../src/commands/backup.ts';
@@ -22,6 +23,7 @@ import { workspaceCommand } from '../src/commands/workspace.ts';
 
 /** The surface the deployment guide tells operators to use. */
 const EXPECTED: Record<string, string[]> = {
+  'adopt-commits': [],
   agent: ['create', 'list', 'disable', 'token'],
   audit: ['export', 'verify'],
   backup: [],
@@ -44,6 +46,7 @@ const EXPECTED: Record<string, string[]> = {
 };
 
 const commands = [
+  adoptCommitsCommand(),
   agentCommand(),
   auditCommand(),
   backupCommand(),

@@ -307,10 +307,11 @@ importers that produce reconciliation sessions have started: a folder of Markdow
 arrives as a session and `propose-from-session` turns what it found into proposals
 (ADR 0036). An Obsidian vault is the same command — a vault is a folder of Markdown
 with tags — and `link-from-folder` turns the `[[wikilinks]]` between accepted notes
-into relations. Generic JSON is the path for exports nobody wrote a parser for. What
-remains is the ChatGPT export, where the harder question is what counts as one
-piece of knowledge rather than how to parse it, and the importer for externally
-created Git commits._
+into relations. Generic JSON is the path for exports nobody wrote a parser for, and
+`adopt-commits` records what somebody committed to the repository by hand (ADR
+0037). What remains is the ChatGPT export, deferred on purpose: the hard question
+there is what counts as one piece of knowledge rather than how to parse it, and an
+export can be turned into the JSON this already reads._
 
 Deliver:
 

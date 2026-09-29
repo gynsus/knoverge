@@ -275,8 +275,18 @@ export const Frontmatter = z
     /** Slug paths, never ids. The first is the primary category. */
     categories: z.array(CategoryPath).max(20).default([]),
     tags: z.array(Tag).max(50).default([]),
-    review: ReviewState,
-    evidence: EvidenceState,
+    /**
+     * Defaulted, because `GIT_REPOSITORY.md` section 3 names seven required
+     * fields and these are not among them.
+     *
+     * A file this product wrote always carries them. A file a person wrote in
+     * an editor may not, and refusing it would make "editable without this
+     * product" (rule 1) true only for somebody who had read the schema. The
+     * default is what the absence means: nobody has said this was reviewed.
+     */
+    review: ReviewState.default('unreviewed'),
+    /** Derived from the sources, so its absence means the same as no sources. */
+    evidence: EvidenceState.default('none'),
     /**
      * Whether a live contradiction touches this item right now.
      *
@@ -285,7 +295,7 @@ export const Frontmatter = z
      * `disputed_by` is not empty. ADR 0022 records why there is no operation
      * that sets it and no operation that clears it.
      */
-    disputed: z.boolean(),
+    disputed: z.boolean().default(false),
     valid_from: Instant.nullable().default(null),
     valid_until: Instant.nullable().default(null),
     observed_at: Instant.nullable().default(null),

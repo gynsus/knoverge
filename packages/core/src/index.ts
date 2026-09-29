@@ -10,6 +10,7 @@ export {
   type FolderCandidate,
   type ReadFolderOptions,
 } from './importers/folder.ts';
+export { AdoptService, type AdoptOutcome, type AdoptServiceOptions } from './import/adopt.ts';
 export {
   ImportService,
   type ImportManifest,

@@ -438,6 +438,13 @@ function toDuplicate(row: {
 export function createRevisionRepository(db: Database): RevisionRepository {
   const reader = (tx?: Tx) => (tx ? asTx(tx) : db);
   return {
+    async commitsKnown(workspaceId) {
+      const rows = await db
+        .selectDistinct({ commit: knowledgeRevisions.gitCommitHash })
+        .from(knowledgeRevisions)
+        .where(eq(knowledgeRevisions.workspaceId, workspaceId));
+      return new Set(rows.map((row) => row.commit));
+    },
     async insert(tx: Tx, revision: RevisionRecord) {
       await asTx(tx).insert(knowledgeRevisions).values(revision);
     },

@@ -327,6 +327,14 @@ export interface RevisionRepository {
   latestCommit(workspaceId: WorkspaceId, tx?: Tx): Promise<string | null>;
   /** Whether any revision was written by this commit. */
   knowsCommit(workspaceId: WorkspaceId, commitHash: string): Promise<boolean>;
+  /**
+   * Every commit this workspace's revisions were written by.
+   *
+   * What adoption needs: the newest known commit is not a boundary, because a
+   * commit made by hand can sit between two the product made, and a range after
+   * the newest would skip it (ADR 0037).
+   */
+  commitsKnown(workspaceId: WorkspaceId): Promise<Set<string>>;
 }
 
 /** A source the knowledge rests on, deduplicated per workspace. */

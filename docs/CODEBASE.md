@@ -982,6 +982,20 @@ making a second copy of one (ADR 0035). Actors are recreated with new ids and no
 user or agent behind them: the interface still says who wrote something, and
 nobody gains the ability to write again.
 
+## What somebody committed by hand
+
+`packages/core/src/import/adopt.ts` is the database catching up to the repository,
+which is what rule 1 implies and what `integrity check` used to only complain
+about (ADR 0037). It is the same rebuild as an import, with one thing missing:
+there are no trailers, so the frontmatter's own id is what identifies the item.
+
+Two details are the whole of its correctness. It considers every commit filtered
+by what the revisions were written by, rather than a range after the newest known
+one — a hand-made commit can sit between two of the product's own, and a range
+would skip it silently. And a commit that changed a file without changing the
+knowledge produces nothing, because a revision saying nothing happened is worse
+than no revision.
+
 ## A folder of somebody's notes
 
 `knoverge import-folder` is not `knoverge import`, and ADR 0036 is about why. An
