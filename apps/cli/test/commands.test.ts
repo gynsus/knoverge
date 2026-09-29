@@ -8,6 +8,7 @@ import { dbCommand } from '../src/commands/db.ts';
 import { exportCommand } from '../src/commands/export.ts';
 import { importCommand } from '../src/commands/import.ts';
 import { importFolderCommand } from '../src/commands/import-folder.ts';
+import { importJsonCommand } from '../src/commands/import-json.ts';
 import { linkFromFolderCommand } from '../src/commands/link-from-folder.ts';
 import { proposeFromSessionCommand } from '../src/commands/propose-from-session.ts';
 import { integrityCommand } from '../src/commands/integrity.ts';
@@ -29,6 +30,7 @@ const EXPECTED: Record<string, string[]> = {
   export: [],
   import: [],
   'import-folder': [],
+  'import-json': [],
   'propose-from-session': [],
   'link-from-folder': [],
   integrity: ['check'],
@@ -50,6 +52,7 @@ const commands = [
   exportCommand(),
   importCommand(),
   importFolderCommand(),
+  importJsonCommand(),
   proposeFromSessionCommand(),
   linkFromFolderCommand(),
   integrityCommand(),
@@ -118,6 +121,11 @@ describe('command surface', () => {
         .options.filter((o) => o.mandatory)
         .map((o) => o.long),
     ).toEqual(['--session', '--from']);
+    expect(
+      importJsonCommand()
+        .options.filter((o) => o.mandatory)
+        .map((o) => o.long),
+    ).toEqual(['--file', '--agent']);
     expect(
       linkFromFolderCommand()
         .options.filter((o) => o.mandatory)
