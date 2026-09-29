@@ -1001,6 +1001,14 @@ the text, because this product's own files keep the title in the frontmatter
 it, not saying it twice. Both were found by a test that expected a match and did
 not get one.
 
+`apps/cli/src/propose-from-session.ts` is the other half, and it is a separate
+command rather than a flag for the reason the ADR gives: an inventory is a
+question. It acts on `new_candidate` only, re-reads each file and refuses one
+whose fingerprint has moved, drops a suggested category the taxonomy does not
+have, and sends the body the parser produced rather than reading the file a
+second time with a second idea of where the body starts. The proposal carries the
+session id, so a run reads as a run from either end.
+
 ## Files on screen
 
 `apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,

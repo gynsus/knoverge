@@ -11,6 +11,16 @@ export interface FolderCandidate {
   title: string;
   /** The categories the folder structure suggests, deepest first entry. */
   categoryPaths: string[];
+  /**
+   * The text, once the frontmatter and a title heading are out of it.
+   *
+   * Not part of an inventory — that carries fingerprints and never the text
+   * (ADR 0036). It is here because whatever proposes a candidate later has to
+   * send the same body the fingerprint was taken of, and reading the file a
+   * second time with a second idea of where the body starts is how the two
+   * would disagree.
+   */
+  body: string;
   /** Of the normalised title and body: does the workspace hold this text? */
   contentHash: string;
   /** Of the file as it was read: did my source change? */
@@ -52,6 +62,7 @@ export function readMarkdownFolder(options: ReadFolderOptions): FolderCandidate[
       path: file.path,
       title,
       categoryPaths: categoriesOf(file.path),
+      body: text,
       contentHash: options.contentHash(title, text),
       sourceHash: options.sourceHash(file.text),
       abstract: abstractOf(text),

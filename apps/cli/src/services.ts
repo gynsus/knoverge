@@ -19,7 +19,9 @@ import {
   IntegrityService,
   KnowledgeRecovery,
   KnowledgeService,
+  DuplicateMatcher,
   MaintenanceService,
+  ProposalService,
   RecoveryService,
   TaxonomyRecovery,
   TaxonomyService,
@@ -324,6 +326,27 @@ export function createServices() {
         events: repositories.events,
       }),
   );
+  const proposals = lazy(
+    () =>
+      new ProposalService({
+        uow,
+        proposals: repositories.proposals,
+        knowledge: knowledge(),
+        knowledgeIndex: repositories.knowledge,
+        categories: repositories.categories,
+        authorization: authorization(),
+        duplicates: new DuplicateMatcher({
+          items: repositories.knowledge,
+          contentHash,
+          // No semantic step here: the meaning pass needs an embedding provider,
+          // and what runs on the command line matches by hash and by title. The
+          // worker refines a session afterwards.
+          nearest: async () => [],
+        }),
+        actors: repositories.actors,
+        ledger: ledger(),
+      }),
+  );
   const sync = lazy(
     () =>
       new SyncService({
@@ -441,6 +464,9 @@ export function createServices() {
     },
     get sync() {
       return sync();
+    },
+    get proposals() {
+      return proposals();
     },
     get attachmentStore() {
       return attachmentStore();
