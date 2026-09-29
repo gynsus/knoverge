@@ -1,5 +1,10 @@
 export type { ActorContext } from './actor-context.ts';
 export {
+  readMarkdownFolder,
+  type FolderCandidate,
+  type ReadFolderOptions,
+} from './importers/folder.ts';
+export {
   ImportService,
   type ImportManifest,
   type ImportOutcome,

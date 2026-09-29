@@ -24,6 +24,7 @@ import {
   TaxonomyRecovery,
   TaxonomyService,
   SessionService,
+  SyncService,
   UserService,
   WorkspaceService,
   keyring,
@@ -323,6 +324,20 @@ export function createServices() {
         events: repositories.events,
       }),
   );
+  const sync = lazy(
+    () =>
+      new SyncService({
+        uow,
+        sync: repositories.sync,
+        items: repositories.knowledge,
+        categories: repositories.categories,
+        workspaces: repositories.workspaces,
+        // No semantic step on the command line: the meaning pass needs an
+        // embedding provider, and a folder offered here is classified by hash,
+        // external key and title. The worker refines it afterwards.
+        nearest: async () => [],
+      }),
+  );
   const imports_ = lazy(
     () =>
       new ImportService({
@@ -423,6 +438,9 @@ export function createServices() {
     },
     get imports() {
       return imports_();
+    },
+    get sync() {
+      return sync();
     },
     get attachmentStore() {
       return attachmentStore();

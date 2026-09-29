@@ -7,6 +7,7 @@ import { bootstrapCommand } from '../src/commands/bootstrap.ts';
 import { dbCommand } from '../src/commands/db.ts';
 import { exportCommand } from '../src/commands/export.ts';
 import { importCommand } from '../src/commands/import.ts';
+import { importFolderCommand } from '../src/commands/import-folder.ts';
 import { integrityCommand } from '../src/commands/integrity.ts';
 import { ledgerCommand } from '../src/commands/ledger.ts';
 import { mcpCommand } from '../src/commands/mcp.ts';
@@ -25,6 +26,7 @@ const EXPECTED: Record<string, string[]> = {
   db: ['migrate', 'prune', 'recover', 'reindex', 'status'],
   export: [],
   import: [],
+  'import-folder': [],
   integrity: ['check'],
   mcp: ['check', 'stdio'],
   ledger: ['keys', 'verify'],
@@ -43,6 +45,7 @@ const commands = [
   dbCommand(),
   exportCommand(),
   importCommand(),
+  importFolderCommand(),
   integrityCommand(),
   ledgerCommand(),
   mcpCommand(),
@@ -95,6 +98,13 @@ describe('command surface', () => {
         .options.filter((o) => o.mandatory)
         .map((o) => o.long),
     ).toEqual(['--from']);
+    // The agent is not optional: which agent this arrives as is what decides
+    // whether anything it leads to needs review (ADR 0036).
+    expect(
+      importFolderCommand()
+        .options.filter((o) => o.mandatory)
+        .map((o) => o.long),
+    ).toEqual(['--from', '--agent']);
   });
 
   it('never makes a credential a flag, so it cannot reach the process list', () => {

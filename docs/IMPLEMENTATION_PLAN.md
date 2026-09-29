@@ -303,7 +303,9 @@ _In progress: export and import are built. `knoverge export` writes a git bundle
 a manifest and, when asked for, the attachments (ADR 0034); `knoverge import` puts
 a workspace back on another installation with its history and provenance, and
 adopts none of the exporting installation's people or permissions (ADR 0035). The
-importers that produce reconciliation sessions are next._
+importers that produce reconciliation sessions have started: a folder of Markdown
+arrives as a session (ADR 0036), and an Obsidian vault, a ChatGPT export and
+generic JSON are the same shape with a different parser._
 
 Deliver:
 

@@ -982,6 +982,25 @@ making a second copy of one (ADR 0035). Actors are recreated with new ids and no
 user or agent behind them: the interface still says who wrote something, and
 nobody gains the ability to write again.
 
+## A folder of somebody's notes
+
+`knoverge import-folder` is not `knoverge import`, and ADR 0036 is about why. An
+export carries items with their own ids into an installation that does not hold
+them; a folder is half restatement of what the workspace already has. So it
+arrives as an agent does: `sync_begin`, an inventory, and an answer per candidate.
+
+`packages/core/src/importers/folder.ts` is the parser and nothing else — files in,
+candidates out — which is what makes the next importer a parser and nothing else
+too. `apps/cli/src/import-folder.ts` walks the directory and runs the session.
+
+Two rules in the parser are there because without them nothing would ever match.
+The body is hashed without its frontmatter, so a note that gained a tag is the
+same text it was. And an opening heading that repeats the title is taken out of
+the text, because this product's own files keep the title in the frontmatter
+(`GIT_REPOSITORY.md` section 4) — a note that opens with its own title is stating
+it, not saying it twice. Both were found by a test that expected a match and did
+not get one.
+
 ## Files on screen
 
 `apps/web/src/pages/FilesPage.tsx` sits beside the knowledge rather than inside it,
