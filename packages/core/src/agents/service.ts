@@ -271,6 +271,8 @@ export class AgentService {
       tokenHash: this.o.tokens.hash(token),
       tokenPrefix,
       label: input.label?.trim() || null,
+      // Issued by hand, not by a consent screen (ADR 0038).
+      oauthGrantId: null,
       createdByActorId: actor.actorId,
       createdAt: now,
       expiresAt:

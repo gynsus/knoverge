@@ -32,6 +32,10 @@ export const ID_PREFIXES = {
   embeddingProfile: 'eprof',
   embedding: 'emb',
   aiProvider: 'aip',
+  oauthClient: 'oacl',
+  oauthGrant: 'oagr',
+  oauthCode: 'oacd',
+  oauthRefresh: 'oart',
 } as const;
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];
@@ -88,3 +92,19 @@ export type WebhookId = z.infer<typeof WebhookId>;
 /** A file somebody brought in, stored by the hash of its contents (ADR 0008). */
 export const AttachmentId = idSchema('att');
 export type AttachmentId = z.infer<typeof AttachmentId>;
+
+/**
+ * The four objects an OAuth connection is made of (ADR 0038).
+ *
+ * None of them is a new kind of caller. A grant is the consent that created an
+ * agent, and the access token it issues is an ordinary agent credential; these
+ * ids name the paperwork, not a second identity.
+ */
+export const OauthClientId = idSchema('oacl');
+export type OauthClientId = z.infer<typeof OauthClientId>;
+export const OauthGrantId = idSchema('oagr');
+export type OauthGrantId = z.infer<typeof OauthGrantId>;
+export const OauthCodeId = idSchema('oacd');
+export type OauthCodeId = z.infer<typeof OauthCodeId>;
+export const OauthRefreshTokenId = idSchema('oart');
+export type OauthRefreshTokenId = z.infer<typeof OauthRefreshTokenId>;

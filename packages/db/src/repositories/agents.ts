@@ -1,4 +1,4 @@
-import type { ActorId, AgentId, WorkspaceId } from '@knoverge/contracts';
+import type { ActorId, AgentId, OauthGrantId, WorkspaceId } from '@knoverge/contracts';
 import type {
   AgentPatch,
   AgentRecord,
@@ -31,6 +31,7 @@ function toCredential(row: typeof agentCredentials.$inferSelect): CredentialReco
   return {
     ...row,
     agentId: row.agentId as AgentId,
+    oauthGrantId: row.oauthGrantId as OauthGrantId | null,
     createdByActorId: row.createdByActorId as ActorId,
   };
 }
@@ -135,6 +136,14 @@ export function createCredentialRepository(db: Database): CredentialRepository {
         .where(and(eq(agentCredentials.id, id), isNull(agentCredentials.revokedAt)))
         .returning({ id: agentCredentials.id });
       return rows.length > 0;
+    },
+    async revokeAllForGrant(tx: Tx, grantId: OauthGrantId, at: Date) {
+      const rows = await asTx(tx)
+        .update(agentCredentials)
+        .set({ revokedAt: at })
+        .where(and(eq(agentCredentials.oauthGrantId, grantId), isNull(agentCredentials.revokedAt)))
+        .returning({ id: agentCredentials.id });
+      return rows.length;
     },
     async revokeAllForAgent(tx: Tx, agentId: AgentId, at: Date) {
       const rows = await asTx(tx)

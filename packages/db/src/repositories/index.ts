@@ -16,6 +16,12 @@ import { createKnowledgeRepository, createRevisionRepository } from './knowledge
 import { createRelationRepository, createSourceRepository } from './sources.ts';
 import { createSummaryRepository } from './summaries.ts';
 import { createAttachmentRepository } from './attachments.ts';
+import {
+  createOauthClientRepository,
+  createOauthCodeRepository,
+  createOauthGrantRepository,
+  createOauthRefreshTokenRepository,
+} from './oauth.ts';
 import { createWebhookRepository } from './webhooks.ts';
 import { createProposalRepository } from './proposals.ts';
 import { createEmbeddingRepository } from './embeddings.ts';
@@ -46,6 +52,10 @@ export function createRepositories(db: Database) {
     relations: createRelationRepository(db),
     summaries: createSummaryRepository(db),
     attachments: createAttachmentRepository(db),
+    oauthClients: createOauthClientRepository(db),
+    oauthGrants: createOauthGrantRepository(db),
+    oauthCodes: createOauthCodeRepository(),
+    oauthRefreshTokens: createOauthRefreshTokenRepository(db),
     webhooks: createWebhookRepository(db),
     proposals: createProposalRepository(db),
     search: createSearchRepository(db),

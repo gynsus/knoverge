@@ -8,6 +8,7 @@ export * from './embeddings.ts';
 export * from './events.ts';
 export * from './idempotency.ts';
 export * from './knowledge.ts';
+export * from './oauth.ts';
 export * from './operations.ts';
 export * from './policy.ts';
 export * from './proposals.ts';

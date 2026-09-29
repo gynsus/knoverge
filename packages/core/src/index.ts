@@ -52,6 +52,16 @@ export {
   type UploadAttachmentInput,
   type UploadResult,
 } from './attachments/service.ts';
+export type {
+  OauthAuthorizationCodeRecord,
+  OauthClientRecord,
+  OauthClientRepository,
+  OauthCodeRepository,
+  OauthGrantRecord,
+  OauthGrantRepository,
+  OauthRefreshTokenRecord,
+  OauthRefreshTokenRepository,
+} from './oauth/repository.ts';
 export type { WebhookPatch, WebhookRecord, WebhookRepository } from './webhooks/repository.ts';
 export {
   DELIVERY_TIMEOUT_MS,
