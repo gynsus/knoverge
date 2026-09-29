@@ -141,6 +141,8 @@ beforeAll(async () => {
     ledger,
     tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, 'b2'.repeat(32)) },
     authorization,
+    oauthGrants: repositories.oauthGrants,
+    oauthRefreshTokens: repositories.oauthRefreshTokens,
   });
   agentId = (await agents.create(actor, { role: 'owner' }, { name: 'The linker' })).id;
 

@@ -205,6 +205,8 @@ export function createServices(config: ServicesConfig) {
       hash: (token) => hashToken(token, config.tokenPepper),
     },
     authorization,
+    oauthGrants: repositories.oauthGrants,
+    oauthRefreshTokens: repositories.oauthRefreshTokens,
   });
   const issuer = (config.baseUrl ?? new URL('http://localhost:3000')).href.replace(/\/$/u, '');
   const oauth = new OauthService({

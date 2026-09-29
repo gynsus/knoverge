@@ -116,7 +116,7 @@ MVP:
 - immediate revocation;
 - last-used timestamp;
 - rotation: issue a new credential, revoke the old one, both audited;
-- disabling an agent revokes every credential it holds in the same transaction;
+- disabling an agent revokes every credential it holds in the same transaction, and every OAuth connection it acts under, so a connector cannot refresh its way to tokens that work nowhere and the connection does not resume if the agent is re-enabled;
 - authentication failures are indistinguishable to the caller, whether the token is unknown, revoked, expired or belongs to a disabled agent;
 - successful authentication updates `last_used_at` and `last_seen_at` and is logged, but is not a ledger event (ADR 0007).
 
@@ -146,7 +146,8 @@ Held to:
 - redirect URIs are matched exactly, as whole strings, and must be `https` or a literal loopback;
 - a token is bound to this installation's MCP URI; a `resource` naming anything else is refused;
 - the `/oauth` endpoints answer in OAuth's error shape, not this product's, because their caller is a connector written against the specification;
-- registrations nobody consented to are removed by the maintenance pass after a day.
+- registrations nobody consented to are removed by the maintenance pass after a day;
+- the token a consent produces is a ledger event, the same `agent.credential_issued` a pasted credential gets; the ones a refresh produces are not, because a token exchanged for a refresh token is an authentication (rule 4) and one an hour per connector would bury the feed.
 
 The consent screen shows the client's own `client_name` **and** the host of the redirect URI, labelled as what they are. The name was chosen by whoever registered, and anybody may register; the host is where the token actually goes and is the one part of the request its author cannot misrepresent.
 

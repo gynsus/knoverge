@@ -180,6 +180,8 @@ export function createServices() {
       ledger: ledger(),
       tokens: { generate: generateOpaqueToken, hash: (token) => hashToken(token, tokenPepper) },
       authorization: authorization(),
+      oauthGrants: repositories.oauthGrants,
+      oauthRefreshTokens: repositories.oauthRefreshTokens,
     });
   });
   const git = lazy(() => createGitStore({ dataDir: required('KNOVERGE_DATA_DIR') }));
