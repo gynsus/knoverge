@@ -11,10 +11,10 @@ each one contains, and every milestone below carries the release it arrived in.
 From v0.1.0 the migrations are immutable: a change to persistence is a new additive
 migration with an upgrade test, never an edit to one that shipped.
 
-Milestone 10 is next in this order and needs an ADR before any of it is written.
-Which milestone is taken next is a decision about the product rather than about the
-code — 10 is what a hosted connector needs, 11 is what somebody with a folder of
-documents needs — and the order here is the default, not a promise.
+Milestones 11, 12 and 13 were taken ahead of 10 and are delivered, through
+**v0.5.0**. Milestone 10 is what remains before 14, and its ADR — 0038 — is
+written. Which milestone is taken next is a decision about the product rather
+than about the code, and the order here is the default, not a promise.
 
 ## Milestone 0 - repository scaffold
 
@@ -239,16 +239,22 @@ Deliver:
 
 ## Milestone 10 - OAuth 2.1 for hosted MCP clients
 
-_Not started. ADR required first._
+_In progress. ADR 0038 is accepted and decides the shape: an OAuth grant is an
+agent credential, and consent is where a connector becomes an agent._
 
 Deliver:
 
-- Knoverge as OAuth 2.1 authorization server with PKCE and dynamic client registration;
-- consent screen binding an OAuth client to an agent identity;
-- token introspection reusing the agent permission model;
-- verified connection from ChatGPT and Claude.ai connectors.
-
-ADR required before implementation.
+- Knoverge as OAuth 2.1 authorization server: authorization code with PKCE
+  (`S256` only), rotating refresh tokens, dynamic client registration, revocation;
+- the two discovery documents and the `WWW-Authenticate` challenge on `/mcp`,
+  which is how a connector finds any of it;
+- a consent screen where a person holding `agent.manage` binds a registered
+  client to a workspace, creating the agent it will act as;
+- access tokens resolving through the existing credential path, so permissions,
+  policy, budgets and the ledger acquire no second case;
+- expiry of clients that never completed an authorization;
+- verified connection from ChatGPT and Claude.ai connectors, which needs a
+  public HTTPS address.
 
 ## Milestone 11 - documents and attachments
 
