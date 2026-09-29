@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router';
 import { AnonymousOnly, RequireAuth } from './auth/guards.tsx';
 import { AppShell } from './components/AppShell.tsx';
 import { AgentsPage } from './pages/AgentsPage.tsx';
+import { ConsentPage } from './pages/ConsentPage.tsx';
 import { HomePage } from './pages/HomePage.tsx';
 import { KnowledgePage } from './pages/KnowledgePage.tsx';
 import { LedgerPage } from './pages/LedgerPage.tsx';
@@ -40,6 +41,10 @@ export function App() {
           <Route path="/taxonomy" element={<TaxonomyPage />} />
           <Route path="/ledger" element={<LedgerPage />} />
           <Route path="/agents" element={<AgentsPage />} />
+          {/* Where a connector sends a person to be asked (ADR 0038). Behind
+              the same guard as everything else, so somebody not signed in signs
+              in first and comes back to the request they arrived with. */}
+          <Route path="/oauth/consent" element={<ConsentPage />} />
           <Route path="/policy" element={<PolicyPage />} />
           <Route path="/workspaces" element={<WorkspacesPage />} />
           <Route path="/workspaces/members" element={<WorkspacePage />} />

@@ -11,10 +11,10 @@ each one contains, and every milestone below carries the release it arrived in.
 From v0.1.0 the migrations are immutable: a change to persistence is a new additive
 migration with an upgrade test, never an edit to one that shipped.
 
-Milestones 11, 12 and 13 were taken ahead of 10 and are delivered, through
-**v0.5.0**. Milestone 10 is what remains before 14, and its ADR — 0038 — is
-written. Which milestone is taken next is a decision about the product rather
-than about the code, and the order here is the default, not a promise.
+Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
+Milestone 10 followed. Milestone 14 is what remains. Which milestone is taken
+next is a decision about the product rather than about the code, and the order
+here is the default, not a promise.
 
 ## Milestone 0 - repository scaffold
 
@@ -239,10 +239,10 @@ Deliver:
 
 ## Milestone 10 - OAuth 2.1 for hosted MCP clients
 
-_In progress. ADR 0038 is accepted and decides the shape: an OAuth grant is an
-agent credential, and consent is where a connector becomes an agent._
+_Delivered. ADR 0038 decides the shape: an OAuth grant is an agent credential,
+and consent is where a connector becomes an agent._
 
-Deliver:
+Delivered:
 
 - Knoverge as OAuth 2.1 authorization server: authorization code with PKCE
   (`S256` only), rotating refresh tokens, dynamic client registration, revocation;

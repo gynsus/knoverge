@@ -28,6 +28,7 @@ import {
 } from './plugins/security.ts';
 import type { ReadinessProbes } from './probes.ts';
 import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
+import { registerConsentRoutes, registerOauthRoutes } from './routes/oauth.ts';
 import { registerAdminAiRoutes } from './routes/admin-ai.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
 import { registerAdminAttachmentRoutes } from './routes/admin-attachments.ts';
@@ -123,6 +124,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
       // installation accepts, which is the one thing the uploader needs to know.
       throwFileSizeLimit: false,
     });
+    // Before the admin routes so the well-known documents and /oauth/* live in
+    // their own scope, with their own error shape and their own body parser.
+    await registerOauthRoutes(app, options.services);
+    registerConsentRoutes(app, options.services);
     registerAdminAgentRoutes(app, options.services);
     registerAdminAttachmentRoutes(app, options.services);
     registerAdminAiRoutes(app, options.services);

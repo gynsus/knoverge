@@ -52,6 +52,17 @@ export {
   type UploadAttachmentInput,
   type UploadResult,
 } from './attachments/service.ts';
+export { OauthFailure } from './oauth/errors.ts';
+export {
+  ACCESS_TOKEN_TTL_MS,
+  AUTHORIZATION_CODE_TTL_MS,
+  OauthService,
+  REFRESH_TOKEN_TTL_MS,
+  UNCONSENTED_CLIENT_TTL_MS,
+  type CheckedRequest,
+  type IssuedTokens,
+  type OauthServiceOptions,
+} from './oauth/service.ts';
 export type {
   OauthAuthorizationCodeRecord,
   OauthClientRecord,

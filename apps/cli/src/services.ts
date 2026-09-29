@@ -152,6 +152,9 @@ export function createServices() {
         proposals: repositories.proposals,
         sync: repositories.sync,
         idempotency: idempotency(),
+        oauthClients: repositories.oauthClients,
+        oauthCodes: repositories.oauthCodes,
+        oauthRefreshTokens: repositories.oauthRefreshTokens,
       }),
   );
   const authorizationAdmin = lazy(

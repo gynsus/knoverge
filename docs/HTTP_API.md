@@ -116,6 +116,12 @@ GET  /v1/admin/agents.credentials?agent_id=ag_...
 POST /v1/admin/agents.credentials.issue     returns the token once
 POST /v1/admin/agents.credentials.revoke
 
+GET  /v1/admin/oauth.pending                what the consent screen shows, for a request already checked
+POST /v1/admin/oauth.consent                creates the agent and the grant; answers with where to send the browser
+POST /v1/admin/oauth.deny                   answers with where to send the browser, saying no
+GET  /v1/admin/oauth.grants                 the connectors live in this workspace
+POST /v1/admin/oauth.disconnect             revokes a grant and every token it issued
+
 GET  /v1/admin/ai.settings                  providers, what each is used for, whether embedding and generation happen
 POST /v1/admin/ai.providers.save            creates or changes one; absent provider_id creates
 POST /v1/admin/ai.providers.remove          takes its assignments with it
@@ -377,3 +383,28 @@ Limits are in-process (single node) in MVP. Exceeding a limit returns `RATE_LIMI
 ## 10. OpenAPI
 
 The server publishes `GET /v1/openapi.json`, generated from the Zod contracts, so non-MCP clients can generate bindings.
+
+The OAuth surface in section 11 is deliberately absent from it. That document describes `/v1`, whose every route answers in the error shape of section 4 and takes the headers of section 3; the OAuth endpoints do neither. What describes them is their own metadata documents, which is what their caller reads anyway.
+
+## 11. The OAuth surface
+
+Not `/v1`, and not tools. These exist because a hosted MCP connector cannot be handed a pasted token, and they speak the protocol that connector was written against (ADR 0038, `SECURITY.md` section 5).
+
+| Route | What it is |
+| --- | --- |
+| `GET /.well-known/oauth-protected-resource` | RFC 9728. Also served at `/.well-known/oauth-protected-resource/mcp`. |
+| `GET /.well-known/oauth-authorization-server` | RFC 8414. |
+| `POST /oauth/register` | RFC 7591. Unauthenticated, and grants nothing. |
+| `GET /oauth/authorize` | Checks the request, then redirects the browser to the consent screen. |
+| `POST /oauth/token` | Form-encoded. `authorization_code` with PKCE `S256`, and `refresh_token`. |
+| `POST /oauth/revoke` | RFC 7009. An unknown token answers success. |
+
+They differ from everything else here in three ways, and all three are on purpose:
+
+- **The error shape is OAuth's**: `{"error": "invalid_grant", "error_description": "…"}`, not the `ApiError` of section 4. A connector parses `error`; this product's codes would mean nothing to it.
+- **The token and revocation endpoints take `application/x-www-form-urlencoded`**, which nothing else here does, because that is what the specification says a token request is.
+- **They take none of the context headers** of section 3 and no workspace header. The workspace is chosen by the person at the consent screen, not by the caller.
+
+`POST /mcp` without a credential answers `401` with `WWW-Authenticate: Bearer resource_metadata="<base>/.well-known/oauth-protected-resource/mcp"`. That header is the whole of how a connector given nothing but a URL finds the rest.
+
+The consent screen's own calls are ordinary `/v1` admin endpoints — `oauth.pending`, `oauth.consent`, `oauth.deny`, `oauth.grants`, `oauth.disconnect` — because their caller is this product's web interface, signed in with a session cookie and a CSRF token. They are listed in section 6.
