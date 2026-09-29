@@ -299,23 +299,23 @@ each producing `document` items with provenance. Providers are optional; without
 
 ## Milestone 13 - export and import
 
-_In progress: export and import are built. `knoverge export` writes a git bundle,
-a manifest and, when asked for, the attachments (ADR 0034); `knoverge import` puts
-a workspace back on another installation with its history and provenance, and
-adopts none of the exporting installation's people or permissions (ADR 0035). The
-importers that produce reconciliation sessions have started: a folder of Markdown
-arrives as a session and `propose-from-session` turns what it found into proposals
-(ADR 0036). An Obsidian vault is the same command — a vault is a folder of Markdown
-with tags — and `link-from-folder` turns the `[[wikilinks]]` between accepted notes
-into relations. Generic JSON is the path for exports nobody wrote a parser for, and
-`adopt-commits` records what somebody committed to the repository by hand (ADR
-0037). What remains is the ChatGPT export, deferred on purpose: the hard question
-there is what counts as one piece of knowledge rather than how to parse it, and an
-export can be turned into the JSON this already reads._
+_Delivered — v0.5.0, except the ChatGPT export. `knoverge export` writes a git
+bundle, a manifest and, when asked for, the attachments (ADR 0034), and
+`knoverge import` puts a workspace back on another installation with its history
+and provenance, adopting none of the exporting installation's people or
+permissions (ADR 0035). Four ways in, all of them through a reconciliation session
+rather than a blind insert (ADR 0036): a folder of Markdown, an Obsidian vault
+(the same command — a vault is a folder with tags), generic JSON for the exports
+nobody wrote a parser for, and `propose-from-session` for the deciding that
+follows. `link-from-folder` turns the `[[wikilinks]]` between accepted notes into
+relations. `adopt-commits` records what somebody committed to the repository by
+hand, so editing the knowledge with an editor is a supported way to work (ADR
+0037).
 
-Deliver:
-
-- full workspace export (Git bundle plus metadata JSON) and import;
+The ChatGPT export is deferred on purpose. The hard question in it is not parsing
+but what counts as one piece of knowledge — a conversation is not a note and a
+single assistant message is usually thinking out loud — and an export can be turned
+into the JSON `import-json` already reads._etadata JSON) and import;
 - importers producing reconciliation sessions rather than blind inserts: Markdown folder, Obsidian vault, ChatGPT export, generic JSON;
 - importer for externally created Git commits.
 

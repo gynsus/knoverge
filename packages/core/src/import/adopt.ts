@@ -87,9 +87,7 @@ export class AdoptService {
     // range after the newest known commit. A commit made by hand can sit
     // between two the product made, and a range would skip it entirely.
     const seen = await this.o.revisions.commitsKnown(workspaceId);
-    const commits = (await this.o.git.commitsAfter(workspaceId, null)).filter(
-      (commit) => !seen.has(commit),
-    );
+    const commits = (await this.o.git.commits(workspaceId)).filter((commit) => !seen.has(commit));
     const outcome: AdoptOutcome = { commits: 0, created: 0, updated: 0, skipped: [] };
     if (commits.length === 0) return outcome;
 

@@ -87,8 +87,5 @@ export function createGitStore(options: GitStoreOptions): GitStore {
     changedFiles(workspaceId: WorkspaceId, commitHash: string) {
       return open(workspaceId).changedFiles(commitHash);
     },
-    commitsAfter(workspaceId: WorkspaceId, commitHash: string | null) {
-      return open(workspaceId).commitsAfter(commitHash);
-    },
   };
 }

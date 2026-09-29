@@ -10,9 +10,10 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.4.0**. Milestones 0 to 9, 11 and 12 of
-[the plan](docs/IMPLEMENTATION_PLAN.md) are complete — 12 bar the scanned PDF —
-and [CHANGELOG.md](CHANGELOG.md) says what each release contains.
+Knoverge is at **v0.5.0**. Milestones 0 to 9 and 11 to 13 of
+[the plan](docs/IMPLEMENTATION_PLAN.md) are complete — 12 bar the scanned PDF, 13
+bar the ChatGPT export — and [CHANGELOG.md](CHANGELOG.md) says what each release
+contains.
 
 - **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
 - **Agents** — an MCP endpoint at `/mcp` over Streamable HTTP, and the same twenty-nine tools at `POST /v1/<tool_name>`, from one contract. Per-credential budgets for reads, writes, inventory batches and requests in flight, and a backlog budget for proposals waiting on review.
@@ -23,14 +24,16 @@ and [CHANGELOG.md](CHANGELOG.md) says what each release contains.
 - **Summaries and digests** — a summary keeps the exact revisions it was made from and goes stale when one of them moves; a model can draft its text and a person saves it, and the file says which model phrased it. The activity digest has a screen, and an optional narrative of the period.
 - **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers the models that can do the job being chosen for, and reports what one returns before it is chosen. Four jobs, each its own model: embedding, writing, looking at a picture, listening to a recording. Everything above works with none configured.
 - **Files** — bring a document in through the interface, HTTP or MCP and its text becomes an ordinary knowledge item: searched, reviewed and versioned like anything else, and an agent's file goes to the review queue exactly as an agent's writing does. Text, Markdown, HTML, PDF and Word are read here, with no provider and no network. With a vision model assigned a picture is described and the text on a screenshot is read; with a transcription model an audio or video file becomes what was said in it, and the item says which model phrased it. Anything left over is kept, can be downloaded, and can be asked for again once a model that could read it is connected. The file itself stays under the hash of its contents, beside the repositories and never in Git.
-- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, and recovery for a write that reached Git and no further.
+- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, recovery for a write that reached Git and no further, and `adopt-commits` for a change somebody made in the repository with an editor.
 - **Taking it with you** — `knoverge export` writes one workspace as a git bundle plus a manifest, and the attachments when asked for. Opening it needs `git clone` and nothing from here. `knoverge import` puts it back on another installation with its history, its provenance and its taxonomy intact, and with nobody's credentials: who may write there is that installation's own decision.
 - **Bringing things in** — `knoverge import-folder` offers a folder of Markdown to a workspace the way an agent offers itself: a reconciliation session that says which notes it already holds, which look familiar and which are new. Nothing is written until somebody reads that and decides; `knoverge propose-from-session` is the deciding, and what happens to each proposal is the agent's policy rather than the command's. `knoverge link-from-folder` turns the `[[wikilinks]]` between accepted notes into relations, so a vault arrives as a graph rather than as a thousand loose notes, and `knoverge import-json` is the same path for an export nobody wrote a parser for. `knoverge adopt-commits` records what somebody committed to the repository by hand, so editing the knowledge with an editor is a supported way to work rather than something the integrity check complains about.
 
-Not yet: OAuth for hosted connectors (Milestone 10), a scanned PDF — a page in
-one has to be rendered to an image first, and nothing here renders (12), export
-and import (13), knowledge gardening (14). There are no end-to-end browser
-tests.
+Not yet: OAuth for hosted connectors (Milestone 10), a scanned PDF — a page in one
+has to be rendered to an image first, and nothing here renders (12), the ChatGPT
+export (13, deferred: the question is what counts as one piece of knowledge, and
+the JSON importer already reads what a script can produce), knowledge gardening
+(14). There are no end-to-end browser tests, an upload is held in memory while it
+is hashed, and an importer reads the folder it is pointed at into memory.
 
 ## Trying it
 
