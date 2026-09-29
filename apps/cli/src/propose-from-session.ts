@@ -98,6 +98,10 @@ export async function proposeFromSession(
       body: read.body,
       type: 'document',
       categories: candidate.proposedCategoryPaths.filter((path) => known.has(path)),
+      // What the note was tagged, in its frontmatter or in its text. Not part
+      // of the inventory — a tag does not help decide whether the workspace
+      // already holds something — but it is part of the note.
+      tags: read.tags,
       // What this came from, so a second run recognises it by identity rather
       // than by text: the system names the tool and the key is the path.
       external: {
@@ -118,7 +122,7 @@ export async function proposeFromSession(
 async function fileFor(
   root: string,
   path: string,
-): Promise<{ title: string; body: string; sourceHash: string } | null> {
+): Promise<{ title: string; body: string; tags: string[]; sourceHash: string } | null> {
   let text: string;
   try {
     text = await readFile(join(root, path), 'utf8');
@@ -133,5 +137,10 @@ async function fileFor(
     sourceHash: (value) => `sha256:${createHash('sha256').update(value, 'utf8').digest('hex')}`,
   });
   if (!candidate) return null;
-  return { title: candidate.title, body: candidate.body, sourceHash: candidate.sourceHash };
+  return {
+    title: candidate.title,
+    body: candidate.body,
+    tags: candidate.tags,
+    sourceHash: candidate.sourceHash,
+  };
 }

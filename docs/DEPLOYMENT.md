@@ -799,6 +799,16 @@ What happens to a proposal is the agent's policy, not this command's: by default
 an agent's writing waits for review (rule 14), and an agent with `allow_direct`
 writes straight through. The output says which of the two happened.
 
+**Tags come across.** Both ways a person writes them: `tags:` in the frontmatter,
+as a list or on one line, and `#tag` in the text, which is what Obsidian and most
+editors do. A tag written both ways is one tag. A `#` at the start of a line is a
+heading and a `#` inside a word is part of the word — neither is a tag.
+
+That is also what an Obsidian vault is: the same command, because a vault is a
+folder of Markdown with tags in it and `.obsidian/` skipped like every other
+dot-directory. What it does not yet carry is `[[wikilinks]]`, which are relations
+between notes rather than text; they stay in the body for now.
+
 Titles come from the frontmatter, then from an opening heading, then from the
 filename. An opening heading that repeats the title is taken out of the text,
 because this product's own files keep the title in the frontmatter — without that,
