@@ -295,7 +295,7 @@ export class OauthService {
     if (grant.clientId !== client.id) {
       throw new OauthFailure('invalid_grant', 'the code was issued to another client');
     }
-    return this.o.uow.run((tx) => this.issue(tx, grant, now));
+    return this.o.uow.run((tx) => this.issue(tx, grant, now, 'code'));
   }
 
   /**
@@ -335,7 +335,7 @@ export class OauthService {
           replayed = true;
           throw new OauthFailure('invalid_grant', 'this refresh token was already used');
         }
-        return this.issue(tx, grant, now, next);
+        return this.issue(tx, grant, now, 'refresh', next);
       });
     } catch (error) {
       // Already exchanged, or already revoked. Either way somebody else has held
@@ -388,10 +388,21 @@ export class OauthService {
     }
   }
 
+  /**
+   * Mints an access token and the refresh token that will replace it.
+   *
+   * `from` is the difference between a material change and an authentication.
+   * A token exchanged for an authorization code is somebody's consent taking
+   * effect, and rule 3 wants that attributable; a token exchanged for a refresh
+   * token is the same connection proving it is still itself, which rule 4 says
+   * is not a ledger event — and at one an hour per connector it would bury the
+   * feed in restatements of a decision made once.
+   */
   private async issue(
     tx: Parameters<Parameters<UnitOfWork['run']>[0]>[0],
     grant: OauthGrantRecord,
     now: Date,
+    from: 'code' | 'refresh',
     refreshTokenId: OauthRefreshTokenId = newId('oart') as OauthRefreshTokenId,
   ): Promise<IssuedTokens> {
     const secret = this.o.tokens.generate();
@@ -425,6 +436,24 @@ export class OauthService {
       replacedById: null,
       revokedAt: null,
     });
+    if (from === 'code') {
+      await this.o.ledger.append(
+        tx,
+        grant.workspaceId,
+        { actorId: credential.createdByActorId, requestId: `oauth-${credential.id}` },
+        {
+          eventType: 'agent.credential_issued',
+          objectType: 'credential',
+          objectId: credential.id,
+          metadata: {
+            agent_id: grant.agentId,
+            token_prefix: tokenPrefix,
+            expires_at: credential.expiresAt?.toISOString() ?? null,
+            oauth_grant_id: grant.id,
+          },
+        },
+      );
+    }
     return {
       accessToken,
       refreshToken,

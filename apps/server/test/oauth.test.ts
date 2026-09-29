@@ -402,6 +402,60 @@ describe('consent, and what comes of it', () => {
   });
 });
 
+describe('what the ledger records', () => {
+  it('records the token a consent produced, and not the ones a refresh does', async () => {
+    const owner = await signIn('owner@example.com', 'correct horse battery staple');
+    const clientId = await registerClient('Ledgered');
+    const { verifier, challenge } = pkce();
+    const code = await consent(owner, clientId, challenge);
+    const issued = (
+      await form({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        redirect_uri: REDIRECT,
+        client_id: clientId,
+      })
+    ).json() as { refresh_token: string };
+
+    const after = await owner.post(
+      '/v1/events_list',
+      { event_types: ['agent.credential_issued'], newest_first: true, limit: 50 },
+      { 'x-knoverge-workspace': workspaceId },
+    );
+    const events = (
+      after.json() as { events: { event_type: string; metadata: Record<string, unknown> }[] }
+    ).events;
+    // A token exchanged for a code is somebody's consent taking effect, and
+    // rule 3 wants that attributable — the same event a pasted credential gets.
+    const issuedEvents = events.filter(
+      (e) => e.event_type === 'agent.credential_issued' && e.metadata['oauth_grant_id'],
+    );
+    expect(issuedEvents.length).toBeGreaterThanOrEqual(1);
+
+    const before = issuedEvents.length;
+    await form({
+      grant_type: 'refresh_token',
+      refresh_token: issued.refresh_token,
+      client_id: clientId,
+    });
+    const later = await owner.post(
+      '/v1/events_list',
+      { event_types: ['agent.credential_issued'], newest_first: true, limit: 50 },
+      { 'x-knoverge-workspace': workspaceId },
+    );
+    const now = (
+      later.json() as { events: { event_type: string; metadata: Record<string, unknown> }[] }
+    ).events.filter(
+      (e) => e.event_type === 'agent.credential_issued' && e.metadata['oauth_grant_id'],
+    );
+    // And a token exchanged for a refresh token is an authentication, which
+    // rule 4 keeps out of the ledger. One an hour per connector would bury the
+    // feed in restatements of a decision made once.
+    expect(now.length).toBe(before);
+  });
+});
+
 describe('the code', () => {
   it('is spent by the first exchange, whether or not that exchange succeeded', async () => {
     const owner = await signIn('owner@example.com', 'correct horse battery staple');

@@ -52,6 +52,11 @@ Milestone 10: a hosted connector can let itself in, once a person says so.
 
 ### Fixed
 
+- **A token issued by consent was not recorded in the ledger.** ADR 0038 says a
+  consent creates an agent and issues a credential, and that both are ordinary
+  events; the code recorded only the first. Found by connecting a real
+  connector and reading the feed afterwards. The token a refresh produces stays
+  out, which is what rule 4 says about authentications.
 - **Signing in dropped the query string of the page you were sent to.** Only
   the path was kept, and an authorization request is a page whose query *is*
   the request, so somebody not signed in came back to a consent screen with
