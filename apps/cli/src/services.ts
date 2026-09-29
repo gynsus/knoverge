@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from '@knoverge/auth';
 import {
+  AdoptService,
   AgentService,
   AuthorizationAdminService,
   AuthorizationService,
@@ -347,6 +348,25 @@ export function createServices() {
         ledger: ledger(),
       }),
   );
+  const adopt = lazy(
+    () =>
+      new AdoptService({
+        uow,
+        items: repositories.knowledge,
+        revisions: repositories.revisions,
+        categories: repositories.categories,
+        relations: repositories.relations,
+        sources: repositories.sources,
+        summaries: repositories.summaries,
+        search: repositories.search,
+        operations: repositories.operations,
+        ledger: ledger(),
+        git: git(),
+        parseItem,
+        contentHash,
+        frontmatterHash,
+      }),
+  );
   const sync = lazy(
     () =>
       new SyncService({
@@ -467,6 +487,9 @@ export function createServices() {
     },
     get proposals() {
       return proposals();
+    },
+    get adopt() {
+      return adopt();
     },
     get attachmentStore() {
       return attachmentStore();

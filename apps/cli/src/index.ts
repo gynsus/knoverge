@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import pkg from '../package.json' with { type: 'json' };
 import { agentCommand } from './commands/agent.ts';
 import { auditCommand } from './commands/audit.ts';
+import { adoptCommitsCommand } from './commands/adopt-commits.ts';
 import { backupCommand } from './commands/backup.ts';
 import { exportCommand } from './commands/export.ts';
 import { importCommand } from './commands/import.ts';
@@ -33,6 +34,7 @@ program
 
 program.addCommand(agentCommand());
 program.addCommand(auditCommand());
+program.addCommand(adoptCommitsCommand());
 program.addCommand(backupCommand());
 program.addCommand(exportCommand());
 program.addCommand(importCommand());

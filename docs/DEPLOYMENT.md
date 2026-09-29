@@ -450,7 +450,7 @@ over, and every finding:
 | `content_hash_mismatch` | the file does not hash to what the database recorded |
 | `frontmatter_disagrees` | the file's metadata and the revision's disagree, field by field |
 | `taxonomy_missing` / `taxonomy_disagrees` | `taxonomy.yaml` is absent or is not the tree the database holds |
-| `head_unknown` | the branch is at a commit no revision and no taxonomy version was written by — somebody committed by hand |
+| `head_unknown` | the branch is at a commit no revision and no taxonomy version was written by — somebody committed by hand; `knoverge adopt-commits` records it |
 
 It exits non-zero when it finds anything, so a scheduled run is a check rather than
 a log line. The findings name objects and field names and never any knowledge: a
@@ -807,6 +807,41 @@ heading and a `#` inside a word is part of the word — neither is a tag.
 That is also what an Obsidian vault is: the same command, because a vault is a
 folder of Markdown with tags in it and `.obsidian/` skipped like every other
 dot-directory.
+
+### When somebody edits the repository directly
+
+Rule 1 says the knowledge is Markdown in a Git repository, readable and editable
+without this product. People take that literally: clone the workspace repository,
+fix a typo in forty files, commit. Until `adopt-commits` existed the answer to
+that was a finding — `integrity check` said `head_unknown` and stopped — and the
+only ways out were to revert the commit or to redo the work through the product.
+
+```bash
+docker compose exec knoverge knoverge adopt-commits --workspace personal
+```
+
+It walks the commits the database has never heard of, oldest first, and writes the
+revisions they describe. An external commit carries no trailers, so **the file is
+what says which item it is**, through the id in its frontmatter: an id this
+workspace holds is an update, a new one is a create, and a file with no id or one
+that will not parse is named and skipped — inventing an id would be inventing the
+thing the file was supposed to say.
+
+Every commit in the history is considered, not everything after the newest one the
+database knows: a commit made by hand can sit between two the product made, and a
+range would skip it for ever.
+
+The revision id is new, because nothing in an external commit proposes one. The
+write is the system actor's, and the events say `adopted` and carry the commit —
+the person who made the change is the Git author, one lookup away.
+
+It refuses a repository whose history was rewritten. If the newest commit this
+workspace was written from is no longer in the branch, this is not the history
+these records describe, and that is `integrity check`'s unrepairable case.
+
+A commit that changed a file without changing the knowledge — trailing whitespace,
+a line ending — produces no revision. A revision that says nothing happened is
+worse than no revision.
 
 ### Anything else, as JSON
 

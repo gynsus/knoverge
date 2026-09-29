@@ -134,4 +134,11 @@ export interface GitStore {
    * the trailer names the item, and the path is whatever that commit touched.
    */
   changedFiles(workspaceId: WorkspaceId, commitHash: string): Promise<string[]>;
+  /**
+   * The commits after one, oldest first, or the whole history when given null.
+   *
+   * What adoption walks: the commits the database has never heard of, which is
+   * what somebody editing the repository directly leaves behind (ADR 0037).
+   */
+  commitsAfter(workspaceId: WorkspaceId, commitHash: string | null): Promise<string[]>;
 }
