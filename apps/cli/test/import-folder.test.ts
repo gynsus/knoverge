@@ -39,6 +39,7 @@ import {
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { importFolder } from '../src/import-folder.ts';
+import { importJson } from '../src/import-json.ts';
 import { proposeFromSession } from '../src/propose-from-session.ts';
 import type { Services } from '../src/run.ts';
 
@@ -202,6 +203,66 @@ afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
   for (const dir of [dataDir, folder]) if (dir) await rm(dir, { recursive: true, force: true });
+});
+
+describe('knoverge import-json', () => {
+  it('offers the records it can read and says what it left out', async () => {
+    const file = join(folder, '..', 'export.json');
+    await writeFile(
+      file,
+      JSON.stringify({
+        pages: [
+          // The note the workspace already holds, word for word.
+          {
+            id: 'page-1',
+            title: 'Escalation path',
+            body: 'Support first, then the on-call engineer.',
+          },
+          { id: 'page-2', title: 'Something new', body: 'Nobody has said this before.' },
+          { id: 'page-3', title: 'No body here' },
+        ],
+      }),
+      'utf8',
+    );
+    try {
+      const result = await importJson(services, {
+        workspaceId,
+        agentId,
+        file,
+        sourceSystem: 'json-export',
+        namespace: 'a-notion-export',
+        requestId: 'req-json',
+      });
+
+      expect(result.read).toBe(2);
+      expect(result.skipped).toBe(1);
+      // The same three steps as a folder, because the shape is the shape: the
+      // workspace answers which of these it already has.
+      expect(result.classifications['exact_known']).toBe(1);
+      expect(result.classifications['new_candidate']).toBe(1);
+    } finally {
+      await rm(file, { force: true });
+    }
+  });
+
+  it('refuses a file that is not JSON, by name', async () => {
+    const file = join(folder, '..', 'broken.json');
+    await writeFile(file, '{ not json', 'utf8');
+    try {
+      await expect(
+        importJson(services, {
+          workspaceId,
+          agentId,
+          file,
+          sourceSystem: 'json-export',
+          namespace: 'broken',
+          requestId: 'req-json-2',
+        }),
+      ).rejects.toThrow(/is not JSON this can read/u);
+    } finally {
+      await rm(file, { force: true });
+    }
+  });
 });
 
 describe('knoverge propose-from-session', () => {

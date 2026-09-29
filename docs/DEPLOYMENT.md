@@ -808,6 +808,32 @@ That is also what an Obsidian vault is: the same command, because a vault is a
 folder of Markdown with tags in it and `.obsidian/` skipped like every other
 dot-directory.
 
+### Anything else, as JSON
+
+```bash
+docker compose exec knoverge knoverge import-json \
+  --file /import/notion.json --agent ag_01M3… --workspace personal
+```
+
+The path for the exports nobody wrote a parser for: a Notion export, a wiki dump,
+somebody's script. The same three steps as a folder, because the shape is the
+shape — a session, an inventory, an answer per candidate.
+
+Forgiving about what fields are called and strict about what a record has to be.
+`body`, `text`, `content` and `markdown` are the four names the same field goes
+by; `title`, `name` and `heading` likewise; `id`, `key`, `uuid` and `slug` are the
+identity. A record with no title or no body is not knowledge in any shape, and the
+output says how many there were, because that number is what tells somebody their
+export had a shape this did not understand.
+
+The file is an array, or an object with one array in it. An object with two is
+refused: choosing one of them would be choosing what to import, and getting that
+wrong quietly is worse than saying nothing was found.
+
+**A record with no id of its own is keyed by its position**, which is stable only
+while the file is. The output says how many, every time, because a second run on a
+changed export would not recognise them.
+
 ### The links between the notes
 
 ```bash

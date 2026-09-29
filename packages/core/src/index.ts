@@ -1,5 +1,11 @@
 export type { ActorContext } from './actor-context.ts';
 export {
+  readJsonRecords,
+  type JsonCandidate,
+  type JsonRecord,
+  type ReadJsonOptions,
+} from './importers/json.ts';
+export {
   readMarkdownFolder,
   type FolderCandidate,
   type ReadFolderOptions,

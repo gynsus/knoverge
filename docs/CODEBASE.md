@@ -1008,7 +1008,14 @@ of the note, and whatever proposes it has the tags without reading the file agai
 
 That is also the answer to what an Obsidian vault needs: nothing of its own. A
 vault is a folder of Markdown with tags and a `.obsidian/` directory that is
-skipped like every dot-directory, so it is the same command. Wikilinks are the one thing that needed a
+skipped like every dot-directory, so it is the same command. `packages/core/src/importers/json.ts` is the second test of the claim, and it
+passes it: a parser and a command that submits, with nothing else changed. It is
+the path for exports nobody wrote a parser for, so it is forgiving about what
+fields are called and strict about what a record has to be — a title and a body,
+or it is not knowledge. A record with no id of its own is keyed by its position
+and counted, because a positional key is stable only while the file is.
+
+Wikilinks are the one thing that needed a
 command of its own: `apps/cli/src/link-from-folder.ts` runs after the proposals
 have been accepted, because a relation needs both ends to exist as items. The
 parser collects the targets; resolving them is by path first and by the note's own
