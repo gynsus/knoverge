@@ -12,9 +12,10 @@ From v0.1.0 the migrations are immutable: a change to persistence is a new addit
 migration with an upgrade test, never an edit to one that shipped.
 
 Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
-Milestone 10 followed. Milestone 14 is what remains. Which milestone is taken
-next is a decision about the product rather than about the code, and the order
-here is the default, not a promise.
+Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
+a live installation. Milestone 14 is what remains, and it needs a decision
+first: most of its list requires a provider, and rule 9 says no core feature
+may.
 
 ## Milestone 0 - repository scaffold
 
@@ -239,8 +240,8 @@ Deliver:
 
 ## Milestone 10 - OAuth 2.1 for hosted MCP clients
 
-_Delivered. ADR 0038 decides the shape: an OAuth grant is an agent credential,
-and consent is where a connector becomes an agent._
+_Delivered — v0.6.0. ADR 0038 decides the shape: an OAuth grant is an agent
+credential, and consent is where a connector becomes an agent._
 
 Delivered:
 

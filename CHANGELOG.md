@@ -9,9 +9,10 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
-## Unreleased
+## v0.6.0 — 2026-09-30
 
-Milestone 10: a hosted connector can let itself in, once a person says so.
+Milestone 10: a hosted connector can let itself in, once a person says so. With
+this the plan's milestones 0 to 13 are delivered.
 
 ### Added
 
@@ -61,8 +62,9 @@ Milestone 10: a hosted connector can let itself in, once a person says so.
   looking. Consent now recognises a returning connector by the name it calls
   itself and the addresses it accepts a code at, keeps the agent it already
   was, and retires the connection it is replacing — which the consent screen
-  names first. Found by reconnecting a real connector and reading the tables
-  afterwards.
+  names first — and every live connection it holds goes, not the newest of them,
+  because one left behind is a working refresh token nobody can see. Found by
+  reconnecting a real connector and reading the tables afterwards.
 - **Disabling an agent did not end its OAuth connections.** Its credentials
   were revoked and its grant was not, so the connector went on exchanging its
   refresh token for access tokens that failed every call — and re-enabling the
@@ -78,6 +80,15 @@ Milestone 10: a hosted connector can let itself in, once a person says so.
   the path was kept, and an authorization request is a page whose query *is*
   the request, so somebody not signed in came back to a consent screen with
   nothing to consent to.
+
+### Verified
+
+Connected from the Claude.ai connector against a live installation over a public
+address: discovery, dynamic registration, PKCE, the consent screen, the code
+exchange, a tool call, a reconnection and a disconnection. Everything under
+"Fixed" above was found that way or by reading ADR 0038 against the code, and
+none of it by a test — the tests agreed with the code, which is what tests
+written from the code do.
 
 ### Compatibility
 
