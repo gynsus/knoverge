@@ -124,7 +124,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
-  if (dir) await rm(dir, { recursive: true, force: true });
+  if (dir) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe('knoverge audit export', () => {

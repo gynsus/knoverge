@@ -93,7 +93,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  // Retries, because `git gc --auto` runs after a commit and may still be writing
+  // into `.git/objects` when this removes the directory: on a loaded runner that
+  // is an ENOTEMPTY that fails a test suite for a reason unrelated to anything in
+  // it.
+  if (dataDir) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   await app?.close();
   await services?.close();
   await container?.stop();

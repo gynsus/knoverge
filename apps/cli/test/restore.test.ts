@@ -158,7 +158,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await handle?.close().catch(() => undefined);
   await container?.stop();
-  for (const dir of [dataDir, into]) if (dir) await rm(dir, { recursive: true, force: true });
+  for (const dir of [dataDir, into])
+    if (dir) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 const ok = async () => ({ ok: true, count: 0 });

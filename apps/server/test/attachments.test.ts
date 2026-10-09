@@ -132,7 +132,7 @@ afterAll(async () => {
   await app?.close();
   await services?.close();
   await container?.stop();
-  if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  if (dataDir) await rm(dataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
 describe('a file a workspace holds', () => {

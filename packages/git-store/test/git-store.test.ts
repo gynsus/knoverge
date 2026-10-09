@@ -24,7 +24,11 @@ const at = new Date('2026-09-20T09:00:00.000Z');
 const roots: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots
+      .splice(0)
+      .map((root) => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })),
+  );
 });
 
 /** Plain git, for asserting on what the store produced rather than through it. */
