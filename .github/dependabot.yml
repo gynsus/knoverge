@@ -19,6 +19,13 @@ updates:
       development:
         dependency-type: development
         update-types: ['minor', 'patch']
+    ignore:
+      # The runtime's own types follow the runtime, and the runtime is pinned to
+      # the Active LTS line (`.nvmrc`, `engines`, the image). Types a major
+      # ahead describe APIs that are not there at run time, so a green
+      # typecheck would stop meaning what it means.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     commit-message:
       prefix: chore
       include: scope
@@ -47,5 +54,14 @@ updates:
     groups:
       images:
         patterns: ['*']
+    ignore:
+      # Node stays on the Active LTS line, which the technical baseline asks for
+      # and which Node itself tells production installations to use. A major
+      # bump offers Current, not LTS, and it is not only a number: corepack left
+      # the official image in Node 25, so the line that installs pnpm has to
+      # change with it. That is a migration, taken when the next line becomes
+      # LTS, not a weekly bump.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
     commit-message:
       prefix: chore
