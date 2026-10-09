@@ -354,6 +354,28 @@ Every finding is a proposal and names the rule and the rows it rested on. The
 gardener gets no direct-write path at any trust tier. Findings are capped per
 rule and per run: a gardener that buries the review queue has done harm.
 
+## Milestone 15 - backups you can see
+
+_Not started. ADR 0040 decides the shape: a backup is a setting the product owns,
+not a container in a compose profile._
+
+Deliver:
+
+- the backup taken by the application's own job runner, in the worker role,
+  with the same steps and the same archive the shell script produced — database
+  first, then the data directory, a manifest, and a staging name moved into
+  place at the end;
+- a **Data and storage** settings screen: off by default, saying so; a schedule;
+  retention in days; when the last run was and whether it worked;
+- an optional SSH target — host, port, user, directory, and a private key or a
+  password — sealed with `KNOVERGE_ENCRYPTION_KEY`, refused outright where there
+  is none, as a webhook secret already is;
+- upload only: the server never lists or deletes on the far machine, and the
+  screen says retention applies to local copies;
+- a failing upload that does not fail the backup, and shows its last error;
+- the `backup` compose profile and its two scripts removed, and the upgrade
+  note that says to turn the setting on instead.
+
 ## Later
 
 - end-to-end browser tests for the review and knowledge flows (Playwright; no
