@@ -1,5 +1,6 @@
 export * from './agents.ts';
 export * from './attachments.ts';
+export * from './backups.ts';
 export * from './ai.ts';
 export * from './auth.ts';
 export * from './errors.ts';

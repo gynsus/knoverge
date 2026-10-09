@@ -52,6 +52,12 @@ export {
   type UploadAttachmentInput,
   type UploadResult,
 } from './attachments/service.ts';
+export type {
+  BackupRunOutcome,
+  BackupSettingsRecord,
+  BackupSettingsRepository,
+  BackupTargetRecord,
+} from './backups/repository.ts';
 export { OauthFailure } from './oauth/errors.ts';
 export {
   ACCESS_TOKEN_TTL_MS,

@@ -27,6 +27,7 @@ export {
 } from './repositories/policy.ts';
 export { createRepositories, type Repositories } from './repositories/index.ts';
 export { createKnowledgeRepository, createRevisionRepository } from './repositories/knowledge.ts';
+export { createBackupSettingsRepository } from './repositories/backups.ts';
 export { createMembershipRepository } from './repositories/memberships.ts';
 export {
   createOauthClientRepository,
