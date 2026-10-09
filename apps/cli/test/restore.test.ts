@@ -95,7 +95,7 @@ async function backupDirectory(now: Date): Promise<string> {
 }
 
 /**
- * Waits for the dump's own connection to go.
+ * Waits for the dump's own connection to go, and to stay gone.
  *
  * `pg_dump` runs inside the container, and while it does it is an ordinary
  * client backend on this database — which is exactly what a restore refuses to
@@ -104,6 +104,13 @@ async function backupDirectory(now: Date): Promise<string> {
  * `pg_stat_activity` when the restore looks, and the command refuses because
  * the test is holding the thing it warns about.
  *
+ * One reading of zero is not enough, which CI showed after the first version of
+ * this waited for exactly that: `container.exec` resolves around the dump
+ * rather than strictly after its backend is registered and gone, so a single
+ * look can fall in the gap before the connection appears and report a quiet
+ * database that is about to be busy. Two readings with a gap between them
+ * cannot both land there.
+ *
  * The wait belongs here and not in the command. An operator's restore never
  * meets this, because nothing dumps while it runs; giving the check a grace
  * period would weaken the one guard that stops a restore fighting a live
@@ -111,12 +118,14 @@ async function backupDirectory(now: Date): Promise<string> {
  * through the command's own function.
  */
 async function dumpDisconnected(): Promise<void> {
+  let quiet = 0;
   for (let attempt = 0; attempt < 200; attempt += 1) {
     const { otherConnections } = await inspectTarget(handle.db, dataDir);
-    if (otherConnections === 0) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    quiet = otherConnections === 0 ? quiet + 1 : 0;
+    if (quiet >= 2) return;
+    await new Promise((resolve) => setTimeout(resolve, 50));
   }
-  throw new Error('a client was still connected five seconds after the dump');
+  throw new Error('a client was still connected ten seconds after the dump');
 }
 
 beforeAll(async () => {
