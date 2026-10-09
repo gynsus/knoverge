@@ -92,6 +92,13 @@ gardener is a reader of them on a schedule, not a new subsystem. That is the
 difference between this milestone and the ones before it, and it is why it can
 follow a release rather than needing one.
 
+It is a reader with one thing to add. `content_hash` is on a revision and is not
+indexed: nothing has needed to ask which *other* item carries the same hash,
+because reconciliation asks about one arriving candidate at a time. Looking
+across a whole workspace does need that index, so the core half carries one
+additive migration. An index is not a subsystem, but the claim above would be
+overstated without naming it.
+
 A workspace that has never had a provider will see fewer findings than one that
 has. That is honest and visible rather than hidden: the screen says which rules
 ran, and a rule that needs a model says so when no model is assigned, the way
