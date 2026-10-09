@@ -13,9 +13,9 @@ migration with an upgrade test, never an edit to one that shipped.
 
 Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
-a live installation. Milestone 14 is what remains, and it needs a decision
-first: most of its list requires a provider, and rule 9 says no core feature
-may.
+a live installation. Milestone 14 is what remains, and ADR 0039 has
+settled the question it was waiting on: most of its list does not require a
+provider, and the part that does is an addition rather than a prerequisite.
 
 ## Milestone 0 - repository scaffold
 
@@ -328,21 +328,31 @@ into the JSON `import-json` already reads._etadata JSON) and import;
 
 ## Milestone 14 - knowledge gardening
 
-_Not started._
+_Not started. ADR 0039 decides the shape: a job belongs to the core when its
+finding can be computed from what is already recorded, and to the optional layer
+when it rests on a judgement about meaning._
 
-Only after previous milestones are stable.
+Deliver, with no provider configured:
 
-Possible proposal-generating jobs:
+- duplicates by content hash and by text, which is the half of reconciliation's
+  matching that needs nothing but the database, pointed inward;
+- orphan sources: a source reference nothing rests on, an attachment whose item
+  is gone;
+- weak provenance: revisions that cite nothing, where the workspace mostly does;
+- stale instructions: past `valid_until`, or old and untouched;
+- taxonomy cleanup: a category with no items and no children, an alias pointing
+  nowhere;
+- stale summaries: dependencies have moved and the summary has not.
 
-- duplicate detection;
+Deliver, only where a provider is assigned:
+
+- duplicates by meaning, over embeddings;
 - merge suggestions;
-- taxonomy cleanup;
-- stale instruction detection;
-- contradiction detection;
-- orphan source detection;
-- weak-provenance detection.
+- contradictions.
 
-All automatic gardening creates proposals unless explicitly authorised.
+Every finding is a proposal and names the rule and the rows it rested on. The
+gardener gets no direct-write path at any trust tier. Findings are capped per
+rule and per run: a gardener that buries the review queue has done harm.
 
 ## Later
 
