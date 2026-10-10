@@ -25,7 +25,7 @@ contains.
 - **AI providers** — connected in the product rather than in the environment, with a wizard that probes the address, offers the models that can do the job being chosen for, and reports what one returns before it is chosen. Four jobs, each its own model: embedding, writing, looking at a picture, listening to a recording. Everything above works with none configured.
 - **Files** — bring a document in through the interface, HTTP or MCP and its text becomes an ordinary knowledge item: searched, reviewed and versioned like anything else, and an agent's file goes to the review queue exactly as an agent's writing does. Text, Markdown, HTML, PDF and Word are read here, with no provider and no network. With a vision model assigned a picture is described and the text on a screenshot is read; with a transcription model an audio or video file becomes what was said in it, and the item says which model phrased it. Anything left over is kept, can be downloaded, and can be asked for again once a model that could read it is connected. The file itself stays under the hash of its contents, beside the repositories and never in Git.
 - **Connecting a hosted assistant** — ChatGPT and Claude.ai cannot be handed a pasted token, so Knoverge is its own OAuth 2.1 authorization server for them: a connector discovers it from an unauthenticated call to `/mcp`, registers itself, and sends the person here to be asked. The consent screen names the connector and, beside it, the host the token would actually go to — one of those was chosen by whoever registered, and the other cannot be faked. Saying yes creates an agent in the workspace the person picks, which reads, searches and proposes like every other agent. Ending the connection revokes every token it issued.
-- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, recovery for a write that reached Git and no further, and `adopt-commits` for a change somebody made in the repository with an editor.
+- **Operating it** — one container plus PostgreSQL, a `knoverge` command line, `backup` and `restore`, `integrity check`, copies the installation takes itself on a schedule it is given under Settings — off until somebody turns them on, kept for as many days as they say, and sent on to one SSH target when they name one, with the host key pinned the first time it answers — an exportable audit trail, ledger key rotation that keeps old events verifiable, webhooks that carry an event and never the knowledge and are added under Settings, recovery for a write that reached Git and no further, and `adopt-commits` for a change somebody made in the repository with an editor.
 - **Taking it with you** — `knoverge export` writes one workspace as a git bundle plus a manifest, and the attachments when asked for. Opening it needs `git clone` and nothing from here. `knoverge import` puts it back on another installation with its history, its provenance and its taxonomy intact, and with nobody's credentials: who may write there is that installation's own decision.
 - **Bringing things in** — `knoverge import-folder` offers a folder of Markdown to a workspace the way an agent offers itself: a reconciliation session that says which notes it already holds, which look familiar and which are new. Nothing is written until somebody reads that and decides; `knoverge propose-from-session` is the deciding, and what happens to each proposal is the agent's policy rather than the command's. `knoverge link-from-folder` turns the `[[wikilinks]]` between accepted notes into relations, so a vault arrives as a graph rather than as a thousand loose notes, and `knoverge import-json` is the same path for an export nobody wrote a parser for. `knoverge adopt-commits` records what somebody committed to the repository by hand, so editing the knowledge with an editor is a supported way to work rather than something the integrity check complains about.
 
@@ -42,17 +42,20 @@ cp .env.example .env          # fill the four empty values: the database passwor
                               # and three secrets, each `openssl rand -hex 32`
 docker volume create knoverge-postgres
 docker volume create knoverge-data
+docker volume create knoverge-backups
 docker compose up -d
 open http://localhost:3000    # first run: the terms, the owner account, the workspace
 ```
 
-The two volumes are made by hand and declared external, so `docker compose down -v`
-cannot take the database and the workspace repositories with it. Nothing generates
+The three volumes are made by hand and declared external, so `docker compose down -v`
+cannot take the database, the workspace repositories or the copies of them with it.
+Compose will not invent one it is told is external, so a missing volume stops the
+run rather than quietly making an empty one. Nothing generates
 the secrets for you: an installation that came up with a password somebody else
 could guess would be worse than one that did not come up.
 
 To run a released image instead of building from source, replace the `build` block
-in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.3.0`. See
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.6.0`. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,

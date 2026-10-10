@@ -13,9 +13,10 @@ migration with an upgrade test, never an edit to one that shipped.
 
 Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
-a live installation. Milestone 14 is what remains, and ADR 0039 has
-settled the question it was waiting on: most of its list does not require a
-provider, and the part that does is an addition rather than a prerequisite.
+a live installation. Milestone 15 is all but its last step, unreleased on `main`.
+Milestone 14 is what remains after it, and ADR 0039 has settled the question it
+was waiting on: most of its list does not require a provider, and the part that
+does is an addition rather than a prerequisite.
 
 ## Milestone 0 - repository scaffold
 
@@ -356,8 +357,15 @@ rule and per run: a gardener that buries the review queue has done harm.
 
 ## Milestone 15 - backups you can see
 
-_Not started. ADR 0040 decides the shape: a backup is a setting the product owns,
-not a container in a compose profile._
+_All but the last step, on `main` and not yet released. ADR 0040 decides the
+shape — a backup is a setting the product owns, not a container in a compose
+profile — and ADR 0041 decides how it reaches a second machine: the server
+speaks SSH itself and pins the host key it met first._
+
+Delivered: the job, the settings and the screen, the SSH target and the host key
+it pins, and the one action that forgets that key when the far machine has been
+rebuilt. What remains is the removal, which is the only step that touches a
+running installation.
 
 Deliver:
 
@@ -374,7 +382,11 @@ Deliver:
   screen says retention applies to local copies;
 - a failing upload that does not fail the backup, and shows its last error;
 - the `backup` compose profile and its two scripts removed, and the upgrade
-  note that says to turn the setting on instead.
+  note that says to turn the setting on instead. **Remaining.** An installation
+  running the sidecar keeps taking copies until it is stopped, and the screen is
+  what replaces it, so the order on a live machine is: mount the backups volume
+  into the application and give it `KNOVERGE_BACKUP_DIR`, turn the setting on,
+  watch one copy arrive, and only then stop the sidecar.
 
 ## Later
 

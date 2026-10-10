@@ -34,6 +34,7 @@ cp .env.example .env
 # the three secrets from section 6, each `openssl rand -hex 32`.
 docker volume create knoverge-postgres
 docker volume create knoverge-data
+docker volume create knoverge-backups
 docker compose up -d
 ```
 
@@ -42,7 +43,7 @@ stops before starting anything and names the one it is missing. That is the poin
 — an installation that started with a password somebody else could guess would be
 worse than one that did not start.
 
-The two volumes are created by hand, once, and declared `external` in
+The three volumes are created by hand, once, and declared `external` in
 `docker-compose.yml`. Compose only ever removes volumes it created itself, so
 this is what keeps `docker compose down -v` from taking the database and the
 workspace repositories with it. Starting without them fails immediately and
@@ -590,9 +591,11 @@ be inside the next one.
 docker volume create knoverge-backups
 ```
 
-An installation created before this volume existed needs that one command
-before `docker compose up -d`, because the volume is declared external — the
-same reason the other two are, and the same one-time cost.
+Section 3 creates it along with the other two, so a new installation has it
+already. An installation made before this volume existed needs that one command
+before its next `docker compose up -d`: the volume is declared external, and
+Compose stops rather than inventing one — the same reason the other two are
+declared that way, and the same one-time cost.
 
 ### The second machine
 
@@ -1009,7 +1012,7 @@ unrepairable kind.
 ### Released images
 
 ```bash
-docker pull ghcr.io/gynsus/knoverge:0.3.0
+docker pull ghcr.io/gynsus/knoverge:0.6.0
 ```
 
 `ghcr.io/gynsus/knoverge`, built for `linux/amd64` and `linux/arm64` — a self-hosted
@@ -1021,7 +1024,7 @@ the current release rather than the next one being tried.
 The version is baked in at build time, so a release says which one it is:
 
 ```bash
-docker run --rm --entrypoint knoverge ghcr.io/gynsus/knoverge:0.3.0 --version
+docker run --rm --entrypoint knoverge ghcr.io/gynsus/knoverge:0.6.0 --version
 ```
 
 `/health` and `workspace_manifest` report the same number, and the MCP handshake
@@ -1030,7 +1033,7 @@ the version of a release is the tag it was cut from, and a build that reported t
 source tree's number would report the same number for every release ever made.
 
 The compose file builds the image locally by default. To run a released one, replace
-the `build` block with `image: ghcr.io/gynsus/knoverge:0.3.0`.
+the `build` block with `image: ghcr.io/gynsus/knoverge:0.6.0`.
 
 ### Schema
 
