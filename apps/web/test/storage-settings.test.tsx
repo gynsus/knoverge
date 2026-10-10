@@ -408,6 +408,21 @@ describe('how the copies are going', () => {
     expect(screen.getByText(/3 MB/)).toBeInTheDocument();
   });
 
+  it('does not say none has been taken while listing some', async () => {
+    mockApi({
+      ...signedIn(),
+      // Copies on disk and no recorded run: what the sidecar left behind, and
+      // what this installation looks like the moment it takes over from it.
+      'GET /v1/admin/backups.settings': () => json({ settings: OFF }),
+      'GET /v1/admin/backups.list': () => json({ backups: [{ ...COPY, uploaded: null }] }),
+    });
+    const client = renderApp('/settings/storage');
+
+    expect(await screen.findByText('20261010T080000Z')).toBeInTheDocument();
+    await settled(client);
+    expect(screen.queryByText(/no copy has been taken yet/i)).not.toBeInTheDocument();
+  });
+
   it('takes one when asked', async () => {
     const calls = mockApi({
       ...signedIn(),

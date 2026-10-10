@@ -128,7 +128,9 @@ export function StorageSettingsPage() {
           )}
         </div>
 
-        {current !== undefined && <LastRun settings={current} />}
+        {current !== undefined && (
+          <LastRun settings={current} any={(copies.data?.backups.length ?? 0) > 0} />
+        )}
 
         {copies.isPending ? (
           <p role="status" className="text-sm text-muted-foreground">
@@ -241,10 +243,14 @@ function HostKey({
  * local copy is a backup, and saying "failed" of it would send an operator
  * looking for a database problem that is not there (ADR 0040).
  */
-function LastRun({ settings }: { settings: BackupSettings }) {
+function LastRun({ settings, any }: { settings: BackupSettings; any: boolean }) {
   const { t, i18n } = useTranslation();
   if (settings.last_run_at === null) {
-    return <p className="text-sm text-muted-foreground">{t('backups.never_run')}</p>;
+    // Copies with no recorded run are copies this installation did not take:
+    // what the sidecar left behind, and what every installation looks like
+    // after an upgrade. The list below speaks for them, and saying "none taken"
+    // above three of them is a contradiction a reader has to resolve.
+    return any ? null : <p className="text-sm text-muted-foreground">{t('backups.never_run')}</p>;
   }
   return (
     <div className="grid gap-1">
