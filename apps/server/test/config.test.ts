@@ -104,6 +104,47 @@ describe('loadConfig', () => {
   });
 });
 
+describe('where the copies are kept', () => {
+  it('is somewhere of its own by default', () => {
+    const c = loadConfig(base);
+    expect(c.backupDir).toMatch(/[\\/]backups$/);
+    expect(c.backupDir.startsWith(`${c.dataDir}/`)).toBe(false);
+  });
+
+  it('refuses a directory inside the data directory', () => {
+    // The archive is made of the data directory, so a copy kept there is
+    // inside the next one, and every copy after that holds every copy before
+    // it (ADR 0040). It costs a message here and a disk later.
+    expect(() =>
+      loadConfig({ ...base, KNOVERGE_DATA_DIR: '/data', KNOVERGE_BACKUP_DIR: '/data/backups' }),
+    ).toThrow(ConfigError);
+    expect(() =>
+      loadConfig({ ...base, KNOVERGE_DATA_DIR: '/data', KNOVERGE_BACKUP_DIR: '/data/backups' }),
+    ).toThrow(/would be inside the next one/u);
+  });
+
+  it('refuses a data directory inside the copies, and the same directory twice', () => {
+    expect(() =>
+      loadConfig({ ...base, KNOVERGE_DATA_DIR: '/backups/data', KNOVERGE_BACKUP_DIR: '/backups' }),
+    ).toThrow(ConfigError);
+    expect(() =>
+      loadConfig({ ...base, KNOVERGE_DATA_DIR: '/srv/one', KNOVERGE_BACKUP_DIR: '/srv/one' }),
+    ).toThrow(ConfigError);
+  });
+
+  it('allows two directories that only look alike', () => {
+    // `/data` and `/database` share a prefix and are different directories.
+    // Comparing the strings would refuse this and send an operator looking for
+    // a problem they do not have.
+    const c = loadConfig({
+      ...base,
+      KNOVERGE_DATA_DIR: '/srv/data',
+      KNOVERGE_BACKUP_DIR: '/srv/database',
+    });
+    expect(c.backupDir).toBe('/srv/database');
+  });
+});
+
 describe('the example configuration', () => {
   /**
    * Baked into the image at build time, not something an operator sets, so it is

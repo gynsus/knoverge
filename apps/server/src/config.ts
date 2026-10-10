@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 import { parseEncryptionKey, type EncryptionKey } from '@knoverge/auth';
 import {
@@ -165,6 +165,18 @@ export interface EmbeddingSettings {
   apiKey: string | undefined;
 }
 
+/**
+ * Whether one resolved path is the other, or sits inside it.
+ *
+ * Through `relative` rather than by comparing strings: `/data` and `/database`
+ * share a prefix and are different directories, and the answer has to be about
+ * path segments. Both arguments are already absolute.
+ */
+function within(path: string, directory: string): boolean {
+  const step = relative(directory, path);
+  return step === '' || (!step.startsWith('..') && !isAbsolute(step));
+}
+
 export class ConfigError extends Error {
   constructor(message: string) {
     super(message);
@@ -211,13 +223,29 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
       );
     }
   }
+  const dataDir = resolve(e.KNOVERGE_DATA_DIR);
+  const backupDir = resolve(e.KNOVERGE_BACKUP_DIR);
+  // Said here, where it costs a message, rather than discovered later, where it
+  // costs disk. The archive in a copy is made of the data directory, so a copy
+  // written inside it is inside the next one, and every copy after that holds
+  // every copy before it (ADR 0040). The other way round is the same mistake
+  // from the other end: the data directory would be rebuilt from a restore
+  // that contains it.
+  if (within(backupDir, dataDir) || within(dataDir, backupDir)) {
+    throw new ConfigError(
+      'Invalid configuration:\nKNOVERGE_BACKUP_DIR: ' +
+        `${backupDir} and KNOVERGE_DATA_DIR ${dataDir} are the same directory or one is inside ` +
+        'the other. A copy is made of the data directory, so a copy kept there would be inside ' +
+        'the next one. Give the copies a directory of their own.',
+    );
+  }
   return {
     port: e.KNOVERGE_PORT,
     host: e.KNOVERGE_HOST,
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
-    dataDir: resolve(e.KNOVERGE_DATA_DIR),
-    backupDir: resolve(e.KNOVERGE_BACKUP_DIR),
+    dataDir,
+    backupDir,
     ledgerKeys,
     ...(encryptionKey ? { encryptionKey } : {}),
     sessionSecret: e.KNOVERGE_SESSION_SECRET,
