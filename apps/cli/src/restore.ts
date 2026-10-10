@@ -88,8 +88,16 @@ export function parseManifest(text: string): Manifest {
 export interface Occupied {
   /** Workspaces the database already holds. */
   workspaces: { id: string; slug: string }[];
-  /** Other clients connected to this database, which a restore would fight. */
-  otherConnections: number;
+  /**
+   * Other clients connected to this database, which a restore would fight, as
+   * they describe themselves.
+   *
+   * Names rather than a count. "One other client is connected; stop the
+   * application first" is not an instruction for somebody who has already
+   * stopped it, and the thing still holding the database is then theirs to find
+   * with no help from the command that noticed it.
+   */
+  others: string[];
   /** Entries already in the data directory. */
   dataEntries: string[];
 }
@@ -117,8 +125,10 @@ export async function inspectTarget(
   const workspaces = present.rows[0]?.present
     ? (await db.execute<{ id: string; slug: string }>(sql`SELECT id, slug FROM workspaces`)).rows
     : [];
-  const connections = await db.execute<{ others: number }>(sql`
-    SELECT count(*)::int AS others FROM pg_stat_activity
+  const connections = await db.execute<{ name: string; state: string | null }>(sql`
+    SELECT coalesce(nullif(application_name, ''), '(unnamed)') AS name,
+           coalesce(state, 'unknown') AS state
+    FROM pg_stat_activity
     WHERE datname = current_database()
       AND pid <> pg_backend_pid()
       -- Clients only. An autovacuum worker is a backend on this database with no
@@ -126,11 +136,12 @@ export async function inspectTarget(
       -- the database was tidying itself up — which CI found before an operator did.
       AND backend_type = 'client backend'
       AND coalesce(application_name, '') <> ${self}
+    ORDER BY name, state
   `);
   const dataEntries = await readdir(dataDir).catch(() => [] as string[]);
   return {
     workspaces: workspaces.map((row) => ({ id: row.id, slug: row.slug })),
-    otherConnections: connections.rows[0]?.others ?? 0,
+    others: connections.rows.map((row) => `${row.name} (${row.state})`),
     dataEntries,
   };
 }
@@ -189,9 +200,10 @@ export async function restoreBackup(
   // A server or a worker holding connections would fight the restore half way
   // through it, and `--clean` would fail on objects in use. Refused, never
   // forced: "stop application writes" is step one of the procedure.
-  if (target.otherConnections > 0) {
+  if (target.others.length > 0) {
     throw new Error(
-      `${target.otherConnections} other client(s) are connected to this database; stop the application first`,
+      `${target.others.length} other client(s) are connected to this database ` +
+        `(${target.others.join(', ')}); stop the application first`,
     );
   }
   if (target.workspaces.length > 0 && !options.force) {

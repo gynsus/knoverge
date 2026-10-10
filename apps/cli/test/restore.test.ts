@@ -91,8 +91,24 @@ async function backupDirectory(now: Date): Promise<string> {
         run('tar', ['-czf', file, '-C', directory, '.']).then(() => undefined),
     },
   );
-  await dumpDisconnected();
   return result.path;
+}
+
+/**
+ * A restore, once the database is quiet enough for the command to agree to run.
+ *
+ * The wait is here rather than at the end of the backup because the tests do
+ * work in between — an insert, a file removed, a manifest rewritten — and a
+ * database that was quiet before that is not the thing the command checks. CI
+ * found this with one client connected that a wait two statements earlier had
+ * not seen.
+ */
+async function restoreFrom(
+  from: string,
+  options: { force: boolean },
+): Promise<Awaited<ReturnType<typeof restoreBackup>>> {
+  await dumpDisconnected();
+  return restoreBackup(handle.db, ok, { from, dataDir, force: options.force }, containerTools());
 }
 
 /**
@@ -121,8 +137,8 @@ async function backupDirectory(now: Date): Promise<string> {
 async function dumpDisconnected(): Promise<void> {
   let quiet = 0;
   for (let attempt = 0; attempt < 200; attempt += 1) {
-    const { otherConnections } = await inspectTarget(handle.db, dataDir);
-    quiet = otherConnections === 0 ? quiet + 1 : 0;
+    const { others } = await inspectTarget(handle.db, dataDir);
+    quiet = others.length === 0 ? quiet + 1 : 0;
     if (quiet >= 2) return;
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -189,9 +205,9 @@ describe('knoverge restore', () => {
     // The database still holds the workspace the backup was taken from, which is
     // the shape of the accident this guards: a restore aimed at a live
     // installation.
-    await expect(
-      restoreBackup(handle.db, ok, { from, dataDir, force: false }, containerTools()),
-    ).rejects.toThrow(/already holds 1 workspace\(s\): personal/u);
+    await expect(restoreFrom(from, { force: false })).rejects.toThrow(
+      /already holds 1 workspace\(s\): personal/u,
+    );
   });
 
   it('puts it back, and says where each workspace came back to', async () => {
@@ -203,12 +219,7 @@ describe('knoverge restore', () => {
     `);
     await rm(join(dataDir, 'repositories', 'README.md'));
 
-    const result = await restoreBackup(
-      handle.db,
-      ok,
-      { from, dataDir, force: true },
-      containerTools(),
-    );
+    const result = await restoreFrom(from, { force: true });
 
     expect(result.manifest.takenAt).toBe('20260927T110000Z');
     expect(result.replaced.map((w) => w.slug).sort()).toEqual(['later', 'personal']);
@@ -234,12 +245,7 @@ describe('knoverge restore', () => {
       'utf8',
     );
 
-    const result = await restoreBackup(
-      handle.db,
-      ok,
-      { from, dataDir, force: true },
-      containerTools(),
-    );
+    const result = await restoreFrom(from, { force: true });
     expect(result.checks[0]).toMatchObject({ expected: 42, actual: 0, ledger: 'ok' });
     expect(restoredWell(result)).toBe(false);
   });
@@ -248,13 +254,21 @@ describe('knoverge restore', () => {
     const from = await backupDirectory(new Date('2026-09-27T13:00:00Z'));
     // "Stop application writes" is step one of the procedure, and a server
     // holding connections would fight the restore half way through it.
-    const other = createDatabase({ connectionString: container.getConnectionUri(), max: 1 });
+    const theirs = new URL(container.getConnectionUri());
+    theirs.searchParams.set('application_name', 'knoverge-server');
+    const other = createDatabase({ connectionString: theirs.toString(), max: 1 });
     other.pool.on('error', () => undefined);
     try {
       await other.db.execute(sql`SELECT 1`);
       await expect(
         restoreBackup(handle.db, ok, { from, dataDir, force: true }, containerTools()),
-      ).rejects.toThrow(/connected to this database; stop the application first/u);
+      ).rejects.toThrow(
+        // Named. "Stop the application first" is not an instruction for
+        // somebody who has already stopped it, and then finding what is still
+        // holding the database is theirs to do with no help from the command
+        // that noticed.
+        /1 other client\(s\) are connected to this database \(knoverge-server \(idle\)\); stop the application first/u,
+      );
     } finally {
       await other.close();
     }
