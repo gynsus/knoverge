@@ -16,6 +16,7 @@ import { WebhooksSettingsPage } from './pages/WebhooksSettingsPage.tsx';
 import { AccountSettingsPage } from './pages/AccountSettingsPage.tsx';
 import { SecuritySettingsPage } from './pages/SecuritySettingsPage.tsx';
 import { SettingsIndexPage } from './pages/SettingsIndexPage.tsx';
+import { StorageSettingsPage } from './pages/StorageSettingsPage.tsx';
 import { SyncPage } from './pages/SyncPage.tsx';
 import { SetupPage } from './pages/SetupPage.tsx';
 import { TaxonomyPage } from './pages/TaxonomyPage.tsx';
@@ -66,6 +67,7 @@ export function App() {
           <Route path="/settings/security" element={<SecuritySettingsPage />} />
           <Route path="/settings/ai" element={<AiSettingsPage />} />
           <Route path="/settings/webhooks" element={<WebhooksSettingsPage />} />
+          <Route path="/settings/storage" element={<StorageSettingsPage />} />
         </Route>
       </Route>
     </Routes>

@@ -9,7 +9,8 @@ import { ATTACHMENTS_KEY, ATTACHMENT_KEY } from '@/lib/query-keys';
 import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../../api/admin.ts';
 import { ErrorNotice } from '../ErrorNotice.tsx';
-import { readableSize, toneOf } from './attachment.ts';
+import { readableSize } from '@/lib/readable-size';
+import { toneOf } from './attachment.ts';
 
 /**
  * One file: what it is, what became of it, and how to get it back.

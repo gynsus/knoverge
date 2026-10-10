@@ -1,9 +1,11 @@
-// Fails when any locale is missing keys present in the English source, or has keys English lacks.
-import { readdirSync, readFileSync } from 'node:fs';
+// Fails when any locale is missing keys present in the English source, has keys
+// English lacks, or when the source asks for a string the catalogue has not got.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const localesDir = fileURLToPath(new URL('../src/locales', import.meta.url));
+const srcDir = fileURLToPath(new URL('../src', import.meta.url));
 const source = 'en';
 
 function flatten(obj, prefix = '') {
@@ -101,6 +103,66 @@ for (const namespace of namespaces) {
     for (const base of sourceSet.categories.keys()) {
       if (target.bases.has(base) && !target.categories.has(base)) {
         console.error(`${locale}/${namespace}: "${base}" must be pluralised in ${locale}`);
+        problems += 1;
+      }
+    }
+  }
+}
+
+/**
+ * Every literal key the interface asks for, against the catalogue it asks of.
+ *
+ * The comparison above checks the locales against each other, so a key missing
+ * from both passes it. i18next then renders the key itself, and a button reads
+ * `common.save` — which is what shipped until a test happened to assert the
+ * label. This is the check that would have said so.
+ *
+ * Only literal keys. A computed one — `t(`webhooks.standings.${standing}`)` —
+ * cannot be resolved without running the thing, and the tests that exercise
+ * those paths are what cover them.
+ */
+const CATEGORIES = ['zero', 'one', 'two', 'few', 'many', 'other'];
+
+function files(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return files(path);
+    return /\.tsx?$/.test(entry.name) ? [path] : [];
+  });
+}
+
+function nodeAt(catalogue, key) {
+  let node = catalogue;
+  for (const part of key.split('.')) {
+    if (typeof node !== 'object' || node === null || !(part in node)) return undefined;
+    node = node[part];
+  }
+  return node;
+}
+
+function resolves(catalogue, key) {
+  if (typeof nodeAt(catalogue, key) === 'string') return true;
+  // A pluralised key is stored as `base_one`, `base_other` and so on, and is
+  // asked for by its base.
+  const cut = key.lastIndexOf('.');
+  const holder = cut === -1 ? catalogue : nodeAt(catalogue, key.slice(0, cut));
+  const base = key.slice(cut + 1);
+  if (typeof holder !== 'object' || holder === null) return false;
+  return CATEGORIES.some((category) => typeof holder[`${base}_${category}`] === 'string');
+}
+
+if (statSync(srcDir, { throwIfNoEntry: false })) {
+  // One namespace, so every key belongs to it. A second one would have to be
+  // matched by prefix instead.
+  const catalogue = load(source, namespaces[0]);
+  const asked = /\bt\(\s*'([A-Za-z0-9_.]+)'/g;
+  for (const file of files(srcDir)) {
+    const text = readFileSync(file, 'utf8');
+    for (const [, key] of text.matchAll(asked)) {
+      if (!resolves(catalogue, key)) {
+        console.error(
+          `${file.slice(srcDir.length + 1)}: asks for "${key}", which ${source} has not`,
+        );
         problems += 1;
       }
     }

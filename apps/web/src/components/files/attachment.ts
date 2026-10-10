@@ -12,21 +12,3 @@ export function toneOf(state: ExtractionState): 'default' | 'destructive' | 'out
   if (state === 'extracted') return 'default';
   return 'outline';
 }
-
-/**
- * A size a person reads, from a number a computer counts in.
- *
- * Powers of two, because that is what the limit is expressed in: an operator who
- * set 25 MB should see 25 MB at the edge of it, not 26.2.
- */
-export function readableSize(bytes: number): string {
-  const units = ['B', 'KB', 'MB', 'GB'];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  const rounded = unit === 0 ? value : Math.round(value * 10) / 10;
-  return `${rounded} ${units[unit]}`;
-}

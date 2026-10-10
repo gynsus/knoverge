@@ -20,7 +20,8 @@ import { relativeTime } from '@/lib/relative-time';
 import { adminApi } from '../api/admin.ts';
 import { useWorkspaceContext } from '../auth/use-workspace.ts';
 import { AttachmentDetails } from '../components/files/AttachmentDetails.tsx';
-import { readableSize, toneOf } from '../components/files/attachment.ts';
+import { readableSize } from '@/lib/readable-size';
+import { toneOf } from '../components/files/attachment.ts';
 import { ErrorNotice } from '../components/ErrorNotice.tsx';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
