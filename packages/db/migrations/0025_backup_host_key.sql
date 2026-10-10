@@ -1,0 +1,12 @@
+-- The host key of the machine a copy is uploaded to, pinned on first use
+-- (ADR 0041).
+--
+-- A fingerprint rather than the key itself: equality is all pinning needs, and
+-- a digest is also what the settings screen shows an operator so they can
+-- compare it against the far machine. `SHA256:` plus 43 characters of base64,
+-- which is what `ssh` and `ssh-keygen` print.
+--
+-- Null means nothing has connected yet, so the next upload accepts whatever the
+-- target presents and stores it. Removing the target, or pointing it at another
+-- machine, clears this: a pin is a fact about a machine.
+ALTER TABLE "backup_settings" ADD COLUMN "target_host_fingerprint" varchar(64);

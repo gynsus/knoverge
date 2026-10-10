@@ -32,6 +32,15 @@ export const backupSettings = pgTable('backup_settings', {
    * is. An installation with no encryption key cannot set a target at all.
    */
   targetSecretCiphertext: text('target_secret_ciphertext'),
+  /**
+   * The host key accepted on the first connection, `SHA256:…` (ADR 0041).
+   *
+   * Null until something has connected, and then the next upload accepts
+   * whatever the target presents and stores it. Afterwards nothing but the same
+   * key will do. Pointing the target at another machine clears it, because a
+   * pin is a fact about a machine.
+   */
+  targetHostFingerprint: varchar('target_host_fingerprint', { length: 64 }),
 
   lastRunAt: timestampTz('last_run_at'),
   /** One line, never a body. */

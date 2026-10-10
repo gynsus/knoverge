@@ -38,6 +38,25 @@ export interface BackupStore {
   list(): Promise<StoredBackupInfo[]>;
 }
 
+/**
+ * Sending a finished copy to the machine the operator named.
+ *
+ * A port for the same reason the store is: the domain decides whether there is
+ * a target and what to record about the attempt, and does not know that the
+ * answer involves SSH. `packages/backups` is the implementation (ADR 0041).
+ */
+export interface BackupUploader {
+  upload(options: {
+    /** The finished copy on this machine. */
+    path: string;
+    name: string;
+    target: BackupTargetRecord;
+    /** The credential, already opened. */
+    secret: string;
+    knownHostFingerprint: string | null;
+  }): Promise<{ hostFingerprint: string }>;
+}
+
 /** What the settings screen is shown. Never the secret, only that there is one. */
 export interface BackupSettingsView {
   enabled: boolean;
@@ -47,6 +66,11 @@ export interface BackupSettingsView {
   targetSecretSet: boolean;
   /** Whether a target can be configured at all: there is an encryption key. */
   secretStorageConfigured: boolean;
+  /**
+   * The host key this installation has pinned, for the operator to compare
+   * against the far machine. Null until something has connected.
+   */
+  targetHostFingerprint: string | null;
   lastRunAt: Date | null;
   lastError: string | null;
   lastUploadAt: Date | null;
@@ -78,10 +102,18 @@ export interface BackupListEntry extends StoredBackupInfo {
 
 /** What `run` did, for a log line or for the operator who pressed the button. */
 export interface BackupRunReport {
+  /**
+   * Whether the copy was taken. A failed upload does not make this false: the
+   * local copy exists and is a backup (ADR 0040), and the upload has two fields
+   * of its own.
+   */
   ok: boolean;
   name: string | null;
   removed: string[];
   error: string | null;
+  /** Null when there is no target, so nothing was owed. */
+  uploaded: boolean | null;
+  uploadError: string | null;
 }
 
 /**
@@ -120,6 +152,7 @@ export class BackupService {
     const current = await this.o.settings.get();
     const target = input.target ? normaliseTarget(input.target) : null;
     const ciphertext = this.secretFor(current, target, input.targetSecret);
+    const pin = pinFor(current, target);
     await this.o.uow.run((tx) =>
       this.o.settings.save(
         tx,
@@ -129,6 +162,7 @@ export class BackupService {
           retentionDays: input.retentionDays,
           target,
           ...(ciphertext === undefined ? {} : { targetSecretCiphertext: ciphertext }),
+          ...(pin === undefined ? {} : { targetHostFingerprint: pin }),
         },
         this.clock.now(),
       ),
@@ -178,11 +212,15 @@ export class BackupService {
   /** The copies on this machine, newest first, with what is known about each. */
   async backups(): Promise<BackupListEntry[]> {
     const [stored, settings] = await Promise.all([this.o.store.list(), this.o.settings.get()]);
-    const last = settings.lastRunAt?.getTime();
+    // To the second, because that is the resolution a copy's name has and
+    // `lastRunAt` is the instant the run started. Comparing them whole would
+    // match only when a run began exactly on a second, which is to say almost
+    // never — and every copy would then claim to know nothing.
+    const last = settings.lastRunAt === null ? undefined : second(settings.lastRunAt);
     return stored.map((backup) => ({
       ...backup,
       uploaded:
-        settings.target === null || last === undefined || backup.takenAt.getTime() !== last
+        settings.target === null || last === undefined || second(backup.takenAt) !== last
           ? null
           : settings.lastUploadAt !== null
             ? true
@@ -203,14 +241,76 @@ export class BackupService {
   async run(): Promise<BackupRunReport> {
     const settings = await this.o.settings.get();
     const now = this.clock.now();
+    let taken: TakenBackup;
     try {
-      const taken = await this.o.store.take({ retentionDays: settings.retentionDays, now });
-      await this.record({ at: now, error: null, uploadedAt: null, uploadError: null });
-      return { ok: true, name: taken.name, removed: taken.removed, error: null };
+      taken = await this.o.store.take({ retentionDays: settings.retentionDays, now });
     } catch (error) {
       const message = oneLine(error);
       await this.record({ at: now, error: message, uploadedAt: null, uploadError: null });
-      return { ok: false, name: null, removed: [], error: message };
+      return {
+        ok: false,
+        name: null,
+        removed: [],
+        error: message,
+        uploaded: null,
+        uploadError: null,
+      };
+    }
+    const sent = await this.send(settings, taken);
+    await this.record({
+      at: now,
+      error: null,
+      uploadedAt: sent.at,
+      uploadError: sent.error,
+      ...(sent.hostFingerprint === undefined
+        ? {}
+        : { targetHostFingerprint: sent.hostFingerprint }),
+    });
+    return {
+      ok: true,
+      name: taken.name,
+      removed: taken.removed,
+      error: null,
+      uploaded: settings.target === null ? null : sent.error === null,
+      uploadError: sent.error,
+    };
+  }
+
+  /**
+   * The second copy, when there is somewhere to put it.
+   *
+   * A failure here is recorded and returned, never thrown: the local copy was
+   * taken and is a backup (ADR 0040). What the operator gets is a reason beside
+   * the target and a run that tries again on the next tick.
+   *
+   * The fingerprint comes back only when a connection got through, and pins the
+   * target from then on. A refused key does not clear the pin — that would turn
+   * one failed connection into permission for the next one.
+   */
+  private async send(
+    settings: BackupSettingsRecord,
+    taken: TakenBackup,
+  ): Promise<{ at: Date | null; error: string | null; hostFingerprint?: string }> {
+    const target = settings.target;
+    if (target === null) return { at: null, error: null };
+    const sealed = settings.targetSecretCiphertext;
+    if (this.o.uploader === undefined || this.o.secrets === undefined || sealed === null) {
+      // A target with nothing to authenticate with, or an installation that
+      // cannot open what it stored. Recorded rather than silent: the operator
+      // configured a target and is owed the reason nothing reached it.
+      return { at: null, error: 'the target credential cannot be opened on this installation' };
+    }
+    try {
+      const { hostFingerprint } = await this.o.uploader.upload({
+        path: taken.path,
+        name: taken.name,
+        target,
+        secret: this.o.secrets.open(sealed),
+        knownHostFingerprint: settings.targetHostFingerprint,
+      });
+      return { at: this.clock.now(), error: null, hostFingerprint };
+    } catch (error) {
+      return { at: null, error: oneLine(error) };
     }
   }
 
@@ -247,6 +347,7 @@ export class BackupService {
       target: record.target,
       targetSecretSet: record.targetSecretCiphertext !== null,
       secretStorageConfigured: this.o.secrets !== undefined,
+      targetHostFingerprint: record.targetHostFingerprint,
       lastRunAt: record.lastRunAt,
       lastError: record.lastError,
       lastUploadAt: record.lastUploadAt,
@@ -260,6 +361,14 @@ export interface BackupServiceOptions {
   settings: BackupSettingsRepository;
   store: BackupStore;
   /**
+   * Where a finished copy goes afterwards, when there is a target.
+   *
+   * Absent in a test and on an installation whose server was built without it;
+   * a configured target then records that nothing could open it rather than
+   * reporting a copy that silently stayed on one machine.
+   */
+  uploader?: BackupUploader;
+  /**
    * Sealing and opening the target's credential, when this installation can.
    *
    * Absent without a `KNOVERGE_ENCRYPTION_KEY`, and then a target cannot be
@@ -269,6 +378,34 @@ export interface BackupServiceOptions {
    */
   secrets?: { seal: (plaintext: string) => string; open: (sealed: string) => string };
   clock?: Clock;
+}
+
+/** A moment with its milliseconds dropped, which is a copy's resolution. */
+function second(at: Date): number {
+  return Math.floor(at.getTime() / 1000);
+}
+
+/**
+ * What happens to the pinned host key when the operator saves.
+ *
+ * `undefined` leaves it, which is the answer for a change of credential,
+ * directory or username: those are facts about an account, and the pin is a
+ * fact about a machine. Naming another address, or no target at all, clears it,
+ * because what was pinned is not what will answer — and the port is part of the
+ * address, since another port on the same host can be another machine
+ * altogether.
+ */
+function pinFor(
+  current: BackupSettingsRecord,
+  target: BackupTargetRecord | null,
+): string | null | undefined {
+  if (current.targetHostFingerprint === null) return undefined;
+  if (target === null) return null;
+  const same =
+    current.target !== null &&
+    current.target.host === target.host &&
+    current.target.port === target.port;
+  return same ? undefined : null;
 }
 
 /** Whether what is stored was stored for the kind the form now asks for. */

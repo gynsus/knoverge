@@ -2,7 +2,7 @@
   "name": "@knoverge/backups",
   "version": "0.0.0",
   "private": true,
-  "description": "Taking a consistent copy of the database and the workspace repositories",
+  "description": "Taking a consistent copy of the database and the workspace repositories, and sending it to another machine",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
@@ -13,8 +13,12 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
+  "dependencies": {
+    "ssh2": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/ssh2": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }

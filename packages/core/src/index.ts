@@ -65,6 +65,7 @@ export {
   type BackupServiceOptions,
   type BackupSettingsView,
   type BackupStore,
+  type BackupUploader,
   type SaveBackupSettingsInput,
   type StoredBackupInfo,
   type TakenBackup,

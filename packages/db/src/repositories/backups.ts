@@ -33,6 +33,7 @@ function toRecord(row: typeof backupSettings.$inferSelect): BackupSettingsRecord
             authKind: row.targetAuthKind as BackupAuthKind,
           },
     targetSecretCiphertext: row.targetSecretCiphertext,
+    targetHostFingerprint: row.targetHostFingerprint,
     lastRunAt: row.lastRunAt,
     lastError: row.lastError,
     lastUploadAt: row.lastUploadAt,
@@ -76,6 +77,14 @@ export function createBackupSettingsRepository(db: Database): BackupSettingsRepo
             : patch.targetSecretCiphertext !== undefined
               ? { targetSecretCiphertext: patch.targetSecretCiphertext }
               : {}),
+          // Same shape, different fact: the pin goes with the machine, so
+          // removing the target or naming another address clears it, and
+          // everything else leaves it where it is (ADR 0041).
+          ...(patch.target === null
+            ? { targetHostFingerprint: null }
+            : patch.targetHostFingerprint !== undefined
+              ? { targetHostFingerprint: patch.targetHostFingerprint }
+              : {}),
           updatedAt: at,
         })
         .where(eq(backupSettings.id, SINGLETON));
@@ -89,6 +98,11 @@ export function createBackupSettingsRepository(db: Database): BackupSettingsRepo
           lastError: outcome.error,
           lastUploadAt: outcome.uploadedAt,
           lastUploadError: outcome.uploadError,
+          // Only a connection that got through sets this, and nothing clears
+          // it: a refused key is not a reason to forget the accepted one.
+          ...(outcome.targetHostFingerprint === undefined
+            ? {}
+            : { targetHostFingerprint: outcome.targetHostFingerprint }),
           updatedAt: outcome.at,
         })
         .where(eq(backupSettings.id, SINGLETON));

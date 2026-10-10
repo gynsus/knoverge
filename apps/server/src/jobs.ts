@@ -144,7 +144,11 @@ export interface JobsOptions {
    * when backups were already on would mean restarting to turn them on.
    */
   backUpIfDue: () => Promise<
-    { ran: false; reason: string } | { ran: true; report: { ok: boolean; error: string | null } }
+    | { ran: false; reason: string }
+    | {
+        ran: true;
+        report: { ok: boolean; error: string | null; uploadError: string | null };
+      }
   >;
 }
 
@@ -224,8 +228,14 @@ export function createJobs(
         // Only what happened. An hourly line saying it was not time yet would
         // be most of the log of an installation that backs itself up nightly.
         if (!outcome.ran) return;
-        if (outcome.report.ok) logger.info(outcome.report, 'backup taken');
-        else logger.error(outcome.report, 'backup failed');
+        // A copy that was taken and did not reach the target is a warning, not
+        // a failure: the local copy is a backup (ADR 0040) and the next run
+        // tries the upload again. It still has to be said, or the only sign
+        // would be a field on a screen nobody opened.
+        if (!outcome.report.ok) logger.error(outcome.report, 'backup failed');
+        else if (outcome.report.uploadError !== null) {
+          logger.warn(outcome.report, 'backup not uploaded');
+        } else logger.info(outcome.report, 'backup taken');
       });
       await boss.schedule(BACKUP_QUEUE, BACKUP_SCHEDULE);
 

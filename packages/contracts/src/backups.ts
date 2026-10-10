@@ -54,6 +54,13 @@ export const BackupSettings = z.object({
    * credential the operator believes is encrypted.
    */
   secret_storage_configured: z.boolean(),
+  /**
+   * The host key this installation accepted from the target, `SHA256:…`
+   * (ADR 0041). Pinned on the first connection; the screen shows it so an
+   * operator can compare it against the far machine, and clearing the target
+   * clears it.
+   */
+  target_host_fingerprint: z.string().nullable(),
   last_run_at: z.iso.datetime().nullable(),
   /** One line, never a body: the far end is somebody else's machine. */
   last_error: z.string().nullable(),

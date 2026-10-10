@@ -1,6 +1,12 @@
 import { resolve } from 'node:path';
 
-import { listBackups, systemTools, takeBackup, type BackupTools } from '@knoverge/backups';
+import {
+  listBackups,
+  systemTools,
+  takeBackup,
+  uploadBackup,
+  type BackupTools,
+} from '@knoverge/backups';
 import type { WorkspaceId } from '@knoverge/contracts';
 import {
   createHttpEmbeddingProvider,
@@ -54,6 +60,7 @@ import {
   SyncService,
   UserService,
   WorkspaceService,
+  type BackupUploader,
   type LedgerKey,
   type LedgerKeyring,
 } from '@knoverge/core';
@@ -128,6 +135,12 @@ export interface ServicesConfig {
    * fail on the host. The default is the real pair.
    */
   backupTools?: BackupTools;
+  /**
+   * Where a finished copy is sent, for the same reason the tools are a seam: a
+   * test that reached a real machine over SSH would be testing somebody's
+   * network. The default is the real one (ADR 0041).
+   */
+  backupUploader?: BackupUploader;
   /**
    * The largest file an upload may carry, in bytes.
    *
@@ -484,6 +497,9 @@ export function createServices(config: ServicesConfig) {
         ),
       list: () => listBackups(backupDir),
     },
+    // SSH from this process rather than a binary in the image: the key is
+    // sealed in the database and never reaches a filesystem (ADR 0041).
+    uploader: config.backupUploader ?? { upload: (options) => uploadBackup(options) },
     // Absent without a key, and then a target cannot be configured at all —
     // the same answer webhooks and providers give (ADR 0033).
     ...(config.encryptionKey

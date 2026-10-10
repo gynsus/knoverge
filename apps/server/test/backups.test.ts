@@ -70,6 +70,32 @@ const tools: BackupTools = {
   archive: (file) => writeFile(file, 'gz', 'utf8'),
 };
 
+/**
+ * An uploader that records what it was handed, and can be made to refuse.
+ *
+ * A real one would need an SSH server; the backup package tests against one in
+ * its own suite, which is where the protocol belongs. What is tested here is
+ * that the route and the job reach it with the opened credential and that the
+ * pin comes back through the API.
+ */
+const uploads: { name: string; secret: string; knownHostFingerprint: string | null }[] = [];
+let uploadFails: string | undefined;
+const uploader = {
+  upload: async (options: {
+    name: string;
+    secret: string;
+    knownHostFingerprint: string | null;
+  }) => {
+    uploads.push({
+      name: options.name,
+      secret: options.secret,
+      knownHostFingerprint: options.knownHostFingerprint,
+    });
+    if (uploadFails !== undefined) throw new Error(uploadFails);
+    return { hostFingerprint: 'SHA256:ZkCvW2' };
+  },
+};
+
 const TARGET = {
   host: 'copies.example',
   port: 22,
@@ -87,6 +113,7 @@ beforeAll(async () => {
     dataDir,
     backupDir,
     backupTools: tools,
+    backupUploader: uploader,
     ledgerKey: parseLedgerKey('a1'.repeat(32)),
     tokenPepper: 'b2'.repeat(32),
     encryptionKey: parseEncryptionKey('d4'.repeat(32)),
@@ -298,5 +325,117 @@ describe('a place to send them', () => {
 
     expect(body.settings.target).toBeNull();
     expect(body.settings.target_secret_set).toBe(false);
+  });
+});
+
+/**
+ * Waits until the clock's second changes.
+ *
+ * A copy is named for the second it was taken in, so two runs inside one
+ * second are the same copy and the second one is refused by name. These tests
+ * drive the real clock through the API, so they have to let it move; it is
+ * under a second each and does not depend on where in the second it starts.
+ */
+async function nextSecond(): Promise<void> {
+  const second = Math.floor(Date.now() / 1000);
+  while (Math.floor(Date.now() / 1000) === second) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+describe('the copy that leaves the machine', () => {
+  /** The whole target again, since the previous block removed it. */
+  async function configure(secret?: string) {
+    return BackupSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/backups.save', {
+          enabled: true,
+          interval_hours: 12,
+          retention_days: 7,
+          target: TARGET,
+          ...(secret === undefined ? {} : { target_secret: secret }),
+        })
+      ).json(),
+    );
+  }
+
+  it('has pinned nothing before anything has connected', async () => {
+    const saved = await configure('-----BEGIN OPENSSH PRIVATE KEY-----');
+
+    expect(saved.settings.target_host_fingerprint).toBeNull();
+    expect(uploads).toEqual([]);
+  });
+
+  it('sends the copy with the opened credential, and pins what answered', async () => {
+    await nextSecond();
+    const report = TakeBackupResponse.parse((await admin.post('/v1/admin/backups.run', {})).json());
+
+    expect(report.ok).toBe(true);
+    expect(uploads).toEqual([
+      {
+        name: report.name,
+        // Opened: the far machine cannot authenticate with ciphertext, and this
+        // is the one place the plaintext is allowed to exist.
+        secret: '-----BEGIN OPENSSH PRIVATE KEY-----',
+        knownHostFingerprint: null,
+      },
+    ]);
+    expect(report.settings.target_host_fingerprint).toBe('SHA256:ZkCvW2');
+    expect(report.settings.last_upload_at).not.toBeNull();
+    expect(report.settings.last_upload_error).toBeNull();
+  });
+
+  it('hands the pin over on the next run', async () => {
+    await nextSecond();
+    await admin.post('/v1/admin/backups.run', {});
+
+    expect(uploads.at(-1)?.knownHostFingerprint).toBe('SHA256:ZkCvW2');
+  });
+
+  it('keeps the copy and reports the reason when the upload fails', async () => {
+    uploadFails = 'the host key of copies.example changed';
+    await nextSecond();
+    try {
+      const report = TakeBackupResponse.parse(
+        (await admin.post('/v1/admin/backups.run', {})).json(),
+      );
+
+      // The run succeeded: a copy on this machine is a backup (ADR 0040). What
+      // failed is the second copy, and it has its own two fields.
+      expect(report.ok).toBe(true);
+      expect(report.error).toBeNull();
+      expect(report.name).not.toBeNull();
+      expect(report.settings.last_error).toBeNull();
+      expect(report.settings.last_upload_error).toBe('the host key of copies.example changed');
+      expect(report.settings.last_upload_at).toBeNull();
+      // And the pin survives, or one refused connection would become
+      // permission for the next one.
+      expect(report.settings.target_host_fingerprint).toBe('SHA256:ZkCvW2');
+    } finally {
+      uploadFails = undefined;
+    }
+  });
+
+  it('says the copy is on this machine and not on the other one', async () => {
+    const body = BackupsResponse.parse((await admin.get('/v1/admin/backups.list')).json());
+
+    // The newest is the one whose upload just failed.
+    expect(body.backups[0]?.uploaded).toBe(false);
+  });
+
+  it('forgets the pin when the operator names another machine', async () => {
+    const body = BackupSettingsResponse.parse(
+      (
+        await admin.post('/v1/admin/backups.save', {
+          enabled: true,
+          interval_hours: 12,
+          retention_days: 7,
+          target: { ...TARGET, host: 'elsewhere.example' },
+        })
+      ).json(),
+    );
+
+    expect(body.settings.target_host_fingerprint).toBeNull();
+    expect(body.settings.target_secret_set).toBe(true);
   });
 });

@@ -7,6 +7,7 @@ import {
   type BackupSettingsRepository,
   type BackupStore,
   type BackupTargetRecord,
+  type BackupUploader,
   type StoredBackupInfo,
   type Tx,
   type UnitOfWork,
@@ -20,6 +21,7 @@ function fresh(): BackupSettingsRecord {
     retentionDays: 14,
     target: null,
     targetSecretCiphertext: null,
+    targetHostFingerprint: null,
     lastRunAt: null,
     lastError: null,
     lastUploadAt: null,
@@ -46,6 +48,9 @@ function settings(initial: BackupSettingsRecord = fresh()): BackupSettingsReposi
         ...(patch.targetSecretCiphertext === undefined
           ? {}
           : { targetSecretCiphertext: patch.targetSecretCiphertext }),
+        ...(patch.targetHostFingerprint === undefined
+          ? {}
+          : { targetHostFingerprint: patch.targetHostFingerprint }),
         updatedAt: at,
       };
     },
@@ -56,6 +61,9 @@ function settings(initial: BackupSettingsRecord = fresh()): BackupSettingsReposi
         lastError: outcome.error,
         lastUploadAt: outcome.uploadedAt,
         lastUploadError: outcome.uploadError,
+        ...(outcome.targetHostFingerprint === undefined
+          ? {}
+          : { targetHostFingerprint: outcome.targetHostFingerprint }),
       };
     },
   };
@@ -94,6 +102,21 @@ const secrets = {
   seal: (plaintext: string) => `sealed(${plaintext})`,
   open: (sealed: string) => sealed.replace(/^sealed\(|\)$/gu, ''),
 };
+
+/** An uploader that remembers what it was handed, and can be made to refuse. */
+function uploader(options?: { fail?: string; presents?: string }): BackupUploader & {
+  asked: Parameters<BackupUploader['upload']>[0][];
+} {
+  const asked: Parameters<BackupUploader['upload']>[0][] = [];
+  return {
+    asked,
+    upload: async (input) => {
+      asked.push(input);
+      if (options?.fail) throw new Error(options.fail);
+      return { hostFingerprint: options?.presents ?? 'SHA256:abc' };
+    },
+  };
+}
 
 const TARGET: BackupTargetRecord = {
   host: 'backup.example',
@@ -376,7 +399,10 @@ describe('what is on disk', () => {
         ...fresh(),
         target: TARGET,
         targetSecretCiphertext: 'sealed(k)',
-        lastRunAt: new Date('2026-10-10T09:00:00Z'),
+        // With milliseconds, as a real run has them: a copy's name is only
+        // accurate to the second, and comparing them whole would match almost
+        // never and report every copy as unknown.
+        lastRunAt: new Date('2026-10-10T09:00:00.412Z'),
         lastUploadError: 'connection refused',
       }),
       store: store({ have: copies }),
@@ -386,5 +412,207 @@ describe('what is on disk', () => {
     // The older one was taken before this target existed, and nothing records
     // what happened to it.
     expect((await service.backups()).map((b) => b.uploaded)).toEqual([false, null]);
+  });
+});
+
+describe('sending it somewhere else', () => {
+  /** An installation with a target configured and a credential stored. */
+  function configured(extra: Partial<BackupSettingsRecord> = {}): BackupSettingsRecord {
+    return {
+      ...fresh(),
+      enabled: true,
+      target: TARGET,
+      targetSecretCiphertext: 'sealed(the private key)',
+      ...extra,
+    };
+  }
+
+  it('does not reach for a target that was never configured', async () => {
+    const post = uploader();
+    const service = new BackupService({
+      uow,
+      settings: settings({ ...fresh(), enabled: true }),
+      store: store(),
+      uploader: post,
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    });
+
+    const report = await service.run();
+
+    expect(post.asked).toEqual([]);
+    // Null, not false: nothing was owed, so there is nothing to have failed.
+    expect(report.uploaded).toBeNull();
+    expect(report.uploadError).toBeNull();
+  });
+
+  it('hands over the opened credential and the copy that was just taken', async () => {
+    const rows = settings(configured());
+    const post = uploader();
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: post,
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    });
+
+    const report = await service.run();
+
+    expect(report).toMatchObject({ ok: true, uploaded: true, uploadError: null });
+    expect(post.asked).toEqual([
+      {
+        path: '/backups/20261010T090000Z',
+        name: '20261010T090000Z',
+        target: TARGET,
+        // Opened, because the far machine cannot authenticate with ciphertext.
+        secret: 'the private key',
+        knownHostFingerprint: null,
+      },
+    ]);
+    expect(rows.row().lastUploadAt).toEqual(new Date('2026-10-10T09:00:00Z'));
+    expect(rows.row().lastUploadError).toBeNull();
+  });
+
+  it('keeps the copy and reports the reason when the upload fails', async () => {
+    const rows = settings(configured());
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: uploader({ fail: 'connect ECONNREFUSED 10.0.0.9:22' }),
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    });
+
+    const report = await service.run();
+
+    // The local copy was taken, and a copy on this machine is a backup
+    // (ADR 0040). The run did not fail; the upload did.
+    expect(report).toMatchObject({
+      ok: true,
+      name: '20261010T090000Z',
+      error: null,
+      uploaded: false,
+      uploadError: 'connect ECONNREFUSED 10.0.0.9:22',
+    });
+    expect(rows.row().lastError).toBeNull();
+    expect(rows.row().lastUploadAt).toBeNull();
+    expect(rows.row().lastUploadError).toBe('connect ECONNREFUSED 10.0.0.9:22');
+  });
+
+  it('says so rather than quietly keeping one copy when nothing can send it', async () => {
+    const rows = settings(configured());
+    // A server built without an uploader, which is what a test does and what a
+    // misassembled installation would do. The operator configured a target.
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    });
+
+    const report = await service.run();
+
+    expect(report.uploaded).toBe(false);
+    expect(rows.row().lastUploadError).toMatch(/cannot be opened/u);
+  });
+
+  it('pins the host key the first connection met, and offers it back after', async () => {
+    const rows = settings(configured());
+    const post = uploader({ presents: 'SHA256:zTt+Yq' });
+    const options = {
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: post,
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    };
+
+    await new BackupService(options).run();
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:zTt+Yq');
+    expect((await new BackupService(options).settings()).targetHostFingerprint).toBe(
+      'SHA256:zTt+Yq',
+    );
+
+    await new BackupService(options).run();
+    // The second run hands the pin over, which is what makes it a pin rather
+    // than a note: the uploader has something to refuse a different key against.
+    expect(post.asked[1]?.knownHostFingerprint).toBe('SHA256:zTt+Yq');
+  });
+
+  it('keeps the pin when a connection is refused', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq' }));
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: uploader({ fail: 'the host key of backup.example changed' }),
+      secrets,
+      clock: at('2026-10-10T09:00:00Z'),
+    });
+
+    await service.run();
+
+    // Forgetting it here would turn one refused connection into permission for
+    // the next one.
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:zTt+Yq');
+  });
+
+  it('forgets the pin when the operator names another machine', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq' }));
+    const service = new BackupService({ uow, settings: rows, store: store(), secrets });
+
+    await service.save({
+      enabled: true,
+      intervalHours: 24,
+      retentionDays: 14,
+      target: { ...TARGET, host: 'elsewhere.example' },
+      targetSecret: 'the private key',
+    });
+
+    expect(rows.row().targetHostFingerprint).toBeNull();
+  });
+
+  it('forgets the pin when the port changes, because that may be another machine', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq' }));
+    const service = new BackupService({ uow, settings: rows, store: store(), secrets });
+
+    await service.save({
+      enabled: true,
+      intervalHours: 24,
+      retentionDays: 14,
+      target: { ...TARGET, port: 2222 },
+    });
+
+    expect(rows.row().targetHostFingerprint).toBeNull();
+  });
+
+  it('keeps the pin when only the account changes', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq' }));
+    const service = new BackupService({ uow, settings: rows, store: store(), secrets });
+
+    await service.save({
+      enabled: true,
+      intervalHours: 24,
+      retentionDays: 14,
+      target: { ...TARGET, username: 'copies', directory: '/srv/elsewhere' },
+    });
+
+    // The same machine will answer. A pin is a fact about a machine, and a user
+    // and a directory are facts about an account on it.
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:zTt+Yq');
+  });
+
+  it('forgets the pin with the target', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq' }));
+    const service = new BackupService({ uow, settings: rows, store: store(), secrets });
+
+    await service.save({ enabled: true, intervalHours: 24, retentionDays: 14, target: null });
+
+    expect(rows.row().targetHostFingerprint).toBeNull();
   });
 });
