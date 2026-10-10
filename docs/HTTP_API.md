@@ -134,6 +134,14 @@ POST /v1/admin/ai.test_vision               whether a model can see: a red squar
                                             said about it comes back, because a catalogue never says
                                             which models look
 
+GET  /v1/admin/backups.settings             whether this installation keeps copies of itself, how often,
+                                            how long, and where they are sent afterwards
+GET  /v1/admin/backups.list                 the copies on this machine, newest first
+POST /v1/admin/backups.save                 the whole setting at once; target_secret is given once and
+                                            never comes back, and omitting it keeps what is stored
+POST /v1/admin/backups.run                  takes one now; a failure comes back as ok=false with a
+                                            reason, because the run happened and is recorded
+
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant
 POST /v1/admin/permissions.revoke

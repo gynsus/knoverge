@@ -88,6 +88,7 @@ async function main(): Promise<void> {
         // Only where a secret can be kept. Without the key a webhook cannot be
         // created, so a sweep would have nothing to do and nothing to say.
         extractAttachments: () => services.attachmentExtractor.extractPending(),
+        backUpIfDue: () => services.backups.runIfDue(),
         ...(config.encryptionKey ? { deliverWebhooks: () => services.webhooks.deliverDue() } : {}),
       })
     : undefined;

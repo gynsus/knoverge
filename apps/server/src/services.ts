@@ -1,3 +1,6 @@
+import { resolve } from 'node:path';
+
+import { listBackups, systemTools, takeBackup, type BackupTools } from '@knoverge/backups';
 import type { WorkspaceId } from '@knoverge/contracts';
 import {
   createHttpEmbeddingProvider,
@@ -18,6 +21,7 @@ import {
 } from '@knoverge/auth';
 import {
   AgentService,
+  BackupService,
   OauthService,
   AttachmentExtractor,
   AttachmentService,
@@ -108,6 +112,22 @@ export interface ServicesConfig {
   encryptionKey?: EncryptionKey;
   /** Workspace repositories and attachments live under this directory. */
   dataDir: string;
+  /**
+   * Where the copies this installation takes of itself go.
+   *
+   * Defaulted rather than required, for the reason the attachment size is:
+   * every test that builds services would otherwise carry a directory it does
+   * not use. Never inside `dataDir`, which is what the archive is made of.
+   */
+  backupDir?: string;
+  /**
+   * The two programs a backup shells out to.
+   *
+   * A seam, and the same one the package documents: `pg_dump` has to match the
+   * server's major version, so a test that used the host's copy would pass or
+   * fail on the host. The default is the real pair.
+   */
+  backupTools?: BackupTools;
   /**
    * The largest file an upload may carry, in bytes.
    *
@@ -430,12 +450,50 @@ export function createServices(config: ServicesConfig) {
   // is not state.
   const attachmentStore = new FileAttachmentStore(config.dataDir);
   const attachmentMaxBytes = config.attachmentMaxBytes ?? DEFAULT_ATTACHMENT_MAX_BYTES;
+  const backupDir = config.backupDir ?? resolve(config.dataDir, '..', 'backups');
   const attachments = new AttachmentService({
     uow,
     attachments: repositories.attachments,
     store: attachmentStore,
     ledger,
     maxBytes: attachmentMaxBytes,
+  });
+
+  // Whether to take a copy is the domain's; taking one is the backup package's.
+  // The source is the three things it asks about the installation: the
+  // workspaces, where each ledger stands, and the write lock.
+  const backups = new BackupService({
+    uow,
+    settings: repositories.backupSettings,
+    store: {
+      take: ({ retentionDays, now }) =>
+        takeBackup(
+          {
+            workspaces: () => repositories.workspaces.list(),
+            latestSequence: (workspaceId) =>
+              repositories.events.latestSequence(workspaceId as WorkspaceId),
+            withWorkspaceLock: (workspaceId, fn) => uow.withWorkspaceLock(workspaceId, fn),
+          },
+          {
+            into: backupDir,
+            dataDir: config.dataDir,
+            retentionDays,
+            now,
+          },
+          config.backupTools ?? systemTools(config.databaseUrl),
+        ),
+      list: () => listBackups(backupDir),
+    },
+    // Absent without a key, and then a target cannot be configured at all —
+    // the same answer webhooks and providers give (ADR 0033).
+    ...(config.encryptionKey
+      ? {
+          secrets: {
+            seal: (plaintext: string) => seal(config.encryptionKey as EncryptionKey, plaintext),
+            open: (sealed: string) => openSealed(config.encryptionKey as EncryptionKey, sealed),
+          },
+        }
+      : {}),
   });
 
   const webhooks = new WebhookService({
@@ -637,6 +695,7 @@ export function createServices(config: ServicesConfig) {
     attachmentExtractor,
     /** The largest file an upload may carry; the multipart parser needs it too. */
     attachmentMaxBytes,
+    backups,
     webhooks,
     /**
      * Whether a webhook signing secret has somewhere to live.

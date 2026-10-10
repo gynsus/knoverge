@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  BACKUP_QUEUE,
   EMBEDDING_QUEUE,
   EXTRACTION_QUEUE,
   MAINTENANCE_QUEUE,
@@ -20,6 +21,7 @@ describe('the line that says the job runner started', () => {
       EMBEDDING_QUEUE,
       `${EMBEDDING_QUEUE}.sweep`,
       EXTRACTION_QUEUE,
+      BACKUP_QUEUE,
       WEBHOOK_QUEUE,
     ]);
   });
@@ -35,6 +37,12 @@ describe('the line that says the job runner started', () => {
       // Extraction runs whether or not a webhook can be kept: a file's text is
       // not a notification and needs no key.
       EXTRACTION_QUEUE,
+      // And so does the backup queue, which asks the settings every hour
+      // whether it is time. It is registered on an installation that backs
+      // nothing up, because the setting is changed while the product runs and
+      // a queue that appeared only once backups were on would mean restarting
+      // to turn them on.
+      BACKUP_QUEUE,
     ]);
   });
 });

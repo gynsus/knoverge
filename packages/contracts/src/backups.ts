@@ -92,3 +92,20 @@ export type BackupSummary = z.infer<typeof BackupSummary>;
 
 export const BackupsResponse = z.object({ backups: z.array(BackupSummary) });
 export type BackupsResponse = z.infer<typeof BackupsResponse>;
+
+/**
+ * What taking one now did.
+ *
+ * A failure is part of the answer rather than an error status: the run
+ * happened, it is recorded against the installation, and the reason belongs on
+ * the screen beside the setting — the same place a failing webhook's does.
+ */
+export const TakeBackupResponse = z.object({
+  ok: z.boolean(),
+  name: z.string().nullable(),
+  /** Copies that fell out of the retention window during this run. */
+  removed: z.array(z.string()),
+  error: z.string().nullable(),
+  settings: BackupSettings,
+});
+export type TakeBackupResponse = z.infer<typeof TakeBackupResponse>;

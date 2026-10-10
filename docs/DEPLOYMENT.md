@@ -571,11 +571,35 @@ KNOVERGE_DATA_VOLUME=knoverge_knoverge-data
 ## 9. Backups
 
 A complete backup contains the database, the data directory and the secrets. The
-first two are taken together, on a schedule by the `backup` service or on demand by
+first two are taken together, by the application itself or on demand by
 `knoverge backup`; the third is yours to keep somewhere else.
+
+### The setting
+
+Backups are off until somebody turns them on, and the Settings page says so
+rather than saying nothing (ADR 0040). Turning them on asks for two numbers —
+how often a copy is taken, and how many days copies are kept on this machine —
+and the job that does it runs in the worker role.
+
+The copies go to `KNOVERGE_BACKUP_DIR`, which is `/backups` in the compose file
+and a volume of its own. It is not inside the data directory on purpose: the
+data directory is what the archive is made of, so a backup written there would
+be inside the next one.
 
 ```bash
 docker volume create knoverge-backups
+```
+
+An installation created before this volume existed needs that one command
+before `docker compose up -d`, because the volume is declared external — the
+same reason the other two are, and the same one-time cost.
+
+### The sidecar
+
+The `backup` profile still exists and is being removed. An installation running
+it should turn the setting on and stop it; running both takes every copy twice.
+
+```bash
 docker compose --profile backup up -d
 ```
 

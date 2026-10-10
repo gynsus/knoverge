@@ -58,6 +58,17 @@ export type {
   BackupSettingsRepository,
   BackupTargetRecord,
 } from './backups/repository.ts';
+export {
+  BackupService,
+  type BackupListEntry,
+  type BackupRunReport,
+  type BackupServiceOptions,
+  type BackupSettingsView,
+  type BackupStore,
+  type SaveBackupSettingsInput,
+  type StoredBackupInfo,
+  type TakenBackup,
+} from './backups/service.ts';
 export { OauthFailure } from './oauth/errors.ts';
 export {
   ACCESS_TOKEN_TTL_MS,
