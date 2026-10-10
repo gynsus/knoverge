@@ -107,5 +107,12 @@ export function createBackupSettingsRepository(db: Database): BackupSettingsRepo
         })
         .where(eq(backupSettings.id, SINGLETON));
     },
+
+    async clearHostFingerprint(tx: Tx, at: Date) {
+      await asTx(tx)
+        .update(backupSettings)
+        .set({ targetHostFingerprint: null, updatedAt: at })
+        .where(eq(backupSettings.id, SINGLETON));
+    },
   };
 }

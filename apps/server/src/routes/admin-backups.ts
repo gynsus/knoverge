@@ -118,6 +118,23 @@ export function registerAdminBackupRoutes(app: FastifyInstance, services: Servic
   );
 
   r.post(
+    '/v1/admin/backups.clear_host_key',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { response: { 200: BackupSettingsResponse } },
+    },
+    async (request) => {
+      await requirePermission(services, request, 'workspace.admin');
+      const { forgotten, settings: view } = await services.backups.clearHostKey();
+      // A warning, because it widens what the next connection will accept, and
+      // with the old fingerprint in it, because the column that held it is now
+      // empty and this line is the only record of what was trusted before.
+      request.log.warn({ forgotten }, 'pinned backup host key cleared');
+      return { settings: settings(view) };
+    },
+  );
+
+  r.post(
     '/v1/admin/backups.run',
     {
       onRequest: csrfUnlessBearer(app),

@@ -209,6 +209,28 @@ export class BackupService {
     );
   }
 
+  /**
+   * Forgets the pinned host key, so the next upload accepts what answers.
+   *
+   * The one deliberate exception to pinning, and the action the refusal message
+   * points at (ADR 0041). An operator who rebuilt the target machine has no
+   * other way through: the host, the port, the account and the directory are
+   * all unchanged, so saving the same settings leaves the pin exactly where it
+   * was, and removing the target to put it back would mean finding the key
+   * again.
+   *
+   * Its own verb rather than a field on the settings form, because it is a
+   * decision about trust rather than a setting: it says that whatever answers
+   * next is the machine the operator means, once. What was pinned comes back
+   * with it, because the column is about to be empty and the log line is then
+   * the only record of what this installation used to trust.
+   */
+  async clearHostKey(): Promise<{ forgotten: string | null; settings: BackupSettingsView }> {
+    const forgotten = (await this.o.settings.get()).targetHostFingerprint;
+    await this.o.uow.run((tx) => this.o.settings.clearHostFingerprint(tx, this.clock.now()));
+    return { forgotten, settings: await this.settings() };
+  }
+
   /** The copies on this machine, newest first, with what is known about each. */
   async backups(): Promise<BackupListEntry[]> {
     const [stored, settings] = await Promise.all([this.o.store.list(), this.o.settings.get()]);

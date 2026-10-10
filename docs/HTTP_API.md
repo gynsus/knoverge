@@ -143,6 +143,10 @@ GET  /v1/admin/backups.list                 the copies on this machine, newest f
 POST /v1/admin/backups.save                 the whole setting at once; target_secret is given once and
                                             never comes back, and omitting it keeps what is stored.
                                             Naming another host or port clears the pinned host key
+POST /v1/admin/backups.clear_host_key       forgets the pinned host key, so the next upload accepts
+                                            whatever answers and pins that. The way through after the
+                                            target machine was rebuilt, where nothing about the address
+                                            changed and so nothing else clears it
 POST /v1/admin/backups.run                  takes one now; a failure comes back as ok=false with a
                                             reason, because the run happened and is recorded. A copy
                                             that was taken and did not reach the target is ok=true

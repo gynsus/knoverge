@@ -80,6 +80,8 @@ const tools: BackupTools = {
  */
 const uploads: { name: string; secret: string; knownHostFingerprint: string | null }[] = [];
 let uploadFails: string | undefined;
+/** What the far end presents. A rebuilt machine presents another one. */
+let presents = 'SHA256:ZkCvW2';
 const uploader = {
   upload: async (options: {
     name: string;
@@ -92,7 +94,7 @@ const uploader = {
       knownHostFingerprint: options.knownHostFingerprint,
     });
     if (uploadFails !== undefined) throw new Error(uploadFails);
-    return { hostFingerprint: 'SHA256:ZkCvW2' };
+    return { hostFingerprint: presents };
   },
 };
 
@@ -194,7 +196,11 @@ describe('an installation that has configured nothing', () => {
       });
       expect(res.statusCode, res.body).toBe(403);
     }
-    for (const url of ['/v1/admin/backups.save', '/v1/admin/backups.run']) {
+    for (const url of [
+      '/v1/admin/backups.save',
+      '/v1/admin/backups.run',
+      '/v1/admin/backups.clear_host_key',
+    ]) {
       const res = await app.inject({
         method: 'POST',
         url,
@@ -437,5 +443,61 @@ describe('the copy that leaves the machine', () => {
 
     expect(body.settings.target_host_fingerprint).toBeNull();
     expect(body.settings.target_secret_set).toBe(true);
+  });
+});
+
+/**
+ * The case nothing else covers: the target machine was rebuilt.
+ *
+ * Its host, port, account and directory are all what the operator typed, so
+ * saving the same settings leaves the pin where it is and every upload fails
+ * (ADR 0041). This is the one action that says the next machine to answer is
+ * the one they mean.
+ */
+describe('the machine that was rebuilt', () => {
+  it('keeps the target and the credential, and forgets only the key', async () => {
+    await admin.post('/v1/admin/backups.save', {
+      enabled: true,
+      interval_hours: 12,
+      retention_days: 7,
+      target: TARGET,
+    });
+    await nextSecond();
+    const pinned = TakeBackupResponse.parse((await admin.post('/v1/admin/backups.run', {})).json());
+    expect(pinned.settings.target_host_fingerprint).toBe('SHA256:ZkCvW2');
+
+    const body = BackupSettingsResponse.parse(
+      (await admin.post('/v1/admin/backups.clear_host_key', {})).json(),
+    );
+
+    expect(body.settings.target_host_fingerprint).toBeNull();
+    // Only the key. Removing the target to clear the pin would mean finding
+    // the private key again, which is why this is its own action.
+    expect(body.settings.target).toMatchObject(TARGET);
+    expect(body.settings.target_secret_set).toBe(true);
+    expect(body.settings.interval_hours).toBe(12);
+    expect(body.settings.retention_days).toBe(7);
+  });
+
+  it('lets the next run accept whatever answers, and pins that', async () => {
+    presents = 'SHA256:therebuiltone';
+    await nextSecond();
+
+    const report = TakeBackupResponse.parse((await admin.post('/v1/admin/backups.run', {})).json());
+
+    // Nothing pinned, so the upload accepts what it is given — once.
+    expect(uploads.at(-1)?.knownHostFingerprint).toBeNull();
+    expect(report.settings.target_host_fingerprint).toBe('SHA256:therebuiltone');
+    expect(report.settings.last_upload_error).toBeNull();
+  });
+
+  it('is willing to forget nothing, so pressing it twice is not an error', async () => {
+    await admin.post('/v1/admin/backups.clear_host_key', {});
+
+    const body = BackupSettingsResponse.parse(
+      (await admin.post('/v1/admin/backups.clear_host_key', {})).json(),
+    );
+
+    expect(body.settings.target_host_fingerprint).toBeNull();
   });
 });
