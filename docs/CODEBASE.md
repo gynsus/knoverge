@@ -1048,6 +1048,18 @@ taken and did not reach the target is a success with a reason beside the target:
 the local copy is a backup (ADR 0040), the next run tries again, and the job logs
 it as a warning so the only sign is not a field on a screen nobody opened.
 
+`ssh2` is the first dependency this repository does not bundle. The two apps are
+single bundled files, which follow a workspace package into its own npm
+dependencies — and inside `ssh2` are optional native bindings this installation
+deliberately does not build. The library falls back to its own JavaScript when
+they are missing, but a bundler resolves them before anything can catch the
+failure. So the tsup configs name it external, and both apps declare it, because
+`pnpm deploy --prod` installs what an app's own manifest asks for and a
+transitive dependency arrives only inside pnpm's private directory, which is not
+on the resolution path of the bundle beside it. Externalising without declaring
+builds an image that fails on its first import, which is why
+`apps/server/test/bundle.test.ts` compares the two lists.
+
 ## Letting a hosted connector in
 
 `packages/core/src/oauth/service.ts` is an authorization server whose whole job is

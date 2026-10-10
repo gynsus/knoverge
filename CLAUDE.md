@@ -465,7 +465,7 @@ Full rules: `docs/WORKFLOW.md`. Summary:
 - Contracts first: `packages/contracts`, then domain, then both MCP and HTTP adapters, then tests for both.
 - Persistence change means Drizzle schema, migration, repository tests and `DATA_MODEL.md`. Before v0.1.0 migrations may be squashed into one baseline (say so in the PR); after v0.1.0 they are immutable.
 - UI text only through `en` and `ru` catalogues.
-- Before committing run `pnpm lint`, `pnpm typecheck`, `pnpm test` and review `git diff`. Report any check that could not run.
+- Before committing run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` and review `git diff`. Report any check that could not run. The build is not optional: it is the only check that sees the bundler, and a dependency that cannot be bundled passes the other three.
 - Commits: Conventional Commits, `git commit -s` with the maintainer's identity, no other attribution trailers. PR descriptions carry no tool attribution lines.
 - Rebase on `origin/main` before the PR; never merge `main` into the branch; `--force-with-lease` only.
 - Never merge a PR unless the owner says so.
