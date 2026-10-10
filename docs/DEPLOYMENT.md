@@ -585,7 +585,9 @@ and the job that does it runs in the worker role.
 The copies go to `KNOVERGE_BACKUP_DIR`, which is `/backups` in the compose file
 and a volume of its own. It is not inside the data directory on purpose: the
 data directory is what the archive is made of, so a backup written there would
-be inside the next one.
+be inside the next one, and every copy after that would hold every copy before
+it. The server refuses to start when the two overlap in either direction rather
+than letting a disk fill up to make the point.
 
 ```bash
 docker volume create knoverge-backups
