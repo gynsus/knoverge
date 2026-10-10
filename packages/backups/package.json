@@ -1,0 +1,21 @@
+{
+  "name": "@knoverge/backups",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Taking a consistent copy of the database and the workspace repositories",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

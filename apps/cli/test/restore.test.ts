@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { sql } from 'drizzle-orm';
+import { takeBackup } from '@knoverge/backups';
 import type { WorkspaceId } from '@knoverge/contracts';
 import {
   createDatabase,
@@ -17,7 +18,7 @@ import {
 } from '@knoverge/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { takeBackup } from '../src/backup.ts';
+import { backupSource } from '../src/backup.ts';
 import {
   SELF,
   inspectTarget,
@@ -82,8 +83,8 @@ function containerTools(): RestoreTools & { dumpInto: (file: string) => Promise<
 async function backupDirectory(now: Date): Promise<string> {
   const tools = containerTools();
   const result = await takeBackup(
-    services,
-    { into, dataDir, keep: 14, now },
+    backupSource(services),
+    { into, dataDir, retentionDays: 14, now },
     {
       dump: (file) => tools.dumpInto(file),
       archive: (file, directory) =>

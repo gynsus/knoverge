@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { takeBackup, type BackupTools } from '@knoverge/backups';
 import type { WorkspaceId } from '@knoverge/contracts';
 import {
   createDatabase,
@@ -16,7 +17,7 @@ import {
 } from '@knoverge/db';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { takeBackup, type BackupTools } from '../src/backup.ts';
+import { backupSource } from '../src/backup.ts';
 import type { Services } from '../src/run.ts';
 
 const run = promisify(execFile);
@@ -103,13 +104,22 @@ afterAll(async () => {
     if (dir) await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
+/**
+ * What only a real database can say.
+ *
+ * The order of the steps, the staging rename and rotation are the backup
+ * package's own tests, which need no container. What is here is a real
+ * `pg_dump` against a matching server and a real advisory lock with a second
+ * connection waiting on it — neither of which a stub can be wrong about
+ * convincingly.
+ */
 describe('knoverge backup', () => {
   it('writes a whole backup, or nothing that looks like one', async () => {
     const tools = containerTools();
     let midRun: string[] = [];
     const result = await takeBackup(
-      services,
-      { into, dataDir, keep: 14, now: new Date('2026-09-27T10:00:00Z') },
+      backupSource(services),
+      { into, dataDir, retentionDays: 14, now: new Date('2026-09-27T10:00:00Z') },
       {
         dump: async (file) => {
           // What is on disk while the backup is being taken. A run killed here
@@ -144,36 +154,14 @@ describe('knoverge backup', () => {
     expect(manifest).toContain(`workspace=${workspaceId} slug=personal sequence=0`);
   });
 
-  it('dumps the database before it archives the repositories', async () => {
-    // The order the deployment guide gives, and the reason is asymmetric: a
-    // database ahead of the archive is a revision with no commit, which nothing
-    // can repair.
-    const order: string[] = [];
-    await takeBackup(
-      services,
-      { into, dataDir, keep: 14, now: new Date('2026-09-27T11:00:00Z') },
-      {
-        dump: async (file) => {
-          order.push('dump');
-          await writeFile(file, 'PGDMP-not-really', 'utf8');
-        },
-        archive: async (file) => {
-          order.push('archive');
-          await writeFile(file, 'tar-not-really', 'utf8');
-        },
-      },
-    );
-    expect(order).toEqual(['dump', 'archive']);
-  });
-
   it('holds every workspace write lock while it runs', async () => {
     // The whole point of the command: `infra/backup/backup.sh` cannot do this,
     // so a write in flight lands on one side of its backup and not the other.
     let waiting: Promise<string> | undefined;
     let outcome: string | undefined;
     await takeBackup(
-      services,
-      { into, dataDir, keep: 14, now: new Date('2026-09-27T12:00:00Z') },
+      backupSource(services),
+      { into, dataDir, retentionDays: 14, now: new Date('2026-09-27T12:00:00Z') },
       {
         dump: async (file) => {
           // A writer of the same workspace, from a connection of its own. Not
@@ -194,47 +182,5 @@ describe('knoverge backup', () => {
     // And it goes through once the backup lets go, which is what makes this a
     // pause rather than a refusal.
     expect(await waiting).toBe('took it');
-  });
-
-  it('leaves nothing behind when the dump fails', async () => {
-    const before = await readdir(into);
-    await expect(
-      takeBackup(
-        services,
-        { into, dataDir, keep: 14, now: new Date('2026-09-27T13:00:00Z') },
-        {
-          dump: async () => {
-            throw new Error('pg_dump: connection refused');
-          },
-          archive: async (file) => writeFile(file, '', 'utf8'),
-        },
-      ),
-    ).rejects.toThrow(/connection refused/u);
-    // Not even the staging directory: a half-written backup is worse than none,
-    // because somebody restores from it.
-    expect((await readdir(into)).sort()).toEqual(before.sort());
-  });
-
-  it('keeps the last few and removes the rest, counting only whole ones', async () => {
-    const older = ['20260101T000000Z', '20260102T000000Z', '20260103T000000Z'];
-    for (const name of older) await mkdir(join(into, name), { recursive: true });
-    // A run that died: rotation must not count it, or a partial backup could push
-    // a good one out of the window.
-    await mkdir(join(into, '20260104T000000Z.partial'), { recursive: true });
-
-    const result = await takeBackup(
-      services,
-      { into, dataDir, keep: 2, now: new Date('2026-09-27T14:00:00Z') },
-      {
-        dump: async (file) => writeFile(file, 'PGDMP-not-really', 'utf8'),
-        archive: async (file) => writeFile(file, 'tar-not-really', 'utf8'),
-      },
-    );
-    const left = (await readdir(into)).filter((name) => /^\d{8}T\d{6}Z$/u.test(name)).sort();
-    // The newest two, and this run is one of them.
-    expect(left).toHaveLength(2);
-    expect(left).toContain('20260927T140000Z');
-    expect(result.removed).toContain('20260101T000000Z');
-    expect(await readdir(join(into, '20260104T000000Z.partial'))).toEqual([]);
   });
 });

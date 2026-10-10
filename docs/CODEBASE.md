@@ -11,6 +11,7 @@ db          Drizzle schema, migrations, repositories implementing core ports, un
 git-store   Markdown, hashing, slugs, taxonomy.yaml, Git operations.
 search      Projections and retrieval implementing core ports.
 auth        Password and token hashing primitives.
+backups     Taking one consistent copy: the dump, the archive, the manifest, rotation.
 policy      Permission and policy evaluation, used by core services.
 server      Fastify adapters (HTTP, MCP), composition root, worker.
 cli         Command adapters, composition root.
@@ -981,6 +982,21 @@ cannot import them again, which is the difference between moving a workspace and
 making a second copy of one (ADR 0035). Actors are recreated with new ids and no
 user or agent behind them: the interface still says who wrote something, and
 nobody gains the ability to write again.
+
+## Taking a copy of the whole installation
+
+`packages/backups` holds the mechanism and nothing else: the two external
+programs behind one interface, every workspace's write lock taken in sorted order
+and held across both steps, the staging directory renamed into place at the end,
+the manifest, and rotation by age.
+
+It is a package for the reason `packages/attachments` is one. The command line
+takes a copy when an operator asks, and the scheduled job in the server takes the
+same copy on its own (ADR 0040); two implementations would be two formats to
+restore, and the one nobody ran by hand would be the one that was wrong.
+
+What is not here is whether to take a copy at all. That is a setting, and
+settings are the domain's.
 
 ## Letting a hosted connector in
 
