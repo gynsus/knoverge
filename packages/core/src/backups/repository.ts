@@ -85,4 +85,13 @@ export interface BackupSettingsRepository {
   ): Promise<void>;
   /** Records what a run did. Separate from `save`, which is the operator's. */
   recordRun(tx: Tx, outcome: BackupRunOutcome): Promise<void>;
+  /**
+   * Forgets the pinned host key and nothing else.
+   *
+   * One column rather than a re-save of the row: what the operator is deciding
+   * is about trust, and reading the settings back only to write them again
+   * would let a schedule somebody changed in the meantime be overwritten by
+   * this.
+   */
+  clearHostFingerprint(tx: Tx, at: Date): Promise<void>;
 }

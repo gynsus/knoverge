@@ -1043,6 +1043,16 @@ a fact about a machine and the port is part of the address, while a new
 credential, directory or username leaves it alone. A refused connection never
 pins what answered — that would turn one failure into permission for the next.
 
+`backups.clear_host_key` is the way out of the case nothing else covers: the
+target machine was rebuilt, so the host, the port, the account and the directory
+are all what the operator typed, and every upload fails. It is its own verb
+rather than a field on the form because what it says is about trust and not
+about configuration — the next connection accepts whatever answers, once — and
+it writes the one column rather than re-saving the row, so a schedule somebody
+changed in between is not overwritten by a decision about a key. The log line
+carries the fingerprint that was forgotten, because the column that held it is
+then empty.
+
 `BackupService.run` therefore has two outcomes rather than one. A copy that was
 taken and did not reach the target is a success with a reason beside the target:
 the local copy is a backup (ADR 0040), the next run tries again, and the job logs

@@ -54,6 +54,9 @@ function settings(initial: BackupSettingsRecord = fresh()): BackupSettingsReposi
         updatedAt: at,
       };
     },
+    clearHostFingerprint: async (_tx, at) => {
+      row = { ...row, targetHostFingerprint: null, updatedAt: at };
+    },
     recordRun: async (_tx, outcome) => {
       row = {
         ...row,
@@ -614,5 +617,62 @@ describe('sending it somewhere else', () => {
     await service.save({ enabled: true, intervalHours: 24, retentionDays: 14, target: null });
 
     expect(rows.row().targetHostFingerprint).toBeNull();
+  });
+
+  it('forgets the pin on its own, and says what it forgot', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:zTt+Yq', intervalHours: 6 }));
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      secrets,
+      clock: at('2026-10-10T11:00:00Z'),
+    });
+
+    const result = await service.clearHostKey();
+
+    // What was trusted comes back, because the column that held it is now
+    // empty and the caller's log line is the only place left to put it.
+    expect(result.forgotten).toBe('SHA256:zTt+Yq');
+    expect(result.settings.targetHostFingerprint).toBeNull();
+    // And nothing else moved: the target the operator typed is still there,
+    // with its credential and its schedule.
+    expect(result.settings.target).toEqual(TARGET);
+    expect(result.settings.targetSecretSet).toBe(true);
+    expect(result.settings.intervalHours).toBe(6);
+    expect(rows.row().updatedAt).toEqual(new Date('2026-10-10T11:00:00Z'));
+  });
+
+  it('lets the next upload pin whatever answers, once', async () => {
+    // The case nothing else covers: the target machine was rebuilt, so the
+    // address is what the operator typed and every upload fails.
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:theoldmachine' }));
+    const post = uploader({ presents: 'SHA256:therebuiltone' });
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: post,
+      secrets,
+    });
+
+    await service.clearHostKey();
+    const report = await service.run();
+
+    expect(post.asked[0]?.knownHostFingerprint).toBeNull();
+    expect(report.uploaded).toBe(true);
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:therebuiltone');
+  });
+
+  it('is willing to forget nothing', async () => {
+    const rows = settings(configured());
+    const service = new BackupService({ uow, settings: rows, store: store(), secrets });
+
+    // An operator pressing it on an installation that has never connected.
+    // Nothing to report and nothing to refuse: the pin is already absent.
+    const result = await service.clearHostKey();
+
+    expect(result.forgotten).toBeNull();
+    expect(result.settings.targetHostFingerprint).toBeNull();
   });
 });

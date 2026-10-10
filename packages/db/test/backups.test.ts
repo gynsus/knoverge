@@ -151,6 +151,33 @@ describe('a target', () => {
     expect(s.target).toBeNull();
     expect(s.targetSecretCiphertext).toBeNull();
   });
+
+  it('can have its pinned host key cleared without losing anything else', async () => {
+    await store('sealed:rebuilt-machine');
+    await uow.run((tx) =>
+      settings.recordRun(tx, {
+        at: at(4),
+        error: null,
+        uploadedAt: at(4),
+        uploadError: null,
+        targetHostFingerprint: 'SHA256:theoldmachine',
+      }),
+    );
+
+    await uow.run((tx) => settings.clearHostFingerprint(tx, at(5)));
+
+    const s = await settings.get();
+    expect(s.targetHostFingerprint).toBeNull();
+    // One column. The target machine was rebuilt, and the address, the
+    // credential, the schedule and the window are all still what the operator
+    // chose — this is a decision about a key and nothing else.
+    expect(s.target).toEqual(target);
+    expect(s.targetSecretCiphertext).toBe('sealed:rebuilt-machine');
+    expect(s.intervalHours).toBe(12);
+    expect(s.retentionDays).toBe(30);
+    expect(s.lastUploadAt).toEqual(at(4));
+    expect(s.updatedAt).toEqual(at(5));
+  });
 });
 
 describe('what a run leaves behind', () => {
