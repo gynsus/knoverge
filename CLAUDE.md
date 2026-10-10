@@ -235,6 +235,7 @@ apps/
 packages/
   attachments/
   auth/
+  backups/
   contracts/
   core/
   db/
@@ -320,6 +321,19 @@ nothing loads a PDF engine until a PDF arrives.
 Not here: what that text *becomes*. It is an ordinary `document` knowledge item
 with the usual provenance and review, written by the domain as the person or agent
 who uploaded the file.
+
+### `packages/backups`
+
+One consistent copy of the installation: a `pg_dump` and a `tar` behind one
+interface, every workspace's write lock held across both, the manifest that says
+where each ledger stood, and rotation by age.
+
+A package rather than a file in the server because the command line takes the
+same copy: `knoverge backup` on demand and the scheduled job in the worker role
+(ADR 0040). Two implementations would be two formats to restore.
+
+Not here: whether to take one, how often, and where it goes afterwards. That is a
+setting, and settings belong to the domain.
 
 ### `packages/search`
 

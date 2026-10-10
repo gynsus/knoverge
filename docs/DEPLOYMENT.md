@@ -582,7 +582,7 @@ docker compose --profile backup up -d
 ### On demand, with nothing writing
 
 ```bash
-docker compose exec knoverge knoverge backup --out /backups --keep 14
+docker compose exec knoverge knoverge backup --out /backups --keep-days 14
 ```
 
 Same layout, one difference, and it is the one that matters: this takes the write
