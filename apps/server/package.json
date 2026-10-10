@@ -23,6 +23,7 @@
     "@fastify/swagger": "catalog:",
     "@knoverge/attachments": "workspace:*",
     "@knoverge/auth": "workspace:*",
+    "@knoverge/backups": "workspace:*",
     "@knoverge/contracts": "workspace:*",
     "@knoverge/core": "workspace:*",
     "@knoverge/db": "workspace:*",

@@ -998,6 +998,25 @@ restore, and the one nobody ran by hand would be the one that was wrong.
 What is not here is whether to take a copy at all. That is a setting, and
 settings are the domain's.
 
+`packages/core/src/backups/service.ts` holds that half. It reads the one row the
+migration created, decides whether a copy is due, asks a `BackupStore` port for
+one and records what happened — so its tests take milliseconds and never meet
+`pg_dump`. The server is what binds the port to the package.
+
+Three decisions live there rather than in a form. A target with no credential to
+reach it is refused, and so is one whose stored credential was stored for the
+other kind — keeping a key while the form now says password would authenticate
+with something nobody chose. A directory on the far machine has to be absolute,
+because a relative one lands wherever that account's home is today. And a run
+that failed is recorded and returned rather than thrown: the run happened, and
+the reason belongs beside the setting, where a failing webhook's already is.
+
+The job asks hourly and almost always answers no, because the interval is the
+operator's setting and the schedule is not. It is registered in the worker role
+whether or not backups are on: the setting changes while the product runs, and a
+queue that appeared only once somebody turned backups on would mean restarting
+to turn them on.
+
 ## Letting a hosted connector in
 
 `packages/core/src/oauth/service.ts` is an authorization server whose whole job is

@@ -23,6 +23,14 @@ const EnvSchema = z.object({
       'KNOVERGE_DATABASE_URL must be a postgres:// URL',
     ),
   KNOVERGE_DATA_DIR: z.string().min(1).default('./data'),
+  /**
+   * Where the copies this installation takes of itself are kept.
+   *
+   * Not inside the data directory, which is what the archive is made of: a
+   * backup written there would be inside the next one, and the one after that
+   * would hold both (ADR 0040).
+   */
+  KNOVERGE_BACKUP_DIR: z.string().min(1).default('./backups'),
   KNOVERGE_LEDGER_KEY: z.string().min(1, 'KNOVERGE_LEDGER_KEY is required'),
   /**
    * Keys that verify and no longer sign, comma separated.
@@ -118,6 +126,8 @@ export interface Config {
   role: 'all' | 'web' | 'worker';
   databaseUrl: string;
   dataDir: string;
+  /** Where backups are written. A volume of its own, beside the data (ADR 0040). */
+  backupDir: string;
   /** HMAC key of the event ledger (ADR 0007). */
   /** The key that signs, and the retired ones that only verify (ADR 0030). */
   ledgerKeys: LedgerKeyring;
@@ -207,6 +217,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     role: e.KNOVERGE_ROLE,
     databaseUrl: e.KNOVERGE_DATABASE_URL,
     dataDir: resolve(e.KNOVERGE_DATA_DIR),
+    backupDir: resolve(e.KNOVERGE_BACKUP_DIR),
     ledgerKeys,
     ...(encryptionKey ? { encryptionKey } : {}),
     sessionSecret: e.KNOVERGE_SESSION_SECRET,

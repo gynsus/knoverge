@@ -494,6 +494,9 @@ importers:
       '@knoverge/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@knoverge/backups':
+        specifier: workspace:*
+        version: link:../../packages/backups
       '@knoverge/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

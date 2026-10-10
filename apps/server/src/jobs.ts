@@ -48,6 +48,25 @@ export const WEBHOOK_QUEUE = 'webhook.deliver';
 export const EXTRACTION_QUEUE = 'attachment.extract';
 
 /**
+ * Where this installation takes a copy of itself (ADR 0040).
+ *
+ * In the worker role and nowhere else: an installation running several API
+ * containers must not take several copies, and a copy holds every workspace's
+ * write lock while it runs.
+ */
+export const BACKUP_QUEUE = 'backup.take';
+
+/**
+ * Every hour, seven minutes in.
+ *
+ * The interval is the operator's setting and this is not; the job asks whether
+ * it is time and almost always answers no. Seven minutes past, because the
+ * maintenance sweep runs on the hour and a backup holds every write lock —
+ * there is no reason for them to meet.
+ */
+const BACKUP_SCHEDULE = '7 * * * *';
+
+/**
  * Often enough that a file is searchable while the person who uploaded it is
  * still looking at the screen, and rarely enough to be a sweep and not a poll.
  */
@@ -68,6 +87,7 @@ export function startedQueues(deliveringWebhooks: boolean): string[] {
     EMBEDDING_QUEUE,
     `${EMBEDDING_QUEUE}.sweep`,
     EXTRACTION_QUEUE,
+    BACKUP_QUEUE,
     ...(deliveringWebhooks ? [WEBHOOK_QUEUE] : []),
   ];
 }
@@ -116,6 +136,16 @@ export interface JobsOptions {
   deliverWebhooks?: () => Promise<{ webhookId: string; delivered: number; ok: boolean }[]>;
   /** Reads the text out of whatever has been uploaded and not looked at yet. */
   extractAttachments: () => Promise<{ attachmentId: string; state: string; reason?: string }[]>;
+  /**
+   * Asks the settings whether a copy is due, and takes one when it is.
+   *
+   * Always registered, even on an installation that backs nothing up: the
+   * setting is changed while the product runs, and a queue that only exists
+   * when backups were already on would mean restarting to turn them on.
+   */
+  backUpIfDue: () => Promise<
+    { ran: false; reason: string } | { ran: true; report: { ok: boolean; error: string | null } }
+  >;
 }
 
 export function createJobs(
@@ -187,6 +217,17 @@ export function createJobs(
         }
       });
       await boss.schedule(EXTRACTION_QUEUE, EXTRACTION_SCHEDULE);
+
+      await boss.createQueue(BACKUP_QUEUE);
+      await boss.work(BACKUP_QUEUE, async () => {
+        const outcome = await options.backUpIfDue();
+        // Only what happened. An hourly line saying it was not time yet would
+        // be most of the log of an installation that backs itself up nightly.
+        if (!outcome.ran) return;
+        if (outcome.report.ok) logger.info(outcome.report, 'backup taken');
+        else logger.error(outcome.report, 'backup failed');
+      });
+      await boss.schedule(BACKUP_QUEUE, BACKUP_SCHEDULE);
 
       const deliver = options.deliverWebhooks;
       if (deliver) {

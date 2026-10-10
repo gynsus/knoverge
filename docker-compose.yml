@@ -32,6 +32,11 @@ services:
       KNOVERGE_ROLE: ${KNOVERGE_ROLE:-all}
       KNOVERGE_DATABASE_URL: postgres://${KNOVERGE_POSTGRES_USER:-knoverge}:${KNOVERGE_POSTGRES_PASSWORD:?set a database password in .env}@postgres:5432/${KNOVERGE_POSTGRES_DB:-knoverge}
       KNOVERGE_DATA_DIR: /data
+      # A volume of its own, beside the data rather than inside it: the archive
+      # is made of the data directory, so a backup written there would be
+      # inside the next one (ADR 0040). Nothing is copied until an operator
+      # turns backups on in Settings.
+      KNOVERGE_BACKUP_DIR: /backups
       KNOVERGE_LEDGER_KEY: ${KNOVERGE_LEDGER_KEY:?Set KNOVERGE_LEDGER_KEY in .env (openssl rand -hex 32)}
       # Empty unless the operator has rotated, and empty unless a webhook exists.
       KNOVERGE_LEDGER_KEY_RETIRED: ${KNOVERGE_LEDGER_KEY_RETIRED:-}
@@ -44,6 +49,7 @@ services:
       KNOVERGE_AUTO_MIGRATE: ${KNOVERGE_AUTO_MIGRATE:-true}
     volumes:
       - knoverge-data:/data
+      - knoverge-backups:/backups
     ports:
       - '${KNOVERGE_PORT:-3000}:3000'
     depends_on:
@@ -105,8 +111,9 @@ services:
 #
 #     docker volume create knoverge-postgres
 #     docker volume create knoverge-data
+#     docker volume create knoverge-backups
 #
-# The cost is that first run needs those two commands, and that wiping an
+# The cost is that first run needs those three commands, and that wiping an
 # installation on purpose is an explicit `docker volume rm`. That is the right
 # way round: losing a knowledge base should take more typing than keeping it.
 volumes:
