@@ -39,6 +39,7 @@
     "pg": "catalog:",
     "pg-boss": "catalog:",
     "pino": "catalog:",
+    "ssh2": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"
   },

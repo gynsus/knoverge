@@ -19,6 +19,16 @@ export interface BackupSettingsRecord {
    * Null when no target is configured. Never leaves the server.
    */
   targetSecretCiphertext: string | null;
+  /**
+   * The host key this installation accepted from the target, `SHA256:…`
+   * (ADR 0041).
+   *
+   * Null until something has connected, and then the next upload accepts
+   * whatever the target presents and stores it; afterwards nothing but the same
+   * key will do. A fingerprint rather than the key, because equality is all
+   * pinning needs and a digest is what an operator compares by eye.
+   */
+  targetHostFingerprint: string | null;
   lastRunAt: Date | null;
   /** One line, never a body: the far end is somebody else's machine. */
   lastError: string | null;
@@ -42,6 +52,12 @@ export interface BackupRunOutcome {
   error: string | null;
   uploadedAt: Date | null;
   uploadError: string | null;
+  /**
+   * Set only by the first connection that got through, which is what pins it.
+   * `undefined` leaves the pin alone — including on a failed upload, because a
+   * refused key is not a reason to forget the key that was accepted.
+   */
+  targetHostFingerprint?: string | undefined;
 }
 
 export interface BackupSettingsRepository {
@@ -59,6 +75,11 @@ export interface BackupSettingsRepository {
        * without retyping a key; `null` removes it with the target.
        */
       targetSecretCiphertext?: string | null;
+      /**
+       * `undefined` leaves the pin alone; `null` clears it, which is what
+       * removing the target or naming another machine does.
+       */
+      targetHostFingerprint?: string | null;
     },
     at: Date,
   ): Promise<void>;

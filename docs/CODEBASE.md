@@ -1017,6 +1017,49 @@ whether or not backups are on: the setting changes while the product runs, and a
 queue that appeared only once somebody turned backups on would mean restarting
 to turn them on.
 
+### Sending it to the other machine
+
+`packages/backups/src/upload.ts` speaks SSH from this process rather than
+shelling out to a binary the image does not carry (ADR 0041). The reasons are
+not a preference for libraries: the private key is sealed in the database and
+OpenSSH reads a key only from a file, password authentication would need a
+second external program that takes the password on a command line, and host key
+verification would otherwise be the default of a program configured by a file
+that does not exist. It uses SFTP and runs no command on the far machine, so the
+account it is given can be restricted to SFTP with no shell.
+
+The far end gets the same staging rename the local copy gets, and for a stronger
+reason: it is the machine somebody will restore from without being able to ask
+what happened there. The target directory must already exist — a missing one is
+an error with the path in it, because the operator typed that path and creating
+a tree where they did not mean one is how a backup ends up somewhere nobody
+looks.
+
+The host key is pinned on first use, the way `ssh` pins to `known_hosts`. The
+first connection stores the fingerprint and every later one requires it; a
+changed key fails with a message that says which fact changed. The domain owns
+when that pin is forgotten: naming another address clears it, because the pin is
+a fact about a machine and the port is part of the address, while a new
+credential, directory or username leaves it alone. A refused connection never
+pins what answered — that would turn one failure into permission for the next.
+
+`BackupService.run` therefore has two outcomes rather than one. A copy that was
+taken and did not reach the target is a success with a reason beside the target:
+the local copy is a backup (ADR 0040), the next run tries again, and the job logs
+it as a warning so the only sign is not a field on a screen nobody opened.
+
+`ssh2` is the first dependency this repository does not bundle. The two apps are
+single bundled files, which follow a workspace package into its own npm
+dependencies — and inside `ssh2` are optional native bindings this installation
+deliberately does not build. The library falls back to its own JavaScript when
+they are missing, but a bundler resolves them before anything can catch the
+failure. So the tsup configs name it external, and both apps declare it, because
+`pnpm deploy --prod` installs what an app's own manifest asks for and a
+transitive dependency arrives only inside pnpm's private directory, which is not
+on the resolution path of the bundle beside it. Externalising without declaring
+builds an image that fails on its first import, which is why
+`apps/server/test/bundle.test.ts` compares the two lists.
+
 ## Letting a hosted connector in
 
 `packages/core/src/oauth/service.ts` is an authorization server whose whole job is

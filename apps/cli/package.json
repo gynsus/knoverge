@@ -28,6 +28,7 @@
     "commander": "catalog:",
     "drizzle-orm": "catalog:",
     "pg": "catalog:",
+    "ssh2": "catalog:",
     "yaml": "catalog:"
   },
   "devDependencies": {

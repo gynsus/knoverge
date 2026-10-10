@@ -80,6 +80,21 @@ describe('takeBackup', () => {
     ]);
   });
 
+  it('refuses a second copy of the same second by name', async () => {
+    const options = { into, dataDir, retentionDays: 14, now: new Date('2026-10-10T08:30:15Z') };
+    await takeBackup(source([ONE]), options, tools());
+
+    // An operator pressing the button twice. Said before the work rather than
+    // discovered at the rename, which is where the whole dump has already been
+    // written and the error would be `ENOTEMPTY`.
+    await expect(takeBackup(source([ONE]), options, tools())).rejects.toThrow(
+      'a backup named 20261010T083015Z was already taken',
+    );
+    // And the one that is there is the whole one, not a staging directory the
+    // refused run left behind.
+    expect((await readdir(into)).sort()).toEqual(['20261010T083015Z']);
+  });
+
   it('records where each workspace ledger stood', async () => {
     const result = await takeBackup(
       source([ONE, TWO]),

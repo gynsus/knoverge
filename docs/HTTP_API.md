@@ -135,12 +135,18 @@ POST /v1/admin/ai.test_vision               whether a model can see: a red squar
                                             which models look
 
 GET  /v1/admin/backups.settings             whether this installation keeps copies of itself, how often,
-                                            how long, and where they are sent afterwards
-GET  /v1/admin/backups.list                 the copies on this machine, newest first
+                                            how long, and where they are sent afterwards.
+                                            target_host_fingerprint is the host key pinned on the first
+                                            connection, for the operator to check by eye
+GET  /v1/admin/backups.list                 the copies on this machine, newest first; uploaded is null
+                                            for any copy the settings cannot speak for
 POST /v1/admin/backups.save                 the whole setting at once; target_secret is given once and
-                                            never comes back, and omitting it keeps what is stored
+                                            never comes back, and omitting it keeps what is stored.
+                                            Naming another host or port clears the pinned host key
 POST /v1/admin/backups.run                  takes one now; a failure comes back as ok=false with a
-                                            reason, because the run happened and is recorded
+                                            reason, because the run happened and is recorded. A copy
+                                            that was taken and did not reach the target is ok=true
+                                            with last_upload_error set
 
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant

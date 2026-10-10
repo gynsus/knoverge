@@ -1046,6 +1046,7 @@ BackupSettings
 - target_directory nullable
 - target_auth_kind nullable  private_key | password
 - target_secret_ciphertext nullable
+- target_host_fingerprint nullable  the host key accepted on the first connection
 - last_run_at nullable
 - last_error nullable
 - last_upload_at nullable
@@ -1058,6 +1059,10 @@ The migration inserts the row, so the settings screen has something to read on a
 A target is all of its parts or none of them, which a `CHECK` enforces: half a target is a setting that looks configured and uploads nowhere.
 
 `target_secret_ciphertext` is AES-256-GCM under `KNOVERGE_ENCRYPTION_KEY`, holding a private key or a password, and is never served — the screen says whether one is stored, not what it is. An installation with no encryption key cannot configure a target at all, the same refusal a webhook gets (section 32).
+
+`target_host_fingerprint` is the host key the target presented on the first connection that got through, `SHA256:…` as `ssh-keygen` prints it (ADR 0041). Null means nothing has connected yet, and the next upload accepts whatever answers and stores it; afterwards nothing but the same key will do. A fingerprint rather than the key, because equality is all pinning needs and a digest is also what an operator compares by eye.
+
+Naming another host or port clears it, because a pin is a fact about a machine and the port is part of its address. A new credential, directory or username does not: those are facts about an account on the same machine. A refused connection never writes it — pinning what answered after the check failed would turn one failure into permission for the next.
 
 A failed upload is recorded apart from a failed backup. The local copy was taken and is a backup; conflating the two would make an unreachable target look like no backup at all.
 

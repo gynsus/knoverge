@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { backupName, isBackupName, takenAt } from './names.ts';
@@ -87,6 +87,14 @@ export async function takeBackup(
   // dies half way leaves nothing a restore could mistake for a whole backup, and
   // nothing rotation counts.
   const staging = `${target}.partial`;
+  // Said here rather than discovered at the rename, which is where the whole
+  // dump has already been written and the error is `ENOTEMPTY`. The name is a
+  // timestamp to the second, so this is an operator pressing the button twice —
+  // and the answer is the name, not a second copy of the same moment under
+  // another one.
+  if (await exists(target)) {
+    throw new Error(`a backup named ${name} was already taken`);
+  }
   await mkdir(staging, { recursive: true });
 
   let heads: BackupResult['workspaces'] = [];
@@ -126,6 +134,13 @@ export async function takeBackup(
 
   const removed = await rotate(options.into, options.retentionDays, now);
   return { path: target, name, workspaces: heads, removed };
+}
+
+async function exists(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => true,
+    () => false,
+  );
 }
 
 /**

@@ -594,6 +594,49 @@ An installation created before this volume existed needs that one command
 before `docker compose up -d`, because the volume is declared external — the
 same reason the other two are, and the same one-time cost.
 
+### The second machine
+
+A copy on the same machine protects against a mistake, not against losing the
+server. The setting takes one SSH target — host, port, user, an absolute
+directory, and either a private key or a password — and uploads each finished
+copy there. The server only ever writes: it never lists, prunes or deletes
+anything on that machine, so pruning the far end is yours (ADR 0040).
+
+A key is the better answer. A password is something this server can read back
+and reuse; a key can be revoked at the far end without touching anything here.
+Either way the credential is sealed with `KNOVERGE_ENCRYPTION_KEY`, and an
+installation without that key cannot configure a target at all — the same
+refusal a webhook gets, for the same reason. The key must have no passphrase:
+one field holds one secret, and an encrypted key is refused with a message that
+says so.
+
+The account at the far end needs nothing but SFTP. No shell is required, because
+the server opens an SFTP session and writes files rather than running a command:
+
+```text
+/srv/copies/20260920T110514Z.partial/   while the transfer runs
+/srv/copies/20260920T110514Z/           renamed when every file has arrived
+```
+
+The directory you give has to exist already. A missing one is an error with the
+path in it rather than a tree created where you did not mean one.
+
+The first connection pins the target's host key and the Settings page shows the
+fingerprint, so you can compare it against the far machine:
+
+```bash
+ssh-keyscan -p 22 copies.example 2>/dev/null | ssh-keygen -lf -
+```
+
+Every later connection requires the same key. A rebuilt target machine therefore
+fails with "the host key changed", which is the correct answer; clearing the
+pinned key accepts the new one. Naming another host or port clears it by itself,
+because the pin is a fact about a machine (ADR 0041).
+
+A copy that was taken and did not reach the target is not a failed backup. The
+local copy exists, the reason is shown beside the target, the log carries it as
+a warning, and the next run tries again.
+
 ### The sidecar
 
 The `backup` profile still exists and is being removed. An installation running

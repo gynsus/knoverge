@@ -332,6 +332,11 @@ A package rather than a file in the server because the command line takes the
 same copy: `knoverge backup` on demand and the scheduled job in the worker role
 (ADR 0040). Two implementations would be two formats to restore.
 
+Also here: sending a finished copy to the one SSH target an operator configures.
+This process speaks the protocol, because the key is sealed in the database and
+OpenSSH reads one only from a file (ADR 0041). SFTP, so the account at the far
+end needs no shell, and the host key is pinned on first use.
+
 Not here: whether to take one, how often, and where it goes afterwards. That is a
 setting, and settings belong to the domain.
 
@@ -460,7 +465,7 @@ Full rules: `docs/WORKFLOW.md`. Summary:
 - Contracts first: `packages/contracts`, then domain, then both MCP and HTTP adapters, then tests for both.
 - Persistence change means Drizzle schema, migration, repository tests and `DATA_MODEL.md`. Before v0.1.0 migrations may be squashed into one baseline (say so in the PR); after v0.1.0 they are immutable.
 - UI text only through `en` and `ru` catalogues.
-- Before committing run `pnpm lint`, `pnpm typecheck`, `pnpm test` and review `git diff`. Report any check that could not run.
+- Before committing run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build` and review `git diff`. Report any check that could not run. The build is not optional: it is the only check that sees the bundler, and a dependency that cannot be bundled passes the other three.
 - Commits: Conventional Commits, `git commit -s` with the maintainer's identity, no other attribution trailers. PR descriptions carry no tool attribution lines.
 - Rebase on `origin/main` before the PR; never merge `main` into the branch; `--force-with-lease` only.
 - Never merge a PR unless the owner says so.

@@ -31,6 +31,7 @@ function settings(view: BackupSettingsView): BackupSettings {
     // back to nobody (ADR 0033).
     target_secret_set: view.targetSecretSet,
     secret_storage_configured: view.secretStorageConfigured,
+    target_host_fingerprint: view.targetHostFingerprint,
     last_run_at: view.lastRunAt?.toISOString() ?? null,
     last_error: view.lastError,
     last_upload_at: view.lastUploadAt?.toISOString() ?? null,
@@ -127,7 +128,11 @@ export function registerAdminBackupRoutes(app: FastifyInstance, services: Servic
       // A failure comes back as a result rather than as a 500: the run happened,
       // it is recorded, and the reason belongs on the screen beside the setting.
       const report = await services.backups.run();
-      request.log.info(report, report.ok ? 'backup taken' : 'backup failed');
+      // A copy that was taken and did not reach the target is a warning and not
+      // a failure: the local copy is a backup, and the next run tries again.
+      if (!report.ok) request.log.error(report, 'backup failed');
+      else if (report.uploadError !== null) request.log.warn(report, 'backup not uploaded');
+      else request.log.info(report, 'backup taken');
       return {
         ok: report.ok,
         name: report.name,

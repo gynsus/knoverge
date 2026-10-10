@@ -228,9 +228,12 @@ Before considering the task complete, run the repository's defined checks. At mi
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm build
 ```
 
-Also run build, integration and end-to-end commands required by the affected area.
+The build belongs in that list rather than in the sentence below it. It is the only check that runs the bundler, so a dependency that cannot be bundled — a package with optional native bindings, say — passes lint, typecheck and test and fails in continuous integration.
+
+Also run the integration and end-to-end commands required by the affected area.
 
 Do not claim completion if required checks fail. If a check cannot be executed because of the environment, explicitly report which command was not run, why, and what remains unverified.
 
