@@ -2,6 +2,7 @@
 export * from './actors.ts';
 export * from './agents.ts';
 export * from './attachments.ts';
+export * from './backups.ts';
 export * from './ai.ts';
 export * from './categories.ts';
 export * from './embeddings.ts';

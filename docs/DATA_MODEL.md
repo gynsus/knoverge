@@ -1030,6 +1030,37 @@ address it names.
 
 pg-boss manages its own tables in the `pgboss` schema. Drizzle keeps its migration log in `drizzle.__drizzle_migrations`. Domain tables never reference job ids.
 
+## 34a. Backup settings
+
+How this installation backs itself up (ADR 0040). One row, not a table: a schedule belongs to the installation, and a copy covers the whole database, so there is nothing for a second row to mean. A `CHECK` on the key is what makes that true rather than intended.
+
+```text
+BackupSettings
+- id                        always `singleton`
+- enabled                   false until somebody says otherwise
+- interval_hours
+- retention_days            local copies only
+- target_host nullable
+- target_port nullable
+- target_username nullable
+- target_directory nullable
+- target_auth_kind nullable  private_key | password
+- target_secret_ciphertext nullable
+- last_run_at nullable
+- last_error nullable
+- last_upload_at nullable
+- last_upload_error nullable
+- updated_at
+```
+
+The migration inserts the row, so the settings screen has something to read on an installation that has configured nothing and can say "off" rather than saying nothing. That is the point of moving backups out of a compose profile.
+
+A target is all of its parts or none of them, which a `CHECK` enforces: half a target is a setting that looks configured and uploads nowhere.
+
+`target_secret_ciphertext` is AES-256-GCM under `KNOVERGE_ENCRYPTION_KEY`, holding a private key or a password, and is never served — the screen says whether one is stored, not what it is. An installation with no encryption key cannot configure a target at all, the same refusal a webhook gets (section 32).
+
+A failed upload is recorded apart from a failed backup. The local copy was taken and is a backup; conflating the two would make an unreachable target look like no backup at all.
+
 ## 35. OAuth client, grant, code and refresh token
 
 The paperwork of a hosted connector's connection (ADR 0038). None of it is a new kind of caller: a grant is the consent that created an agent, and the access token it ends in is an ordinary `AgentCredential` carrying the grant's id.

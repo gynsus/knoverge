@@ -16,6 +16,7 @@ import { createKnowledgeRepository, createRevisionRepository } from './knowledge
 import { createRelationRepository, createSourceRepository } from './sources.ts';
 import { createSummaryRepository } from './summaries.ts';
 import { createAttachmentRepository } from './attachments.ts';
+import { createBackupSettingsRepository } from './backups.ts';
 import {
   createOauthClientRepository,
   createOauthCodeRepository,
@@ -52,6 +53,7 @@ export function createRepositories(db: Database) {
     relations: createRelationRepository(db),
     summaries: createSummaryRepository(db),
     attachments: createAttachmentRepository(db),
+    backupSettings: createBackupSettingsRepository(db),
     oauthClients: createOauthClientRepository(db),
     oauthGrants: createOauthGrantRepository(db),
     oauthCodes: createOauthCodeRepository(),
