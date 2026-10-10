@@ -322,6 +322,13 @@ And when the installation cannot do it at all — a signing secret needs a key t
 sealed with — the screen says so above the button rather than behind it, in the words
 an operator can act on, including the name of the variable to set.
 
+Where the door is held open by a fact the product cannot check — the host key a
+backup target presented on the first connection — the fact is on the screen, with
+the command that checks it against the far end. The product cannot tell a rebuilt
+machine from somebody in the middle; the operator can, and only if they are shown
+what to compare. Forgetting such a fact is its own action with its own
+confirmation, because what it says is that whatever answers next is trusted.
+
 ## 2p. A screen exists where a state changes without anybody watching
 
 Most of this product answers immediately: a write returns the revision it made. A

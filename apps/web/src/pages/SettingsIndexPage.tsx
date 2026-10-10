@@ -29,7 +29,7 @@ const PERSONAL: Section[] = [
 const INSTANCE: Section[] = [
   { key: 'ai', icon: Bot, to: '/settings/ai' },
   { key: 'webhooks', icon: Webhook, to: '/settings/webhooks' },
-  { key: 'storage', icon: Database },
+  { key: 'storage', icon: Database, to: '/settings/storage' },
   { key: 'network', icon: Network },
   { key: 'system', icon: Server },
 ];

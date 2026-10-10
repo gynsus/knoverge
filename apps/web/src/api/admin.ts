@@ -61,6 +61,10 @@ import type {
   UpdateWorkspaceRequest,
   AttachmentResponse,
   AttachmentsResponse,
+  BackupSettingsResponse,
+  BackupsResponse,
+  SaveBackupSettingsRequest,
+  TakeBackupResponse,
   RereadAttachmentsResponse,
   SingleAttachmentResponse,
   UpsertWebhookRequest,
@@ -114,6 +118,18 @@ export const adminApi = {
       apiPost<RereadAttachmentsResponse>('/v1/admin/attachments.reread', body),
     downloadUrl: (attachmentId: string) =>
       `/v1/admin/attachments.download?attachment_id=${encodeURIComponent(attachmentId)}`,
+  },
+  backups: {
+    settings: (signal?: AbortSignal) =>
+      apiGet<BackupSettingsResponse>('/v1/admin/backups.settings', signal),
+    list: (signal?: AbortSignal) => apiGet<BackupsResponse>('/v1/admin/backups.list', signal),
+    // The whole setting at once, because a schedule, a window and a target are
+    // read together and a half-applied change to them is a copy going somewhere
+    // nobody meant.
+    save: (body: SaveBackupSettingsRequest) =>
+      apiPost<BackupSettingsResponse>('/v1/admin/backups.save', body),
+    run: () => apiPost<TakeBackupResponse>('/v1/admin/backups.run', {}),
+    clearHostKey: () => apiPost<BackupSettingsResponse>('/v1/admin/backups.clear_host_key', {}),
   },
   webhooks: {
     list: (signal?: AbortSignal) => apiGet<WebhooksResponse>('/v1/admin/webhooks.list', signal),

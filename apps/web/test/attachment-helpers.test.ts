@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import { readableSize, toneOf } from '../src/components/files/attachment.ts';
+import { toneOf } from '../src/components/files/attachment.ts';
+import { readableSize } from '../src/lib/readable-size.ts';
 
 describe('how a file’s state is shown', () => {
   it('is loud only for a failure', () => {

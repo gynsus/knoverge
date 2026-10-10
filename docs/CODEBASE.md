@@ -1070,6 +1070,34 @@ on the resolution path of the bundle beside it. Externalising without declaring
 builds an image that fails on its first import, which is why
 `apps/server/test/bundle.test.ts` compares the two lists.
 
+### The screen an operator configures it on
+
+`apps/web/src/pages/StorageSettingsPage.tsx` with
+`components/backups/BackupForm.tsx`. One form with one button, because
+`backups.save` takes the schedule, the window and the target together and a form
+offering three saves would promise a granularity the server has not got
+(WEB_UI.md rule 2m). The credential is typed once and the field is emptied on
+the way back; omitting it is how an address is changed without finding the key
+again, and sending an empty one would clear it.
+
+It leads with what the second machine then holds — the whole database and every
+workspace repository — because that is the decision somebody is making, not the
+address (WEB_UI.md rule 2o). An installation with no `KNOVERGE_ENCRYPTION_KEY`
+is told above the control rather than after the save, and the schedule stays
+offered, since a copy on this machine needs no credential.
+
+The pinned host key is on the screen with the `ssh-keyscan` line that checks it,
+built from the address that was saved rather than a port somebody has to edit in.
+Showing it is the whole of trust on first use: this product cannot tell a rebuilt
+machine from somebody in the middle, and a person with shell access to the far
+end can. Forgetting it asks first and says what will follow, including the
+mistake worth warning about — a failed upload looks exactly like somebody else
+answering.
+
+The copies are listed with what is known about each, which for all but the last
+one is nothing. `uploaded: null` draws no badge at all: "not sent" of a copy the
+settings cannot speak for reports a problem nobody has.
+
 ## Letting a hosted connector in
 
 `packages/core/src/oauth/service.ts` is an authorization server whose whole job is

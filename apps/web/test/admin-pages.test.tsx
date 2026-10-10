@@ -1423,13 +1423,47 @@ describe('the settings catalogue', () => {
   });
 
   it('shows a section that does not exist yet, and does not pretend it does', async () => {
-    // Hiding it would let somebody looking for backups conclude they are in
-    // the wrong place. A card that says "Not yet" answers the question.
+    // Hiding it would let somebody looking for the public address conclude they
+    // are in the wrong place. A card that says "Not yet" answers the question.
+    // This was data and storage until backups arrived on that screen; the
+    // example has to be a section that is still absent, or the test passes on
+    // a card that is now a link.
     mockApi(SIGNED_IN);
     renderApp('/settings');
-    const card = (await screen.findByText('Data and storage')).closest('li') as HTMLElement;
+    const card = (await screen.findByText('Network and API')).closest('li') as HTMLElement;
     expect(within(card).getByText('Not yet')).toBeInTheDocument();
     expect(within(card).queryByRole('link')).toBeNull();
+  });
+
+  it('goes to the screen where this installation keeps copies of itself', async () => {
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/admin/backups.settings': () =>
+        json({
+          settings: {
+            enabled: false,
+            interval_hours: 24,
+            retention_days: 14,
+            target: null,
+            target_secret_set: false,
+            secret_storage_configured: true,
+            target_host_fingerprint: null,
+            last_run_at: null,
+            last_error: null,
+            last_upload_at: null,
+            last_upload_error: null,
+          },
+        }),
+      'GET /v1/admin/backups.list': () => json({ backups: [] }),
+    });
+    renderApp('/settings');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('link', { name: 'Data and storage' }));
+
+    expect(
+      await screen.findByRole('checkbox', { name: /take copies on a schedule/i }),
+    ).toBeInTheDocument();
   });
 
   it('goes to a section that does', async () => {
