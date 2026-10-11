@@ -5,6 +5,7 @@ export * from './ai.ts';
 export * from './auth.ts';
 export * from './errors.ts';
 export * from './events.ts';
+export * from './gardening.ts';
 export * from './health.ts';
 export * from './identity.ts';
 export * from './knowledge.ts';

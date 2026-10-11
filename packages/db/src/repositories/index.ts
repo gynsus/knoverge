@@ -7,6 +7,7 @@ import {
   createTaxonomyVersionRepository,
 } from './categories.ts';
 import { createEventRepository } from './events.ts';
+import { createGardeningRepository } from './gardening.ts';
 import { createIdempotencyRepository } from './idempotency.ts';
 import { createPermissionGrantRepository, createPolicyRuleRepository } from './policy.ts';
 import { createMembershipRepository } from './memberships.ts';
@@ -54,6 +55,7 @@ export function createRepositories(db: Database) {
     summaries: createSummaryRepository(db),
     attachments: createAttachmentRepository(db),
     backupSettings: createBackupSettingsRepository(db),
+    gardening: createGardeningRepository(db),
     oauthClients: createOauthClientRepository(db),
     oauthGrants: createOauthGrantRepository(db),
     oauthCodes: createOauthCodeRepository(),

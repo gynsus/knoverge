@@ -29,6 +29,8 @@ import {
 import {
   AgentService,
   BackupService,
+  GardeningService,
+  duplicateContentHashRule,
   OauthService,
   AttachmentExtractor,
   AttachmentService,
@@ -548,6 +550,20 @@ export function createServices(config: ServicesConfig) {
     ...(config.pendingPerActor === undefined ? {} : { pendingPerActor: config.pendingPerActor }),
   });
 
+  // The installation reading its own knowledge on a schedule (ADR 0039). One
+  // rule so far, and it needs nothing but the database.
+  //
+  // `filing` is the whole of what the gardener can reach of the proposal
+  // service: the entry point that cannot write, whatever the workspace has
+  // configured (ADR 0042).
+  const gardening = new GardeningService({
+    uow,
+    gardening: repositories.gardening,
+    actors: repositories.actors,
+    filing: proposals,
+    rules: [duplicateContentHashRule(repositories.gardening)],
+  });
+
   /**
    * Reading the text out of files, as the person or agent who uploaded them.
    *
@@ -716,6 +732,7 @@ export function createServices(config: ServicesConfig) {
     /** The largest file an upload may carry; the multipart parser needs it too. */
     attachmentMaxBytes,
     backups,
+    gardening,
     webhooks,
     /**
      * Whether a webhook signing secret has somewhere to live.

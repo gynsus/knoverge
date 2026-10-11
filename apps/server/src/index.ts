@@ -89,6 +89,13 @@ async function main(): Promise<void> {
         // created, so a sweep would have nothing to do and nothing to say.
         extractAttachments: () => services.attachmentExtractor.extractPending(),
         backUpIfDue: () => services.backups.runIfDue(),
+        gardenDue: async () =>
+          (await services.gardening.runDue()).map((run) => ({
+            workspaceId: run.workspaceId,
+            filed: run.findingsFiled,
+            reachedCap: run.reachedCap,
+            error: run.error,
+          })),
         ...(config.encryptionKey ? { deliverWebhooks: () => services.webhooks.deliverDue() } : {}),
       })
     : undefined;

@@ -12,6 +12,7 @@ import { LoginPage } from './pages/LoginPage.tsx';
 import { PolicyPage } from './pages/PolicyPage.tsx';
 import { AiSettingsPage } from './pages/AiSettingsPage.tsx';
 import { FilesPage } from './pages/FilesPage.tsx';
+import { GardeningPage } from './pages/GardeningPage.tsx';
 import { WebhooksSettingsPage } from './pages/WebhooksSettingsPage.tsx';
 import { AccountSettingsPage } from './pages/AccountSettingsPage.tsx';
 import { SecuritySettingsPage } from './pages/SecuritySettingsPage.tsx';
@@ -62,6 +63,7 @@ export function App() {
               over a rename. */}
           <Route path="/workspace" element={<Navigate to="/workspaces" replace />} />
           <Route path="/workspace/new" element={<Navigate to="/workspaces?new" replace />} />
+          <Route path="/gardening" element={<GardeningPage />} />
           <Route path="/settings" element={<SettingsIndexPage />} />
           <Route path="/settings/account" element={<AccountSettingsPage />} />
           <Route path="/settings/security" element={<SecuritySettingsPage />} />

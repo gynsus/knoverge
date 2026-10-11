@@ -1111,6 +1111,76 @@ The copies are listed with what is known about each, which for all but the last
 one is nothing. `uploaded: null` draws no badge at all: "not sent" of a copy the
 settings cannot speak for reports a problem nobody has.
 
+## Tidying a workspace
+
+`packages/core/src/gardening/` — the installation reading its own knowledge on a
+schedule and filing what it notices. Three files, split by what each knows.
+
+`rules.ts` holds the rules and the shape of a finding. A rule looks and reports;
+it writes nothing, and it is handed the gardener's actor because what is worth
+finding depends on what has already been said to that actor. The one built so
+far is `duplicate_content_hash`: two active items whose current content hash is
+identical, which means the same words under the same heading twice, because the
+hash covers the title and the body and no metadata. The oldest member of a group
+survives — the relations and sources that exist point at it, its history is the
+longer one, and the copy is the thing that happened afterwards.
+
+`service.ts` runs them. It reads the workspace's settings, finds the system
+actor, writes the run row, asks each rule for at most what the caps allow, files
+what comes back, and finishes the row. A finding the workspace has moved past is
+skipped rather than fatal: the scan read a moment that has gone, and the next run
+reads the one after it. A rule that throws is recorded on the run instead of
+being lost in a job log, and `last_run_at` moves whether or not the run
+succeeded — a run that failed still ran, and an interval that ignored it would
+retry every minute.
+
+`repository.ts` is the port, and one of its methods is the interesting one.
+`duplicateContentHashes` is a gardening query rather than a knowledge one, which
+is why it lives here: it reads what the workspace asserts **and** what has
+already been said about it, and neither of the other repositories can answer
+that alone. What it leaves out it leaves out in SQL — an item with a proposal
+waiting, because a reviewer is already looking at it, and an item whose gardening
+proposal this actor filed was rejected, because a reviewer who said no has
+answered the rule. Filtering those from the result instead starves a capped run:
+the answered items are the oldest, a cap takes the oldest groups first, and a
+workspace with one refused duplicate would file nothing ever again. That was
+found by a test, not by reading the code.
+
+### Why it files instead of writing
+
+`ProposalService.fileSupersedeFinding` is a second entry point beside
+`proposeSupersede`, and the difference is one line: the policy decision is fixed
+at `require_review` rather than read. It has to be. The gardener runs as the
+workspace's system actor, and a system actor is the host operator at the command
+line — `AuthorizationService` says so in three places and means it, including a
+default policy effect of `allow_direct`. A gardener that proposed the way an
+agent proposes would be told it may write, and would tidy the knowledge base
+without asking anybody (ADR 0042).
+
+A separate method rather than a flag, because a flag's default decides what
+happens when somebody forgets to pass it, and the forgetful case would be a
+scheduled job rewriting knowledge unreviewed. There is no argument this method
+can be called with that writes: the `apply` closure it hands the proposal
+machinery is only ever run by an approval.
+
+The job asks hourly which workspaces are due and usually finds none, because the
+interval is the workspace's setting and the schedule is not. It is registered in
+the worker role whether or not any workspace gardens, for the reason the backup
+queue is.
+
+### The screen
+
+`apps/web/src/pages/GardeningPage.tsx`, in the navigation rather than under the
+installation's settings: the settings catalogue says a workspace's own settings
+live with the workspace, and this is one. It leads with what gardening produces
+rather than with the schedule, because what it produces is work for a person —
+turning it on is agreeing to read what it files.
+
+It shows runs, not a state. A rule that found nothing and a rule that never ran
+look identical from the review queue, and the difference is the whole question of
+whether gardening is working, so each run says what each rule read, found and
+filed, and which cap held it back.
+
 ## Letting a hosted connector in
 
 `packages/core/src/oauth/service.ts` is an authorization server whose whole job is

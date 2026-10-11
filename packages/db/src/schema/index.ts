@@ -7,6 +7,7 @@ export * from './ai.ts';
 export * from './categories.ts';
 export * from './embeddings.ts';
 export * from './events.ts';
+export * from './gardening.ts';
 export * from './idempotency.ts';
 export * from './knowledge.ts';
 export * from './oauth.ts';

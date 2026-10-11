@@ -160,6 +160,21 @@ POST /v1/admin/backups.run                  takes one now; a failure comes back 
                                             that was taken and did not reach the target is ok=true
                                             with last_upload_error set
 
+GET  /v1/admin/gardening.settings           whether this workspace tidies itself, how often, what one
+                                            run and one rule may leave in the review queue, and every
+                                            rule this installation has. Per workspace, unlike the
+                                            backup settings: a workspace is the unit of knowledge and
+                                            of review (ADR 0042)
+GET  /v1/admin/gardening.runs               the last runs, newest first: what each rule read, found and
+                                            filed, and which cap held it back. A rule that found
+                                            nothing and a rule that never ran are different answers
+POST /v1/admin/gardening.save               the schedule and both caps at once, because a
+                                            half-applied change to them is a run nobody configured
+POST /v1/admin/gardening.run                runs one now, whether or not the schedule is on. Every
+                                            finding becomes a proposal for review and nothing else;
+                                            there is no path from here to a direct write, whatever
+                                            policy the workspace holds (ADR 0039, ADR 0042)
+
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant
 POST /v1/admin/permissions.revoke

@@ -72,6 +72,31 @@ export {
   type TargetCheckResult,
   type TargetCheckView,
 } from './backups/service.ts';
+export type {
+  DuplicateHashGroup,
+  DuplicateHashMember,
+  DuplicateHashScan,
+  GardeningRepository,
+  GardeningRuleLimit,
+  GardeningRuleResultRecord,
+  GardeningRunRecord,
+  GardeningSettingsPatch,
+  GardeningSettingsRecord,
+} from './gardening/repository.ts';
+export {
+  duplicateContentHashRule,
+  type GardeningFinding,
+  type GardeningRule,
+  type GardeningScan,
+  type SupersedeFinding,
+} from './gardening/rules.ts';
+export {
+  GARDENER_CLIENT,
+  GardeningService,
+  type GardeningServiceOptions,
+  type GardeningSettingsView,
+  type SaveGardeningSettingsInput,
+} from './gardening/service.ts';
 export { OauthFailure } from './oauth/errors.ts';
 export {
   ACCESS_TOKEN_TTL_MS,
@@ -122,6 +147,7 @@ export {
   type ProposalServiceOptions,
   type ProposalEditsInput,
   type ProposeCreateInput,
+  type ProposeSupersedeInput,
 } from './proposals/service.ts';
 export type {
   ListProposalsOptions,

@@ -12,6 +12,7 @@ import {
   ScrollText,
   Settings,
   ShieldCheck,
+  Sprout,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -56,6 +57,11 @@ const NAV = [
   { to: '/review', key: 'review', icon: Inbox, needs: 'knowledge.approve' },
   { to: '/sync', key: 'sync', icon: RefreshCw, needs: 'proposal.read_all' },
   { to: '/taxonomy', key: 'taxonomy', icon: FolderTree, needs: 'taxonomy.read' },
+  // Beside the review queue in spirit, because that is where everything it
+  // finds ends up: gardening files proposals and changes nothing itself
+  // (ADR 0039). `workspace.admin`, which is who decides whether a workspace
+  // makes this work for itself.
+  { to: '/gardening', key: 'gardening', icon: Sprout, needs: 'workspace.admin' },
   // Everybody, down to a read-only member, holds `events.read_own`; what that
   // narrows is what the page answers with, not whether it is offered.
   { to: '/ledger', key: 'ledger', icon: ScrollText, needs: 'events.read_own' },

@@ -4,6 +4,7 @@ import {
   BACKUP_QUEUE,
   EMBEDDING_QUEUE,
   EXTRACTION_QUEUE,
+  GARDENING_QUEUE,
   MAINTENANCE_QUEUE,
   SYNC_REFINE_QUEUE,
   WEBHOOK_QUEUE,
@@ -22,6 +23,7 @@ describe('the line that says the job runner started', () => {
       `${EMBEDDING_QUEUE}.sweep`,
       EXTRACTION_QUEUE,
       BACKUP_QUEUE,
+      GARDENING_QUEUE,
       WEBHOOK_QUEUE,
     ]);
   });
@@ -43,6 +45,8 @@ describe('the line that says the job runner started', () => {
       // a queue that appeared only once backups were on would mean restarting
       // to turn them on.
       BACKUP_QUEUE,
+      // Same again for gardening, which asks which workspaces are due.
+      GARDENING_QUEUE,
     ]);
   });
 });

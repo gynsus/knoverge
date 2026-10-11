@@ -417,6 +417,52 @@
     },
     "title": "Files"
   },
+  "gardening": {
+    "title": "Gardening",
+    "intro": "The installation reads this workspace on a schedule and files what it notices as proposals for review. It never changes knowledge itself: everything it finds waits for somebody to agree with it.",
+    "schedule": "Schedule",
+    "schedule_hint": "Off until you turn it on, because what gardening produces is work for a person.",
+    "enabled": "Garden this workspace",
+    "enabled_hint": "A run is taken on the interval below, in the worker role.",
+    "interval": "Interval, in hours",
+    "interval_hint": "How long after a run before the next one is due. Turning this on makes one due immediately.",
+    "per_run": "Findings per run",
+    "per_run_hint": "What one run may leave in the review queue. The proposals from people and agents are the ones somebody is waiting on, and a run that buries them has done harm rather than work.",
+    "per_rule": "Findings per rule",
+    "per_rule_hint": "And of that, what one rule may take, so a single noisy rule is not the whole run.",
+    "save": "Save",
+    "saved": "Saved.",
+    "forbidden": "Changing this needs workspace administration.",
+    "rules": "Rules",
+    "rules_hint": "What gets looked for. Each rule names the rows it read on every proposal it files, so a reviewer can disagree with the rule rather than with one finding.",
+    "rule": {
+      "duplicate_content_hash": {
+        "title": "The same thing twice",
+        "description": "Two active items whose title and body are identical. The older one is kept, and the copy is proposed for supersession — nothing is deleted or merged."
+      }
+    },
+    "runs": "Runs",
+    "runs_hint": "What each run read, found and filed. A rule that found nothing and a rule that never ran look the same from the queue, so they are told apart here.",
+    "run_now": "Run one now",
+    "running": "Running...",
+    "run_now_hint": "Runs whether or not the schedule is on, and files what it finds into the review queue.",
+    "no_runs": "Nothing has run yet.",
+    "run_when": "Started",
+    "run_trigger": "Asked by",
+    "run_filed": "Filed",
+    "run_rules": "Rules",
+    "result": "read {{examined}}, found {{found}}, filed {{filed}}",
+    "unfinished": "did not finish",
+    "capped": "stopped at the cap",
+    "trigger": {
+      "scheduled": "the schedule",
+      "requested": "somebody here"
+    },
+    "limited": {
+      "run_cap": "the run was full",
+      "rule_cap": "this rule was full"
+    }
+  },
   "home": {
     "workspaces": "Your workspaces"
   },
@@ -692,7 +738,8 @@
     "toggle_sidebar": "Show or hide the navigation",
     "workspace_settings": "Workspace settings",
     "workspace_switch": "Current workspace: {{name}}. Switch workspace",
-    "workspaces": "Workspaces"
+    "workspaces": "Workspaces",
+    "gardening": "Gardening"
   },
   "password": {
     "copied": "The password was copied to the clipboard.",
