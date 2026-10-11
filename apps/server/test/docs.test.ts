@@ -100,4 +100,19 @@ describe('the instructions for a first run', () => {
 
     expect([...pinned].sort()).toEqual([newest]);
   });
+
+  it('says in prose the version it says in the image line', () => {
+    // The image line was guarded and the sentence above it was not, so the
+    // README said "Knoverge is at v0.7.0" while it offered the 0.8.0 image and
+    // the changelog's newest entry was 0.8.0. A reader takes the sentence as
+    // the answer to what this is, and a release that updates one line and not
+    // the other has told them something false about the thing they just
+    // installed.
+    const changelog = readFileSync(new URL('CHANGELOG.md', root), 'utf8');
+    const newest = /^## v(?<version>\d+\.\d+\.\d+)/mu.exec(changelog)?.groups?.['version'];
+    const readme = readFileSync(new URL('README.md', root), 'utf8');
+    expect(
+      /Knoverge is at \*\*v(?<version>\d+\.\d+\.\d+)\*\*/u.exec(readme)?.groups?.['version'],
+    ).toBe(newest);
+  });
 });
