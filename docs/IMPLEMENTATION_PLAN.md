@@ -384,9 +384,10 @@ Deliver:
 - the `backup` compose profile and its two scripts removed, and the upgrade
   note that says to turn the setting on instead. **Remaining.** An installation
   running the sidecar keeps taking copies until it is stopped, and the screen is
-  what replaces it, so the order on a live machine is: mount the backups volume
-  into the application and give it `KNOVERGE_BACKUP_DIR`, turn the setting on,
-  watch one copy arrive, and only then stop the sidecar.
+  what replaces it, so the order on a live machine is: give the application a
+  backups volume of its own — not the sidecar's, which belongs to `postgres` and
+  is handed back to it on every start — turn the setting on, watch one copy
+  arrive, and only then stop the sidecar. `docs/DEPLOYMENT.md` has it as steps.
 
 ## Later
 

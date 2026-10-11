@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -17,6 +17,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  // Writable again first: a test that took the directory away cannot clean up
+  // after itself, and the next one would start in somebody else's leftovers.
+  await chmod(into, 0o700).catch(() => undefined);
   for (const dir of [into, dataDir]) await rm(dir, { recursive: true, force: true });
 });
 
@@ -65,6 +68,33 @@ const ONE = { id: 'ws_b', slug: 'second', sequence: 7 };
 const TWO = { id: 'ws_a', slug: 'first', sequence: 3 };
 
 describe('takeBackup', () => {
+  // Root is refused by nothing, so there is no unwritable directory to make.
+  // Skipped rather than adapted: what this covers is an operator's installation,
+  // where the server does not run as root (the image declares `USER node`).
+  const unlessRoot = process.getuid?.() === 0 ? it.skip : it;
+
+  unlessRoot('says who cannot write to the directory, before it reads anything', async () => {
+    // What Docker leaves when a volume is mounted at a path the image does not
+    // contain: a directory belonging to somebody else, readable and not
+    // writable. `mkdir` alone answers that with `EACCES` and a path, which names
+    // neither the user that was refused nor anything to do about it — and the
+    // screen shows the last error and nothing beside it.
+    await chmod(into, 0o500);
+
+    await expect(
+      takeBackup(source([ONE]), { into, dataDir, retentionDays: 14 }, tools()),
+    ).rejects.toThrow(
+      new RegExp(
+        `the backup directory ${into} belongs to uid \\d+ and this process runs as uid \\d+, ` +
+          'so no copy can be written there; give the directory to this user',
+        'u',
+      ),
+    );
+    // Nothing was locked: a refusal that had held every workspace's write lock
+    // would have stopped the installation to tell the operator about a chown.
+    expect(trace).toEqual([]);
+  });
+
   it('writes the three files under the moment it was taken', async () => {
     const result = await takeBackup(
       source([ONE]),

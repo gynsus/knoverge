@@ -45,16 +45,25 @@ ENV NODE_ENV=production \
     KNOVERGE_PORT=3000 \
     KNOVERGE_HOST=0.0.0.0 \
     KNOVERGE_DATA_DIR=/data \
+    KNOVERGE_BACKUP_DIR=/backups \
     KNOVERGE_WEB_DIST=/app/web
 COPY --from=build --chown=node:node /out/server /app/server
 COPY --from=build --chown=node:node /out/cli /app/cli
 COPY --from=build --chown=node:node /app/apps/web/dist /app/web
 RUN ln -s /app/cli/dist/index.js /usr/local/bin/knoverge \
- && chmod +x /app/cli/dist/index.js \
- && mkdir -p /data && chown node:node /data
+ && chmod +x /app/cli/dist/index.js
+# Both directories exist here and belong to the user this runs as. Docker creates
+# a mount point the image does not contain owned by root, and copies an existing
+# directory's ownership into an empty volume — so a path that is not in the image
+# is a volume this process cannot write to, and a path that is in it needs no
+# `chown` from whoever installs this. `/backups` was missing, and a fresh
+# installation could not take the copy it was asked for.
+RUN mkdir -p /data /backups && chown node:node /data /backups
 USER node
 WORKDIR /app/server
-VOLUME ["/data"]
+# Declared so that copies survive a container started without a volume for them,
+# in an anonymous one, rather than going with the writable layer when it does.
+VOLUME ["/data", "/backups"]
 EXPOSE 3000
 # Readiness, not liveness: liveness answers as long as the process is up, so a
 # container that cannot reach its database would still be reported healthy and

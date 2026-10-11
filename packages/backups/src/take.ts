@@ -1,4 +1,4 @@
-import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, constants, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { backupName, isBackupName, takenAt } from './names.ts';
@@ -82,6 +82,8 @@ export async function takeBackup(
   const ids = workspaces.map((w) => w.id).sort();
   const now = options.now ?? new Date();
   const name = backupName(now);
+  await ensureWritable(options.into);
+
   const target = join(options.into, name);
   // Built beside the final name and moved into place at the end, so a run that
   // dies half way leaves nothing a restore could mistake for a whole backup, and
@@ -134,6 +136,42 @@ export async function takeBackup(
 
   const removed = await rotate(options.into, options.retentionDays, now);
   return { path: target, name, workspaces: heads, removed };
+}
+
+/**
+ * Whether a copy can be written here at all, answered before anything is read.
+ *
+ * The directory is normally a mounted volume, and Docker creates a mount point
+ * the image does not contain owned by root — so an installation that added the
+ * volume to a container running as somebody else has a directory this process
+ * cannot write to, and so has one that took copies with a different container
+ * before. `mkdir` answers that with `EACCES` and a path, which tells an
+ * operator neither who was refused nor what to do; this message is all they
+ * get, because the screen shows the last error and nothing beside it.
+ *
+ * First, so that a refusal costs nothing: a run that discovered this later
+ * would already be holding every workspace's write lock.
+ */
+async function ensureWritable(into: string): Promise<void> {
+  try {
+    await mkdir(into, { recursive: true });
+    await access(into, constants.W_OK);
+    return;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    // Anything else is this machine having a different problem, and saying it
+    // belongs to whoever wrote the error rather than to this guess.
+    if (code !== 'EACCES' && code !== 'EPERM' && code !== 'EROFS') throw error;
+  }
+  const self = process.getuid?.() ?? -1;
+  const owner = await stat(into).then(
+    (s) => `${s.uid}`,
+    () => 'nobody who can be read',
+  );
+  throw new Error(
+    `the backup directory ${into} belongs to uid ${owner} and this process runs as uid ${self}, ` +
+      'so no copy can be written there; give the directory to this user',
+  );
 }
 
 async function exists(path: string): Promise<boolean> {
