@@ -147,6 +147,14 @@ POST /v1/admin/backups.clear_host_key       forgets the pinned host key, so the 
                                             whatever answers and pins that. The way through after the
                                             target machine was rebuilt, where nothing about the address
                                             changed and so nothing else clears it
+POST /v1/admin/backups.check_target         asks the stored target whether a copy sent now would
+                                            arrive, without sending one: connected, directory_exists
+                                            and writable, with the first failure's reason. Checks what
+                                            is stored and not a form, because the credential never
+                                            comes back to the browser. On an installation with nothing
+                                            pinned the connection pins what answers, the same rule the
+                                            first upload follows, and pinned_now says it did. Never
+                                            touches the run history
 POST /v1/admin/backups.run                  takes one now; a failure comes back as ok=false with a
                                             reason, because the run happened and is recorded. A copy
                                             that was taken and did not reach the target is ok=true

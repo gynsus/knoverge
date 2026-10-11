@@ -626,6 +626,19 @@ the server opens an SFTP session and writes files rather than running a command:
 The directory you give has to exist already. A missing one is an error with the
 path in it rather than a tree created where you did not mean one.
 
+**Check the connection** beside the target asks it the questions a copy would
+ask, without sending one: whether the machine answers and the credential is
+accepted, whether the directory is there, and whether a file can be written into
+it — one small file, removed again. It checks what is saved rather than what is
+on the form, because the credential never comes back to the browser, so save
+first and then check. It reports the three stages separately, since they are
+fixed in three different places, and a stage after a failure says it was not
+reached rather than failing.
+
+On an installation with nothing pinned yet, that connection is what pins the host
+key, exactly as the first copy would — one rule for how a key gets pinned rather
+than two — and the screen says so before the button is pressed.
+
 The first connection pins the target's host key and the Settings page shows the
 fingerprint, so you can compare it against the far machine:
 

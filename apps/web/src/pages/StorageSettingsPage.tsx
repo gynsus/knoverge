@@ -1,6 +1,6 @@
-import type { BackupSettings, BackupSummary } from '@knoverge/contracts';
+import type { BackupSettings, BackupSummary, BackupTargetCheck } from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Archive } from 'lucide-react';
+import { Archive, Check, Minus, X } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -70,13 +70,22 @@ export function StorageSettingsPage() {
     },
   });
 
+  const probe = useMutation({
+    mutationFn: () => adminApi.backups.checkTarget(),
+    // The settings too, because a check on an installation with nothing pinned
+    // is what pins the key, and the fingerprint belongs on the screen at once.
+    onSuccess: refresh,
+  });
+
   const current = settings.data?.settings;
 
   return (
     <div className="grid gap-8">
       <SettingsHeader title={t('settings.sections.storage.title')} intro={t('backups.intro')} />
 
-      <ErrorNotice error={settings.error ?? copies.error ?? run.error ?? forget.error} />
+      <ErrorNotice
+        error={settings.error ?? copies.error ?? run.error ?? forget.error ?? probe.error}
+      />
 
       {/* Above the control rather than behind it: a screen that offers a target
           field and then refuses what it produced has wasted somebody's time and
@@ -97,6 +106,16 @@ export function StorageSettingsPage() {
         </p>
       ) : current === undefined ? null : (
         <BackupForm settings={current} mayAdminister={mayAdminister} />
+      )}
+
+      {current?.target !== null && current !== undefined && (
+        <Connection
+          settings={current}
+          mayAdminister={mayAdminister}
+          check={probe.data?.check}
+          checking={probe.isPending}
+          onCheck={() => probe.mutate()}
+        />
       )}
 
       {current?.target !== null && current !== undefined && (
@@ -180,6 +199,125 @@ export function StorageSettingsPage() {
         </DialogContent>
       </Dialog>
     </div>
+  );
+}
+
+/**
+ * Whether a copy sent now would arrive, asked before one is due.
+ *
+ * Without this the only way to find out whether a host, a user, a directory and
+ * a key were right was to wait for a run, and the first thing an operator saw
+ * was a copy that had already failed to go anywhere — a consequence after the
+ * click rather than before it (WEB_UI.md rule 4).
+ *
+ * Three outcomes rather than one, because the server has three and they are
+ * fixed in three different places (rule 2m): the address and the credential are
+ * settings here, the directory is somebody else's machine, and a directory that
+ * exists and refuses a file is that machine's permissions.
+ */
+function Connection({
+  settings,
+  mayAdminister,
+  check,
+  checking,
+  onCheck,
+}: {
+  settings: BackupSettings;
+  mayAdminister: boolean;
+  check: BackupTargetCheck | undefined;
+  checking: boolean;
+  onCheck: () => void;
+}) {
+  const { t } = useTranslation();
+  const stored = settings.target_secret_set;
+
+  return (
+    <section aria-labelledby="connection-title" className="grid gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="grid gap-1.5">
+          <h3 id="connection-title" className="text-lg font-semibold">
+            {t('backups.check_title')}
+          </h3>
+          <p className="max-w-2xl text-sm text-muted-foreground">{t('backups.check_hint')}</p>
+          {/* Said before the button, not after it: on an installation with
+              nothing pinned this connection is what decides what every later
+              one will accept (ADR 0041, WEB_UI.md rule 4). */}
+          {settings.target_host_fingerprint === null && (
+            <p className="max-w-2xl text-sm text-muted-foreground">{t('backups.check_will_pin')}</p>
+          )}
+        </div>
+        {mayAdminister && (
+          <Button type="button" variant="outline" onClick={onCheck} disabled={checking || !stored}>
+            {checking ? t('backups.checking') : t('backups.check')}
+          </Button>
+        )}
+      </div>
+
+      {/* A target with no credential cannot be asked anything, and a disabled
+          button with no reason beside it is the screen keeping a secret. */}
+      {!stored && <p className="text-sm text-muted-foreground">{t('backups.check_no_secret')}</p>}
+
+      {check !== undefined && (
+        <div className="grid gap-2 rounded-lg border border-border p-4">
+          <Stage done={check.connected} label={t('backups.check_connected')} />
+          <Stage
+            done={check.directory_exists}
+            label={t('backups.check_directory')}
+            skipped={!check.connected}
+          />
+          <Stage
+            done={check.writable}
+            label={t('backups.check_writable')}
+            skipped={!check.directory_exists}
+          />
+          {check.error !== null && (
+            <p className="text-sm text-destructive">
+              {t('backups.check_error', { error: check.error })}
+            </p>
+          )}
+          {check.error === null && (
+            <p className="text-sm text-muted-foreground">{t('backups.check_ok')}</p>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * One stage of the check.
+ *
+ * A stage after a failure is neither done nor failed — it was never reached,
+ * and a cross against it would send somebody to fix a directory on a machine
+ * nothing connected to.
+ */
+function Stage({
+  done,
+  label,
+  skipped = false,
+}: {
+  done: boolean;
+  label: string;
+  skipped?: boolean;
+}) {
+  const { t } = useTranslation();
+  const state = done ? 'ok' : skipped ? 'skipped' : 'failed';
+  const Icon = state === 'ok' ? Check : state === 'skipped' ? Minus : X;
+  return (
+    <p className="flex items-center gap-2 text-sm">
+      <Icon
+        aria-hidden
+        className={
+          state === 'ok'
+            ? 'size-4 shrink-0 text-primary'
+            : state === 'skipped'
+              ? 'size-4 shrink-0 text-muted-foreground'
+              : 'size-4 shrink-0 text-destructive'
+        }
+      />
+      <span className={state === 'skipped' ? 'text-muted-foreground' : undefined}>{label}</span>
+      <span className="sr-only">{t(`backups.check_state_${state}`)}</span>
+    </p>
   );
 }
 

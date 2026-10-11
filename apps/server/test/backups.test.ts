@@ -9,6 +9,7 @@ import type { BackupTools } from '@knoverge/backups';
 import {
   BackupSettingsResponse,
   BackupsResponse,
+  CheckBackupTargetResponse,
   TERMS_VERSION,
   TakeBackupResponse,
 } from '@knoverge/contracts';
@@ -82,6 +83,14 @@ const uploads: { name: string; secret: string; knownHostFingerprint: string | nu
 let uploadFails: string | undefined;
 /** What the far end presents. A rebuilt machine presents another one. */
 let presents = 'SHA256:ZkCvW2';
+/** What a check comes back with, which a test can replace. */
+let checks: { secret: string; knownHostFingerprint: string | null }[] = [];
+let checkAnswers = {
+  connected: true,
+  directoryExists: true,
+  writable: true,
+  error: null as string | null,
+};
 const uploader = {
   upload: async (options: {
     name: string;
@@ -95,6 +104,16 @@ const uploader = {
     });
     if (uploadFails !== undefined) throw new Error(uploadFails);
     return { hostFingerprint: presents };
+  },
+  check: async (options: { secret: string; knownHostFingerprint: string | null }) => {
+    checks.push({
+      secret: options.secret,
+      knownHostFingerprint: options.knownHostFingerprint,
+    });
+    return {
+      ...checkAnswers,
+      hostFingerprint: checkAnswers.connected ? presents : null,
+    };
   },
 };
 
@@ -499,5 +518,109 @@ describe('the machine that was rebuilt', () => {
     );
 
     expect(body.settings.target_host_fingerprint).toBeNull();
+  });
+});
+
+describe('asking the target before trusting the schedule', () => {
+  /** The target and a credential, since earlier blocks move both around. */
+  async function configure() {
+    await admin.post('/v1/admin/backups.save', {
+      enabled: true,
+      interval_hours: 12,
+      retention_days: 7,
+      target: TARGET,
+      target_secret: '-----BEGIN OPENSSH PRIVATE KEY-----',
+    });
+    await admin.post('/v1/admin/backups.clear_host_key', {});
+    checks = [];
+    checkAnswers = { connected: true, directoryExists: true, writable: true, error: null };
+  }
+
+  async function check() {
+    return CheckBackupTargetResponse.parse(
+      (await admin.post('/v1/admin/backups.check_target', {})).json(),
+    );
+  }
+
+  it('reaches the target with the opened credential and reports every stage', async () => {
+    await configure();
+    presents = 'SHA256:whatanswered';
+
+    const body = await check();
+
+    // Opened, not the ciphertext: what a run would use.
+    expect(checks).toEqual([
+      { secret: '-----BEGIN OPENSSH PRIVATE KEY-----', knownHostFingerprint: null },
+    ]);
+    expect(body.check).toEqual({
+      connected: true,
+      directory_exists: true,
+      writable: true,
+      host_fingerprint: 'SHA256:whatanswered',
+      pinned_now: true,
+      error: null,
+    });
+    // The settings come back carrying the pin this check just made, so the
+    // screen can show the fingerprint without asking again.
+    expect(body.settings.target_host_fingerprint).toBe('SHA256:whatanswered');
+  });
+
+  it('does not record the question as a run', async () => {
+    await configure();
+    const before = BackupSettingsResponse.parse(
+      (await admin.get('/v1/admin/backups.settings')).json(),
+    );
+
+    await check();
+
+    const after = BackupSettingsResponse.parse(
+      (await admin.get('/v1/admin/backups.settings')).json(),
+    );
+    expect(after.settings.last_run_at).toBe(before.settings.last_run_at);
+    expect(after.settings.last_upload_at).toBe(before.settings.last_upload_at);
+    expect(after.settings.last_upload_error).toBe(before.settings.last_upload_error);
+  });
+
+  it('matches a pin on the second ask rather than pinning again', async () => {
+    await configure();
+    presents = 'SHA256:whatanswered';
+    await check();
+
+    const again = await check();
+
+    expect(checks.at(-1)?.knownHostFingerprint).toBe('SHA256:whatanswered');
+    expect(again.check.pinned_now).toBe(false);
+    expect(again.check.writable).toBe(true);
+  });
+
+  it('carries a refusal as a result, with the stage it stopped at', async () => {
+    await configure();
+    checkAnswers = {
+      connected: true,
+      directoryExists: false,
+      writable: false,
+      error: 'the directory /srv/knoverge does not exist on the target machine',
+    };
+
+    const body = await check();
+
+    expect(body.check.connected).toBe(true);
+    expect(body.check.directory_exists).toBe(false);
+    expect(body.check.writable).toBe(false);
+    expect(body.check.error).toBe(
+      'the directory /srv/knoverge does not exist on the target machine',
+    );
+  });
+
+  it('is administration: an agent token cannot ask', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/backups.check_target',
+      payload: {},
+    });
+
+    // No session, no CSRF token: the same answer every administrative route
+    // gives, and the reason this is not a tool (rule 11).
+    expect([401, 403]).toContain(res.statusCode);
   });
 });

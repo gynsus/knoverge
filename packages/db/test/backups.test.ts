@@ -152,6 +152,26 @@ describe('a target', () => {
     expect(s.targetSecretCiphertext).toBeNull();
   });
 
+  it('can have a host key pinned without losing anything else', async () => {
+    await store('sealed:a-key');
+    await uow.run((tx) =>
+      settings.recordRun(tx, { at: at(4), error: null, uploadedAt: null, uploadError: null }),
+    );
+
+    await uow.run((tx) => settings.pinHostFingerprint(tx, 'SHA256:whatanswered', at(5)));
+
+    const s = await settings.get();
+    expect(s.targetHostFingerprint).toBe('SHA256:whatanswered');
+    // One column, because this is what a check of the target writes and a
+    // check must not put back a schedule somebody changed while it connected.
+    expect(s.target).toEqual(target);
+    expect(s.targetSecretCiphertext).toBe('sealed:a-key');
+    expect(s.intervalHours).toBe(12);
+    expect(s.retentionDays).toBe(30);
+    expect(s.lastRunAt).toEqual(at(4));
+    expect(s.updatedAt).toEqual(at(5));
+  });
+
   it('can have its pinned host key cleared without losing anything else', async () => {
     await store('sealed:rebuilt-machine');
     await uow.run((tx) =>

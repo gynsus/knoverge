@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 
 import {
+  checkTarget,
   listBackups,
   systemTools,
   takeBackup,
@@ -499,7 +500,10 @@ export function createServices(config: ServicesConfig) {
     },
     // SSH from this process rather than a binary in the image: the key is
     // sealed in the database and never reaches a filesystem (ADR 0041).
-    uploader: config.backupUploader ?? { upload: (options) => uploadBackup(options) },
+    uploader: config.backupUploader ?? {
+      upload: (options) => uploadBackup(options),
+      check: (options) => checkTarget(options),
+    },
     // Absent without a key, and then a target cannot be configured at all —
     // the same answer webhooks and providers give (ADR 0033).
     ...(config.encryptionKey

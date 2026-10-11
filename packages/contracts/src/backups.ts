@@ -87,6 +87,54 @@ export type SaveBackupSettingsRequest = z.infer<typeof SaveBackupSettingsRequest
 export const BackupSettingsResponse = z.object({ settings: BackupSettings });
 export type BackupSettingsResponse = z.infer<typeof BackupSettingsResponse>;
 
+/**
+ * What asking the target found, stage by stage.
+ *
+ * Three facts rather than one boolean, because they are fixed in three
+ * different places: the address and the credential are settings here, the
+ * directory is somebody else's machine, and a directory that exists and refuses
+ * a file is that machine's permissions. An operator told only that it did not
+ * work has to guess which.
+ *
+ * A later stage is false whenever an earlier one is, and the reason belongs to
+ * the first of them.
+ */
+export const BackupTargetCheck = z.object({
+  /** Reached the machine, verified its host key, and authenticated. */
+  connected: z.boolean(),
+  /** The directory that was typed is there. Nothing is ever created. */
+  directory_exists: z.boolean(),
+  /** A file was written into it and removed again. */
+  writable: z.boolean(),
+  /**
+   * What the target presented, `SHA256:…`, or null if nothing answered.
+   *
+   * Reported even when a later stage failed: somebody comparing this against
+   * their own `ssh-keyscan` does it because they do not trust the machine yet,
+   * and a mistyped directory is no reason to withhold it.
+   */
+  host_fingerprint: z.string().nullable(),
+  /** True when this check is what pinned the key, rather than matching it. */
+  pinned_now: z.boolean(),
+  /** One line, the first thing that went wrong, or null. */
+  error: z.string().nullable(),
+});
+export type BackupTargetCheck = z.infer<typeof BackupTargetCheck>;
+
+/**
+ * The check, and the settings as they now stand.
+ *
+ * The settings come back because a check can change them: on an installation
+ * with nothing pinned, whatever answers is what gets pinned — the same rule as
+ * the first upload, because "the host key it met first" has to mean one thing
+ * and not two (ADR 0041).
+ */
+export const CheckBackupTargetResponse = z.object({
+  check: BackupTargetCheck,
+  settings: BackupSettings,
+});
+export type CheckBackupTargetResponse = z.infer<typeof CheckBackupTargetResponse>;
+
 /** One copy on this machine, as the screen lists them. */
 export const BackupSummary = z.object({
   name: z.string(),
