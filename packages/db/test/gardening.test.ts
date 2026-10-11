@@ -26,6 +26,7 @@ import {
   createKnowledgeRepository,
   createProposalRepository,
   createRevisionRepository,
+  createSearchRepository,
   createUnitOfWork,
   createWorkspaceRepository,
   runMigrations,
@@ -41,6 +42,7 @@ let gardening: ReturnType<typeof createGardeningRepository>;
 let knowledge: ReturnType<typeof createKnowledgeRepository>;
 let revisions: ReturnType<typeof createRevisionRepository>;
 let proposals: ReturnType<typeof createProposalRepository>;
+let search: ReturnType<typeof createSearchRepository>;
 let workspaceId: WorkspaceId;
 let otherWorkspaceId: WorkspaceId;
 let actorId: ActorId;
@@ -58,6 +60,7 @@ beforeAll(async () => {
   knowledge = createKnowledgeRepository(handle.db);
   revisions = createRevisionRepository(handle.db);
   proposals = createProposalRepository(handle.db);
+  search = createSearchRepository(handle.db);
 
   const actors = createActorRepository(handle.db);
   workspaceService = new WorkspaceService({
@@ -90,6 +93,8 @@ async function item(options: {
   createdAt: Date;
   workspace?: WorkspaceId;
   status?: 'active' | 'superseded';
+  /** What the revision calls it. The slug, where a test does not care. */
+  title?: string;
 }): Promise<{ itemId: KnowledgeItemId; revisionId: RevisionId }> {
   const workspace = options.workspace ?? workspaceId;
   const itemId = newId('kn') as KnowledgeItemId;
@@ -125,7 +130,7 @@ async function item(options: {
       contentHash: options.contentHash,
       frontmatterHash: 'sha256:fm',
       gitCommitHash: 'c'.repeat(40),
-      title: `title ${options.slug}`,
+      title: options.title ?? `title ${options.slug}`,
       markdownPath: `knowledge/_uncategorised/${options.slug}.md`,
       frontmatter: {} as never,
       changeKind: 'create',
@@ -587,5 +592,319 @@ describe('the items the scan leaves out', () => {
       third.itemId,
     ]);
     expect(scan.duplicates).toBe(1);
+  });
+});
+
+describe('the text more than one active item holds', () => {
+  let here: WorkspaceId;
+  let gardener: ActorId;
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+    gardener = (await createActorRepository(handle.db).findSystemActor(here))!.id;
+  });
+
+  /**
+   * One item, indexed: a revision and the lexical index over it.
+   *
+   * The index is where the candidates come from, and the write path fills it in
+   * the same transaction as the revision — so a test that writes one without
+   * the other is testing a state the application does not produce.
+   */
+  async function written(options: {
+    slug: string;
+    title: string;
+    chunks: string[];
+    createdAt: Date;
+    contentHash?: string;
+    /** For the one test about an index left behind by an older revision. */
+    indexRevisionId?: RevisionId;
+  }): Promise<{ itemId: KnowledgeItemId; revisionId: RevisionId }> {
+    const written = await item({
+      slug: options.slug,
+      title: options.title,
+      contentHash: options.contentHash ?? `sha256:${options.slug}`,
+      createdAt: options.createdAt,
+      workspace: here,
+    });
+    await uow.run((tx) =>
+      search.upsert(tx, {
+        knowledgeItemId: written.itemId,
+        workspaceId: here,
+        revisionId: options.indexRevisionId ?? written.revisionId,
+        language: 'en',
+        title: options.title,
+        chunks: options.chunks.map((text, ordinal) => ({ ordinal, text })),
+        updatedAt: options.createdAt,
+      }),
+    );
+    return written;
+  }
+
+  it('pairs the copy against the oldest, and counts what it could compare', async () => {
+    const keep = await written({
+      slug: 't1',
+      title: 'Authentication strategy',
+      chunks: ['A six-digit email code.'],
+      createdAt: at(1),
+    });
+    const copy = await written({
+      slug: 't2',
+      // Capitalisation in both, which is exactly what the content hash does
+      // not fold and what this rule exists for.
+      title: 'Authentication Strategy',
+      chunks: ['A SIX-DIGIT   email code.'],
+      createdAt: at(2),
+    });
+    await written({
+      slug: 't3',
+      title: 'Something else entirely',
+      chunks: ['Different words.'],
+      createdAt: at(3),
+    });
+
+    const scan = await gardening.duplicateTexts(here, gardener, 10);
+    expect(scan.examined).toBe(3);
+    expect(scan.duplicates).toBe(1);
+    expect(scan.pairs).toHaveLength(1);
+    expect(scan.pairs[0]?.survivor.itemId).toBe(keep.itemId);
+    expect(scan.pairs[0]?.copy.itemId).toBe(copy.itemId);
+    // Both ends carry what the scan read, because rule 6 travels with a
+    // finding as much as with a person.
+    expect(scan.pairs[0]?.survivor.revisionId).toBe(keep.revisionId);
+    expect(scan.pairs[0]?.copy.contentHash).toBe('sha256:t2');
+    expect(scan.pairs[0]?.survivor.title).toBe('Authentication strategy');
+  });
+
+  it('reads all of an item, not the chunk that happens to come first', async () => {
+    // A body is several chunks, and comparing one of them would call two items
+    // the same because their opening paragraph is.
+    await written({
+      slug: 'u1',
+      title: 'Two paragraphs',
+      chunks: ['The opening both of them share.', 'Only the first says this.'],
+      createdAt: at(1),
+    });
+    await written({
+      slug: 'u2',
+      title: 'Two Paragraphs',
+      chunks: ['The opening both of them share.', 'And the second says something else.'],
+      createdAt: at(2),
+    });
+
+    expect((await gardening.duplicateTexts(here, gardener, 10)).pairs).toEqual([]);
+  });
+
+  it('reads them in the order they were written, not in the order they sort', async () => {
+    // The same paragraphs rearranged are not the same text. The chunker is
+    // deterministic from the body, so the ordinal is the body's own order, and
+    // sorting by anything else here would make these two one item.
+    await written({
+      slug: 'u3',
+      title: 'Rearranged',
+      chunks: ['Alpha comes first.', 'Beta comes second.'],
+      createdAt: at(1),
+    });
+    await written({
+      slug: 'u4',
+      title: 'REARRANGED',
+      chunks: ['Beta comes second.', 'Alpha comes first.'],
+      createdAt: at(2),
+    });
+
+    expect((await gardening.duplicateTexts(here, gardener, 10)).pairs).toEqual([]);
+  });
+
+  it('leaves a pair the hash rule already has', async () => {
+    // Identical content hashes are the other rule's finding, and two rules
+    // filing one supersession would be one proposal and one conflict.
+    await written({
+      slug: 'v1',
+      title: 'The same thing',
+      chunks: ['One body.'],
+      createdAt: at(1),
+      contentHash: 'sha256:identical',
+    });
+    await written({
+      slug: 'v2',
+      title: 'The same thing',
+      chunks: ['One body.'],
+      createdAt: at(2),
+      contentHash: 'sha256:identical',
+    });
+
+    const scan = await gardening.duplicateTexts(here, gardener, 10);
+    expect(scan.duplicates).toBe(0);
+    expect(scan.pairs).toEqual([]);
+  });
+
+  it('leaves two headings over one piece of text alone', async () => {
+    // The body folds together and the titles are nothing like each other. A
+    // person may well have meant to assert the same text under two headings,
+    // and the gardener is not the one to decide otherwise.
+    await written({
+      slug: 'w1',
+      title: 'How we authenticate',
+      chunks: ['A six-digit email code.'],
+      createdAt: at(1),
+    });
+    await written({
+      slug: 'w2',
+      title: 'Deployment runbook for the staging cluster',
+      chunks: ['A six-digit email code.'],
+      createdAt: at(2),
+    });
+
+    expect((await gardening.duplicateTexts(here, gardener, 10)).pairs).toEqual([]);
+  });
+
+  it('ignores an index built from a revision the item has moved past', async () => {
+    const stale = await written({
+      slug: 'x1',
+      title: 'Stale index',
+      chunks: ['What it used to say.'],
+      createdAt: at(1),
+    });
+    await written({
+      slug: 'x2',
+      title: 'Stale Index',
+      chunks: ['What it used to say.'],
+      createdAt: at(2),
+      indexRevisionId: stale.revisionId,
+    });
+
+    // The second item's chunks name another item's revision, so they are not
+    // what it currently asserts. Indexed text the item has moved past is text
+    // nobody should be proposed a supersession over.
+    const scan = await gardening.duplicateTexts(here, gardener, 10);
+    expect(scan.pairs).toEqual([]);
+    // And it was not counted as read, which is how an installation waiting for
+    // `knoverge db reindex` is visible on the screen rather than hidden.
+    expect(scan.examined).toBe(1);
+  });
+
+  it('ignores an item with no index at all', async () => {
+    await written({
+      slug: 'y1',
+      title: 'Indexed',
+      chunks: ['A body.'],
+      createdAt: at(1),
+    });
+    await item({
+      slug: 'y2',
+      title: 'Indexed',
+      contentHash: 'sha256:y2',
+      createdAt: at(2),
+      workspace: here,
+    });
+
+    const scan = await gardening.duplicateTexts(here, gardener, 10);
+    expect(scan.pairs).toEqual([]);
+    expect(scan.examined).toBe(1);
+  });
+
+  it('leaves out an item a reviewer is already holding, in the query', async () => {
+    const keep = await written({
+      slug: 'z1',
+      title: 'Held',
+      chunks: ['A body somebody is reading.'],
+      createdAt: at(1),
+    });
+    await written({
+      slug: 'z2',
+      title: 'HELD',
+      chunks: ['a body somebody is reading.'],
+      createdAt: at(2),
+    });
+    await uow.run((tx) =>
+      proposals.insert(tx, {
+        id: newId('prop') as ProposalId,
+        workspaceId: here,
+        proposalType: 'knowledge_supersede',
+        targetItemId: keep.itemId,
+        targetCategoryId: null,
+        status: 'pending',
+        proposedByActorId: gardener,
+        baseRevisionId: null,
+        baseContentHash: null,
+        proposedPayload: {},
+        reason: null,
+        confidence: null,
+        acknowledgedDuplicateIds: [],
+        syncSessionId: null,
+        policyDecision: 'require_review',
+        policyRuleId: null,
+        createdAt: at(1),
+        resolvedAt: null,
+        resolvedByActorId: null,
+        resolutionNote: null,
+        resultRevisionIds: [],
+      }),
+    );
+
+    // Excluded in the query rather than from the result: the answered items
+    // are the oldest, a cap takes the oldest first, and a filter afterwards
+    // would starve a capped run (ADR 0042).
+    const scan = await gardening.duplicateTexts(here, gardener, 10);
+    expect(scan.duplicates).toBe(0);
+    expect(scan.pairs).toEqual([]);
+  });
+
+  it('counts the candidates there are, and returns the oldest of them', async () => {
+    for (const [index, hour] of [1, 2, 3, 4].entries()) {
+      await written({
+        slug: `cap${index}a`,
+        title: `Capped number ${index}`,
+        chunks: [`Body number ${index}.`],
+        createdAt: at(hour),
+      });
+      await written({
+        slug: `cap${index}b`,
+        title: `Capped Number ${index}`,
+        chunks: [`body number ${index}.`],
+        createdAt: at(hour + 10),
+      });
+    }
+
+    const scan = await gardening.duplicateTexts(here, gardener, 2);
+    // What a rule has to be able to report: more than it may file.
+    expect(scan.duplicates).toBe(4);
+    expect(scan.pairs).toHaveLength(2);
+    // Oldest survivor first, so a capped run files the oldest mess rather
+    // than an arbitrary slice.
+    expect(scan.pairs.map((pair) => pair.survivor.title)).toEqual([
+      'Capped number 0',
+      'Capped number 1',
+    ]);
+  });
+
+  it('is asked of one workspace and answers about one', async () => {
+    const elsewhere = await emptyWorkspace();
+    await written({
+      slug: 'cross1',
+      title: 'Shared text',
+      chunks: ['The same body in two workspaces.'],
+      createdAt: at(1),
+    });
+    const other = await item({
+      slug: 'cross2',
+      title: 'Shared Text',
+      contentHash: 'sha256:cross2',
+      createdAt: at(2),
+      workspace: elsewhere,
+    });
+    await uow.run((tx) =>
+      search.upsert(tx, {
+        knowledgeItemId: other.itemId,
+        workspaceId: elsewhere,
+        revisionId: other.revisionId,
+        language: 'en',
+        title: 'Shared Text',
+        chunks: [{ ordinal: 0, text: 'The same body in two workspaces.' }],
+        updatedAt: at(2),
+      }),
+    );
+
+    expect((await gardening.duplicateTexts(here, gardener, 10)).pairs).toEqual([]);
   });
 });

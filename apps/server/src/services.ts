@@ -31,6 +31,7 @@ import {
   BackupService,
   GardeningService,
   duplicateContentHashRule,
+  duplicateTextRule,
   OauthService,
   AttachmentExtractor,
   AttachmentService,
@@ -550,8 +551,8 @@ export function createServices(config: ServicesConfig) {
     ...(config.pendingPerActor === undefined ? {} : { pendingPerActor: config.pendingPerActor }),
   });
 
-  // The installation reading its own knowledge on a schedule (ADR 0039). One
-  // rule so far, and it needs nothing but the database.
+  // The installation reading its own knowledge on a schedule (ADR 0039). Both
+  // rules need nothing but the database and the files.
   //
   // `filing` is the whole of what the gardener can reach of the proposal
   // service: the entry point that cannot write, whatever the workspace has
@@ -561,7 +562,15 @@ export function createServices(config: ServicesConfig) {
     gardening: repositories.gardening,
     actors: repositories.actors,
     filing: proposals,
-    rules: [duplicateContentHashRule(repositories.gardening)],
+    rules: [
+      duplicateContentHashRule(repositories.gardening),
+      // The canonical body, because the candidates came from the lexical index
+      // and an index is not authority (rule 8).
+      duplicateTextRule(repositories.gardening, async (actor, itemId) => {
+        const result = await knowledge.get(actor, itemId);
+        return result.body;
+      }),
+    ],
   });
 
   /**

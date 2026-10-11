@@ -7,7 +7,7 @@ import { z } from 'zod';
  * what gardening will one day do. ADR 0039 says which rules belong to the core
  * and which need a provider, and a name here means the rule is built.
  */
-export const GardeningRuleName = z.enum(['duplicate_content_hash']);
+export const GardeningRuleName = z.enum(['duplicate_content_hash', 'duplicate_text']);
 export type GardeningRuleName = z.infer<typeof GardeningRuleName>;
 
 /** How often a run is taken. Hours, because a schedule is read in hours. */
