@@ -394,7 +394,6 @@ knoverge/
 ├── docs/
 │   └── adr/
 ├── infra/
-│   ├── backup/
 │   ├── caddy/
 │   └── docker/
 ├── CHANGELOG.md

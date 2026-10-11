@@ -155,8 +155,9 @@ describe('knoverge backup', () => {
   });
 
   it('holds every workspace write lock while it runs', async () => {
-    // The whole point of the command: `infra/backup/backup.sh` cannot do this,
-    // so a write in flight lands on one side of its backup and not the other.
+    // The whole point of taking the copy from inside the application: the shell
+    // script this replaced could not reach the locks, so a write in flight
+    // landed on one side of its backup and not the other.
     let waiting: Promise<string> | undefined;
     let outcome: string | undefined;
     await takeBackup(

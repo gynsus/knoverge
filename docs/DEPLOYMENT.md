@@ -655,18 +655,19 @@ A copy that was taken and did not reach the target is not a failed backup. The
 local copy exists, the reason is shown beside the target, the log carries it as
 a warning, and the next run tries again.
 
-### The sidecar
+### Installations that still run the sidecar
 
-```bash
-docker compose --profile backup up -d
-```
+Before the setting existed, copies were taken by a second container started with
+`docker compose --profile backup up -d`. The profile and its two scripts are
+gone from this repository: the application takes the copy, and two mechanisms
+would have been two formats to restore from.
 
-The `backup` profile still exists and is being removed. An installation running
-it has to move across in an order, because the two cannot share a directory.
-The sidecar runs as `postgres` and hands the whole backup directory to that user
-every time it starts; the application runs as `node`. So a volume the sidecar has
-written to is not writable by the application, which says as much — naming both
-uids — rather than failing with an `EACCES` and a path.
+An installation still running that container has to move across in an order,
+because the two cannot share a directory. The sidecar ran as `postgres` and
+handed the whole backup directory to that user every time it started; the
+application runs as `node`. A volume the sidecar has written to is therefore not
+writable by the application, which says as much — naming both uids — rather than
+failing with an `EACCES` and a path.
 
 Give the application a volume of its own and keep the sidecar's until the copies
 in it are no longer wanted:
@@ -683,19 +684,22 @@ Then, in this order:
 1. bring the application up with that volume mounted. An empty volume arrives
    writable, because the image contains `/backups` owned by the user it runs as,
    and `KNOVERGE_BACKUP_DIR` already points there;
-2. turn the setting on under **Settings → Data and storage** and press **Take one
-   now**. A copy appears in the list, with a size;
-3. only then stop the sidecar — `docker compose stop backup` — and take the
-   profile out of the compose file.
+2. turn the setting on under **Settings → Data and storage**, press **Take one
+   now**, and — if a second machine is configured — **Check the connection**. A
+   copy appears in the list with a size, and the copy says whether it was sent;
+3. only then stop the sidecar, and take its service and its two bind mounts out
+   of the compose file. The scripts it mounted are no longer in this repository,
+   so a container still pointed at them will not start after a `git pull`.
 
 Until step 3 both are running and every copy is taken twice, which costs disk and
 nothing else. Stopping the sidecar before step 2 is the one order to avoid: it
 leaves the installation taking no copies at all, and the gap is invisible.
 
 Handing the existing volume over instead of adding one works — `chown -R
-1000:1000` inside it, where 1000 is the `node` user the image runs as — but only
-with the sidecar stopped, because `loop.sh` takes the directory back on every
-start. That is the order above with the gap in it, so it is the second choice.
+1000:1000` inside it, where 1000 is the `node` user the image runs as — but the
+sidecar has to be stopped first, because its `loop.sh` took the directory back on
+every start. That is the order above with the gap in it, so it is the second
+choice.
 
 ### On demand, with nothing writing
 
@@ -703,16 +707,16 @@ start. That is the order above with the gap in it, so it is the second choice.
 docker compose exec knoverge knoverge backup --out /backups --keep-days 14
 ```
 
-Same layout, one difference, and it is the one that matters: this takes the write
-lock of every workspace and holds it for the whole run, so no canonical write can
-start while the dump and the archive are taken. The scheduled service cannot do
-that — it is a separate container with read-only access to the data and no way to
-reach the locks — so its backups carry the skew described below. This one does not.
+The same mechanism the schedule uses, called by hand. Both take the write lock of
+every workspace and hold it for the whole run, so no canonical write can start
+while the dump and the archive are taken, and the two describe one moment. Two
+implementations would have been two formats to restore from, which is why there
+is one.
 
-A workspace that is being written when the command starts makes it wait, and the
-server bounds that wait; a command that cannot get the locks fails rather than
-taking a skewed backup. The manifest records where each workspace's ledger stood
-under the lock:
+A workspace that is being written when the run starts makes it wait, and the
+server bounds that wait; a run that cannot get the locks fails rather than taking
+a skewed backup. The manifest records where each workspace's ledger stood under
+the lock:
 
 ```text
 taken_at=20260927T112951Z
@@ -725,10 +729,7 @@ workspace=ws_01M348EV806RS0Y5XFXCZFFATD slug=knoverge sequence=199
 
 so a restore can check it came back to the sequence it was taken at.
 
-It is a profile rather than a default service because a complete installation is
-one application container plus PostgreSQL, and an operator with their own backup
-arrangement should not be handed a second one. Each run writes a directory named
-for its UTC timestamp:
+Each run writes a directory named for its UTC timestamp:
 
 ```text
 /backups/20260920T110514Z/postgres.dump   pg_dump --format=custom
@@ -736,10 +737,8 @@ for its UTC timestamp:
 /backups/20260920T110514Z/manifest.txt    what was taken, and in what order
 ```
 
-`KNOVERGE_BACKUP_INTERVAL` (default 86400) and `KNOVERGE_BACKUP_KEEP` (default
-14) set the schedule and the retention window. A run that dies half way leaves a
-`.partial` directory that rotation ignores and a restore cannot mistake for a
-whole backup.
+A run that dies half way leaves a `.partial` directory that rotation ignores and
+a restore cannot mistake for a whole backup.
 
 ### Why the database is dumped before the data directory
 
@@ -756,9 +755,11 @@ and the order decides which way:
   and nothing can repair it, because the knowledge itself is the part that is
   missing.
 
-So the script dumps first. The skew is not eliminated — `knoverge backup` is what
-eliminates it, by holding every workspace write lock for the duration — but it is
-pushed onto the side that is detectable and repairable.
+So the database is dumped first, and the manifest records that it was. Holding
+every workspace's write lock removes the skew rather than choosing a side of it,
+and every copy is taken that way now — but the order is kept, because it costs
+nothing and it is the side a restore could recover from if a copy were ever taken
+without the locks.
 
 ### Secrets
 
