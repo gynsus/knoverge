@@ -9,6 +9,85 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.8.0 — 2026-10-11
+
+The last step of Milestone 15, and the screen's missing answer. An operator can
+ask the backup target whether a copy would arrive, and the second container that
+used to take the copies is gone from the product.
+
+### Added
+
+- **Asking the target whether a copy would arrive.** The storage screen offered
+  a host, a user, a directory and a key, and no way to find out whether any of
+  it was right: the first answer came from a scheduled run, which is a
+  consequence after the click rather than before it (`docs/WEB_UI.md` rule 4).
+  **Check the connection** makes the connection an upload makes, carrying no
+  file — one `connect` for both, because a check built on a second way of
+  reaching the target would rehearse something else, and the same single
+  authentication method, verifier, timeouts and pin are the point.
+- **Three stages rather than one verdict**, because the server has three and
+  they are fixed in three different places: the address and the credential are
+  settings here, the directory is somebody else's machine, and a directory that
+  exists and refuses a file is that machine's permissions. A stage after a
+  failure says it was not reached, instead of showing a cross that would send
+  somebody to fix permissions on a directory nothing opened.
+- **The check writes a byte and removes it.** Whether a directory accepts a file
+  cannot be learned by looking at it, and a check that only looked would pass
+  where the upload fails. If the removal does not succeed, the check says so and
+  names what it left behind.
+- **Upgrading an installation that is already running**, in
+  `docs/DEPLOYMENT.md` §12: the copy to take first and why `--keep-days 3650`
+  belongs in that one command, and what to do when an upgrade has to be undone.
+
+### Changed
+
+- **The sidecar is gone.** The `backup` compose service,
+  `infra/backup/backup.sh`, `infra/backup/loop.sh`, and
+  `KNOVERGE_BACKUP_INTERVAL` and `KNOVERGE_BACKUP_KEEP` with them. What took
+  copies was a shell script that could not reach the write locks, so a write in
+  flight landed on one side of its archive and not the other; what takes them
+  now holds every workspace's lock across the dump and the archive, and the two
+  describe one moment. A complete installation is one application container plus
+  PostgreSQL again (rule 10).
+- **The check reads what is saved, not what is typed.** The secret is sealed and
+  never returns to the browser, so the button is refused with a reason until the
+  target has been stored. It is not a run either: `last_run_at` and the upload
+  fields are left alone, because a check is not a copy.
+- **Both workflows name `ubuntu-24.04`** instead of `ubuntu-latest`, which moves
+  to a new Ubuntu release on a date GitHub picks — 19 October 2026 for Ubuntu
+  26. A guard refuses any `runs-on` label ending in `-latest`.
+
+### Fixed
+
+- **Two paragraphs of the deployment guide argued from the sidecar's
+  existence** and were wrong the moment it went: taking a copy on demand was
+  contrasted with a scheduled service that could not hold the locks, and the
+  dump order was presented as the thing that makes a copy consistent. They are
+  one mechanism now, the order is still kept, and the reason it is kept is
+  written down rather than implied.
+
+### Verified
+
+- Against the live installation at `knoverge.njsoft.dev`: the schedule took a
+  copy, it reached the second machine over SFTP, and the sidecar was stopped,
+  removed, and taken out of the compose file with the application still serving.
+- The check's stages against a real in-process SFTP server: every stage passing
+  and nothing left behind, a wrong credential, a missing directory, a directory
+  that exists and refuses the file, a pin that matches, a pin that does not, and
+  nothing listening at all.
+
+### Compatibility
+
+No migrations: this release adds no columns and reads the ones v0.7.0 shipped.
+Upgrading from v0.7.0 needs the new image and nothing else.
+
+An installation still running the sidecar has to stop and remove that container
+before pulling this version, because the service mounts two shell scripts this
+repository no longer contains. `docs/DEPLOYMENT.md` §9 keeps the migration as an
+upgrade note for exactly that reader. `KNOVERGE_BACKUP_INTERVAL` and
+`KNOVERGE_BACKUP_KEEP` are no longer read by anything and can be deleted from
+`.env`.
+
 ## v0.7.0 — 2026-10-11
 
 Milestone 15 bar its last step: an installation keeps copies of itself because

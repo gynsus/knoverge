@@ -13,10 +13,10 @@ migration with an upgrade test, never an edit to one that shipped.
 
 Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
-a live installation. Milestone 15 arrived in **v0.7.0** and was finished after it, once a live
-installation had been moved off the sidecar.
-Milestone 14 is what remains after it, and ADR 0039 has settled the question it
-was waiting on: most of its list does not require a provider, and the part that
+a live installation. Milestone 15 arrived in **v0.7.0** and was finished in
+**v0.8.0**, once a live installation had been moved off the sidecar. Milestone 14
+is what remains after it, and ADR 0039 has settled the question it was waiting
+on: most of its list does not require a provider, and the part that
 does is an addition rather than a prerequisite.
 
 ## Milestone 0 - repository scaffold
@@ -358,11 +358,12 @@ rule and per run: a gardener that buries the review queue has done harm.
 
 ## Milestone 15 - backups you can see
 
-_Delivered. v0.7.0 carried everything but the removal, which followed once a
-live installation had been moved across. ADR 0040 decides the shape — a backup
-is a setting the product owns, not a container in a compose profile — and ADR
-0041 decides how it reaches a second machine: the server speaks SSH itself and
-pins the host key it met first._
+_Delivered — v0.7.0 and v0.8.0. v0.7.0 carried everything but the connection
+check and the removal, and the removal had to wait until a live installation had
+been moved across. ADR 0040 decides the shape — a backup is a setting the product
+owns, not a container in a compose profile — and ADR 0041 decides how it reaches
+a second machine: the server speaks SSH itself and pins the host key it met
+first._
 
 Deliver:
 
