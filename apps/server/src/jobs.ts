@@ -67,6 +67,26 @@ export const BACKUP_QUEUE = 'backup.take';
 const BACKUP_SCHEDULE = '7 * * * *';
 
 /**
+ * Where the installation reads its own knowledge and files what it finds
+ * (ADR 0039).
+ *
+ * In the worker role with the backups, and for a related reason: a run files
+ * proposals, and two processes tidying the same workspace would file the same
+ * finding twice before either had recorded it.
+ */
+export const GARDENING_QUEUE = 'gardening.sweep';
+
+/**
+ * Every hour, twenty-three minutes in.
+ *
+ * The interval is the workspace's setting and this is not; the job asks which
+ * workspaces are due and usually finds none. Away from the hour and from the
+ * backup's seven minutes past: a run holds no locks, but it reads every active
+ * item, and there is no reason for it to meet a copy of the whole installation.
+ */
+const GARDENING_SCHEDULE = '23 * * * *';
+
+/**
  * Often enough that a file is searchable while the person who uploaded it is
  * still looking at the screen, and rarely enough to be a sweep and not a poll.
  */
@@ -88,6 +108,7 @@ export function startedQueues(deliveringWebhooks: boolean): string[] {
     `${EMBEDDING_QUEUE}.sweep`,
     EXTRACTION_QUEUE,
     BACKUP_QUEUE,
+    GARDENING_QUEUE,
     ...(deliveringWebhooks ? [WEBHOOK_QUEUE] : []),
   ];
 }
@@ -143,6 +164,16 @@ export interface JobsOptions {
    * setting is changed while the product runs, and a queue that only exists
    * when backups were already on would mean restarting to turn them on.
    */
+  /**
+   * Asks which workspaces are due a gardening run, and runs them.
+   *
+   * Always registered, like the backup sweep and for the same reason: the
+   * setting is changed while the product runs, and a queue that only existed
+   * where gardening was already on would mean a restart to turn it on.
+   */
+  gardenDue: () => Promise<
+    { workspaceId: string; filed: number; reachedCap: boolean; error: string | null }[]
+  >;
   backUpIfDue: () => Promise<
     | { ran: false; reason: string }
     | {
@@ -238,6 +269,18 @@ export function createJobs(
         } else logger.info(outcome.report, 'backup taken');
       });
       await boss.schedule(BACKUP_QUEUE, BACKUP_SCHEDULE);
+
+      await boss.createQueue(GARDENING_QUEUE);
+      await boss.work(GARDENING_QUEUE, async () => {
+        for (const outcome of await options.gardenDue()) {
+          // Only the runs that happened, and all of them: a run that filed
+          // nothing is the answer to whether gardening is working, and a run
+          // that stopped at its cap is the answer to why there is not more.
+          if (outcome.error !== null) logger.error(outcome, 'gardening run failed');
+          else logger.info(outcome, 'gardening run finished');
+        }
+      });
+      await boss.schedule(GARDENING_QUEUE, GARDENING_SCHEDULE);
 
       const deliver = options.deliverWebhooks;
       if (deliver) {

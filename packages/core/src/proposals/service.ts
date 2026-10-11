@@ -548,6 +548,42 @@ export class ProposalService {
       type: input.newItem?.type ?? current.item.type,
     });
 
+    return this.record(actor, this.supersedeSpec(actor, input, decision));
+  }
+
+  /**
+   * A gardening finding, filed (ADR 0042).
+   *
+   * The policy is not asked, because its answer would be the wrong one. The
+   * gardener runs as the workspace's system actor, and a system actor is the
+   * host operator at the command line, who may write directly; a scheduled
+   * reader is not that person. So the decision here is fixed rather than read,
+   * and there is no argument this method can be called with that writes — the
+   * `apply` closure it hands over is only ever run by an approval.
+   *
+   * Separate from `proposeSupersede` rather than a flag on it, because a flag's
+   * default decides what happens when somebody forgets to pass it, and the
+   * forgetful case would be a scheduled job rewriting knowledge unreviewed.
+   */
+  async fileSupersedeFinding(
+    actor: ActorContext,
+    input: ProposeSupersedeInput,
+  ): Promise<ProposalOutcome> {
+    // Rule 6 still, and this is where a finding from a scan of a moment ago
+    // meets what the workspace says now: the item has been edited since, and
+    // the conflict is the right answer. The caller skips it and the next run
+    // looks again.
+    const current = await this.o.knowledge.get(actor, input.oldItemId);
+    assertBase(current, input.oldBaseRevisionId, input.oldBaseContentHash);
+    return this.record(actor, this.supersedeSpec(actor, input, { effect: 'require_review' }));
+  }
+
+  /** One proposal, however the decision was arrived at. */
+  private supersedeSpec(
+    actor: ActorContext,
+    input: ProposeSupersedeInput,
+    decision: PolicyDecision,
+  ): RecordSpec {
     const payload: ProposedSupersedePayload = {
       ...(input.validUntil !== undefined ? { valid_until: input.validUntil } : {}),
       ...(input.newItem ? { new_item: contentPayload(input.newItem) } : {}),
@@ -562,7 +598,7 @@ export class ProposalService {
         : {}),
     };
 
-    return this.record(actor, {
+    return {
       proposalType: 'knowledge_supersede',
       decision,
       payload,
@@ -588,7 +624,7 @@ export class ProposalService {
           revisionIds: [result.new.revision.id, result.old.revision.id],
         };
       },
-    });
+    };
   }
 
   /**

@@ -66,6 +66,10 @@ import type {
   CheckBackupTargetResponse,
   SaveBackupSettingsRequest,
   TakeBackupResponse,
+  GardeningRunsResponse,
+  GardeningSettingsResponse,
+  RunGardeningResponse,
+  SaveGardeningSettingsRequest,
   RereadAttachmentsResponse,
   SingleAttachmentResponse,
   UpsertWebhookRequest,
@@ -134,6 +138,19 @@ export const adminApi = {
     // The stored target, not the form: the credential never comes back here, so
     // the only thing worth asking about is the one a run would use.
     checkTarget: () => apiPost<CheckBackupTargetResponse>('/v1/admin/backups.check_target', {}),
+  },
+  gardening: {
+    settings: (signal?: AbortSignal) =>
+      apiGet<GardeningSettingsResponse>('/v1/admin/gardening.settings', signal),
+    runs: (signal?: AbortSignal) =>
+      apiGet<GardeningRunsResponse>('/v1/admin/gardening.runs', signal),
+    // The schedule and both caps together, because that is how the server takes
+    // them and a half-applied change to them is a run nobody configured.
+    save: (body: SaveGardeningSettingsRequest) =>
+      apiPost<GardeningSettingsResponse>('/v1/admin/gardening.save', body),
+    // Runs whether or not the schedule is on: somebody who has just turned this
+    // on wants to see what it finds rather than wait a day.
+    run: () => apiPost<RunGardeningResponse>('/v1/admin/gardening.run', {}),
   },
   webhooks: {
     list: (signal?: AbortSignal) => apiGet<WebhooksResponse>('/v1/admin/webhooks.list', signal),

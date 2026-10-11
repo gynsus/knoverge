@@ -15,9 +15,8 @@ Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
 a live installation. Milestone 15 arrived in **v0.7.0** and was finished in
 **v0.8.0**, once a live installation had been moved off the sidecar. Milestone 14
-is what remains after it, and ADR 0039 has settled the question it was waiting
-on: most of its list does not require a provider, and the part that
-does is an addition rather than a prerequisite.
+is what remains after it, and is under way: its frame and its first rule are
+built, and the rest of its rules arrive on that frame.
 
 ## Milestone 0 - repository scaffold
 
@@ -330,14 +329,22 @@ into the JSON `import-json` already reads._etadata JSON) and import;
 
 ## Milestone 14 - knowledge gardening
 
-_Not started. ADR 0039 decides the shape: a job belongs to the core when its
+_In progress. ADR 0039 decides the shape: a job belongs to the core when its
 finding can be computed from what is already recorded, and to the optional layer
-when it rests on a judgement about meaning._
+when it rests on a judgement about meaning. ADR 0042 decides how a finding is
+filed — the gardener does not ask the policy, because as the workspace's system
+actor it would be told it may write._
+
+The frame and the first rule are built: the per-workspace setting, the caps, the
+scheduled sweep, the run record a screen can read, and duplicates by content
+hash. The rules below arrive one or two at a time on the same frame.
 
 Deliver, with no provider configured:
 
-- duplicates by content hash and by text, which is the half of reconciliation's
-  matching that needs nothing but the database, pointed inward;
+- **duplicates by content hash** — built. Two active items whose title and body
+  are identical, with the older kept and the copy proposed for supersession;
+- duplicates by text, the `lexical` half of reconciliation's matching, pointed
+  inward;
 - orphan sources: a source reference nothing rests on, an attachment whose item
   is gone;
 - weak provenance: revisions that cite nothing, where the workspace mostly does;
@@ -353,8 +360,15 @@ Deliver, only where a provider is assigned:
 - contradictions.
 
 Every finding is a proposal and names the rule and the rows it rested on. The
-gardener gets no direct-write path at any trust tier. Findings are capped per
-rule and per run: a gardener that buries the review queue has done harm.
+gardener gets no direct-write path at any trust tier, and the filing path has no
+branch that writes rather than a rule saying it must not (ADR 0042). Findings
+are capped per rule and per run: a gardener that buries the review queue has
+done harm.
+
+What a rule leaves out it leaves out in its own query: an item with a proposal
+waiting, and an item whose finding a reviewer has already refused. Filtering
+those from the result instead starves a capped run, because the answered items
+are the oldest and a cap takes the oldest first.
 
 ## Milestone 15 - backups you can see
 

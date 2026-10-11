@@ -24,6 +24,10 @@ export const WEBHOOKS_KEY = ['admin', 'webhooks'] as const;
 export const BACKUP_SETTINGS_KEY = ['admin', 'backup-settings'] as const;
 export const BACKUPS_KEY = ['admin', 'backups'] as const;
 
+/** Whether this workspace tidies itself, and what its runs found. */
+export const GARDENING_SETTINGS_KEY = ['admin', 'gardening-settings'] as const;
+export const GARDENING_RUNS_KEY = ['admin', 'gardening-runs'] as const;
+
 /** Files a workspace holds, and one of them. */
 export const ATTACHMENTS_KEY = ['admin', 'attachments'] as const;
 export const ATTACHMENT_KEY = ['admin', 'attachment'] as const;

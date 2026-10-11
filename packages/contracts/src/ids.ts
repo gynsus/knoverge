@@ -36,6 +36,7 @@ export const ID_PREFIXES = {
   oauthGrant: 'oagr',
   oauthCode: 'oacd',
   oauthRefresh: 'oart',
+  gardeningRun: 'grun',
 } as const;
 
 export type IdPrefix = (typeof ID_PREFIXES)[keyof typeof ID_PREFIXES];

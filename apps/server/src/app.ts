@@ -31,6 +31,7 @@ import { registerAdminAgentRoutes } from './routes/admin-agents.ts';
 import { registerConsentRoutes, registerOauthRoutes } from './routes/oauth.ts';
 import { registerAdminAiRoutes } from './routes/admin-ai.ts';
 import { registerAdminBackupRoutes } from './routes/admin-backups.ts';
+import { registerAdminGardeningRoutes } from './routes/admin-gardening.ts';
 import { registerAdminPolicyRoutes } from './routes/admin-policy.ts';
 import { registerAdminAttachmentRoutes } from './routes/admin-attachments.ts';
 import { registerAdminWebhookRoutes } from './routes/admin-webhooks.ts';
@@ -133,6 +134,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     registerAdminAttachmentRoutes(app, options.services);
     registerAdminAiRoutes(app, options.services);
     registerAdminBackupRoutes(app, options.services);
+    registerAdminGardeningRoutes(app, options.services);
     registerAdminPolicyRoutes(app, options.services);
     registerAdminWebhookRoutes(app, options.services);
     registerAdminWorkspaceRoutes(app, options.services);

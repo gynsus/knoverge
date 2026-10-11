@@ -32,6 +32,7 @@ hook_  webhook
 rule_  policy rule
 grant_ permission grant
 chunk_ search chunk
+grun_  gardening run
 ```
 
 ULIDs are identifiers only. Ordering and cursors use explicit per-workspace `sequence` columns, never ULID order (ULIDs generated in the same millisecond are not ordered by commit time).
@@ -1065,6 +1066,50 @@ A target is all of its parts or none of them, which a `CHECK` enforces: half a t
 Naming another host or port clears it, because a pin is a fact about a machine and the port is part of its address. A new credential, directory or username does not: those are facts about an account on the same machine. A refused connection never writes it — pinning what answered after the check failed would turn one failure into permission for the next.
 
 A failed upload is recorded apart from a failed backup. The local copy was taken and is a backup; conflating the two would make an unreachable target look like no backup at all.
+
+## 34b. Gardening settings and runs
+
+Whether a workspace tidies itself, and what each run did (ADR 0039, ADR 0042).
+
+Per workspace, unlike the backup settings above: a workspace is the unit of knowledge and of review, so it is the unit of tidying. One may want it and the next may not, and the review queue a flood would ruin belongs to a workspace rather than to the installation.
+
+```text
+GardeningSettings
+- workspace_id              primary key
+- enabled                   false until somebody says otherwise
+- interval_hours
+- max_findings_per_run      what one run may leave in the review queue
+- max_findings_per_rule     and what one rule may take of that
+- last_run_at nullable
+- updated_at
+```
+
+No row is inserted for a workspace, and a workspace without one has the defaults. Unlike the backup settings, whose single row the migration creates and whose absence is a fault: there is one of those and one per workspace of these, so a backfill would be a thing workspace creation and import both had to remember, and three places that create the same row are three places one of them can be forgotten.
+
+The row appears the first time anything is changed, including the first run recording when it ran. A patch leaves alone what it says nothing about, so a run cannot put back a schedule somebody changed while it was running.
+
+```text
+GardeningRun
+- id                        grun_
+- workspace_id
+- trigger                   scheduled | requested
+- started_at
+- finished_at nullable      null while it runs
+- findings_filed
+- reached_cap               the run stopped because it had filed as much as it may
+- error nullable            one line, never a body
+- rules                     jsonb: one entry per rule
+```
+
+The findings themselves are proposals and live in the review queue (section 21). This row is the run, which is how a screen tells a rule that found nothing from a rule that never ran — from the queue the two look identical.
+
+Each entry of `rules` is `{ rule, examined, found, filed, limited }`: what the rule read, how many findings it has, how many it filed, and which cap held it back (`run_cap`, `rule_cap`, or null). Read as a block for one screen and never queried by its contents, which is what makes it a document and not a table. `found` counts the findings there are to file, which is why a pair already in the review queue is not among them: a screen reporting "found 1, filed 0" every day would say the gardener was stuck.
+
+A run is written before the rules are read and finished afterwards, so a run a restart interrupted is recognisable as one that never finished rather than missing altogether. `last_run_at` is set whether the run found anything or threw: a run that failed still ran, and an interval that ignored it would retry every minute.
+
+Runs are kept rather than pruned. One row per workspace per day is three hundred and sixty-five a year, each a few hundred bytes; the sync candidates are pruned because a daily pass leaves three hundred thousand (section 26).
+
+Nothing here records a finding. A finding that was filed is a proposal, proposed by the workspace's system actor with `gardener` as the client, carrying the rule and the rows it read in its `reason` — so a reviewer can disagree with the rule rather than with the finding. The gardener has no path that writes knowledge directly, whatever policy the workspace holds (ADR 0042).
 
 ## 35. OAuth client, grant, code and refresh token
 
