@@ -19,7 +19,11 @@ env:
 jobs:
   ci:
     name: lint, typecheck, test, build
-    runs-on: ubuntu-latest
+    # Pinned rather than `ubuntu-latest`. That label moves to a new Ubuntu release
+    # on a date GitHub chooses — 19 October 2026 for Ubuntu 26 — and the operating
+    # system under a build is not a thing to have changed for us on a morning we
+    # did not pick. Raise it deliberately, with a run to look at.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -51,7 +55,7 @@ jobs:
 
   docker:
     name: docker image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
