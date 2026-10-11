@@ -644,12 +644,45 @@ a warning, and the next run tries again.
 
 ### The sidecar
 
-The `backup` profile still exists and is being removed. An installation running
-it should turn the setting on and stop it; running both takes every copy twice.
-
 ```bash
 docker compose --profile backup up -d
 ```
+
+The `backup` profile still exists and is being removed. An installation running
+it has to move across in an order, because the two cannot share a directory.
+The sidecar runs as `postgres` and hands the whole backup directory to that user
+every time it starts; the application runs as `node`. So a volume the sidecar has
+written to is not writable by the application, which says as much — naming both
+uids — rather than failing with an `EACCES` and a path.
+
+Give the application a volume of its own and keep the sidecar's until the copies
+in it are no longer wanted:
+
+```yaml
+  knoverge:
+    volumes:
+      - knoverge-data:/data
+      - knoverge-app-backups:/backups
+```
+
+Then, in this order:
+
+1. bring the application up with that volume mounted. An empty volume arrives
+   writable, because the image contains `/backups` owned by the user it runs as,
+   and `KNOVERGE_BACKUP_DIR` already points there;
+2. turn the setting on under **Settings → Data and storage** and press **Take one
+   now**. A copy appears in the list, with a size;
+3. only then stop the sidecar — `docker compose stop backup` — and take the
+   profile out of the compose file.
+
+Until step 3 both are running and every copy is taken twice, which costs disk and
+nothing else. Stopping the sidecar before step 2 is the one order to avoid: it
+leaves the installation taking no copies at all, and the gap is invisible.
+
+Handing the existing volume over instead of adding one works — `chown -R
+1000:1000` inside it, where 1000 is the `node` user the image runs as — but only
+with the sidecar stopped, because `loop.sh` takes the directory back on every
+start. That is the order above with the gap in it, so it is the second choice.
 
 ### On demand, with nothing writing
 
