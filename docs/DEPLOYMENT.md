@@ -1085,14 +1085,82 @@ The server does not crash when PostgreSQL is unreachable at start. It listens im
 
 When several application containers share one database (for example a `web` and a `worker` role), they may all start with auto-migration on. Migration runs hold an advisory lock, so the second container waits for the first and then finds nothing left to apply. Running `knoverge db migrate` beforehand is still the clearer choice for a scheduled upgrade, because it separates the schema change from the restart.
 
-Upgrade path:
+### Upgrading an installation that is running
 
-```text
-backup
-pull new image
-start (migrations run)
-run readiness/integrity checks
+Six steps in this order. Only the second one cannot be done afterwards.
+
+**1. Read the entry for the version being moved to.** `CHANGELOG.md` says what
+changed, how many migrations arrived and whether anything has to be configured.
+Migrations are immutable from v0.1.0 on, so coming back down is a restore and not
+a `docker pull` of the older tag.
+
+**2. Take a copy, and keep it.**
+
+```bash
+docker compose exec knoverge knoverge backup --keep-days 3650
 ```
+
+Every workspace's write lock is held for the whole run, so the dump and the
+archive describe one moment. `--keep-days` is given explicitly because the
+command's own default is 14 days and rotation runs after the copy is written —
+taking the copy an upgrade depends on should not be what removes the copies
+before it.
+
+**3. Change the tag in one place**, so that what is running is what the file
+says:
+
+```diff
+-    image: ghcr.io/gynsus/knoverge:<the version running now>
++    image: ghcr.io/gynsus/knoverge:<the version being moved to>
+```
+
+A version and not `latest`: an installation moves when that was decided, and a
+container recreated for an unrelated reason should not be how it finds out that
+a release happened.
+
+**4. Pull before stopping anything.** A pull that fails here costs nothing; the
+same failure once the container is gone is an outage.
+
+```bash
+docker compose pull knoverge
+```
+
+**5. Start it.** Migrations run on start unless `KNOVERGE_AUTO_MIGRATE=false`.
+
+```bash
+docker compose up -d
+```
+
+**6. Check what came up, not that something came up.**
+
+```bash
+docker compose exec knoverge knoverge --version       # the version chosen in 3
+curl -fsS http://localhost:3000/health/ready          # ok, not degraded
+docker compose exec knoverge knoverge integrity check # the two stores agree
+```
+
+`/health/ready` answers `degraded` with HTTP 503 while migrations are pending, so
+a check run too early reports a state that is about to pass by itself. The
+integrity check is the one worth waiting for: it is the only step that compares
+the repository against the database rather than asking the process how it feels.
+
+### When an upgrade has to be undone
+
+The copy from step 2, and nothing else. A restore refuses to run while anything
+else is connected to the database — it names the clients — so the application
+goes down first and the database stays up:
+
+```bash
+docker compose stop knoverge
+docker compose run --rm knoverge knoverge restore --from /backups/<name> --force
+docker compose up -d
+```
+
+Put the old tag back in step 3's place before starting again. A newer image
+against a database restored to an older schema runs its migrations a second time,
+which is the supported direction; the other way round — an older image against a
+newer schema — is not, and is the reason the copy is taken before the pull rather
+than after it.
 
 ## 13. Reverse proxy
 
