@@ -1,3 +1,4 @@
+import { GardeningRuleName } from '@knoverge/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { SUPPORTED_LOCALES, createI18n, resources } from '../src/i18n.ts';
@@ -25,6 +26,23 @@ describe('message catalogues', () => {
     const enKeys = bases(flatten(resources.en.common));
     for (const locale of SUPPORTED_LOCALES) {
       expect(bases(flatten(resources[locale].common))).toEqual(enKeys);
+    }
+  });
+
+  it('names every gardening rule the server can report', () => {
+    // The screen builds these keys from the rule name the server sends, so a
+    // rule added without a catalogue entry shows the key itself and no literal
+    // `t('...')` guard can catch it. The rules are also the one place the
+    // screen lists something that found nothing, so a missing name would be
+    // the only thing a reader saw about it.
+    const rules = resources.en.common.gardening.rule as Record<
+      string,
+      { title: string; description: string }
+    >;
+    expect(Object.keys(rules).sort()).toEqual([...GardeningRuleName.options].sort());
+    for (const name of GardeningRuleName.options) {
+      expect(rules[name]?.title, name).toBeTruthy();
+      expect(rules[name]?.description, name).toBeTruthy();
     }
   });
 

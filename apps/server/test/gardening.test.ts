@@ -127,6 +127,18 @@ async function twice(title: string, body: string): Promise<string[]> {
   return ids;
 }
 
+/** One item, and the id it was given. */
+async function create(title: string, body: string): Promise<string> {
+  const res = await admin.post('/v1/admin/knowledge.create', {
+    title,
+    body,
+    type: 'fact',
+    categories: [],
+  });
+  expect(res.statusCode, res.body).toBe(200);
+  return (res.json() as { item: { id: string } }).item.id;
+}
+
 describe('a workspace nobody has configured', () => {
   it('says gardening is off, rather than saying nothing', async () => {
     const body = GardeningSettingsResponse.parse(
@@ -141,7 +153,7 @@ describe('a workspace nobody has configured', () => {
     });
     // Every rule the installation has, so the screen can name one that found
     // nothing rather than showing an empty list.
-    expect(body.settings.rules).toEqual(['duplicate_content_hash']);
+    expect(body.settings.rules).toEqual(['duplicate_content_hash', 'duplicate_text']);
   });
 
   it('has no runs to show', async () => {
@@ -185,6 +197,10 @@ describe('a run that finds the same thing twice', () => {
     expect(result.run.findings_filed).toBe(1);
     expect(result.run.rules).toEqual([
       { rule: 'duplicate_content_hash', examined: 2, found: 1, filed: 1, limited: null },
+      // The text rule says nothing about this pair: their content hashes are
+      // identical, so it is the other rule's finding, and two rules filing one
+      // supersession would be one proposal and one conflict.
+      { rule: 'duplicate_text', examined: 2, found: 0, filed: 0, limited: null },
     ]);
 
     // The whole of ADR 0042 in one assertion. The gardener runs as the
@@ -286,6 +302,61 @@ describe('a finding the workspace has moved past', () => {
         },
       ),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  });
+});
+
+describe('a run that finds the same words typed twice', () => {
+  it('files the copy, keeps the older, and names what it rested on', async () => {
+    // The content hash folds line endings and blank lines and nothing else, so
+    // to that rule these are two items. The capitalisation of a title and the
+    // spacing of a sentence are not what either of them says.
+    const keep = await create(
+      'Attachments are kept by their hash',
+      'The bytes live under the sha256 of their contents.\n',
+    );
+    const copy = await create(
+      'Attachments Are Kept By Their Hash',
+      'The bytes   live under the SHA256 of their contents.\n',
+    );
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    const text = result.run.rules.find((rule) => rule.rule === 'duplicate_text');
+    expect(text?.filed).toBe(1);
+
+    const listed = await admin.post('/v1/proposal_list', { status: 'pending' });
+    const pending = (
+      listed.json() as {
+        proposals: { proposal_type: string; target_item_id: string; reason: string }[];
+      }
+    ).proposals.filter((proposal) => proposal.reason.includes('duplicate_text'));
+    expect(pending).toHaveLength(1);
+    // The copy is the one proposed for supersession, as with the hash rule and
+    // for the same reasons: the older item's history is the longer one.
+    expect(pending[0]?.proposal_type).toBe('knowledge_supersede');
+    expect(pending[0]?.target_item_id).toBe(copy);
+    expect(pending[0]?.reason).toContain(keep);
+    expect(pending[0]?.reason).toContain('Attachments are kept by their hash');
+
+    // And nothing was written: both are still what the workspace asserts.
+    for (const id of [keep, copy]) {
+      const res = await admin.post('/v1/knowledge_get', { item_id: id });
+      expect((res.json() as { item: { status: string } }).item.status).toBe('active');
+    }
+  });
+
+  it('leaves two bodies that are merely similar alone', async () => {
+    // One sentence longer is not a copy, and what the two should become is a
+    // rewrite — which ADR 0039 puts in the optional layer, because a draft is
+    // writing and nothing here writes.
+    await create('Tokens are opaque', 'A token carries no claims.\n');
+    await create('Tokens Are Opaque', 'A token carries no claims. It is looked up.\n');
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    expect(result.run.rules.find((rule) => rule.rule === 'duplicate_text')?.found).toBe(0);
   });
 });
 

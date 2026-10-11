@@ -439,6 +439,10 @@
       "duplicate_content_hash": {
         "title": "The same thing twice",
         "description": "Two active items whose title and body are identical. The older one is kept, and the copy is proposed for supersession — nothing is deleted or merged."
+      },
+      "duplicate_text": {
+        "title": "The same words, typed twice",
+        "description": "Two active items holding the same words in the same order, differing only in capitalisation, accents or where the lines break, under titles near enough to be one heading. The older one is kept. Bodies that are merely similar are left alone: what two nearly-identical items should become is a rewrite, and nothing here writes."
       }
     },
     "runs": "Runs",

@@ -56,8 +56,14 @@ export interface GardeningSettingsPatch {
   lastRunAt?: Date;
 }
 
-/** One active item inside a group that shares a content hash. */
-export interface DuplicateHashMember {
+/**
+ * One item as a rule found it.
+ *
+ * The revision and the hash travel with it because rule 6 applies to a finding
+ * as much as to a person: what gets filed is a proposal against the state the
+ * scan read, and the workspace may have moved on by the time it is filed.
+ */
+export interface GardeningItem {
   itemId: KnowledgeItemId;
   revisionId: RevisionId;
   contentHash: string;
@@ -69,7 +75,30 @@ export interface DuplicateHashMember {
 export interface DuplicateHashGroup {
   contentHash: string;
   /** Oldest first, so the survivor is the head and the rest are the copies. */
-  members: DuplicateHashMember[];
+  members: GardeningItem[];
+}
+
+/**
+ * Two items that say the same thing in the same words, typed differently.
+ *
+ * A pair rather than a group: which item survives depends on the title it is
+ * compared against, so unlike a hash group these do not partition cleanly. The
+ * survivor is the oldest of the fold group and the copy is one of the rest.
+ */
+export interface DuplicateTextPair {
+  /** The one the workspace keeps. */
+  survivor: GardeningItem;
+  /** The one proposed for supersession. */
+  copy: GardeningItem;
+}
+
+export interface DuplicateTextScan {
+  /** Items whose text the rule could compare, which is what it read. */
+  examined: number;
+  /** Candidate pairs there are, which may be more than `pairs` holds. */
+  duplicates: number;
+  /** At most `maxPairs`, oldest survivor first. */
+  pairs: DuplicateTextPair[];
 }
 
 export interface DuplicateHashScan {
@@ -129,4 +158,32 @@ export interface GardeningRepository {
     gardenerActorId: ActorId,
     maxGroups: number,
   ): Promise<DuplicateHashScan>;
+  /**
+   * Pairs of fileable active items whose indexed text folds to the same string
+   * and whose titles are near enough to be the same heading.
+   *
+   * Candidates, not findings. The text it compares is the lexical index, which
+   * is a projection and not authority (rule 8): the index is written with the
+   * revision it describes and the query only looks at rows that match the
+   * item's current revision, but a rule that proposes a supersession has to
+   * rest on canonical content, so the caller confirms each pair against the
+   * file before filing it.
+   *
+   * The fold here is the looser of the two on purpose — `lower(unaccent(...))`
+   * with whitespace collapsed, which is PostgreSQL's reading of the same idea
+   * as `fold` in `text.ts`. Looser means it may offer a pair the caller then
+   * rejects; the other way round would hide a duplicate from the rule
+   * altogether.
+   *
+   * What it leaves out, and why it has to leave it out in the query rather than
+   * afterwards, is what `duplicateContentHashes` leaves out, for the same
+   * reason. It also leaves out a pair whose content hashes match, because that
+   * is the other rule's finding and two rules filing one supersession would be
+   * one proposal and one conflict.
+   */
+  duplicateTexts(
+    workspaceId: WorkspaceId,
+    gardenerActorId: ActorId,
+    maxPairs: number,
+  ): Promise<DuplicateTextScan>;
 }

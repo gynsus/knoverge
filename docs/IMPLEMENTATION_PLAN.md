@@ -335,16 +335,23 @@ when it rests on a judgement about meaning. ADR 0042 decides how a finding is
 filed — the gardener does not ask the policy, because as the workspace's system
 actor it would be told it may write._
 
-The frame and the first rule are built: the per-workspace setting, the caps, the
-scheduled sweep, the run record a screen can read, and duplicates by content
-hash. The rules below arrive one or two at a time on the same frame.
+The frame and the first two rules are built: the per-workspace setting, the
+caps, the scheduled sweep, the run record a screen can read, and duplicates by
+content hash and by text. The rules below arrive one or two at a time on the
+same frame.
 
 Deliver, with no provider configured:
 
 - **duplicates by content hash** — built. Two active items whose title and body
   are identical, with the older kept and the copy proposed for supersession;
-- duplicates by text, the `lexical` half of reconciliation's matching, pointed
-  inward;
+- **duplicates by text** — built. Two active items whose bodies fold to the same
+  string once capitalisation, accents and line breaks are set aside, under
+  titles near enough by trigram to be one heading. It stops at equality: two
+  bodies that are merely similar are a merge, and a merge needs a provider
+  because what the two should become is a draft. The candidates come from the
+  lexical index, because the body is in Git and in `search_chunks` and not in a
+  column anything can group by — so the index proposes and the file confirms
+  before anything is filed (rule 8);
 - orphan sources: a source reference nothing rests on, an attachment whose item
   is gone;
 - weak provenance: revisions that cite nothing, where the workspace mostly does;
@@ -359,8 +366,9 @@ Deliver, only where a provider is assigned:
 - merge suggestions;
 - contradictions.
 
-Every finding is a proposal and names the rule and the rows it rested on. The
-gardener gets no direct-write path at any trust tier, and the filing path has no
+Every finding that names a write is a proposal, and every finding names the rule
+and the rows it rested on. The gardener gets no direct-write path at any trust
+tier, and the filing path has no
 branch that writes rather than a rule saying it must not (ADR 0042). Findings
 are capped per rule and per run: a gardener that buries the review queue has
 done harm.
@@ -369,6 +377,15 @@ What a rule leaves out it leaves out in its own query: an item with a proposal
 waiting, and an item whose finding a reviewer has already refused. Filtering
 those from the result instead starves a capped run, because the answered items
 are the oldest and a cap takes the oldest first.
+
+Four of the rules above produce no proposal. A source reference nothing rests
+on, an item whose revisions cite nothing, a category with no items, a summary
+whose dependencies have moved — none of them is a write a reviewer could
+approve, and ADR 0039's "every finding is a proposal" has nothing to say about
+them. They arrive as notices on the run record instead: the run says what it
+noticed, with the rule and the rows it rested on, and the screen lists it. There
+is nothing to approve and nothing to dismiss, because a notice is true until the
+thing it describes is fixed and then it stops being reported.
 
 ## Milestone 15 - backups you can see
 

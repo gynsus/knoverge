@@ -7,11 +7,13 @@ import type {
 } from '@knoverge/contracts';
 import type {
   DuplicateHashGroup,
+  DuplicateTextPair,
   GardeningRepository,
   GardeningRunRecord,
   GardeningSettingsRecord,
   Tx,
 } from '@knoverge/core';
+import { TEXT_TITLE_SIMILARITY_THRESHOLD } from '@knoverge/core';
 import { and, count, desc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
@@ -22,6 +24,7 @@ import {
 } from '../schema/gardening.ts';
 import { knowledgeItems, knowledgeRevisions } from '../schema/knowledge.ts';
 import { proposals } from '../schema/proposals.ts';
+import { searchChunks } from '../schema/search.ts';
 import { asTx } from '../unit-of-work.ts';
 
 /**
@@ -274,6 +277,159 @@ export function createGardeningRepository(db: Database): GardeningRepository {
         groups.set(row.content_hash, group);
       }
       return { examined: counted?.examined ?? 0, duplicates, groups: [...groups.values()] };
+    },
+
+    async duplicateTexts(workspaceId: WorkspaceId, gardenerActorId: ActorId, maxPairs: number) {
+      // `answered` and `current` are what `duplicateContentHashes` means by
+      // them, and are here for the same reasons; the comment on that query has
+      // them. What is new starts at `indexed`.
+      //
+      // `indexed` is the lexical index read as one string per item, in chunk
+      // order, and only where the chunks were built from the revision the item
+      // currently points at — a stale chunk set is text the workspace no longer
+      // asserts. `folded` is that string with capitalisation, accents and
+      // whitespace set aside, hashed so the group key is short.
+      //
+      // `survivor` is the oldest of each fold group, and `candidate` pairs
+      // every other member against it where the two titles are near enough to
+      // be one heading. A pair whose content hashes already match is left to
+      // the hash rule: two rules filing one supersession would be one proposal
+      // and one conflict.
+      //
+      // `duplicates` counts the candidates there are rather than the ones
+      // coming back, and the window is ordered oldest survivor first, so a
+      // capped run reads the oldest mess rather than an arbitrary slice.
+      //
+      // The equality this groups on is a narrowing and not the decision. What
+      // decides is `fold` over the two files, in the rule; loosening this
+      // would cost a file read per pair and change no outcome, which is how it
+      // should be, because the index is a projection and not authority.
+      const rows = await db.execute<{
+        duplicates: string | number | null;
+        new_item_id: string;
+        new_revision_id: string;
+        new_content_hash: string;
+        new_title: string;
+        old_item_id: string;
+        old_revision_id: string;
+        old_content_hash: string;
+        old_title: string;
+        new_created_at: Date;
+        old_created_at: Date;
+      }>(sql`
+        with answered as (
+          select distinct p.target_item_id as item_id
+          from ${proposals} as p
+          where p.workspace_id = ${workspaceId}
+            and p.target_item_id is not null
+            and (
+              p.status in ('pending', 'conflict')
+              or (p.status = 'rejected' and p.proposed_by_actor_id = ${gardenerActorId})
+            )
+        ),
+        current as (
+          select i.id as item_id, i.created_at as created_at,
+                 r.id as revision_id, r.content_hash as content_hash, r.title as title
+          from ${knowledgeItems} as i
+          join ${knowledgeRevisions} as r on r.id = i.current_revision_id
+          where i.workspace_id = ${workspaceId}
+            and i.status = 'active'
+            and not exists (select 1 from answered as a where a.item_id = i.id)
+        ),
+        indexed as (
+          select s.knowledge_item_id as item_id, s.revision_id as revision_id,
+                 string_agg(s.text, ' ' order by s.ordinal) as text
+          from ${searchChunks} as s
+          -- The workspace is named twice in this statement, here and in the
+          -- current CTE, and either one alone would scope it. Both stay: this
+          -- one stops the aggregate running over every installation's chunks
+          -- before the join throws them away, and the other is where the scope
+          -- is a rule rather than a cost. No test can tell them apart, which
+          -- is why this says so.
+          where s.workspace_id = ${workspaceId}
+          group by s.knowledge_item_id, s.revision_id
+        ),
+        folded as (
+          select c.*,
+                 -- The backslash is doubled because this is a template
+                 -- literal: a single one is not an escape JavaScript knows, so
+                 -- PostgreSQL would be handed the letter s and would collapse
+                 -- runs of that instead of runs of whitespace. A test caught
+                 -- this, which is the only thing that could have.
+                 md5(btrim(regexp_replace(lower(unaccent(x.text)), '\\s+', ' ', 'g'))) as body_key
+          from current as c
+          join indexed as x on x.item_id = c.item_id and x.revision_id = c.revision_id
+        ),
+        grouped as (
+          select body_key from folded group by body_key having count(*) > 1
+        ),
+        survivor as (
+          select distinct on (f.body_key)
+                 f.body_key, f.item_id, f.revision_id, f.content_hash, f.title, f.created_at
+          from folded as f join grouped as g on g.body_key = f.body_key
+          order by f.body_key, f.created_at asc, f.item_id asc
+        ),
+        candidate as (
+          select s.item_id as new_item_id, s.revision_id as new_revision_id,
+                 s.content_hash as new_content_hash, s.title as new_title,
+                 s.created_at as new_created_at,
+                 f.item_id as old_item_id, f.revision_id as old_revision_id,
+                 f.content_hash as old_content_hash, f.title as old_title,
+                 f.created_at as old_created_at
+          from folded as f
+          join survivor as s on s.body_key = f.body_key
+          where f.item_id <> s.item_id
+            and f.content_hash <> s.content_hash
+            and similarity(unaccent(lower(f.title)), unaccent(lower(s.title)))
+                >= ${TEXT_TITLE_SIMILARITY_THRESHOLD}
+        )
+        select (select count(*) from candidate) as duplicates, c.*
+        from candidate as c
+        order by c.new_created_at asc, c.old_created_at asc, c.old_item_id asc
+        limit ${maxPairs}
+      `);
+
+      // What the rule read: the items whose text it could compare. Equal to
+      // the active count in a workspace whose index is complete, and lower in
+      // one waiting for `knoverge db reindex` — which is worth seeing on the
+      // screen rather than hiding behind a number that is always the same.
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(knowledgeItems)
+        .innerJoin(
+          searchChunks,
+          and(
+            eq(searchChunks.knowledgeItemId, knowledgeItems.id),
+            eq(searchChunks.revisionId, knowledgeItems.currentRevisionId),
+            eq(searchChunks.ordinal, 0),
+          ),
+        )
+        .where(
+          and(eq(knowledgeItems.workspaceId, workspaceId), eq(knowledgeItems.status, 'active')),
+        );
+
+      let duplicates = 0;
+      const pairs: DuplicateTextPair[] = [];
+      for (const row of rows.rows ?? []) {
+        duplicates = Number(row.duplicates ?? 0);
+        pairs.push({
+          survivor: {
+            itemId: row.new_item_id as KnowledgeItemId,
+            revisionId: row.new_revision_id as RevisionId,
+            contentHash: row.new_content_hash,
+            title: row.new_title,
+            createdAt: new Date(row.new_created_at),
+          },
+          copy: {
+            itemId: row.old_item_id as KnowledgeItemId,
+            revisionId: row.old_revision_id as RevisionId,
+            contentHash: row.old_content_hash,
+            title: row.old_title,
+            createdAt: new Date(row.old_created_at),
+          },
+        });
+      }
+      return { examined: counted?.examined ?? 0, duplicates, pairs };
     },
   };
 }

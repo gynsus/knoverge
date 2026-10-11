@@ -1114,16 +1114,36 @@ settings cannot speak for reports a problem nobody has.
 ## Tidying a workspace
 
 `packages/core/src/gardening/` — the installation reading its own knowledge on a
-schedule and filing what it notices. Three files, split by what each knows.
+schedule and filing what it notices. Four files, split by what each knows.
 
 `rules.ts` holds the rules and the shape of a finding. A rule looks and reports;
 it writes nothing, and it is handed the gardener's actor because what is worth
-finding depends on what has already been said to that actor. The one built so
-far is `duplicate_content_hash`: two active items whose current content hash is
+finding depends on what has already been said to that actor. Both rules built so
+far find the same thing said twice, and in both the oldest member survives — the
+relations and sources that exist point at it, its history is the longer one, and
+the copy is the thing that happened afterwards.
+
+`duplicate_content_hash` is two active items whose current content hash is
 identical, which means the same words under the same heading twice, because the
-hash covers the title and the body and no metadata. The oldest member of a group
-survives — the relations and sources that exist point at it, its history is the
-longer one, and the copy is the thing that happened afterwards.
+hash covers the title and the body and no metadata.
+
+`duplicate_text` is what that misses. The content hash rests on `normalise`,
+which settles line endings, trailing spaces and runs of blank lines because
+those are a file-format question — and nothing else. So "Auth strategy" and
+"Auth Strategy" over one identical body are two items to it. `fold`, in
+`text.ts`, goes one step further and sets aside what typing the same sentence a
+second time changes without changing what it says: capitalisation, accents, and
+where the lines broke. Of the titles the rule asks only that they be near enough
+to be one heading — the same trigram threshold the duplicate screen uses on a
+write — because the body is what carries the claim.
+
+It stops at equality, and that is the boundary rather than an unfinished
+version of a better test. Two bodies that are merely similar are a merge, and
+ADR 0039 puts a merge in the optional layer: what two nearly-identical items
+should *become* is a draft, and a draft is writing. Two headings over one piece
+of text are left alone for the same kind of reason — somebody may well have
+meant to assert the same text in two places, and the gardener is not the one to
+decide otherwise.
 
 `service.ts` runs them. It reads the workspace's settings, finds the system
 actor, writes the run row, asks each rule for at most what the caps allow, files
@@ -1145,6 +1165,22 @@ answered the rule. Filtering those from the result instead starves a capped run:
 the answered items are the oldest, a cap takes the oldest groups first, and a
 workspace with one refused duplicate would file nothing ever again. That was
 found by a test, not by reading the code.
+
+`duplicateTexts` is the second query, and it is the only place in the product
+where a finding starts from the lexical index. It has to: the body is in Git and
+in `search_chunks`, and not in a column anything can group by. So the index
+proposes and the file decides — the query reads the chunks of each item's
+*current* revision as one string, folds and hashes it, groups by that, and the
+rule then reads both files and compares them with `fold` before filing anything.
+An index is a projection and not authority (rule 8), and a supersession proposed
+from one would be a claim about canonical content that nothing canonical had
+agreed to. A pair the files do not confirm is dropped; a pair beyond the cap is
+counted, because a rule that reported only what it confirmed would tell a capped
+run there was nothing more to do.
+
+It also leaves out a pair whose content hashes already match, which is the other
+rule's finding: two rules filing one supersession would be one proposal and one
+conflict.
 
 ### Why it files instead of writing
 

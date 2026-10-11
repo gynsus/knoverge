@@ -74,8 +74,10 @@ export {
 } from './backups/service.ts';
 export type {
   DuplicateHashGroup,
-  DuplicateHashMember,
   DuplicateHashScan,
+  DuplicateTextPair,
+  DuplicateTextScan,
+  GardeningItem,
   GardeningRepository,
   GardeningRuleLimit,
   GardeningRuleResultRecord,
@@ -83,8 +85,11 @@ export type {
   GardeningSettingsPatch,
   GardeningSettingsRecord,
 } from './gardening/repository.ts';
+export { fold } from './gardening/text.ts';
 export {
   duplicateContentHashRule,
+  duplicateTextRule,
+  TEXT_TITLE_SIMILARITY_THRESHOLD,
   type GardeningFinding,
   type GardeningRule,
   type GardeningScan,
