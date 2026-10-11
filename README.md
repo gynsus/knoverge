@@ -56,7 +56,7 @@ the secrets for you: an installation that came up with a password somebody else
 could guess would be worse than one that did not come up.
 
 To run a released image instead of building from source, replace the `build` block
-in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.7.0`. See
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.8.0`. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,
