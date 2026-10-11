@@ -86,6 +86,14 @@ export interface BackupSettingsRepository {
   /** Records what a run did. Separate from `save`, which is the operator's. */
   recordRun(tx: Tx, outcome: BackupRunOutcome): Promise<void>;
   /**
+   * Pins a host key and nothing else.
+   *
+   * One column, for the reason `clearHostFingerprint` is one column: this is
+   * what a check of the target writes, and a check must not be able to put back
+   * a schedule somebody changed while it was connecting.
+   */
+  pinHostFingerprint(tx: Tx, fingerprint: string, at: Date): Promise<void>;
+  /**
    * Forgets the pinned host key and nothing else.
    *
    * One column rather than a re-save of the row: what the operator is deciding

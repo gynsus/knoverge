@@ -9,6 +9,7 @@ import {
   type BackupTargetRecord,
   type BackupUploader,
   type StoredBackupInfo,
+  type TargetCheckResult,
   type Tx,
   type UnitOfWork,
 } from '../src/index.ts';
@@ -53,6 +54,9 @@ function settings(initial: BackupSettingsRecord = fresh()): BackupSettingsReposi
           : { targetHostFingerprint: patch.targetHostFingerprint }),
         updatedAt: at,
       };
+    },
+    pinHostFingerprint: async (_tx, fingerprint, at) => {
+      row = { ...row, targetHostFingerprint: fingerprint, updatedAt: at };
     },
     clearHostFingerprint: async (_tx, at) => {
       row = { ...row, targetHostFingerprint: null, updatedAt: at };
@@ -107,16 +111,35 @@ const secrets = {
 };
 
 /** An uploader that remembers what it was handed, and can be made to refuse. */
-function uploader(options?: { fail?: string; presents?: string }): BackupUploader & {
+function uploader(options?: {
+  fail?: string;
+  presents?: string;
+  /** What a check comes back with, when the test is about checking. */
+  check?: Partial<TargetCheckResult>;
+}): BackupUploader & {
   asked: Parameters<BackupUploader['upload']>[0][];
+  checked: Parameters<BackupUploader['check']>[0][];
 } {
   const asked: Parameters<BackupUploader['upload']>[0][] = [];
+  const checked: Parameters<BackupUploader['check']>[0][] = [];
   return {
     asked,
+    checked,
     upload: async (input) => {
       asked.push(input);
       if (options?.fail) throw new Error(options.fail);
       return { hostFingerprint: options?.presents ?? 'SHA256:abc' };
+    },
+    check: async (input) => {
+      checked.push(input);
+      return {
+        connected: true,
+        directoryExists: true,
+        writable: true,
+        hostFingerprint: options?.presents ?? 'SHA256:abc',
+        error: null,
+        ...options?.check,
+      };
     },
   };
 }
@@ -674,5 +697,137 @@ describe('sending it somewhere else', () => {
 
     expect(result.forgotten).toBeNull();
     expect(result.settings.targetHostFingerprint).toBeNull();
+  });
+});
+
+describe('asking the target whether a copy would arrive', () => {
+  /** An installation with a target configured and a credential stored. */
+  function configured(extra: Partial<BackupSettingsRecord> = {}): BackupSettingsRecord {
+    return {
+      ...fresh(),
+      enabled: true,
+      target: TARGET,
+      targetSecretCiphertext: 'sealed(the private key)',
+      ...extra,
+    };
+  }
+
+  it('asks with the stored credential, opened, and the pin it holds', async () => {
+    const post = uploader();
+    const service = new BackupService({
+      uow,
+      settings: settings(configured({ targetHostFingerprint: 'SHA256:abc' })),
+      store: store(),
+      uploader: post,
+      secrets,
+      clock: at('2026-10-11T09:00:00Z'),
+    });
+
+    const { check } = await service.checkTarget();
+
+    // The stored one and not something from a form: the credential never comes
+    // back to the browser, so the only thing worth checking is what a run uses.
+    expect(post.checked).toEqual([
+      { target: TARGET, secret: 'the private key', knownHostFingerprint: 'SHA256:abc' },
+    ]);
+    expect(check.writable).toBe(true);
+    expect(check.pinnedNow).toBe(false);
+  });
+
+  it('pins what answered when nothing was pinned, like a first upload', async () => {
+    const rows = settings(configured());
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: uploader({ presents: 'SHA256:whatanswered' }),
+      secrets,
+      clock: at('2026-10-11T09:00:00Z'),
+    });
+
+    const { check, settings: view } = await service.checkTarget();
+
+    expect(check.pinnedNow).toBe(true);
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:whatanswered');
+    // The settings come back with it, so the screen can show the fingerprint
+    // to compare without asking again.
+    expect(view.targetHostFingerprint).toBe('SHA256:whatanswered');
+  });
+
+  it('does not touch the run history: a question is not a run', async () => {
+    const rows = settings(configured({ lastRunAt: new Date('2026-10-09T09:00:00Z') }));
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      uploader: uploader(),
+      secrets,
+      clock: at('2026-10-11T09:00:00Z'),
+    });
+
+    await service.checkTarget();
+
+    expect(rows.row().lastRunAt).toEqual(new Date('2026-10-09T09:00:00Z'));
+    expect(rows.row().lastUploadAt).toBeNull();
+    expect(rows.row().lastUploadError).toBeNull();
+  });
+
+  it('leaves a pin alone when the key that answered is not it', async () => {
+    const rows = settings(configured({ targetHostFingerprint: 'SHA256:theoldone' }));
+    const service = new BackupService({
+      uow,
+      settings: rows,
+      store: store(),
+      // What the connection does with a key it was not expecting: it fails, and
+      // reports nothing it would be willing to trust.
+      uploader: uploader({
+        check: {
+          connected: false,
+          directoryExists: false,
+          writable: false,
+          hostFingerprint: null,
+          error: 'the host key of backup.example changed',
+        },
+      }),
+      secrets,
+      clock: at('2026-10-11T09:00:00Z'),
+    });
+
+    const { check } = await service.checkTarget();
+
+    expect(check.pinnedNow).toBe(false);
+    // A failed connection is not permission for the next one.
+    expect(rows.row().targetHostFingerprint).toBe('SHA256:theoldone');
+  });
+
+  it('refuses when no target is configured, rather than connecting to nothing', async () => {
+    const post = uploader();
+    const service = new BackupService({
+      uow,
+      settings: settings({ ...fresh(), enabled: true }),
+      store: store(),
+      uploader: post,
+      secrets,
+    });
+
+    const { check } = await service.checkTarget();
+
+    expect(post.checked).toEqual([]);
+    expect(check).toMatchObject({ connected: false, error: 'no target is configured' });
+  });
+
+  it('says the same thing a run says when the credential cannot be opened', async () => {
+    const service = new BackupService({
+      uow,
+      settings: settings(configured()),
+      store: store(),
+      uploader: uploader(),
+      // No `secrets`: an installation with no encryption key, holding a target
+      // that was configured while it had one.
+    });
+
+    const { check } = await service.checkTarget();
+
+    expect(check.error).toBe('the target credential cannot be opened on this installation');
   });
 });

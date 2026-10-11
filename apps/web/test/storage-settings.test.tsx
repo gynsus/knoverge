@@ -1,4 +1,8 @@
-import { BackupSettingsResponse, BackupsResponse } from '@knoverge/contracts';
+import {
+  BackupSettingsResponse,
+  BackupsResponse,
+  CheckBackupTargetResponse,
+} from '@knoverge/contracts';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -440,6 +444,97 @@ describe('how the copies are going', () => {
   });
 });
 
+describe('asking the target whether a copy would arrive', () => {
+  const WORKED = {
+    connected: true,
+    directory_exists: true,
+    writable: true,
+    host_fingerprint: 'SHA256:zTt+Yq1pQ',
+    pinned_now: false,
+    error: null,
+  };
+
+  it('parses what the server answers', () => {
+    expect(() =>
+      CheckBackupTargetResponse.parse({ check: WORKED, settings: PINNED }),
+    ).not.toThrow();
+  });
+
+  it('reports all three stages when they worked', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/backups.settings': () => json({ settings: PINNED }),
+      'GET /v1/admin/backups.list': () => json({ backups: [COPY] }),
+      'POST /v1/admin/backups.check_target': () => json({ check: WORKED, settings: PINNED }),
+    });
+    renderApp('/settings/storage');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /check the connection/i }));
+
+    expect(await screen.findByText(/reached the machine and signed in/i)).toBeInTheDocument();
+    expect(screen.getByText(/the directory is there/i)).toBeInTheDocument();
+    expect(screen.getByText(/a file can be written there/i)).toBeInTheDocument();
+    expect(screen.getByText(/a copy sent now would arrive/i)).toBeInTheDocument();
+  });
+
+  it('says which stage it stopped at, and shows the reason', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/backups.settings': () => json({ settings: PINNED }),
+      'GET /v1/admin/backups.list': () => json({ backups: [COPY] }),
+      'POST /v1/admin/backups.check_target': () =>
+        json({
+          check: {
+            ...WORKED,
+            directory_exists: false,
+            writable: false,
+            error: 'the directory /srv/copies does not exist on the target machine',
+          },
+          settings: PINNED,
+        }),
+    });
+    renderApp('/settings/storage');
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: /check the connection/i }));
+
+    expect(await screen.findByText(/does not exist on the target machine/i)).toBeInTheDocument();
+    // The stage after a failure was never reached, and a cross against it would
+    // send somebody to fix permissions on a directory nothing opened.
+    const writable = screen.getByText(/a file can be written there/i);
+    expect(writable.parentElement).toHaveTextContent(/not reached/i);
+  });
+
+  it('warns that this connection is what pins the key, before it is pressed', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/backups.settings': () =>
+        json({ settings: { ...PINNED, target_host_fingerprint: null } }),
+      'GET /v1/admin/backups.list': () => json({ backups: [] }),
+    });
+    renderApp('/settings/storage');
+
+    // Consequence before the click (WEB_UI.md rule 4): on an installation with
+    // nothing pinned this is the connection that decides what is accepted from
+    // then on, and it says so without being pressed.
+    expect(await screen.findByText(/accepts whatever answers and pins it/i)).toBeInTheDocument();
+  });
+
+  it('will not ask when there is nothing to sign in with, and says why', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/backups.settings': () =>
+        json({ settings: { ...PINNED, target_secret_set: false } }),
+      'GET /v1/admin/backups.list': () => json({ backups: [] }),
+    });
+    renderApp('/settings/storage');
+
+    expect(await screen.findByText(/save a key or a password first/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /check the connection/i })).toBeDisabled();
+  });
+});
+
 describe('somebody who may look but not change', () => {
   it('is offered nothing to press', async () => {
     mockApi({
@@ -456,5 +551,6 @@ describe('somebody who may look but not change', () => {
     expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /take one now/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /forget this key/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /check the connection/i })).not.toBeInTheDocument();
   });
 });

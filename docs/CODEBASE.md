@@ -1053,6 +1053,19 @@ changed in between is not overwritten by a decision about a key. The log line
 carries the fingerprint that was forgotten, because the column that held it is
 then empty.
 
+`backups.check_target` is the same connection carrying no file, which is the
+only version of it worth having: the same single authentication method, the same
+verifier and the same pin, so what it rehearses is what a run does. `connect` is
+one function both of them call for that reason. It reports three stages rather
+than one verdict because they are fixed in three different places — the address
+and the credential here, the directory on the far machine, and the permissions on
+that directory — and an operator told only that it failed has to guess which. It
+writes a file and removes it, because whether a directory accepts a file cannot
+be answered by looking, and it says so and names the file if the removal fails:
+leaving something in the directory somebody restores from is not a detail to
+swallow. It is not a run and records nothing in the run history; a question
+somebody asked is not part of the installation's history of keeping copies.
+
 `BackupService.run` therefore has two outcomes rather than one. A copy that was
 taken and did not reach the target is a success with a reason beside the target:
 the local copy is a backup (ADR 0040), the next run tries again, and the job logs

@@ -55,6 +55,35 @@ export interface BackupUploader {
     secret: string;
     knownHostFingerprint: string | null;
   }): Promise<{ hostFingerprint: string }>;
+  /**
+   * The same connection, carrying no file: whether a copy sent now would
+   * arrive.
+   *
+   * On the uploader rather than beside it because it has to be the same
+   * connection to be worth anything — the same authentication method, the same
+   * verifier, the same pin. A second implementation of "connect to the target"
+   * would be a check of something else.
+   */
+  check(options: {
+    target: BackupTargetRecord;
+    secret: string;
+    knownHostFingerprint: string | null;
+  }): Promise<TargetCheckResult>;
+}
+
+/** What asking the target found. See the contract for what each stage means. */
+export interface TargetCheckResult {
+  connected: boolean;
+  directoryExists: boolean;
+  writable: boolean;
+  hostFingerprint: string | null;
+  error: string | null;
+}
+
+/** The check as the screen gets it, with what the connection did to the pin. */
+export interface TargetCheckView extends TargetCheckResult {
+  /** True when this check is what pinned the key, rather than matching it. */
+  pinnedNow: boolean;
 }
 
 /** What the settings screen is shown. Never the secret, only that there is one. */
@@ -229,6 +258,70 @@ export class BackupService {
     const forgotten = (await this.o.settings.get()).targetHostFingerprint;
     await this.o.uow.run((tx) => this.o.settings.clearHostFingerprint(tx, this.clock.now()));
     return { forgotten, settings: await this.settings() };
+  }
+
+  /**
+   * Whether a copy sent now would arrive, asked without sending one.
+   *
+   * What the screen had no way to answer before: an operator who had just typed
+   * a host, a user, a directory and a key could only wait for a scheduled run
+   * to find out whether any of it was right, and the first thing they would see
+   * was a copy that had already failed to go anywhere.
+   *
+   * It checks what is stored rather than what is on the form, and that is the
+   * point: the credential is sealed and never comes back to the browser, so the
+   * only thing worth checking is the one a run will use. Save, then check.
+   *
+   * A check may pin. On an installation with nothing pinned, whatever answers
+   * this becomes the pinned key — the same rule as the first upload, because
+   * "the host key it met first" has to mean one thing and not two (ADR 0041).
+   * It never replaces a pin: a key that does not match is a failed connection,
+   * and a failed connection is not permission for the next one.
+   *
+   * Not a run: nothing here touches `last_run_at` or the upload fields. A check
+   * is the operator asking a question, and the installation's history of
+   * keeping copies is not the place to record that somebody asked.
+   */
+  async checkTarget(): Promise<{ check: TargetCheckView; settings: BackupSettingsView }> {
+    const settings = await this.o.settings.get();
+    const refused = (error: string): { check: TargetCheckView; settings: BackupSettingsView } => ({
+      check: {
+        connected: false,
+        directoryExists: false,
+        writable: false,
+        hostFingerprint: null,
+        pinnedNow: false,
+        error,
+      },
+      settings: this.view(settings),
+    });
+
+    const target = settings.target;
+    if (target === null) return refused('no target is configured');
+    const sealed = settings.targetSecretCiphertext;
+    if (this.o.uploader === undefined || this.o.secrets === undefined || sealed === null) {
+      // The same sentence a run records for the same state, because it is the
+      // same problem and an operator should not have to notice it twice.
+      return refused('the target credential cannot be opened on this installation');
+    }
+
+    const result = await this.o.uploader.check({
+      target,
+      secret: this.o.secrets.open(sealed),
+      knownHostFingerprint: settings.targetHostFingerprint,
+    });
+
+    const pinnedNow = settings.targetHostFingerprint === null && result.hostFingerprint !== null;
+    if (pinnedNow && result.hostFingerprint !== null) {
+      await this.o.uow.run((tx) =>
+        this.o.settings.pinHostFingerprint(tx, result.hostFingerprint as string, this.clock.now()),
+      );
+    }
+
+    return {
+      check: { ...result, pinnedNow },
+      settings: pinnedNow ? await this.settings() : this.view(settings),
+    };
   }
 
   /** The copies on this machine, newest first, with what is known about each. */

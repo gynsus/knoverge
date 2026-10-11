@@ -69,6 +69,8 @@ export {
   type SaveBackupSettingsInput,
   type StoredBackupInfo,
   type TakenBackup,
+  type TargetCheckResult,
+  type TargetCheckView,
 } from './backups/service.ts';
 export { OauthFailure } from './oauth/errors.ts';
 export {

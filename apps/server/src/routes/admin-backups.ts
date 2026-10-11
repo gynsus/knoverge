@@ -1,6 +1,7 @@
 import {
   BackupSettingsResponse,
   BackupsResponse,
+  CheckBackupTargetResponse,
   SaveBackupSettingsRequest,
   TakeBackupResponse,
   type BackupSettings,
@@ -131,6 +132,38 @@ export function registerAdminBackupRoutes(app: FastifyInstance, services: Servic
       // empty and this line is the only record of what was trusted before.
       request.log.warn({ forgotten }, 'pinned backup host key cleared');
       return { settings: settings(view) };
+    },
+  );
+
+  r.post(
+    '/v1/admin/backups.check_target',
+    {
+      onRequest: csrfUnlessBearer(app),
+      schema: { response: { 200: CheckBackupTargetResponse } },
+    },
+    async (request) => {
+      await requirePermission(services, request, 'workspace.admin');
+      // A refusal comes back as a result rather than a 500, for the reason a
+      // failed run does: the question was asked and answered, and the answer
+      // belongs on the screen beside the target it is about.
+      const { check, settings: view } = await services.backups.checkTarget();
+      if (check.pinnedNow) {
+        // A warning for the same reason clearing one is: this is the connection
+        // that decided what this installation will accept from now on.
+        request.log.warn({ fingerprint: check.hostFingerprint }, 'backup host key pinned');
+      }
+      if (check.error !== null) request.log.info({ check }, 'backup target check failed');
+      return {
+        check: {
+          connected: check.connected,
+          directory_exists: check.directoryExists,
+          writable: check.writable,
+          host_fingerprint: check.hostFingerprint,
+          pinned_now: check.pinnedNow,
+          error: check.error,
+        },
+        settings: settings(view),
+      };
     },
   );
 

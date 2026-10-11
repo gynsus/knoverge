@@ -108,6 +108,13 @@ export function createBackupSettingsRepository(db: Database): BackupSettingsRepo
         .where(eq(backupSettings.id, SINGLETON));
     },
 
+    async pinHostFingerprint(tx: Tx, fingerprint: string, at: Date) {
+      await asTx(tx)
+        .update(backupSettings)
+        .set({ targetHostFingerprint: fingerprint, updatedAt: at })
+        .where(eq(backupSettings.id, SINGLETON));
+    },
+
     async clearHostFingerprint(tx: Tx, at: Date) {
       await asTx(tx)
         .update(backupSettings)

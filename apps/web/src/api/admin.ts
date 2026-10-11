@@ -63,6 +63,7 @@ import type {
   AttachmentsResponse,
   BackupSettingsResponse,
   BackupsResponse,
+  CheckBackupTargetResponse,
   SaveBackupSettingsRequest,
   TakeBackupResponse,
   RereadAttachmentsResponse,
@@ -130,6 +131,9 @@ export const adminApi = {
       apiPost<BackupSettingsResponse>('/v1/admin/backups.save', body),
     run: () => apiPost<TakeBackupResponse>('/v1/admin/backups.run', {}),
     clearHostKey: () => apiPost<BackupSettingsResponse>('/v1/admin/backups.clear_host_key', {}),
+    // The stored target, not the form: the credential never comes back here, so
+    // the only thing worth asking about is the one a run would use.
+    checkTarget: () => apiPost<CheckBackupTargetResponse>('/v1/admin/backups.check_target', {}),
   },
   webhooks: {
     list: (signal?: AbortSignal) => apiGet<WebhooksResponse>('/v1/admin/webhooks.list', signal),
