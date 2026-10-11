@@ -1047,7 +1047,7 @@ unrepairable kind.
 ### Released images
 
 ```bash
-docker pull ghcr.io/gynsus/knoverge:0.6.0
+docker pull ghcr.io/gynsus/knoverge:0.7.0
 ```
 
 `ghcr.io/gynsus/knoverge`, built for `linux/amd64` and `linux/arm64` — a self-hosted
@@ -1059,7 +1059,7 @@ the current release rather than the next one being tried.
 The version is baked in at build time, so a release says which one it is:
 
 ```bash
-docker run --rm --entrypoint knoverge ghcr.io/gynsus/knoverge:0.6.0 --version
+docker run --rm --entrypoint knoverge ghcr.io/gynsus/knoverge:0.7.0 --version
 ```
 
 `/health` and `workspace_manifest` report the same number, and the MCP handshake
@@ -1068,7 +1068,7 @@ the version of a release is the tag it was cut from, and a build that reported t
 source tree's number would report the same number for every release ever made.
 
 The compose file builds the image locally by default. To run a released one, replace
-the `build` block with `image: ghcr.io/gynsus/knoverge:0.6.0`.
+the `build` block with `image: ghcr.io/gynsus/knoverge:0.7.0`.
 
 ### Schema
 

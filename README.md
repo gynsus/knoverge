@@ -10,9 +10,10 @@ Every important change is attributable to a specific actor, traceable to its sou
 
 ## What works today
 
-Knoverge is at **v0.6.0**. Milestones 0 to 13 of
+Knoverge is at **v0.7.0**. Milestones 0 to 13 and 15 of
 [the plan](docs/IMPLEMENTATION_PLAN.md) are complete — 12 bar the scanned PDF, 13
-bar the ChatGPT export — and [CHANGELOG.md](CHANGELOG.md) says what each release
+bar the ChatGPT export, 15 bar a removal that only touches an installation
+already running — and [CHANGELOG.md](CHANGELOG.md) says what each release
 contains.
 
 - **Knowledge** — items with types, categories, tags, review and evidence state, each one a Markdown file in a Git repository with a commit per change; history, a diff per revision, logical delete and restore, and supersession as one atomic operation. Sources and relations are recorded, shown and editable, and a revision can say why it was made.
@@ -55,7 +56,7 @@ the secrets for you: an installation that came up with a password somebody else
 could guess would be worse than one that did not come up.
 
 To run a released image instead of building from source, replace the `build` block
-in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.6.0`. See
+in `docker-compose.yml` with `image: ghcr.io/gynsus/knoverge:0.7.0`. See
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 The terms of use are in [TERMS.md](TERMS.md): free software, provided as is,

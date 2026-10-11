@@ -9,6 +9,125 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.7.0 — 2026-10-11
+
+Milestone 15 bar its last step: an installation keeps copies of itself because
+somebody turned that on in Settings, not because they started a second
+container. ADR 0040 decides the shape, and ADR 0041 decides what speaks SSH when
+a copy is to reach a second machine.
+
+### Added
+
+- **A backup is a setting the product owns** (ADR 0040). The copy is taken by
+  the application's own job runner in the worker role, and it is the same
+  archive the shell script produced: the database first, then the data
+  directory, a manifest recording where each workspace's ledger stood, every
+  workspace's write lock held across both, and a staging name moved into place
+  at the end so that a half-written copy is never a copy. Off until somebody
+  turns it on, and the screen says so.
+- **A Data and storage screen.** Whether to keep copies, how often, how many
+  days to keep them, what the last run did and when, and the copies on disk with
+  their sizes. **Take one now** sits beside the schedule, because an operator who
+  has just configured this wants to watch one happen rather than wait a day to
+  find out whether it works.
+- **One SSH target, and the server only ever writes to it.** Host, port, user,
+  directory, and a private key or a password, sealed with
+  `KNOVERGE_ENCRYPTION_KEY` and refused outright where there is none, as a
+  webhook secret already is. Nothing on the far machine is listed or removed by
+  us, so retention applies to local copies, and the screen says that where the
+  number is typed.
+- **The server speaks SSH itself** (ADR 0041), over SFTP, so the account at the
+  far end needs no shell and the sealed key never has to become a file for
+  OpenSSH to read. The host key is pinned the first time the target answers, and
+  shown as a `SHA256:…` fingerprint beside the `ssh-keyscan` line that prints the
+  same thing on the operator's own machine, to be compared by eye.
+- **Forgetting a pinned host key**, for a machine that was rebuilt rather than
+  impersonated. Its own action rather than a side effect of saving, behind a
+  dialogue that says what it widens and when not to use it; the log keeps the
+  fingerprint that was trusted, because the column that held it is empty
+  afterwards and nothing else records it.
+- **An upload that fails does not fail the backup.** The local copy is a backup,
+  the next run tries again, and each copy carries whether it left the machine.
+- `KNOVERGE_BACKUP_DIR`, and a refusal to start when it is inside
+  `KNOVERGE_DATA_DIR` or the other way round. The archive is made of the data
+  directory, so a copy kept there would be inside the next one: the copies would
+  double, `tar` would read a file that is being written, and the screen would
+  report success throughout.
+
+### Changed
+
+- `knoverge backup` on the command line and the scheduled job are one mechanism
+  rather than two. Two implementations would have been two formats to restore.
+- `knoverge restore` names the clients it is refusing to run beside — the
+  application name and the state PostgreSQL holds for each — instead of counting
+  them. A refusal reading `1 other client(s) are connected` left an operator to
+  guess which one.
+- The Node line is pinned to the Active LTS line and the configuration now says
+  so, so the next person to read it does not have to infer the policy from a
+  version number.
+
+### Fixed
+
+- **The documentation offered `ghcr.io/gynsus/knoverge:0.3.0` in four places
+  while `0.6.0` was out** — three releases of fixes a reader following
+  `README.md` or `docs/DEPLOYMENT.md` would not have received.
+- **A fresh installation could not take a copy at all.** The image creates
+  `/data` and gives it to the user it runs as, and never did the same for
+  `/backups` — so Docker created that mount point itself, owned by root, and the
+  process was refused by it. Pressing **Take one now** answered
+  `EACCES: permission denied, mkdir '/backups/…'`, which named neither the user
+  nor anything to do about it. The image now contains both directories owned by
+  the user it runs as, which also decides the ownership of an empty volume, and
+  `KNOVERGE_BACKUP_DIR` defaults to `/backups` there for the same reason
+  `KNOVERGE_DATA_DIR` defaults to `/data`. A directory this cannot fix — one the
+  sidecar wrote to, which belongs to `postgres` and is handed back to it on
+  every start — now gets a sentence naming both uids and the remedy, said before
+  any workspace lock is taken.
+- **The quickstart did not create every volume the compose file requires.**
+  Copies were given a volume of their own, external like the other two, and
+  Compose will not invent a volume it is told is external — so
+  `docker compose up` ended at `external volume "knoverge-backups" not found` on
+  a machine where nothing was running yet and nothing to read the cause from.
+  Both documents now create all three.
+
+### Guards
+
+- The external volumes are read out of `docker-compose.yml` and each one is
+  looked for as a `docker volume create` line in both `README.md` and
+  `docs/DEPLOYMENT.md`, because the compose file and the instructions for using
+  it are one list written twice.
+- Every image pinned in those two documents is compared against the newest entry
+  in this file, so a release cannot be cut while they name an older one.
+- Every literal `t('…')` key in the web application is resolved against the
+  English catalogue, plural categories included. A key that does not exist
+  renders its own name on screen, which no test written from the code notices;
+  one reached a branch that way.
+
+### Verified
+
+Both defects above were found by following the documentation on a machine with
+nothing on it and by opening a shell in the container, not by a test. The suite
+takes its copies into a directory the test process owns and reads its documents
+as text, so it agreed with the code — which is what tests written from the code
+do. The quickstart has since been run from an empty project, and a copy taken in
+the container against a volume mounted the way the compose file mounts one.
+
+### Compatibility
+
+Two migrations, additive. `KNOVERGE_BACKUP_DIR` has a default, so an
+installation upgrades without being reconfigured — but with no volume mounted
+there the copies land inside the container and go when it does, which is why the
+compose file in this repository mounts one.
+
+The `backup` compose profile and its two scripts are still here and still work.
+An installation running that sidecar cannot share its directory with the
+application — the sidecar runs as `postgres` and takes the directory back on
+every start, and the application runs as `node` — so the move across is: give
+the application a backups volume of its own, turn the setting on, watch one copy
+arrive, and only then stop the sidecar. `docs/DEPLOYMENT.md` has it as numbered
+steps and says which order leaves an installation taking no copies at all. The
+profile is removed in a later release, once nothing is relying on it.
+
 ## v0.6.0 — 2026-09-30
 
 Milestone 10: a hosted connector can let itself in, once a person says so. With
