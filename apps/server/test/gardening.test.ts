@@ -159,6 +159,8 @@ describe('a workspace nobody has configured', () => {
       'duplicate_text',
       'orphan_source',
       'orphan_attachment',
+      'weak_provenance',
+      'stale_instruction',
     ]);
   });
 
@@ -212,6 +214,12 @@ describe('a run that finds the same thing twice', () => {
       // (ADR 0043).
       { rule: 'orphan_source', examined: 0, found: 0, filed: 0, limited: null },
       { rule: 'orphan_attachment', examined: 0, found: 0, filed: 0, limited: null },
+      // Both items here name no source, and the rule says nothing about it: a
+      // workspace of two is too small for the habit that makes citing nothing
+      // worth saying. It still reports what it read.
+      { rule: 'weak_provenance', examined: 2, found: 0, filed: 0, limited: null },
+      // And there is nothing here that an agent would be told to follow.
+      { rule: 'stale_instruction', examined: 0, found: 0, filed: 0, limited: null },
     ]);
     expect(result.run.notices).toEqual([]);
 
@@ -479,5 +487,47 @@ describe('the caps', () => {
     // At the boundary rather than in the constraint: a 500 from a CHECK is the
     // same refusal with none of the explanation.
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('a standing order that has run out', () => {
+  it('is a notice about the item, and the item is where a reader is sent', async () => {
+    // Through the route a person uses, with the date it gave itself already
+    // behind us: an instruction is what an agent reading this workspace will
+    // follow today, which is why this one is worth saying out loud.
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Freeze releases until the audit closes',
+      body: 'No deploys to production while the audit is open.\n',
+      type: 'instruction',
+      categories: [],
+      valid_until: '2026-01-02T03:04:05Z',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    const itemId = (res.json() as { item: { id: string } }).item.id;
+
+    const before = (
+      (await admin.post('/v1/proposal_list', { status: 'pending' })).json() as {
+        proposals: unknown[];
+      }
+    ).proposals.length;
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    const notice = result.run.notices.find((entry) => entry.rule === 'stale_instruction');
+    expect(notice).toMatchObject({ subject_type: 'knowledge_item', subject_id: itemId });
+    expect(notice?.reason).toContain('stopped being valid on 2026-01-02T03:04:05');
+    // Nothing is proposed: whether this should be deleted, re-dated or
+    // rewritten is exactly what the installation cannot know (ADR 0039), so
+    // the review queue is where it does not go (ADR 0043).
+    const after = (
+      (await admin.post('/v1/proposal_list', { status: 'pending' })).json() as {
+        proposals: unknown[];
+      }
+    ).proposals.length;
+    expect(
+      after - before,
+      'a notice is not a proposal, so only the duplicate rule may have filed',
+    ).toBeLessThanOrEqual(1);
   });
 });

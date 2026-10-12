@@ -12,6 +12,8 @@ export const GardeningRuleName = z.enum([
   'duplicate_text',
   'orphan_source',
   'orphan_attachment',
+  'weak_provenance',
+  'stale_instruction',
 ]);
 export type GardeningRuleName = z.infer<typeof GardeningRuleName>;
 
@@ -86,14 +88,16 @@ export type GardeningRuleResult = z.infer<typeof GardeningRuleResult>;
 /**
  * What kind of thing a notice is about, so a reader knows where to look.
  *
- * Two, because two rules produce notices. The rules that will notice an item or
- * a category are not built, and a name here would be a promise rather than a
- * thing the server can send — the same standard the rule names are held to.
+ * Three, because that is what the rules that exist can be about. The rules that
+ * will notice a category or a summary are not built, and a name here would be a
+ * promise rather than a thing the server can send — the same standard the rule
+ * names are held to.
  *
- * Neither of these has a screen that could fix it. That is said on the notice
- * rather than hidden by leaving the notice out (ADR 0043).
+ * A knowledge item has a screen that can fix it and the other two do not. The
+ * notice says which kind it is either way, because a reader has to know what
+ * they are looking for before they can go and look (ADR 0043).
  */
-export const GardeningNoticeSubject = z.enum(['source_reference', 'attachment']);
+export const GardeningNoticeSubject = z.enum(['source_reference', 'attachment', 'knowledge_item']);
 export type GardeningNoticeSubject = z.infer<typeof GardeningNoticeSubject>;
 
 /**
@@ -101,8 +105,9 @@ export type GardeningNoticeSubject = z.infer<typeof GardeningNoticeSubject>;
  *
  * A proposal is what a finding becomes when somebody could approve it. These
  * are the rest: a source reference no revision cites, an attachment whose every
- * item is gone. There is nothing to approve and nothing to dismiss — a notice is
- * true until the thing it describes is fixed, and then it stops being reported.
+ * item is gone, an item that cites nothing where the workspace cites. There is
+ * nothing to approve and nothing to dismiss — a notice is true until the thing
+ * it describes is fixed, and then it stops being reported.
  */
 export const GardeningNotice = z.object({
   rule: GardeningRuleName,

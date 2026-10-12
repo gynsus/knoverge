@@ -42,7 +42,7 @@ export interface GardeningRuleResultRecord {
  */
 export interface GardeningNoticeRecord {
   rule: GardeningRuleName;
-  subjectType: 'source_reference' | 'attachment';
+  subjectType: 'source_reference' | 'attachment' | 'knowledge_item';
   subjectId: string;
   reason: string;
 }
@@ -159,6 +159,61 @@ export interface OrphanAttachmentScan {
   attachments: OrphanAttachment[];
 }
 
+/**
+ * An item whose current revision names nothing it rests on.
+ *
+ * The type comes with it because what a missing source means depends on it: a
+ * `decision` somebody made is its own evidence, and a `fact` that cites
+ * nothing is a claim with no way to check it.
+ */
+export interface UncitedItem {
+  itemId: KnowledgeItemId;
+  title: string;
+  type: string;
+  createdAt: Date;
+}
+
+export interface WeakProvenanceScan {
+  /** Active items with a current revision, which is what the rule read. */
+  examined: number;
+  /**
+   * How many of them cite a source.
+   *
+   * The rule weighs one number against the other: an item citing nothing is
+   * only worth saying in a workspace that mostly cites. The repository returns
+   * both and judges neither — what counts as a habit is a domain decision, and
+   * it belongs where it can be read without a database.
+   */
+  cited: number;
+  /** The uncited ones, oldest first, at most `max`. */
+  items: UncitedItem[];
+}
+
+/** An instruction whose claim has run out, and what says it has. */
+export interface StaleInstruction {
+  itemId: KnowledgeItemId;
+  title: string;
+  /** When it said it would stop being valid, where it said so. */
+  validUntil: Date | null;
+  /** When the revision the item currently points at was written. */
+  revisedAt: Date;
+}
+
+export interface StaleInstructionScan {
+  /** Active instruction items, which is what the rule read. */
+  examined: number;
+  found: number;
+  instructions: StaleInstruction[];
+}
+
+/** The two dates the stale-instruction query compares against. */
+export interface StaleInstructionWindow {
+  /** Now: an item whose `valid_until` is before this has run out. */
+  now: Date;
+  /** An item whose current revision is older than this is untouched. */
+  untouchedBefore: Date;
+}
+
 export interface GardeningRepository {
   /**
    * This workspace's settings, or the defaults where it has no row.
@@ -260,4 +315,41 @@ export interface GardeningRepository {
    * installation cannot read, and both of those the files screen already says.
    */
   orphanAttachments(workspaceId: WorkspaceId, max: number): Promise<OrphanAttachmentScan>;
+  /**
+   * Active items whose current revision cites no source, and how many do.
+   *
+   * Both numbers, because the finding is comparative: an item that rests on
+   * nothing it names is unremarkable in a workspace where nothing does, and is
+   * worth saying in one where the habit is to cite. What counts as a habit is
+   * the rule's judgement and not this query's.
+   *
+   * The current revision rather than any of them: an item whose first revision
+   * cited a page and whose current one dropped it asserts the thing without the
+   * page now, and the history is where the page went.
+   *
+   * No gardener actor and no exclusion of answered items: a notice is not a
+   * proposal, so there is nothing anybody could have already said about it.
+   */
+  weakProvenance(workspaceId: WorkspaceId, max: number): Promise<WeakProvenanceScan>;
+  /**
+   * Active instructions whose claim has run out, by either of the two ways it
+   * can.
+   *
+   * `valid_until` is the item having said when it would stop, and the date
+   * having passed. Untouched is nobody having confirmed it for long enough that
+   * it may no longer be how things are done. Both dates are the caller's,
+   * because how long is long enough is a domain decision and a query that asked
+   * the database for `now()` could not be tested at a moment of its own
+   * choosing.
+   *
+   * Instructions only, not every type: `fact` and `decision` items record what
+   * was true and what was decided, and both stay true of the moment they
+   * describe. An instruction is a standing order, and a standing order nobody
+   * has confirmed in a year is the thing worth asking about.
+   */
+  staleInstructions(
+    workspaceId: WorkspaceId,
+    window: StaleInstructionWindow,
+    max: number,
+  ): Promise<StaleInstructionScan>;
 }

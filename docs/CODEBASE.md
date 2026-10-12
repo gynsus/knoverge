@@ -1129,10 +1129,12 @@ is reached.
 
 `rules.ts` holds the rules and the shape of a finding. A rule looks and reports;
 it writes nothing, and it is handed the gardener's actor because what is worth
-finding depends on what has already been said to that actor. Both rules built so
-far find the same thing said twice, and in both the oldest member survives — the
-relations and sources that exist point at it, its history is the longer one, and
-the copy is the thing that happened afterwards.
+finding depends on what has already been said to that actor. Two of the rules
+find the same thing said twice, and both keep the oldest member — the relations
+and sources that exist point at it, its history is the longer one, and the copy
+is the thing that happened afterwards. The other four find something that no
+write would answer, and each of them says so in a sentence a person can act on
+without the product's help.
 
 `duplicate_content_hash` is two active items whose current content hash is
 identical, which means the same words under the same heading twice, because the
@@ -1211,7 +1213,33 @@ revisions is one item. A superseded item does not make a file an orphan:
 superseded knowledge is still knowledge and the file is still what it rested on.
 Neither query takes the gardener's actor or excludes answered items, because a
 notice is not a proposal and there is nothing anybody could already have said
-about it.
+about it. Nor do the two below.
+
+`weak_provenance` is the one comparative rule. An active item whose current
+revision cites no source is unremarkable in a workspace where nothing cites one
+and is worth saying in a workspace where most items do, so `weakProvenance`
+returns two numbers and the uncited items, and the rule — not the query — decides
+whether the workspace has the habit: more than half of its items, and at least
+ten of them, because two out of three is a share and not a practice. A rule that
+reported every item in an installation nobody records provenance in would be
+arguing with a decision somebody has already made, every run, in numbers that
+would bury the runs that matter. It reads the current revision and not the ones
+before it: an item whose first revision cited a page and whose current one
+dropped it asserts the thing without the page now, and the history is where the
+page went.
+
+`stale_instruction` is an active `instruction` past the date it gave itself, or
+unchanged for more than a year. Instructions only — a `fact` records what was
+true and a `decision` what was decided, and both stay true of the moment they
+describe, while an instruction is what an agent reading this workspace will
+follow today. Both dates come from the caller rather than from `now()` in SQL,
+because how long is long enough is a domain decision and a query that asked the
+database for the time could not be tested at a moment of its own choosing. This
+is the rule where a write is imaginable and still not proposed: somebody could
+delete it, re-date it or rewrite it, and which of those is right is exactly what
+the installation cannot know. Gardening's one proposal kind is a supersession by
+an item the workspace already holds (ADR 0039), so a rule that guessed would be
+filing its guess into the review queue.
 
 ### Why it files instead of writing
 
@@ -1247,6 +1275,13 @@ It shows runs, not a state. A rule that found nothing and a rule that never ran
 look identical from the review queue, and the difference is the whole question of
 whether gardening is working, so each run says what each rule read, found and
 filed, and which cap held it back.
+
+The notices sit with the run that saw them rather than in a list of their own:
+there is nothing to approve and nothing to dismiss, so what a reader wants is
+what is true now, which is the newest run. Each says what kind of thing it is
+about, and where that kind has a screen the kind is the link to it — an item
+opens on the knowledge screen, while a source row and a file have none and a
+link to nowhere would be worse than a word.
 
 ## Letting a hosted connector in
 

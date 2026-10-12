@@ -56,7 +56,8 @@ export interface GardeningRuleResultRow {
 /**
  * One thing a rule saw that names no write (ADR 0043).
  *
- * A source reference no revision cites, an attachment whose every item is gone.
+ * A source reference no revision cites, an attachment whose every item is gone,
+ * an item that names no source where the workspace names one.
  * There is nothing to approve, so it is not a proposal and not in the review
  * queue; it is recorded on the run and shown, and it stops being reported when
  * the thing it describes is fixed.
@@ -64,7 +65,7 @@ export interface GardeningRuleResultRow {
 export interface GardeningNoticeRow {
   rule: string;
   /** What kind of thing it is about, so the screen can say where to look. */
-  subjectType: 'source_reference' | 'attachment';
+  subjectType: 'source_reference' | 'attachment' | 'knowledge_item';
   subjectId: string;
   /** English, and not a catalogue key, for the reason a proposal's is. */
   reason: string;

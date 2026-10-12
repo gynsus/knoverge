@@ -12,6 +12,7 @@ import type {
   GardeningRepository,
   GardeningRunRecord,
   GardeningSettingsRecord,
+  StaleInstructionWindow,
   Tx,
 } from '@knoverge/core';
 import { TEXT_TITLE_SIMILARITY_THRESHOLD } from '@knoverge/core';
@@ -575,6 +576,130 @@ export function createGardeningRepository(db: Database): GardeningRepository {
         };
       });
       return { examined: counted?.examined ?? 0, found, attachments: found_attachments };
+    },
+
+    async weakProvenance(workspaceId: WorkspaceId, max: number) {
+      // Two counts and a window. The counts come separately because they are
+      // the answer even when the window is empty: a workspace where everything
+      // cites a source has still been read, and so has one where nothing does.
+      //
+      // `current_revision_id is not null` is an item mid-write, between the
+      // insert and the revision it will point at. Counting it would make the
+      // workspace's habit depend on a transaction in flight.
+      const [counted] =
+        (
+          await db.execute<{ examined: string | number; cited: string | number }>(sql`
+          select count(*) as examined,
+                 count(*) filter (
+                   where exists (
+                     select 1 from ${revisionSources} as rs
+                     where rs.revision_id = i.current_revision_id
+                   )
+                 ) as cited
+          from ${knowledgeItems} as i
+          where i.workspace_id = ${workspaceId}
+            and i.status = 'active'
+            and i.current_revision_id is not null
+        `)
+        ).rows ?? [];
+
+      // The current revision rather than any of them: an item whose first
+      // revision cited a page and whose current one dropped it asserts the
+      // thing without the page now, and the history is where the page went.
+      const rows = await db.execute<{
+        item_id: string;
+        type: string;
+        title: string;
+        created_at: Date;
+      }>(sql`
+        select i.id as item_id, i.type as type, r.title as title, i.created_at as created_at
+        from ${knowledgeItems} as i
+        join ${knowledgeRevisions} as r on r.id = i.current_revision_id
+        where i.workspace_id = ${workspaceId}
+          and i.status = 'active'
+          and not exists (
+            select 1 from ${revisionSources} as rs where rs.revision_id = r.id
+          )
+        order by i.created_at asc, i.id asc
+        limit ${max}
+      `);
+
+      return {
+        examined: Number(counted?.examined ?? 0),
+        cited: Number(counted?.cited ?? 0),
+        items: (rows.rows ?? []).map((row) => ({
+          itemId: row.item_id as KnowledgeItemId,
+          title: row.title,
+          type: row.type,
+          createdAt: new Date(row.created_at),
+        })),
+      };
+    },
+
+    async staleInstructions(workspaceId: WorkspaceId, window: StaleInstructionWindow, max: number) {
+      // Either way an instruction can run out: the date it gave itself has
+      // passed, or nobody has touched it for long enough to put it in doubt.
+      // Both dates arrive from the caller, because how long is long enough is a
+      // domain decision and `now()` here could not be tested at a chosen
+      // moment.
+      //
+      // `least` orders by the older of the two dates, so the oldest neglect
+      // comes first and a capped run reads that rather than an arbitrary slice.
+      // An instruction with no end date has none to compare, which is what
+      // infinity is for.
+      const rows = await db.execute<{
+        found: string | number | null;
+        item_id: string;
+        title: string;
+        valid_until: Date | null;
+        revised_at: Date;
+      }>(sql`
+        with candidate as (
+          select i.id as item_id, r.title as title,
+                 i.valid_until as valid_until, r.created_at as revised_at
+          from ${knowledgeItems} as i
+          join ${knowledgeRevisions} as r on r.id = i.current_revision_id
+          where i.workspace_id = ${workspaceId}
+            and i.status = 'active'
+            and i.type = 'instruction'
+            and (
+              i.valid_until <= ${window.now}
+              or r.created_at < ${window.untouchedBefore}
+            )
+        )
+        select (select count(*) from candidate) as found,
+               c.item_id, c.title, c.valid_until, c.revised_at
+        from candidate as c
+        order by least(coalesce(c.valid_until, 'infinity'::timestamptz), c.revised_at) asc,
+                 c.item_id asc
+        limit ${max}
+      `);
+
+      // Every active instruction, which is what the rule read. A workspace with
+      // no instructions at all reads zero, and that is the honest answer rather
+      // than a rule that looks as though it found nothing among many.
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(knowledgeItems)
+        .where(
+          and(
+            eq(knowledgeItems.workspaceId, workspaceId),
+            eq(knowledgeItems.status, 'active'),
+            eq(knowledgeItems.type, 'instruction'),
+          ),
+        );
+
+      let found = 0;
+      const instructions = (rows.rows ?? []).map((row) => {
+        found = Number(row.found ?? 0);
+        return {
+          itemId: row.item_id as KnowledgeItemId,
+          title: row.title,
+          validUntil: row.valid_until === null ? null : new Date(row.valid_until),
+          revisedAt: new Date(row.revised_at),
+        };
+      });
+      return { examined: counted?.examined ?? 0, found, instructions };
     },
   };
 }

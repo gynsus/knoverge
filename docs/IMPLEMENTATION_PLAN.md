@@ -15,8 +15,8 @@ Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
 a live installation. Milestone 15 arrived in **v0.7.0** and was finished in
 **v0.8.0**, once a live installation had been moved off the sidecar. Milestone 14
-is what remains after it, and is under way: its frame and its first rule are
-built, and the rest of its rules arrive on that frame.
+is what remains after it, and is under way: its frame and six of its rules are
+built, and the rest arrive on that frame.
 
 ## Milestone 0 - repository scaffold
 
@@ -337,10 +337,11 @@ actor it would be told it may write. ADR 0043 decides what becomes of a finding
 that names no write: it is a notice on the run, because a review queue item
 nobody can approve is one that can never be cleared._
 
-The frame and four rules are built: the per-workspace setting, the caps, the
+The frame and six rules are built: the per-workspace setting, the caps, the
 scheduled sweep, the run record a screen can read, duplicates by content hash
-and by text, and the two kinds of orphan. The rules below arrive one or two at a
-time on the same frame.
+and by text, the two kinds of orphan, knowledge that names no source and the
+standing order that has run out. The rules below arrive one or two at a time on
+the same frame.
 
 Deliver, with no provider configured:
 
@@ -362,8 +363,23 @@ Deliver, with no provider configured:
   gone. Both are notices (ADR 0043). Neither yet sees the third case, a file
   whose document was proposed and the proposal refused, because the link from a
   proposal to the attachment is inside its payload;
-- weak provenance: revisions that cite nothing, where the workspace mostly does;
-- stale instructions: past `valid_until`, or old and untouched;
+- **weak provenance** — built. An active item whose current revision cites no
+  source, in a workspace where more than half of its items cite one and there
+  are at least ten of them. Comparative on purpose: in an installation nobody
+  records provenance in, every item would be a finding, which is a rule arguing
+  with a decision somebody has already made. The query returns the two counts
+  and the uncited items; the rule decides whether the workspace has the habit,
+  because that judgement has to be readable without a database. A notice: what
+  an item should cite is not something the installation can know;
+- **stale instructions** — built. An active `instruction` past the
+  `valid_until` it gave itself, or unchanged for more than a year. Instructions
+  only, because a `fact` and a `decision` stay true of the moment they describe
+  while an instruction is what an agent reading the workspace will follow today.
+  Both dates come from the domain rather than from `now()` in SQL, so the rule
+  can be tested at a moment of its own choosing. A notice, and the one place a
+  write is imaginable and still refused: delete, re-date or rewrite is exactly
+  the choice the installation cannot make, and gardening's one proposal kind is
+  a supersession by an item the workspace already holds (ADR 0039);
 - taxonomy cleanup: a category with no items and no children, an alias pointing
   nowhere;
 - stale summaries: dependencies have moved and the summary has not.

@@ -89,6 +89,11 @@ export type {
   OrphanAttachmentScan,
   OrphanSource,
   OrphanSourceScan,
+  StaleInstruction,
+  StaleInstructionScan,
+  StaleInstructionWindow,
+  UncitedItem,
+  WeakProvenanceScan,
 } from './gardening/repository.ts';
 export { fold } from './gardening/text.ts';
 export {
@@ -96,7 +101,12 @@ export {
   duplicateTextRule,
   orphanAttachmentRule,
   orphanSourceRule,
+  staleInstructionRule,
+  STALE_INSTRUCTION_DAYS,
   TEXT_TITLE_SIMILARITY_THRESHOLD,
+  weakProvenanceRule,
+  WEAK_PROVENANCE_HABIT_SHARE,
+  WEAK_PROVENANCE_MINIMUM_ITEMS,
   type GardeningFinding,
   type GardeningRule,
   type GardeningScan,

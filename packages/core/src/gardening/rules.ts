@@ -2,7 +2,9 @@ import type { GardeningRuleName, KnowledgeItemId, RevisionId } from '@knoverge/c
 
 import type { ActorContext } from '../actor-context.ts';
 import { DomainError } from '../errors.ts';
-import type { DuplicateTextPair, GardeningRepository } from './repository.ts';
+import type { Clock } from '../ports/clock.ts';
+import { systemClock } from '../ports/clock.ts';
+import type { DuplicateTextPair, GardeningRepository, StaleInstruction } from './repository.ts';
 import { fold } from './text.ts';
 
 /**
@@ -47,7 +49,7 @@ export interface SupersedeFinding {
 export interface NoticeFinding {
   kind: 'notice';
   rule: GardeningRuleName;
-  subjectType: 'source_reference' | 'attachment';
+  subjectType: 'source_reference' | 'attachment' | 'knowledge_item';
   subjectId: string;
   /** The rule and what it rested on, in one line, as a proposal's reason is. */
   reason: string;
@@ -317,6 +319,170 @@ export function orphanAttachmentRule(
       };
     },
   };
+}
+
+/**
+ * How much of a workspace has to cite its sources before citing none is worth
+ * saying.
+ *
+ * More than half of it. The finding is comparative and not absolute: an
+ * installation nobody records provenance in is one where every item would be a
+ * notice, which is a rule reporting a decision somebody has already made.
+ * Where most items name what they rest on, the few that name nothing are the
+ * ones somebody wrote in a hurry.
+ */
+export const WEAK_PROVENANCE_HABIT_SHARE = 0.5;
+
+/**
+ * How many items a workspace needs before its habit is a habit.
+ *
+ * Two items out of three is a share and not a practice. A new workspace would
+ * otherwise be told off for its third item on the strength of its first two,
+ * which is the opposite of what this rule is for.
+ */
+export const WEAK_PROVENANCE_MINIMUM_ITEMS = 10;
+
+/**
+ * Items that rest on nothing they name, where the workspace mostly names
+ * something.
+ *
+ * Provenance is the whole point of the ledger (rule 3), but rule 3 is about
+ * who wrote a revision and this is about what the revision rested on — which
+ * nothing can require, because somebody may simply know a thing. So it is a
+ * notice: there is no write to propose. What the item should cite is not
+ * something the installation can know, and an item citing nothing is not wrong
+ * in the way a duplicate is wrong.
+ *
+ * It says nothing at all in a workspace that does not cite sources. A rule that
+ * reported every item in such a workspace would be reporting a decision
+ * somebody has already made, every run, and in numbers that would bury the
+ * runs that matter.
+ */
+export function weakProvenanceRule(
+  gardening: Pick<GardeningRepository, 'weakProvenance'>,
+): GardeningRule {
+  return {
+    name: 'weak_provenance',
+    produces: 'notices',
+    async scan(actor, max) {
+      const scan = await gardening.weakProvenance(actor.workspaceId, max);
+      // `examined` is reported whether or not anything is said about it: a
+      // workspace that does not cite sources has still been read, and "read
+      // 400, found 0" is the answer somebody wants.
+      if (
+        scan.examined < WEAK_PROVENANCE_MINIMUM_ITEMS ||
+        scan.cited <= scan.examined * WEAK_PROVENANCE_HABIT_SHARE
+      ) {
+        return { examined: scan.examined, found: 0, findings: [] };
+      }
+      return {
+        examined: scan.examined,
+        // Every uncited item there is, not the window: a capped run has to be
+        // able to report that there is more of this than it listed.
+        found: scan.examined - scan.cited,
+        findings: scan.items.map((item) => ({
+          kind: 'notice' as const,
+          rule: 'weak_provenance' as const,
+          subjectType: 'knowledge_item' as const,
+          subjectId: item.itemId,
+          reason:
+            `gardening rule weak_provenance: this ${item.type}, "${item.title}", names no ` +
+            `source at its current revision, where ${scan.cited} of the ${scan.examined} ` +
+            `active items in this workspace name one.`,
+        })),
+      };
+    },
+  };
+}
+
+/**
+ * How long an instruction nobody has touched stays an instruction.
+ *
+ * A year. An instruction is written to last — a quarter-old one is an ordinary
+ * instruction, not a neglected one — and a year is long enough that the person
+ * who wrote it has had the chance to say otherwise and did not. Shorter would
+ * make this rule a reminder to re-save files.
+ */
+export const STALE_INSTRUCTION_DAYS = 365;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Standing orders that have run out: past the date they gave themselves, or
+ * untouched long enough to be in doubt.
+ *
+ * Instructions only. A `fact` records what was true and a `decision` what was
+ * decided, and both stay true of the moment they describe; an instruction is a
+ * standing order, and an agent reading this workspace will follow it today.
+ *
+ * A notice rather than a proposal, although a write is imaginable here in a way
+ * it is not for an orphan row: somebody could delete it, or re-date it, or
+ * replace it. Which of those is right is exactly what the installation cannot
+ * know, and gardening's one proposal kind is a supersession by an item the
+ * workspace already holds (ADR 0039). A rule that guessed would be filing its
+ * guess into the review queue.
+ */
+export function staleInstructionRule(
+  gardening: Pick<GardeningRepository, 'staleInstructions'>,
+  clock: Clock = systemClock,
+): GardeningRule {
+  return {
+    name: 'stale_instruction',
+    produces: 'notices',
+    async scan(actor, max) {
+      const now = clock.now();
+      const untouchedBefore = new Date(now.getTime() - STALE_INSTRUCTION_DAYS * DAY_MS);
+      const scan = await gardening.staleInstructions(
+        actor.workspaceId,
+        { now, untouchedBefore },
+        max,
+      );
+      const findings: GardeningFinding[] = [];
+      for (const instruction of scan.instructions) {
+        const why = whyStale(instruction, now, untouchedBefore);
+        // A row whose dates say nothing is dropped rather than described: the
+        // reason has to name what it rests on, and a rule that cannot say why
+        // has not found anything (ADR 0039).
+        if (why === null) continue;
+        findings.push({
+          kind: 'notice',
+          rule: 'stale_instruction',
+          subjectType: 'knowledge_item',
+          subjectId: instruction.itemId,
+          reason:
+            `gardening rule stale_instruction: "${instruction.title}" is active and ${why}, ` +
+            `so an agent reading this workspace is still told to follow it.`,
+        });
+      }
+      // What was described, plus what was never looked at — the same arithmetic
+      // as the text rule, and for the same reason: a dropped row must not make
+      // a run report that a cap stopped it.
+      const unexamined = Math.max(0, scan.found - scan.instructions.length);
+      return { examined: scan.examined, found: findings.length + unexamined, findings };
+    },
+  };
+}
+
+/**
+ * Why this instruction is in doubt, in the words of the dates themselves.
+ *
+ * Both clauses where both apply: an instruction that ran out two years ago and
+ * has not been touched since is two facts, and a reader deciding what to do
+ * with it wants both. Null where neither does, which is a row the query should
+ * not have returned.
+ */
+function whyStale(instruction: StaleInstruction, now: Date, untouchedBefore: Date): string | null {
+  const clauses: string[] = [];
+  if (instruction.validUntil !== null && instruction.validUntil <= now) {
+    clauses.push(`stopped being valid on ${instruction.validUntil.toISOString()}`);
+  }
+  if (instruction.revisedAt < untouchedBefore) {
+    clauses.push(
+      `has not been changed since ${instruction.revisedAt.toISOString()}, which is more ` +
+        `than ${STALE_INSTRUCTION_DAYS} days`,
+    );
+  }
+  return clauses.length === 0 ? null : clauses.join(' and ');
 }
 
 /** English, because the reason is English and a reviewer reads it. */

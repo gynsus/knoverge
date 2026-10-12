@@ -451,6 +451,14 @@
       "orphan_attachment": {
         "title": "A file kept for nothing",
         "description": "An attachment every one of whose knowledge items has been deleted, so the bytes are kept for knowledge that is gone. A file whose item was superseded is not one of these — superseded knowledge is still knowledge — and nor is a file nothing was made from, which the files screen explains itself."
+      },
+      "weak_provenance": {
+        "title": "Knowledge that names no source",
+        "description": "An active item whose current revision cites nothing it rests on, in a workspace where most items cite something. Comparative on purpose: where nobody records provenance every item would be reported, which is a rule arguing with a decision somebody has already made. There is nothing to approve — what an item should cite is not something the installation can know."
+      },
+      "stale_instruction": {
+        "title": "A standing order that has run out",
+        "description": "An active instruction past the date it gave itself, or unchanged for more than a year. Instructions only: a fact records what was true and a decision what was decided, and both stay true of the moment they describe, while an instruction is what an agent reading this workspace will follow today. Nothing is proposed, because whether it should be deleted, re-dated or rewritten is exactly what the installation cannot know."
       }
     },
     "runs": "Runs",
@@ -478,7 +486,8 @@
     "notices_hint": "Things that name no write, so there is nothing to approve and nothing to dismiss. Each is true until it is fixed, and then a later run stops reporting it.",
     "subject": {
       "source_reference": "source",
-      "attachment": "file"
+      "attachment": "file",
+      "knowledge_item": "item"
     }
   },
   "home": {
