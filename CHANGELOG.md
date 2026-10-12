@@ -9,6 +9,94 @@ reader learns what changed rather than which commits landed. The v0.1.0 entry is
 written by hand throughout: a generated list of everything would say "added" a
 couple of hundred times and tell a reader nothing about what they are installing.
 
+## v0.9.0 — 2026-10-12
+
+Milestone 14 opens. A workspace can read its own knowledge on a schedule and say
+what it noticed — and it never writes: a finding that names a write is a
+proposal for review, and one that names none is a notice on the run.
+
+### Added
+
+- **Gardening, per workspace and off until somebody turns it on.** A schedule in
+  hours, a cap on findings per run and another per rule, a record of every run
+  and a screen that reads it. A workspace is the unit of knowledge and of
+  review, so it is the unit of tidying; off by default because the first thing
+  gardening does is make work for a person, and capped because a gardener that
+  buries the review queue has done harm rather than work.
+- **The gardener files and does not ask** (ADR 0042). It runs as the workspace's
+  system actor, the only actor an installation owns — and a system actor is the
+  host operator at the command line, whose default policy effect is
+  `allow_direct`. A gardener that proposed the way an agent proposes would have
+  been told it may write and would have tidied the knowledge base without asking
+  anybody. So filing a finding is a second entry point on the proposal service
+  where the decision is fixed at `require_review` rather than read, and there is
+  no argument it can be called with that writes: the `apply` closure it hands
+  over is only ever run by an approval.
+- **Duplicates by content hash.** Two active items whose current content hash is
+  identical — the same words under the same heading twice, because the hash
+  covers the title and the body and no metadata. The older is kept: the
+  relations and sources that exist point at it, its history is the longer one,
+  and the copy is the thing that happened afterwards.
+- **Duplicates by text**, which is what that misses. The content hash rests on
+  the normalisation the file format needs — line endings, trailing spaces, runs
+  of blank lines — and nothing else, so "Auth strategy" and "Auth Strategy" over
+  one identical body are two items to it. This folds capitalisation, accents and
+  where the lines broke as well, and asks of the titles only that they be near
+  enough by trigram to be one heading. It stops at equality: bodies that are
+  merely similar are a merge, and a merge needs a provider, because what two
+  nearly-identical items should become is a draft.
+- **A finding that names no write is a notice** (ADR 0043). Four of the rules
+  this milestone owes name no write anybody could approve, and a review queue
+  item nobody can approve is one that can never be cleared. So they are recorded
+  on the run that found them, with the rule and the thing each rests on. Nothing
+  to approve and nothing to dismiss: a notice is true until the thing it
+  describes is fixed, and then a later run stops reporting it.
+- **Two notice rules.** `orphan_source` is a source reference no revision cites
+  at all — a row written and never attached, which in a healthy installation is
+  none, every run. `orphan_attachment` is a file every one of whose knowledge
+  items has been deleted: bytes kept for knowledge that is gone. Neither has a
+  button that fixes it, and the ADR says so rather than making the rules wait
+  for one.
+- **An hourly sweep** in the worker role, which asks which workspaces are due
+  and usually finds none, because the interval is the workspace's setting and
+  the schedule is not. Registered whether or not any workspace gardens, for the
+  reason the backup queue is.
+- **A README version the tests hold to the changelog.** The image line was
+  guarded and the sentence above it was not, so the README said v0.7.0 while it
+  offered the 0.8.0 image.
+
+### Changed
+
+- **The run record says what each rule did**, not whether gardening is on: from
+  the review queue, a rule that found nothing and a rule that never ran look
+  identical. `findings_filed` counts proposals only, so the run cap — which
+  exists to keep the review queue readable — never stops a notice rule from
+  being asked.
+- **What a rule leaves out it leaves out in its own query**: an item a reviewer
+  is already holding, and an item whose finding this gardener had refused.
+  Filtering those from the result instead starves a capped run, because the
+  answered items are the oldest and a cap takes the oldest first. A test found
+  that, not a reading of the code.
+
+### Verified
+
+- 1398 tests, and a deliberate break for every claim each new one makes. Two
+  breaks were initially missed and both were gaps in the tests rather than in
+  the code; one break found a real defect before any of it, where a whitespace
+  class inside a template literal reached PostgreSQL as a letter.
+- On the stand: migrations applying themselves on start, the new queue
+  registered, the screen refusing anybody without `workspace.admin`, and a run
+  that filed a proposal and changed nothing.
+
+### Compatibility
+
+Two additive migrations, `0026_gardening` and `0027_gardening_notices`. They
+create the settings and run tables and add one column; nothing existing is
+altered and no row is backfilled, because a workspace with no settings row has
+the defaults, which is gardening off. Upgrading from v0.8.0 needs the new image
+and nothing else, and an installation that never turns gardening on behaves
+exactly as it did.
+
 ## v0.8.0 — 2026-10-11
 
 The last step of Milestone 15, and the screen's missing answer. An operator can
