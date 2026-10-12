@@ -8,7 +8,11 @@ import {
   duplicateContentHashRule,
   duplicateTextRule,
   fold,
+  orphanAttachmentRule,
+  orphanSourceRule,
   type ActorContext,
+  type GardeningFinding,
+  type SupersedeFinding,
   type GardeningRepository,
   type GardeningRule,
   type GardeningRunRecord,
@@ -83,6 +87,12 @@ function repository(initial = defaults()): GardeningRepository & {
     duplicateTexts: async () => {
       throw new Error('a fake rule does not scan');
     },
+    orphanSources: async () => {
+      throw new Error('a fake rule does not scan');
+    },
+    orphanAttachments: async () => {
+      throw new Error('a fake rule does not scan');
+    },
   };
 }
 
@@ -129,6 +139,7 @@ function rule(options: {
   return {
     asked,
     name: options.name ?? 'duplicate_content_hash',
+    produces: 'proposals',
     scan: async (_actor, max) => {
       asked.push(max);
       return {
@@ -148,6 +159,19 @@ function rule(options: {
       };
     },
   };
+}
+
+/**
+ * The supersede findings of a scan, which is what a proposal rule returns.
+ *
+ * A finding is a proposal or a notice now (ADR 0043), so a test that reads
+ * `oldItemId` says which it expected rather than reaching through the union.
+ */
+function superseding(findings: readonly GardeningFinding[]): SupersedeFinding[] {
+  return findings.map((finding) => {
+    expect(finding.kind).toBe('supersede');
+    return finding as SupersedeFinding;
+  });
 }
 
 function service(options: {
@@ -365,8 +389,11 @@ describe('the duplicate content hash rule', () => {
     expect(scan.examined).toBe(5);
     expect(scan.found).toBe(2);
     // Three items, two findings, and the oldest survives both.
-    expect(scan.findings.map((finding) => finding.oldItemId)).toEqual(['kn_second', 'kn_third']);
-    expect(new Set(scan.findings.map((finding) => finding.newItemId))).toEqual(
+    expect(superseding(scan.findings).map((finding) => finding.oldItemId)).toEqual([
+      'kn_second',
+      'kn_third',
+    ]);
+    expect(new Set(superseding(scan.findings).map((finding) => finding.newItemId))).toEqual(
       new Set(['kn_first']),
     );
   });
@@ -485,7 +512,7 @@ describe('the duplicate text rule', () => {
 
     expect(scan.examined).toBe(12);
     expect(scan.found).toBe(1);
-    const [finding] = scan.findings;
+    const [finding] = superseding(scan.findings);
     expect(finding?.oldItemId).toBe('kn_copy');
     expect(finding?.newItemId).toBe('kn_keep');
     expect(finding?.rule).toBe('duplicate_text');
@@ -535,7 +562,7 @@ describe('the duplicate text rule', () => {
     );
     const scan = await rule.scan(GARDENER, 10);
 
-    expect(scan.findings.map((finding) => finding.oldItemId)).toEqual(['kn_b']);
+    expect(superseding(scan.findings).map((finding) => finding.oldItemId)).toEqual(['kn_b']);
     expect(scan.found).toBe(1);
   });
 
@@ -575,5 +602,174 @@ describe('the duplicate text rule', () => {
 
     expect(scan.findings).toHaveLength(1);
     expect(scan.found).toBe(7);
+  });
+});
+
+describe('a rule whose findings name no write', () => {
+  const sources = (found: number, rows: { id: string; type: string; label: string | null }[]) => ({
+    orphanSources: async () => ({
+      examined: 120,
+      found,
+      sources: rows.map((row) => ({
+        sourceReferenceId: row.id,
+        sourceType: row.type,
+        label: row.label,
+        createdAt: new Date('2026-03-04T05:06:07Z'),
+      })),
+    }),
+  });
+
+  it('files a notice, and names the rule, the kind and what it rests on', async () => {
+    const scan = await orphanSourceRule(
+      sources(1, [{ id: 'src_one', type: 'web_url', label: 'https://example.test/a' }]),
+    ).scan(GARDENER, 10);
+
+    expect(scan.examined).toBe(120);
+    const [finding] = scan.findings;
+    expect(finding?.kind).toBe('notice');
+    expect(finding).toMatchObject({
+      rule: 'orphan_source',
+      subjectType: 'source_reference',
+      subjectId: 'src_one',
+    });
+    expect(finding?.reason).toContain('orphan_source');
+    expect(finding?.reason).toContain('web_url');
+    expect(finding?.reason).toContain('https://example.test/a');
+    // When it was recorded, because a row written and never attached is a thing
+    // that happened at a moment somebody may be able to place.
+    expect(finding?.reason).toContain('2026-03-04T05:06:07');
+  });
+
+  it('says nothing in the brackets for a source that identifies itself with nothing', async () => {
+    // A person having said something is its own occurrence and carries neither
+    // a URI nor an external record. An empty pair of brackets would be a field
+    // the reader has to decide is empty rather than absent.
+    const scan = await orphanSourceRule(
+      sources(1, [{ id: 'src_said', type: 'human_input', label: null }]),
+    ).scan(GARDENER, 10);
+
+    expect(scan.findings[0]?.reason).not.toContain('(');
+  });
+
+  it('counts an attachment in items rather than in rows', async () => {
+    const one = await orphanAttachmentRule({
+      orphanAttachments: async () => ({
+        examined: 31,
+        found: 1,
+        attachments: [
+          { attachmentId: 'att_one', filename: 'budget.xlsx', sizeBytes: 40_960, deletedItems: 1 },
+        ],
+      }),
+    }).scan(GARDENER, 10);
+    expect(one.findings[0]?.reason).toContain('1 knowledge item that has been deleted');
+
+    const many = await orphanAttachmentRule({
+      orphanAttachments: async () => ({
+        examined: 31,
+        found: 1,
+        attachments: [
+          { attachmentId: 'att_two', filename: 'notes.pdf', sizeBytes: 12, deletedItems: 3 },
+        ],
+      }),
+    }).scan(GARDENER, 10);
+    expect(many.findings[0]?.reason).toContain('3 knowledge items that have been deleted');
+    expect(many.findings[0]).toMatchObject({ subjectType: 'attachment', subjectId: 'att_two' });
+  });
+
+  it('declares what it produces, so a rule that found nothing still has a kind', () => {
+    expect(orphanSourceRule(sources(0, [])).produces).toBe('notices');
+    expect(orphanAttachmentRule({ orphanAttachments: async () => notFound }).produces).toBe(
+      'notices',
+    );
+  });
+
+  const notFound = { examined: 0, found: 0, attachments: [] };
+});
+
+/** A rule that reports notices rather than proposals, as a test tells it to. */
+function noticing(options: { found: number; notices: number }): GardeningRule & {
+  asked: number[];
+} {
+  const asked: number[] = [];
+  return {
+    asked,
+    name: 'orphan_source',
+    produces: 'notices',
+    scan: async (_actor, max) => {
+      asked.push(max);
+      return {
+        examined: 7,
+        found: options.found,
+        findings: Array.from({ length: Math.min(options.notices, max) }, (_, index) => ({
+          kind: 'notice' as const,
+          rule: 'orphan_source' as const,
+          subjectType: 'source_reference' as const,
+          subjectId: `src_${index}`,
+          reason: `gardening rule orphan_source: row ${index}`,
+        })),
+      };
+    },
+  };
+}
+
+describe('a run that both files and notices', () => {
+  it('records the notices on the run and nothing in the review queue', async () => {
+    const gardening = repository();
+    const filer = filing();
+    const run = await service({
+      gardening,
+      filing: filer,
+      rules: [noticing({ found: 2, notices: 2 })],
+    }).run(WORKSPACE, 'requested');
+
+    expect(run.notices.map((notice) => notice.subjectId)).toEqual(['src_0', 'src_1']);
+    expect(run.notices[0]?.rule).toBe('orphan_source');
+    // Nothing was proposed, and `findings_filed` is what the run left in the
+    // queue: a notice is not in it.
+    expect(filer.filed).toEqual([]);
+    expect(run.findingsFiled).toBe(0);
+    // The rule still says it got two down, because from the screen's side that
+    // is the same question.
+    expect(run.rules[0]).toMatchObject({ examined: 7, found: 2, filed: 2, limited: null });
+  });
+
+  it('is still asked once the run cap is full, because the cap protects the queue', async () => {
+    // The whole point of the distinction (ADR 0043): an operator who has just
+    // hit the cap on duplicates still wants to know about the file nothing
+    // rests on.
+    const gardening = repository(defaults({ maxFindingsPerRun: 1, maxFindingsPerRule: 1 }));
+    const filer = filing();
+    const noticer = noticing({ found: 1, notices: 1 });
+    const run = await service({
+      gardening,
+      filing: filer,
+      rules: [rule({ examined: 4, found: 3, pairs: 3 }), noticer],
+    }).run(WORKSPACE, 'requested');
+
+    expect(run.findingsFiled).toBe(1);
+    expect(run.reachedCap).toBe(true);
+    // Scanned rather than skipped, and it was asked for its own cap and not
+    // for what the run had left.
+    expect(noticer.asked).toEqual([1]);
+    expect(run.notices).toHaveLength(1);
+    expect(run.rules[1]).toMatchObject({ rule: 'orphan_source', filed: 1, limited: null });
+  });
+
+  it('holds a noisy notice rule to its own cap, and says which cap that was', async () => {
+    // The run cap is deliberately the smaller of the two here. A notice rule
+    // that read it would take one notice and report `run_cap`; this one takes
+    // its own five and reports `rule_cap`, because the run cap counts proposals
+    // and a rule that blamed it would be blaming a cap it never met.
+    const gardening = repository(defaults({ maxFindingsPerRun: 1, maxFindingsPerRule: 5 }));
+    const run = await service({
+      gardening,
+      filing: filing(),
+      rules: [noticing({ found: 9, notices: 9 })],
+    }).run(WORKSPACE, 'requested');
+
+    expect(run.notices).toHaveLength(5);
+    expect(run.rules[0]?.limited).toBe('rule_cap');
+    expect(run.reachedCap).toBe(false);
+    expect(run.findingsFiled).toBe(0);
   });
 });

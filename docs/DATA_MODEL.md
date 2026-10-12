@@ -1069,7 +1069,7 @@ A failed upload is recorded apart from a failed backup. The local copy was taken
 
 ## 34b. Gardening settings and runs
 
-Whether a workspace tidies itself, and what each run did (ADR 0039, ADR 0042).
+Whether a workspace tidies itself, and what each run did (ADR 0039, ADR 0042, ADR 0043).
 
 Per workspace, unlike the backup settings above: a workspace is the unit of knowledge and of review, so it is the unit of tidying. One may want it and the next may not, and the review queue a flood would ruin belongs to a workspace rather than to the installation.
 
@@ -1099,17 +1099,20 @@ GardeningRun
 - reached_cap               the run stopped because it had filed as much as it may
 - error nullable            one line, never a body
 - rules                     jsonb: one entry per rule
+- notices                   jsonb: what it saw that names no write
 ```
 
-The findings themselves are proposals and live in the review queue (section 21). This row is the run, which is how a screen tells a rule that found nothing from a rule that never ran — from the queue the two look identical.
+The findings that name a write are proposals and live in the review queue (section 21); the ones that name none are the `notices` on this row. Either way this row is the run, which is how a screen tells a rule that found nothing from a rule that never ran — from the queue the two look identical.
 
 Each entry of `rules` is `{ rule, examined, found, filed, limited }`: what the rule read, how many findings it has, how many it filed, and which cap held it back (`run_cap`, `rule_cap`, or null). Read as a block for one screen and never queried by its contents, which is what makes it a document and not a table. `found` counts the findings there are to file, which is why a pair already in the review queue is not among them: a screen reporting "found 1, filed 0" every day would say the gardener was stuck.
+
+Each entry of `notices` is `{ rule, subject_type, subject_id, reason }`: a thing a rule saw that no write could answer — a source reference no revision cites, an attachment whose every item is deleted (ADR 0043). It is not a proposal and not in the review queue, because there is nothing to approve, and a queue item nobody can approve is one that can never be cleared. There is nothing to dismiss either: a notice is true until the thing it describes is fixed, and then a later run stops reporting it. `findings_filed` counts proposals and never notices, and the run cap is read from it, so a notice rule is still scanned once the cap is reached — it is bounded by `max_findings_per_rule` alone.
 
 A run is written before the rules are read and finished afterwards, so a run a restart interrupted is recognisable as one that never finished rather than missing altogether. `last_run_at` is set whether the run found anything or threw: a run that failed still ran, and an interval that ignored it would retry every minute.
 
 Runs are kept rather than pruned. One row per workspace per day is three hundred and sixty-five a year, each a few hundred bytes; the sync candidates are pruned because a daily pass leaves three hundred thousand (section 26).
 
-Nothing here records a finding. A finding that was filed is a proposal, proposed by the workspace's system actor with `gardener` as the client, carrying the rule and the rows it read in its `reason` — so a reviewer can disagree with the rule rather than with the finding. The gardener has no path that writes knowledge directly, whatever policy the workspace holds (ADR 0042).
+No proposal is recorded here. A finding that named a write is a proposal, proposed by the workspace's system actor with `gardener` as the client, carrying the rule and the rows it read in its `reason` — so a reviewer can disagree with the rule rather than with the finding. The gardener has no path that writes knowledge directly, whatever policy the workspace holds (ADR 0042).
 
 ## 35. OAuth client, grant, code and refresh token
 

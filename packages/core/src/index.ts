@@ -78,21 +78,29 @@ export type {
   DuplicateTextPair,
   DuplicateTextScan,
   GardeningItem,
+  GardeningNoticeRecord,
   GardeningRepository,
   GardeningRuleLimit,
   GardeningRuleResultRecord,
   GardeningRunRecord,
   GardeningSettingsPatch,
   GardeningSettingsRecord,
+  OrphanAttachment,
+  OrphanAttachmentScan,
+  OrphanSource,
+  OrphanSourceScan,
 } from './gardening/repository.ts';
 export { fold } from './gardening/text.ts';
 export {
   duplicateContentHashRule,
   duplicateTextRule,
+  orphanAttachmentRule,
+  orphanSourceRule,
   TEXT_TITLE_SIMILARITY_THRESHOLD,
   type GardeningFinding,
   type GardeningRule,
   type GardeningScan,
+  type NoticeFinding,
   type SupersedeFinding,
 } from './gardening/rules.ts';
 export {

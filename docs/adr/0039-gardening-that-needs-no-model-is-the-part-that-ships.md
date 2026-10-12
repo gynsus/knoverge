@@ -4,6 +4,9 @@ Date: 2026-10-09
 
 Status: accepted
 
+Amended by: ADR 0043, which narrows "every gardening finding is a proposal" to
+the findings that name a write
+
 ## Context
 
 Milestone 14 is the last one in the plan, and it has been waiting on a question

@@ -1114,7 +1114,18 @@ settings cannot speak for reports a problem nobody has.
 ## Tidying a workspace
 
 `packages/core/src/gardening/` — the installation reading its own knowledge on a
-schedule and filing what it notices. Four files, split by what each knows.
+schedule and recording what it notices. Four files, split by what each knows.
+
+A finding is one of two things (ADR 0043). It is a **proposal** when it names a
+write somebody could approve, which is what both duplicate rules produce. It is
+a **notice** when it names none — a source reference no revision cites is not a
+write anybody could agree to — and then it is recorded on the run and shown
+there, because a review queue item nobody can approve is one that can never be
+cleared. A rule declares which it produces rather than being read from what came
+back, because a rule that found nothing would otherwise have no kind, and the
+two are capped differently: the run cap exists to keep the review queue
+readable, so a notice is not in it and a notice rule is still asked once the cap
+is reached.
 
 `rules.ts` holds the rules and the shape of a finding. A rule looks and reports;
 it writes nothing, and it is handed the gardener's actor because what is worth
@@ -1181,6 +1192,26 @@ run there was nothing more to do.
 It also leaves out a pair whose content hashes already match, which is the other
 rule's finding: two rules filing one supersession would be one proposal and one
 conflict.
+
+`orphanSources` and `orphanAttachments` are the notice queries, and both are
+joins that say what *nothing* points at. The first asks for a source reference
+no revision cites at all — not one cited only by an older revision, which is the
+ordinary state of every edited item's history, and not one cited only by a
+deleted item, which is the history of knowledge somebody removed on purpose.
+Both of those still have a revision citing them, and the query asks for none. In
+a healthy installation it finds nothing every run, which is the reason it is
+listed on the screen rather than left out: "found nothing" and "never ran" are
+different answers.
+
+The second reaches each attachment's items the only way there is — the source
+reference naming the file, the revision citing that source, the item that
+revision belongs to — and keeps the files where every one of those items is
+deleted. Distinct on the item, because an item citing the file at three
+revisions is one item. A superseded item does not make a file an orphan:
+superseded knowledge is still knowledge and the file is still what it rested on.
+Neither query takes the gardener's actor or excludes answered items, because a
+notice is not a proposal and there is nothing anybody could already have said
+about it.
 
 ### Why it files instead of writing
 

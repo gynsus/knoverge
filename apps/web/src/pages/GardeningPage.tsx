@@ -1,4 +1,9 @@
-import type { GardeningRun, GardeningRuleResult, GardeningSettings } from '@knoverge/contracts';
+import type {
+  GardeningNotice,
+  GardeningRun,
+  GardeningRuleResult,
+  GardeningSettings,
+} from '@knoverge/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -290,11 +295,41 @@ function Runs({ runs }: { runs: GardeningRun[] }) {
                   </li>
                 ))}
               </ul>
+              {/* With the run that saw them rather than in a list of their own:
+                  there is nothing to approve and nothing to dismiss, so a
+                  reader wants what is true now, which is the newest run
+                  (ADR 0043). */}
+              {run.notices.length > 0 && <Notices notices={run.notices} />}
             </TableCell>
           </TableRow>
         ))}
       </TableBody>
     </Table>
+  );
+}
+
+/**
+ * What the run saw that names no write.
+ *
+ * Each one says what kind of thing it is about, because none of them has a
+ * screen that fixes it: a reader has to know whether they are looking for a
+ * file or a row before they can go and look.
+ */
+function Notices({ notices }: { notices: GardeningNotice[] }) {
+  const { t } = useTranslation();
+  return (
+    <div className="mt-2 grid gap-1">
+      <p className="text-xs font-medium">{t('gardening.notices')}</p>
+      <p className="text-xs text-muted-foreground">{t('gardening.notices_hint')}</p>
+      <ul className="grid gap-1">
+        {notices.map((notice) => (
+          <li key={`${notice.rule}:${notice.subject_id}`} className="text-sm">
+            <Badge variant="outline">{t(`gardening.subject.${notice.subject_type}`)}</Badge>{' '}
+            <span className="text-muted-foreground">{notice.reason}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

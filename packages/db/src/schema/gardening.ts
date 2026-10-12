@@ -54,11 +54,29 @@ export interface GardeningRuleResultRow {
 }
 
 /**
+ * One thing a rule saw that names no write (ADR 0043).
+ *
+ * A source reference no revision cites, an attachment whose every item is gone.
+ * There is nothing to approve, so it is not a proposal and not in the review
+ * queue; it is recorded on the run and shown, and it stops being reported when
+ * the thing it describes is fixed.
+ */
+export interface GardeningNoticeRow {
+  rule: string;
+  /** What kind of thing it is about, so the screen can say where to look. */
+  subjectType: 'source_reference' | 'attachment';
+  subjectId: string;
+  /** English, and not a catalogue key, for the reason a proposal's is. */
+  reason: string;
+}
+
+/**
  * What a run did.
  *
- * The findings themselves are proposals and live in the review queue; this row
- * is the run, which is how the screen tells a rule that found nothing from a
- * rule that never ran.
+ * The findings that name a write are proposals and live in the review queue;
+ * the ones that name none are the `notices` on this row. Either way this is the
+ * run, which is how the screen tells a rule that found nothing from a rule that
+ * never ran.
  */
 export const gardeningRuns = pgTable(
   'gardening_runs',
@@ -77,6 +95,7 @@ export const gardeningRuns = pgTable(
     /** One line, never a body. */
     error: varchar('error', { length: 500 }),
     rules: jsonb('rules').$type<GardeningRuleResultRow[]>().notNull().default([]),
+    notices: jsonb('notices').$type<GardeningNoticeRow[]>().notNull().default([]),
   },
   (t) => [index('gardening_runs_workspace_idx').on(t.workspaceId, t.startedAt.desc())],
 );

@@ -54,10 +54,13 @@ export interface SaveGardeningSettingsInput {
 }
 
 /**
- * The installation reading its own knowledge and filing what it finds.
+ * The installation reading its own knowledge and recording what it finds.
  *
- * Every finding is a proposal and nothing else (ADR 0039), and the filing path
- * cannot become a write however the workspace is configured (ADR 0042).
+ * A finding that names a write is a proposal and nothing else (ADR 0039), and
+ * the filing path cannot become a write however the workspace is configured
+ * (ADR 0042). A finding that names none is a notice on the run, because a
+ * review queue item nobody can approve is one that can never be cleared
+ * (ADR 0043).
  */
 export class GardeningService {
   private readonly clock: Clock;
@@ -119,6 +122,7 @@ export class GardeningService {
       reachedCap: false,
       error: null,
       rules: [],
+      notices: [],
     };
     await this.o.uow.run((tx) => this.o.gardening.insertRun(tx, run));
     // Named after the run, so every proposal it files carries the run it came
@@ -154,7 +158,13 @@ export class GardeningService {
     settings: GardeningSettingsRecord,
     run: GardeningRunRecord,
   ): Promise<GardeningRuleResultRecord> {
-    const runRemaining = settings.maxFindingsPerRun - run.findingsFiled;
+    // The run cap counts proposals, because it exists to keep the review queue
+    // readable and a notice is not in it. So a rule that produces notices is
+    // scanned even once the cap is reached, which is the point of the
+    // distinction: an operator who has just hit the cap on duplicates still
+    // wants to know about the file nothing rests on (ADR 0043).
+    const notices = rule.produces === 'notices';
+    const runRemaining = notices ? Infinity : settings.maxFindingsPerRun - run.findingsFiled;
     if (runRemaining <= 0) {
       // Not scanned at all, and the result says why. Reading a workspace to
       // report findings that cannot be filed is work nobody asked for.
@@ -168,33 +178,56 @@ export class GardeningService {
     // are the oldest and a cap takes the oldest first (ADR 0042).
     const scan = await rule.scan(actor, allowed);
 
+    // Which cap it was: the run's if the run had less left than this rule may
+    // take, and otherwise the rule's own. A notice rule always answers
+    // `rule_cap`, because its `runRemaining` is infinite — the comparison says
+    // so without a second branch to get wrong.
+    const whichCap = (): GardeningRuleLimit =>
+      runRemaining <= settings.maxFindingsPerRule ? 'run_cap' : 'rule_cap';
+
     let filed = 0;
     let limited: GardeningRuleLimit | null = null;
     for (const finding of scan.findings) {
       if (filed >= allowed) {
-        limited = runRemaining <= settings.maxFindingsPerRule ? 'run_cap' : 'rule_cap';
+        limited = whichCap();
         break;
       }
-      if (await this.file(actor, finding)) filed += 1;
+      if (await this.file(actor, run, finding)) filed += 1;
     }
-    run.findingsFiled += filed;
+    // Proposals only: `findings_filed` is what the run left in the review
+    // queue, and the run cap is read from it.
+    if (!notices) run.findingsFiled += filed;
     // The cap bit if there was more than could be filed, whether or not the
     // loop above reached it: a scan that returned exactly `allowed` findings
     // and knows of more is capped too.
-    if (limited === null && scan.found > filed) {
-      limited = runRemaining <= settings.maxFindingsPerRule ? 'run_cap' : 'rule_cap';
-    }
+    if (limited === null && scan.found > filed) limited = whichCap();
     if (limited === 'run_cap') run.reachedCap = true;
     return { rule: rule.name, examined: scan.examined, found: scan.found, filed, limited };
   }
 
   /**
-   * One finding, filed. True when it became a proposal.
+   * One finding, recorded. True when it got down.
+   *
+   * A notice is written on the run and nothing else happens: there is nobody to
+   * ask, so there is nothing that can refuse it (ADR 0043).
    *
    * A finding the workspace has moved past is skipped rather than fatal: the
    * scan read a moment that has gone, and the next run reads the one after it.
    */
-  private async file(actor: ActorContext, finding: GardeningFinding): Promise<boolean> {
+  private async file(
+    actor: ActorContext,
+    run: GardeningRunRecord,
+    finding: GardeningFinding,
+  ): Promise<boolean> {
+    if (finding.kind === 'notice') {
+      run.notices.push({
+        rule: finding.rule,
+        subjectType: finding.subjectType,
+        subjectId: finding.subjectId,
+        reason: finding.reason,
+      });
+      return true;
+    }
     try {
       await this.o.filing.fileSupersedeFinding(actor, {
         oldItemId: finding.oldItemId,

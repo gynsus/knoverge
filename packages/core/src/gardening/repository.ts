@@ -33,6 +33,20 @@ export interface GardeningRuleResultRecord {
   limited: GardeningRuleLimit | null;
 }
 
+/**
+ * One thing a rule saw that names no write (ADR 0043).
+ *
+ * Recorded on the run rather than filed as a proposal, because there is nothing
+ * for a reviewer to approve, and a review queue item nobody can approve is one
+ * that can never be cleared.
+ */
+export interface GardeningNoticeRecord {
+  rule: GardeningRuleName;
+  subjectType: 'source_reference' | 'attachment';
+  subjectId: string;
+  reason: string;
+}
+
 export interface GardeningRunRecord {
   id: string;
   workspaceId: WorkspaceId;
@@ -40,11 +54,13 @@ export interface GardeningRunRecord {
   startedAt: Date;
   /** Null while it runs, and afterwards for a run a restart interrupted. */
   finishedAt: Date | null;
+  /** Proposals left in the review queue. A notice is not one of them. */
   findingsFiled: number;
   reachedCap: boolean;
   /** One line, never a body. */
   error: string | null;
   rules: GardeningRuleResultRecord[];
+  notices: GardeningNoticeRecord[];
 }
 
 /** What a run may change about the settings: when it last ran, and nothing else. */
@@ -108,6 +124,39 @@ export interface DuplicateHashScan {
   duplicates: number;
   /** At most `maxGroups`, oldest group first. */
   groups: DuplicateHashGroup[];
+}
+
+/** A source reference nothing ever rested on, and what it says it is. */
+export interface OrphanSource {
+  sourceReferenceId: string;
+  sourceType: string;
+  /** The URI, or the external system and key, or nothing at all. */
+  label: string | null;
+  createdAt: Date;
+}
+
+export interface OrphanSourceScan {
+  /** Source references in the workspace, which is what the rule read. */
+  examined: number;
+  /** How many of them nothing cites, which may be more than `sources` holds. */
+  found: number;
+  sources: OrphanSource[];
+}
+
+/** An attachment kept for knowledge that has been deleted. */
+export interface OrphanAttachment {
+  attachmentId: string;
+  filename: string;
+  sizeBytes: number;
+  /** How many items were made from it. All of them are deleted. */
+  deletedItems: number;
+}
+
+export interface OrphanAttachmentScan {
+  /** Attachments in the workspace, which is what the rule read. */
+  examined: number;
+  found: number;
+  attachments: OrphanAttachment[];
 }
 
 export interface GardeningRepository {
@@ -186,4 +235,29 @@ export interface GardeningRepository {
     gardenerActorId: ActorId,
     maxPairs: number,
   ): Promise<DuplicateTextScan>;
+  /**
+   * Source references no revision cites at all.
+   *
+   * Not "cited only by an older revision", which is the ordinary state of
+   * every edited item's history, and not "cited only by a deleted item", which
+   * is the history of knowledge somebody removed on purpose. Nothing rested on
+   * these, ever: a row written and never attached. In a healthy installation
+   * there are none, and a rule that reliably finds nothing is still worth
+   * having — on the screen, "found nothing" and "never ran" are different
+   * answers.
+   *
+   * No gardener actor and no exclusion of answered items: a notice is not a
+   * proposal, so there is nothing anybody could have already said about it.
+   */
+  orphanSources(workspaceId: WorkspaceId, max: number): Promise<OrphanSourceScan>;
+  /**
+   * Attachments every one of whose knowledge items has been deleted.
+   *
+   * Bytes kept for knowledge that is gone — ADR 0039's own wording. A file
+   * whose item was superseded is not one of these: superseded knowledge is
+   * still knowledge, and the file is still what it rested on. Nor is a file
+   * nothing was ever made from, which is either waiting to be read or one this
+   * installation cannot read, and both of those the files screen already says.
+   */
+  orphanAttachments(workspaceId: WorkspaceId, max: number): Promise<OrphanAttachmentScan>;
 }

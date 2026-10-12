@@ -1,4 +1,4 @@
-import { GardeningRuleName } from '@knoverge/contracts';
+import { GardeningNoticeSubject, GardeningRuleName } from '@knoverge/contracts';
 import { describe, expect, it } from 'vitest';
 
 import { SUPPORTED_LOCALES, createI18n, resources } from '../src/i18n.ts';
@@ -44,6 +44,11 @@ describe('message catalogues', () => {
       expect(rules[name]?.title, name).toBeTruthy();
       expect(rules[name]?.description, name).toBeTruthy();
     }
+
+    // The same hazard one level down: a notice says what kind of thing it is
+    // about, and the screen builds that key from what the server sent.
+    const subjects = resources.en.common.gardening.subject as Record<string, string>;
+    expect(Object.keys(subjects).sort()).toEqual([...GardeningNoticeSubject.options].sort());
   });
 
   it('resolves Russian plural categories, which English does not have', async () => {

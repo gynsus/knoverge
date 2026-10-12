@@ -35,7 +35,25 @@ export interface SupersedeFinding {
   reason: string;
 }
 
-export type GardeningFinding = SupersedeFinding;
+/**
+ * Something a rule saw that names no write (ADR 0043).
+ *
+ * The first two rules name one: this item should stop being active because that
+ * one says the same thing. Most of the rest name none — a source reference no
+ * revision cites is not a write anybody could approve — and a review queue item
+ * nobody can approve is one that can never be cleared. So these are recorded on
+ * the run and shown there.
+ */
+export interface NoticeFinding {
+  kind: 'notice';
+  rule: GardeningRuleName;
+  subjectType: 'source_reference' | 'attachment';
+  subjectId: string;
+  /** The rule and what it rested on, in one line, as a proposal's reason is. */
+  reason: string;
+}
+
+export type GardeningFinding = SupersedeFinding | NoticeFinding;
 
 export interface GardeningScan {
   /** How much the rule read, in whatever it counts. */
@@ -48,6 +66,15 @@ export interface GardeningScan {
 
 export interface GardeningRule {
   readonly name: GardeningRuleName;
+  /**
+   * Whether its findings are proposals or notices (ADR 0043).
+   *
+   * Declared rather than inferred from what comes back, because a rule that
+   * found nothing would then have no kind — and the two are capped
+   * differently: the run cap exists to keep the review queue readable, and a
+   * notice is not in it.
+   */
+  readonly produces: 'proposals' | 'notices';
   /**
    * Looks, and reports. Nothing is written here.
    *
@@ -79,6 +106,7 @@ export function duplicateContentHashRule(
 ): GardeningRule {
   return {
     name: 'duplicate_content_hash',
+    produces: 'proposals',
     async scan(actor, max) {
       // Groups, not findings: a group of three produces two findings, so asking
       // for `max` groups can never return fewer findings than `max` allows.
@@ -151,6 +179,7 @@ export function duplicateTextRule(
 ): GardeningRule {
   return {
     name: 'duplicate_text',
+    produces: 'proposals',
     async scan(actor, max) {
       const scan = await gardening.duplicateTexts(actor.workspaceId, actor.actorId, max);
       const findings: GardeningFinding[] = [];
@@ -206,4 +235,91 @@ async function saysTheSame(
     if (error instanceof DomainError && error.code === 'NOT_FOUND') return false;
     throw error;
   }
+}
+
+/**
+ * Source references no revision cites at all.
+ *
+ * Nothing ever rested on them: a row written and never attached. Not a source
+ * cited only by an older revision — that is the ordinary state of every edited
+ * item's history — and not one cited only by a deleted item, which is the
+ * history of knowledge somebody removed on purpose.
+ *
+ * Attachment sources are left to `orphan_attachment`, which can say something
+ * about the bytes rather than about the row that points at them. Two notices
+ * about one file would be two readings of the same fact.
+ *
+ * In a healthy installation this finds nothing, every time. That is the point:
+ * from the screen, a rule that found nothing and a rule that never ran are
+ * different answers, and this one is cheap enough to ask every run.
+ */
+export function orphanSourceRule(
+  gardening: Pick<GardeningRepository, 'orphanSources'>,
+): GardeningRule {
+  return {
+    name: 'orphan_source',
+    produces: 'notices',
+    async scan(actor, max) {
+      const scan = await gardening.orphanSources(actor.workspaceId, max);
+      return {
+        examined: scan.examined,
+        found: scan.found,
+        findings: scan.sources.map((source) => ({
+          kind: 'notice' as const,
+          rule: 'orphan_source' as const,
+          subjectType: 'source_reference' as const,
+          subjectId: source.sourceReferenceId,
+          reason:
+            `gardening rule orphan_source: this ${source.sourceType} source was recorded ` +
+            `on ${source.createdAt.toISOString()}${source.label === null ? '' : ` (${source.label})`} ` +
+            `and no revision cites it, so nothing in this workspace rests on it.`,
+        })),
+      };
+    },
+  };
+}
+
+/**
+ * Attachments every one of whose knowledge items has been deleted.
+ *
+ * Bytes kept for knowledge that is gone. A file whose item was superseded is
+ * not one of these — superseded knowledge is still knowledge, and the file is
+ * still what it rested on — and nor is a file nothing was ever made from, which
+ * is either waiting to be read or one this installation cannot read, and the
+ * files screen says both of those itself.
+ *
+ * There is no button that deletes the bytes, so this tells an operator
+ * something they can act on only through the command line. That is worse than a
+ * button and better than not knowing (ADR 0043).
+ */
+export function orphanAttachmentRule(
+  gardening: Pick<GardeningRepository, 'orphanAttachments'>,
+): GardeningRule {
+  return {
+    name: 'orphan_attachment',
+    produces: 'notices',
+    async scan(actor, max) {
+      const scan = await gardening.orphanAttachments(actor.workspaceId, max);
+      return {
+        examined: scan.examined,
+        found: scan.found,
+        findings: scan.attachments.map((attachment) => ({
+          kind: 'notice' as const,
+          rule: 'orphan_attachment' as const,
+          subjectType: 'attachment' as const,
+          subjectId: attachment.attachmentId,
+          reason:
+            `gardening rule orphan_attachment: ${attachment.filename} is ` +
+            `${attachment.sizeBytes} bytes kept for ${plural(attachment.deletedItems)} that ` +
+            `${attachment.deletedItems === 1 ? 'has' : 'have'} been deleted, so nothing this ` +
+            `workspace asserts rests on the file.`,
+        })),
+      };
+    },
+  };
+}
+
+/** English, because the reason is English and a reviewer reads it. */
+function plural(items: number): string {
+  return items === 1 ? '1 knowledge item' : `${items} knowledge items`;
 }
