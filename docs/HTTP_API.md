@@ -166,14 +166,19 @@ GET  /v1/admin/gardening.settings           whether this workspace tidies itself
                                             backup settings: a workspace is the unit of knowledge and
                                             of review (ADR 0042)
 GET  /v1/admin/gardening.runs               the last runs, newest first: what each rule read, found and
-                                            filed, and which cap held it back. A rule that found
+                                            filed, which cap held it back, and the notices — what the
+                                            run saw that names no write, so there is nothing to approve
+                                            and nothing to dismiss (ADR 0043). A rule that found
                                             nothing and a rule that never ran are different answers
 POST /v1/admin/gardening.save               the schedule and both caps at once, because a
                                             half-applied change to them is a run nobody configured
-POST /v1/admin/gardening.run                runs one now, whether or not the schedule is on. Every
-                                            finding becomes a proposal for review and nothing else;
-                                            there is no path from here to a direct write, whatever
-                                            policy the workspace holds (ADR 0039, ADR 0042)
+POST /v1/admin/gardening.run                runs one now, whether or not the schedule is on. A finding
+                                            that names a write becomes a proposal for review and
+                                            nothing else, and one that names none becomes a notice on
+                                            the run; there is no path from here to a direct write,
+                                            whatever policy the workspace holds (ADR 0039, ADR 0042,
+                                            ADR 0043). findings_filed counts the proposals, so the run
+                                            cap never stops a notice rule from being asked
 
 GET  /v1/admin/permissions.list?actor_id=act_...
 POST /v1/admin/permissions.grant

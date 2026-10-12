@@ -97,7 +97,12 @@ const OFF = {
   max_findings_per_run: 50,
   max_findings_per_rule: 20,
   last_run_at: null,
-  rules: ['duplicate_content_hash' as const],
+  rules: [
+    'duplicate_content_hash' as const,
+    'duplicate_text' as const,
+    'orphan_source' as const,
+    'orphan_attachment' as const,
+  ],
 };
 
 const RUN = {
@@ -115,6 +120,23 @@ const RUN = {
       found: 2,
       filed: 2,
       limited: null,
+    },
+  ],
+  notices: [],
+};
+
+/** A run that saw something naming no write (ADR 0043). */
+const NOTICED = {
+  ...RUN,
+  findings_filed: 0,
+  rules: [{ rule: 'orphan_attachment' as const, examined: 31, found: 1, filed: 1, limited: null }],
+  notices: [
+    {
+      rule: 'orphan_attachment' as const,
+      subject_type: 'attachment' as const,
+      subject_id: 'att_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+      reason:
+        'gardening rule orphan_attachment: budget.xlsx is 40960 bytes kept for 1 knowledge item that has been deleted, so nothing this workspace asserts rests on the file.',
     },
   ],
 };
@@ -142,6 +164,7 @@ describe('fixtures match the contract', () => {
   it('parses what the server answers', () => {
     expect(() => GardeningSettingsResponse.parse({ settings: OFF })).not.toThrow();
     expect(() => GardeningRunsResponse.parse({ runs: [RUN] })).not.toThrow();
+    expect(() => GardeningRunsResponse.parse({ runs: [NOTICED] })).not.toThrow();
   });
 });
 
@@ -310,5 +333,41 @@ describe('somebody who may not administer the workspace', () => {
     // A section whose every request the server refuses is not shown: offering
     // it would make a refusal the normal state of the application.
     expect(screen.queryByRole('link', { name: /gardening/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('a run that saw something naming no write', () => {
+  it('says it with the run, and says what kind of thing it is about', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/gardening.settings': () => json({ settings: { ...OFF, enabled: true } }),
+      'GET /v1/admin/gardening.runs': () => json({ runs: [NOTICED] }),
+    });
+    renderApp('/gardening');
+
+    // With the run rather than in a list of its own: there is nothing to
+    // approve and nothing to dismiss, so what a reader wants is what is true
+    // now, which is the newest run (ADR 0043).
+    expect(await screen.findByText(/budget\.xlsx is 40960 bytes/i)).toBeInTheDocument();
+    // The kind, because none of these has a screen that fixes it: a reader has
+    // to know whether to go looking for a file or for a row.
+    expect(within(screen.getByRole('table')).getByText('file')).toBeInTheDocument();
+    expect(screen.getByText(/nothing to approve and nothing to dismiss/i)).toBeInTheDocument();
+    // And it is not counted as something left in the review queue.
+    expect(within(screen.getByRole('table')).getByText('0')).toBeInTheDocument();
+  });
+
+  it('says nothing about notices on a run that had none', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/gardening.settings': () => json({ settings: { ...OFF, enabled: true } }),
+      'GET /v1/admin/gardening.runs': () => json({ runs: [RUN] }),
+    });
+    renderApp('/gardening');
+
+    await screen.findByText(/read 412, found 2, filed 2/i);
+    // An empty heading would make every quiet run look like it was holding
+    // something back.
+    expect(screen.queryByText(/also noticed/i)).not.toBeInTheDocument();
   });
 });

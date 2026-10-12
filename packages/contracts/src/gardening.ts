@@ -7,7 +7,12 @@ import { z } from 'zod';
  * what gardening will one day do. ADR 0039 says which rules belong to the core
  * and which need a provider, and a name here means the rule is built.
  */
-export const GardeningRuleName = z.enum(['duplicate_content_hash', 'duplicate_text']);
+export const GardeningRuleName = z.enum([
+  'duplicate_content_hash',
+  'duplicate_text',
+  'orphan_source',
+  'orphan_attachment',
+]);
 export type GardeningRuleName = z.infer<typeof GardeningRuleName>;
 
 /** How often a run is taken. Hours, because a schedule is read in hours. */
@@ -68,10 +73,45 @@ export const GardeningRuleResult = z.object({
   rule: GardeningRuleName,
   examined: z.number().int().nonnegative(),
   found: z.number().int().nonnegative(),
+  /**
+   * How many of them this run recorded: proposals for a rule that names writes,
+   * notices for one that does not. One number, because from the screen's side
+   * it is one question — how much of what it found did it get down.
+   */
   filed: z.number().int().nonnegative(),
   limited: GardeningRuleLimit.nullable(),
 });
 export type GardeningRuleResult = z.infer<typeof GardeningRuleResult>;
+
+/**
+ * What kind of thing a notice is about, so a reader knows where to look.
+ *
+ * Two, because two rules produce notices. The rules that will notice an item or
+ * a category are not built, and a name here would be a promise rather than a
+ * thing the server can send — the same standard the rule names are held to.
+ *
+ * Neither of these has a screen that could fix it. That is said on the notice
+ * rather than hidden by leaving the notice out (ADR 0043).
+ */
+export const GardeningNoticeSubject = z.enum(['source_reference', 'attachment']);
+export type GardeningNoticeSubject = z.infer<typeof GardeningNoticeSubject>;
+
+/**
+ * One thing a rule saw that names no write (ADR 0043).
+ *
+ * A proposal is what a finding becomes when somebody could approve it. These
+ * are the rest: a source reference no revision cites, an attachment whose every
+ * item is gone. There is nothing to approve and nothing to dismiss — a notice is
+ * true until the thing it describes is fixed, and then it stops being reported.
+ */
+export const GardeningNotice = z.object({
+  rule: GardeningRuleName,
+  subject_type: GardeningNoticeSubject,
+  subject_id: z.string(),
+  /** English, like a proposal's reason, and for the same reason. */
+  reason: z.string(),
+});
+export type GardeningNotice = z.infer<typeof GardeningNotice>;
 
 export const GardeningRun = z.object({
   id: z.string(),
@@ -79,11 +119,14 @@ export const GardeningRun = z.object({
   started_at: z.iso.datetime(),
   /** Null while it runs, and afterwards for a run a restart interrupted. */
   finished_at: z.iso.datetime().nullable(),
+  /** Proposals left in the review queue. A notice is not one of them. */
   findings_filed: z.number().int().nonnegative(),
   reached_cap: z.boolean(),
   /** One line, never a body. */
   error: z.string().nullable(),
   rules: z.array(GardeningRuleResult),
+  /** What the run saw that named no write. Capped per rule, never per run. */
+  notices: z.array(GardeningNotice),
 });
 export type GardeningRun = z.infer<typeof GardeningRun>;
 

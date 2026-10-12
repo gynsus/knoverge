@@ -15,10 +15,11 @@ import {
   type GardeningRunRecord,
 } from '@knoverge/core';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  schema,
   createActorRepository,
   createDatabase,
   createEventRepository,
@@ -92,7 +93,7 @@ async function item(options: {
   contentHash: string;
   createdAt: Date;
   workspace?: WorkspaceId;
-  status?: 'active' | 'superseded';
+  status?: 'active' | 'superseded' | 'deleted';
   /** What the revision calls it. The slug, where a test does not care. */
   title?: string;
 }): Promise<{ itemId: KnowledgeItemId; revisionId: RevisionId }> {
@@ -120,7 +121,9 @@ async function item(options: {
       createdByActorId: (await createActorRepository(handle.db).findSystemActor(workspace))!.id,
       createdAt: options.createdAt,
       updatedAt: options.createdAt,
-      deletedAt: null,
+      // A deleted item carries when: deletion is logical, and the row is what
+      // says so.
+      deletedAt: (options.status ?? 'active') === 'deleted' ? options.createdAt : null,
     });
     await revisions.insert(tx, {
       id: revisionId,
@@ -155,6 +158,7 @@ function run(overrides: Partial<GardeningRunRecord> = {}): GardeningRunRecord {
     reachedCap: false,
     error: null,
     rules: [],
+    notices: [],
     ...overrides,
   };
 }
@@ -906,5 +910,303 @@ describe('the text more than one active item holds', () => {
     );
 
     expect((await gardening.duplicateTexts(here, gardener, 10)).pairs).toEqual([]);
+  });
+});
+
+/**
+ * One item in the workspace a test is about, in whatever state.
+ *
+ * The slug carries the state so two items with the same name in one test do not
+ * collide on the unique index.
+ */
+async function itemHere(
+  workspace: WorkspaceId,
+  slug: string,
+  status: 'active' | 'superseded' | 'deleted' = 'active',
+): Promise<{ itemId: KnowledgeItemId; revisionId: RevisionId }> {
+  return item({
+    slug: slug.toLowerCase().replaceAll(/[^a-z0-9]+/gu, '-'),
+    contentHash: `sha256:${slug}`,
+    createdAt: at(1),
+    workspace,
+    status,
+  });
+}
+
+describe('the evidence nothing rests on', () => {
+  let here: WorkspaceId;
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+  });
+
+  /** One source reference, and optionally a revision that cites it. */
+  async function source(options: {
+    slug: string;
+    sourceType: string;
+    uri?: string | null;
+    externalSystem?: string | null;
+    externalKey?: string | null;
+    attachmentId?: string | null;
+    citedBy?: RevisionId;
+    createdAt: Date;
+  }): Promise<string> {
+    const id = newId('src');
+    await handle.db.insert(schema.sourceReferences).values({
+      id,
+      workspaceId: here,
+      sourceType: options.sourceType,
+      uri: options.uri ?? null,
+      externalSystem: options.externalSystem ?? null,
+      externalKey: options.externalKey ?? null,
+      attachmentId: options.attachmentId ?? null,
+      sourceModifiedAt: null,
+      sourceContentHash: null,
+      confidence: null,
+      metadata: {},
+      createdAt: options.createdAt,
+    });
+    if (options.citedBy) {
+      await handle.db.insert(schema.revisionSources).values({
+        revisionId: options.citedBy,
+        sourceReferenceId: id,
+        evidenceRole: 'primary',
+        position: 0,
+      });
+    }
+    return id;
+  }
+
+  it('is the row no revision cites, and not the one an older revision does', async () => {
+    const item = await itemHere(here, 's1');
+    const orphan = await source({
+      slug: 's-orphan',
+      sourceType: 'web_url',
+      uri: 'https://example.test/nothing',
+      createdAt: at(1),
+    });
+    // Cited by a revision, which is the ordinary state of evidence — including
+    // evidence only an older revision cites, because that revision still does.
+    await source({
+      slug: 's-cited',
+      sourceType: 'web_url',
+      uri: 'https://example.test/cited',
+      citedBy: item.revisionId,
+      createdAt: at(2),
+    });
+
+    const scan = await gardening.orphanSources(here, 10);
+    expect(scan.found).toBe(1);
+    expect(scan.sources).toHaveLength(1);
+    expect(scan.sources[0]?.sourceReferenceId).toBe(orphan);
+    expect(scan.sources[0]?.sourceType).toBe('web_url');
+    expect(scan.sources[0]?.label).toBe('https://example.test/nothing');
+    // Both of them: this is what the rule looked at, not what it found.
+    expect(scan.examined).toBe(2);
+  });
+
+  it('leaves an attachment source to the rule that can speak about the file', async () => {
+    await source({ slug: 's-att', sourceType: 'attachment', createdAt: at(1) });
+
+    // Two notices about one file would be two readings of the same fact, and
+    // only one of them could say how many bytes are being kept.
+    const scan = await gardening.orphanSources(here, 10);
+    expect(scan.found).toBe(0);
+    // And it is not counted as read either, or a workspace full of files would
+    // look like one full of unread evidence.
+    expect(scan.examined).toBe(0);
+  });
+
+  it('names a source by its external record when it has no address', async () => {
+    await source({
+      slug: 's-ext',
+      sourceType: 'external_system',
+      externalSystem: 'jira',
+      externalKey: 'KNV-7',
+      createdAt: at(1),
+    });
+
+    expect((await gardening.orphanSources(here, 10)).sources[0]?.label).toBe('jira KNV-7');
+  });
+
+  it('names nothing for a source that identifies itself with nothing', async () => {
+    // A person having said something is its own occurrence: it carries neither
+    // a URI nor an external record, and is not deduplicated against anything.
+    await source({ slug: 's-said', sourceType: 'human_input', createdAt: at(1) });
+
+    expect((await gardening.orphanSources(here, 10)).sources[0]?.label).toBeNull();
+  });
+
+  it('counts what there is and returns the oldest of it', async () => {
+    for (const hour of [3, 1, 2]) {
+      await source({
+        slug: `s-many-${hour}`,
+        sourceType: 'web_url',
+        uri: `https://example.test/${hour}`,
+        createdAt: at(hour),
+      });
+    }
+
+    const scan = await gardening.orphanSources(here, 2);
+    expect(scan.found).toBe(3);
+    expect(scan.sources.map((row) => row.label)).toEqual([
+      'https://example.test/1',
+      'https://example.test/2',
+    ]);
+  });
+});
+
+describe('the files kept for nothing', () => {
+  let here: WorkspaceId;
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+  });
+
+  /** One attachment, and the items made from it, in whatever state. */
+  async function file(options: {
+    name: string;
+    createdAt: Date;
+    items: ('active' | 'superseded' | 'deleted')[];
+  }): Promise<string> {
+    const attachmentId = newId('att');
+    const actorId = (await createActorRepository(handle.db).findSystemActor(here))!.id;
+    await handle.db.insert(schema.attachments).values({
+      id: attachmentId,
+      workspaceId: here,
+      contentHash: `sha256:${attachmentId}`,
+      mediaType: 'application/pdf',
+      sizeBytes: 1024,
+      filename: options.name,
+      originalUri: null,
+      extractionState: 'extracted',
+      extractionError: null,
+      extractionStartedAt: null,
+      uploadedByActorId: actorId,
+      createdAt: options.createdAt,
+    });
+    for (const [index, status] of options.items.entries()) {
+      const made = await itemHere(here, `${options.name}-${index}`, status);
+      const sourceId = newId('src');
+      await handle.db.insert(schema.sourceReferences).values({
+        id: sourceId,
+        workspaceId: here,
+        sourceType: 'attachment',
+        uri: null,
+        externalSystem: null,
+        externalKey: null,
+        attachmentId,
+        sourceModifiedAt: null,
+        sourceContentHash: null,
+        confidence: null,
+        metadata: {},
+        createdAt: options.createdAt,
+      });
+      await handle.db.insert(schema.revisionSources).values({
+        revisionId: made.revisionId,
+        sourceReferenceId: sourceId,
+        evidenceRole: 'primary',
+        position: 0,
+      });
+    }
+    return attachmentId;
+  }
+
+  it('is the one whose every item is deleted, counted in items', async () => {
+    const gone = await file({
+      name: 'budget.xlsx',
+      createdAt: at(1),
+      items: ['deleted', 'deleted'],
+    });
+    await file({ name: 'live.pdf', createdAt: at(2), items: ['active'] });
+    // Superseded knowledge is still knowledge, and the file is still what it
+    // rested on.
+    await file({ name: 'older.pdf', createdAt: at(3), items: ['superseded'] });
+    // And a file nothing was made from is waiting to be read or is one this
+    // installation cannot read. The files screen says both of those itself.
+    await file({ name: 'unread.pdf', createdAt: at(4), items: [] });
+
+    const scan = await gardening.orphanAttachments(here, 10);
+    expect(scan.found).toBe(1);
+    expect(scan.attachments).toHaveLength(1);
+    expect(scan.attachments[0]).toMatchObject({
+      attachmentId: gone,
+      filename: 'budget.xlsx',
+      sizeBytes: 1024,
+      deletedItems: 2,
+    });
+    // Every attachment in the workspace: this is what it read.
+    expect(scan.examined).toBe(4);
+  });
+
+  it('is not the one whose items are deleted and one is not', async () => {
+    // One live item is enough: the bytes are what that item rests on.
+    await file({ name: 'mixed.pdf', createdAt: at(1), items: ['deleted', 'active'] });
+
+    expect((await gardening.orphanAttachments(here, 10)).found).toBe(0);
+  });
+
+  it('counts an item once however many of its revisions cite the file', async () => {
+    const twice = await file({ name: 'twice.pdf', createdAt: at(1), items: ['deleted'] });
+    // A second source row for the same file on the same revision is what a
+    // re-read produces, and it is still one item.
+    const second = newId('src');
+    // The revision that cites *this* file, not whichever row the table happens
+    // to return first: `revision_sources` holds every test's rows.
+    const [revision] = await handle.db
+      .select({ id: schema.revisionSources.revisionId })
+      .from(schema.revisionSources)
+      .innerJoin(
+        schema.sourceReferences,
+        eq(schema.sourceReferences.id, schema.revisionSources.sourceReferenceId),
+      )
+      .where(
+        and(
+          eq(schema.sourceReferences.workspaceId, here),
+          eq(schema.sourceReferences.attachmentId, twice),
+        ),
+      )
+      .limit(1);
+    await handle.db.insert(schema.sourceReferences).values({
+      id: second,
+      workspaceId: here,
+      sourceType: 'attachment',
+      uri: null,
+      externalSystem: null,
+      externalKey: null,
+      attachmentId: twice,
+      sourceModifiedAt: null,
+      sourceContentHash: null,
+      confidence: null,
+      metadata: {},
+      createdAt: at(2),
+    });
+    await handle.db.insert(schema.revisionSources).values({
+      revisionId: revision!.id,
+      sourceReferenceId: second,
+      evidenceRole: 'supporting',
+      position: 1,
+    });
+
+    expect((await gardening.orphanAttachments(here, 10)).attachments[0]?.deletedItems).toBe(1);
+  });
+
+  it('counts what there is and returns the oldest of it', async () => {
+    await file({ name: 'third.pdf', createdAt: at(3), items: ['deleted'] });
+    await file({ name: 'first.pdf', createdAt: at(1), items: ['deleted'] });
+    await file({ name: 'second.pdf', createdAt: at(2), items: ['deleted'] });
+
+    const scan = await gardening.orphanAttachments(here, 2);
+    expect(scan.found).toBe(3);
+    expect(scan.attachments.map((row) => row.filename)).toEqual(['first.pdf', 'second.pdf']);
+  });
+
+  it('is asked of one workspace and answers about one', async () => {
+    const elsewhere = here;
+    await file({ name: 'theirs.pdf', createdAt: at(1), items: ['deleted'] });
+    here = await emptyWorkspace();
+
+    expect((await gardening.orphanAttachments(here, 10)).found).toBe(0);
+    expect((await gardening.orphanAttachments(elsewhere, 10)).found).toBe(1);
   });
 });

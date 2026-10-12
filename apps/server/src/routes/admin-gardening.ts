@@ -42,6 +42,12 @@ function run(record: GardeningRunRecord): GardeningRun {
       filed: result.filed,
       limited: result.limited,
     })),
+    notices: record.notices.map((notice) => ({
+      rule: notice.rule,
+      subject_type: notice.subjectType,
+      subject_id: notice.subjectId,
+      reason: notice.reason,
+    })),
   };
 }
 

@@ -8,21 +8,29 @@ import type {
 import type {
   DuplicateHashGroup,
   DuplicateTextPair,
+  GardeningNoticeRecord,
   GardeningRepository,
   GardeningRunRecord,
   GardeningSettingsRecord,
   Tx,
 } from '@knoverge/core';
 import { TEXT_TITLE_SIMILARITY_THRESHOLD } from '@knoverge/core';
-import { and, count, desc, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, lte, ne, or, sql } from 'drizzle-orm';
 
 import type { Database } from '../client.ts';
 import {
   gardeningRuns,
   gardeningSettings,
+  type GardeningNoticeRow,
   type GardeningRuleResultRow,
 } from '../schema/gardening.ts';
-import { knowledgeItems, knowledgeRevisions } from '../schema/knowledge.ts';
+import { attachments } from '../schema/attachments.ts';
+import {
+  knowledgeItems,
+  knowledgeRevisions,
+  revisionSources,
+  sourceReferences,
+} from '../schema/knowledge.ts';
 import { proposals } from '../schema/proposals.ts';
 import { searchChunks } from '../schema/search.ts';
 import { asTx } from '../unit-of-work.ts';
@@ -69,6 +77,12 @@ function toRun(row: typeof gardeningRuns.$inferSelect): GardeningRunRecord {
       found: rule.found,
       filed: rule.filed,
       limited: rule.limited,
+    })),
+    notices: row.notices.map((notice) => ({
+      rule: notice.rule as GardeningRuleName,
+      subjectType: notice.subjectType,
+      subjectId: notice.subjectId,
+      reason: notice.reason,
     })),
   };
 }
@@ -133,6 +147,7 @@ export function createGardeningRepository(db: Database): GardeningRepository {
           reachedCap: run.reachedCap,
           error: run.error,
           rules: toRuleRows(run),
+          notices: toNoticeRows(run),
         });
     },
 
@@ -145,6 +160,7 @@ export function createGardeningRepository(db: Database): GardeningRepository {
           reachedCap: run.reachedCap,
           error: run.error,
           rules: toRuleRows(run),
+          notices: toNoticeRows(run),
         })
         .where(and(eq(gardeningRuns.workspaceId, run.workspaceId), eq(gardeningRuns.id, run.id)));
     },
@@ -431,7 +447,146 @@ export function createGardeningRepository(db: Database): GardeningRepository {
       }
       return { examined: counted?.examined ?? 0, duplicates, pairs };
     },
+
+    async orphanSources(workspaceId: WorkspaceId, max: number) {
+      // Nothing ever rested on these: a row written and never attached. Not a
+      // source cited only by an older revision, which is the ordinary state of
+      // every edited item's history, and not one cited only by a deleted item,
+      // which is the history of knowledge somebody removed on purpose. Both of
+      // those still have a revision citing them, and this asks for none.
+      //
+      // Attachment sources are left out because orphan_attachment can say
+      // something about the bytes rather than about the row pointing at them,
+      // and two notices about one file would be two readings of one fact.
+      const rows = await db.execute<{
+        found: string | number | null;
+        id: string;
+        source_type: string;
+        uri: string | null;
+        external_system: string | null;
+        external_key: string | null;
+        created_at: Date;
+      }>(sql`
+        with orphan as (
+          select s.id, s.source_type, s.uri, s.external_system, s.external_key, s.created_at
+          from ${sourceReferences} as s
+          where s.workspace_id = ${workspaceId}
+            and s.source_type <> 'attachment'
+            and not exists (
+              select 1 from ${revisionSources} as rs where rs.source_reference_id = s.id
+            )
+        )
+        select (select count(*) from orphan) as found,
+               o.id, o.source_type, o.uri, o.external_system, o.external_key, o.created_at
+        from orphan as o
+        order by o.created_at asc, o.id asc
+        limit ${max}
+      `);
+
+      // The same filter as the scan, because this is what the rule looked at:
+      // counting the attachment sources it never considers would make a
+      // workspace full of files look like one full of unread evidence.
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(sourceReferences)
+        .where(
+          and(
+            eq(sourceReferences.workspaceId, workspaceId),
+            ne(sourceReferences.sourceType, 'attachment'),
+          ),
+        );
+
+      let found = 0;
+      const sources = (rows.rows ?? []).map((row) => {
+        found = Number(row.found ?? 0);
+        return {
+          sourceReferenceId: row.id,
+          sourceType: row.source_type,
+          // What identifies it to a reader: the address, or the record in
+          // another system, or nothing — a person having said something is its
+          // own occurrence and has neither.
+          label:
+            row.uri ??
+            (row.external_system === null || row.external_key === null
+              ? null
+              : `${row.external_system} ${row.external_key}`),
+          createdAt: new Date(row.created_at),
+        };
+      });
+      return { examined: counted?.examined ?? 0, found, sources };
+    },
+
+    async orphanAttachments(workspaceId: WorkspaceId, max: number) {
+      // `made` is every item ever made from each file, reached the only way
+      // there is: the source reference naming the attachment, the revision
+      // citing that source, and the item that revision belongs to. Distinct,
+      // because an item that cites the file at three revisions is one item.
+      //
+      // `orphan` keeps the files where every one of those items is deleted —
+      // ADR 0039's own wording. A file whose item was superseded is not one:
+      // superseded knowledge is still knowledge and the file is still what it
+      // rested on. A file nothing was ever made from is not one either: it is
+      // waiting to be read or is one this installation cannot read, and the
+      // files screen says both of those itself.
+      const rows = await db.execute<{
+        found: string | number | null;
+        id: string;
+        filename: string;
+        size_bytes: string | number;
+        items: string | number;
+      }>(sql`
+        with made as (
+          select distinct a.id as attachment_id, i.id as item_id, i.status as status
+          from ${attachments} as a
+          join ${sourceReferences} as s
+            on s.attachment_id = a.id and s.workspace_id = a.workspace_id
+          join ${revisionSources} as rs on rs.source_reference_id = s.id
+          join ${knowledgeRevisions} as r on r.id = rs.revision_id
+          join ${knowledgeItems} as i on i.id = r.knowledge_item_id
+          where a.workspace_id = ${workspaceId}
+        ),
+        orphan as (
+          select m.attachment_id, count(*) as items
+          from made as m
+          group by m.attachment_id
+          having bool_and(m.status = 'deleted')
+        )
+        select (select count(*) from orphan) as found,
+               a.id, a.filename, a.size_bytes, o.items
+        from orphan as o
+        join ${attachments} as a on a.id = o.attachment_id
+        order by a.created_at asc, a.id asc
+        limit ${max}
+      `);
+
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(attachments)
+        .where(eq(attachments.workspaceId, workspaceId));
+
+      let found = 0;
+      const found_attachments = (rows.rows ?? []).map((row) => {
+        found = Number(row.found ?? 0);
+        return {
+          attachmentId: row.id,
+          filename: row.filename,
+          sizeBytes: Number(row.size_bytes),
+          deletedItems: Number(row.items),
+        };
+      });
+      return { examined: counted?.examined ?? 0, found, attachments: found_attachments };
+    },
   };
+}
+
+/** The run's notices, in the shape the column holds. */
+function toNoticeRows(run: GardeningRunRecord): GardeningNoticeRow[] {
+  return run.notices.map((notice: GardeningNoticeRecord) => ({
+    rule: notice.rule,
+    subjectType: notice.subjectType,
+    subjectId: notice.subjectId,
+    reason: notice.reason,
+  }));
 }
 
 /** The run's rule results, in the shape the column holds. */

@@ -443,6 +443,14 @@
       "duplicate_text": {
         "title": "The same words, typed twice",
         "description": "Two active items holding the same words in the same order, differing only in capitalisation, accents or where the lines break, under titles near enough to be one heading. The older one is kept. Bodies that are merely similar are left alone: what two nearly-identical items should become is a rewrite, and nothing here writes."
+      },
+      "orphan_source": {
+        "title": "Evidence nothing rests on",
+        "description": "A source reference no revision cites at all — a row written and never attached to anything. Not a source cited only by an older revision, which is the ordinary state of every edited item, and not one cited only by a deleted item. In a healthy installation this finds nothing every time, which is why it is listed rather than left out: a rule that found nothing and a rule that never ran are different answers."
+      },
+      "orphan_attachment": {
+        "title": "A file kept for nothing",
+        "description": "An attachment every one of whose knowledge items has been deleted, so the bytes are kept for knowledge that is gone. A file whose item was superseded is not one of these — superseded knowledge is still knowledge — and nor is a file nothing was made from, which the files screen explains itself."
       }
     },
     "runs": "Runs",
@@ -465,6 +473,12 @@
     "limited": {
       "run_cap": "the run was full",
       "rule_cap": "this rule was full"
+    },
+    "notices": "Also noticed",
+    "notices_hint": "Things that name no write, so there is nothing to approve and nothing to dismiss. Each is true until it is fixed, and then a later run stops reporting it.",
+    "subject": {
+      "source_reference": "source",
+      "attachment": "file"
     }
   },
   "home": {

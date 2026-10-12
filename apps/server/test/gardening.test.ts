@@ -10,7 +10,8 @@ import {
   TERMS_VERSION,
 } from '@knoverge/contracts';
 import { parseLedgerKey } from '@knoverge/core';
-import { runMigrations } from '@knoverge/db';
+import { newId } from '@knoverge/core';
+import { runMigrations, schema } from '@knoverge/db';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino from 'pino';
@@ -153,7 +154,12 @@ describe('a workspace nobody has configured', () => {
     });
     // Every rule the installation has, so the screen can name one that found
     // nothing rather than showing an empty list.
-    expect(body.settings.rules).toEqual(['duplicate_content_hash', 'duplicate_text']);
+    expect(body.settings.rules).toEqual([
+      'duplicate_content_hash',
+      'duplicate_text',
+      'orphan_source',
+      'orphan_attachment',
+    ]);
   });
 
   it('has no runs to show', async () => {
@@ -201,7 +207,13 @@ describe('a run that finds the same thing twice', () => {
       // identical, so it is the other rule's finding, and two rules filing one
       // supersession would be one proposal and one conflict.
       { rule: 'duplicate_text', examined: 2, found: 0, filed: 0, limited: null },
+      // Both notice rules ran and both found nothing, which is what a healthy
+      // workspace looks like — and a different answer from never having run
+      // (ADR 0043).
+      { rule: 'orphan_source', examined: 0, found: 0, filed: 0, limited: null },
+      { rule: 'orphan_attachment', examined: 0, found: 0, filed: 0, limited: null },
     ]);
+    expect(result.run.notices).toEqual([]);
 
     // The whole of ADR 0042 in one assertion. The gardener runs as the
     // workspace system actor, and a system actor is the host operator at the
@@ -357,6 +369,70 @@ describe('a run that finds the same words typed twice', () => {
       (await admin.post('/v1/admin/gardening.run', {})).json(),
     );
     expect(result.run.rules.find((rule) => rule.rule === 'duplicate_text')?.found).toBe(0);
+  });
+});
+
+describe('a run that sees something naming no write', () => {
+  it('records it on the run rather than in the review queue', async () => {
+    // Written straight into the table, because there is no route that makes a
+    // source reference nothing cites — which is the point of the rule: if one
+    // is there, something left it behind.
+    const workspace = (await services.repositories.workspaces.findBySlug('personal'))!;
+    const orphan = newId('src');
+    await services.database.db.insert(schema.sourceReferences).values({
+      id: orphan,
+      workspaceId: workspace.id,
+      sourceType: 'web_url',
+      uri: 'https://example.test/forgotten',
+      externalSystem: null,
+      externalKey: null,
+      attachmentId: null,
+      sourceModifiedAt: null,
+      sourceContentHash: null,
+      confidence: null,
+      metadata: {},
+      createdAt: new Date('2026-02-02T00:00:00Z'),
+    });
+
+    const before = (
+      (await admin.post('/v1/proposal_list', { status: 'pending' })).json() as {
+        proposals: unknown[];
+      }
+    ).proposals.length;
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    expect(result.run.notices).toHaveLength(1);
+    expect(result.run.notices[0]).toMatchObject({
+      rule: 'orphan_source',
+      subject_type: 'source_reference',
+      subject_id: orphan,
+    });
+    expect(result.run.notices[0]?.reason).toContain('https://example.test/forgotten');
+    // Nothing to approve, so nothing arrived in the queue and the run's count
+    // of what it left there did not move (ADR 0043).
+    const after = (
+      (await admin.post('/v1/proposal_list', { status: 'pending' })).json() as {
+        proposals: unknown[];
+      }
+    ).proposals.length;
+    expect(after).toBe(before);
+    expect(result.run.findings_filed).toBe(0);
+  });
+
+  it('says it again on the next run, because it is still true', async () => {
+    // No dismissal: a notice about a condition that still holds would be a lie
+    // the operator told themselves and the product remembered.
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    expect(result.run.notices).toHaveLength(1);
+  });
+
+  it('is in the run history as the run that saw it', async () => {
+    const body = GardeningRunsResponse.parse((await admin.get('/v1/admin/gardening.runs')).json());
+    expect(body.runs[0]?.notices[0]?.rule).toBe('orphan_source');
   });
 });
 

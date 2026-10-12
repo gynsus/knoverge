@@ -333,12 +333,14 @@ _In progress. ADR 0039 decides the shape: a job belongs to the core when its
 finding can be computed from what is already recorded, and to the optional layer
 when it rests on a judgement about meaning. ADR 0042 decides how a finding is
 filed — the gardener does not ask the policy, because as the workspace's system
-actor it would be told it may write._
+actor it would be told it may write. ADR 0043 decides what becomes of a finding
+that names no write: it is a notice on the run, because a review queue item
+nobody can approve is one that can never be cleared._
 
-The frame and the first two rules are built: the per-workspace setting, the
-caps, the scheduled sweep, the run record a screen can read, and duplicates by
-content hash and by text. The rules below arrive one or two at a time on the
-same frame.
+The frame and four rules are built: the per-workspace setting, the caps, the
+scheduled sweep, the run record a screen can read, duplicates by content hash
+and by text, and the two kinds of orphan. The rules below arrive one or two at a
+time on the same frame.
 
 Deliver, with no provider configured:
 
@@ -352,8 +354,14 @@ Deliver, with no provider configured:
   lexical index, because the body is in Git and in `search_chunks` and not in a
   column anything can group by — so the index proposes and the file confirms
   before anything is filed (rule 8);
-- orphan sources: a source reference nothing rests on, an attachment whose item
-  is gone;
+- **orphan sources** — built, as two rules, because they count different things
+  and a rule reports what it read. `orphan_source` is a source reference no
+  revision cites at all: a row written and never attached, which in a healthy
+  installation is none, every run. `orphan_attachment` is a file every one of
+  whose knowledge items has been deleted — bytes kept for knowledge that is
+  gone. Both are notices (ADR 0043). Neither yet sees the third case, a file
+  whose document was proposed and the proposal refused, because the link from a
+  proposal to the attachment is inside its payload;
 - weak provenance: revisions that cite nothing, where the workspace mostly does;
 - stale instructions: past `valid_until`, or old and untouched;
 - taxonomy cleanup: a category with no items and no children, an alias pointing
@@ -378,14 +386,15 @@ waiting, and an item whose finding a reviewer has already refused. Filtering
 those from the result instead starves a capped run, because the answered items
 are the oldest and a cap takes the oldest first.
 
-Four of the rules above produce no proposal. A source reference nothing rests
+Most of the rules above produce no proposal. A source reference nothing rests
 on, an item whose revisions cite nothing, a category with no items, a summary
 whose dependencies have moved — none of them is a write a reviewer could
-approve, and ADR 0039's "every finding is a proposal" has nothing to say about
-them. They arrive as notices on the run record instead: the run says what it
-noticed, with the rule and the rows it rested on, and the screen lists it. There
-is nothing to approve and nothing to dismiss, because a notice is true until the
-thing it describes is fixed and then it stops being reported.
+approve. ADR 0043 settles where they go: notices on the run record, with the
+rule and the thing each rests on, listed by the screen. There is nothing to
+approve and nothing to dismiss, because a notice is true until the thing it
+describes is fixed and then it stops being reported. `findings_filed` counts
+proposals only, so the run cap — which exists to keep the review queue readable
+— does not stop a notice rule from being asked.
 
 ## Milestone 15 - backups you can see
 
