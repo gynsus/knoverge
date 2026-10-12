@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 
 import type {
   ActorId,
+  ItemType,
   KnowledgeItemId,
   ProposalId,
   RevisionId,
@@ -96,6 +97,12 @@ async function item(options: {
   status?: 'active' | 'superseded' | 'deleted';
   /** What the revision calls it. The slug, where a test does not care. */
   title?: string;
+  /** `fact`, where a test does not care which kind of assertion it is. */
+  type?: ItemType;
+  /** When it says it stops being valid. Null for an item that does not say. */
+  validUntil?: Date | null;
+  /** When the revision was written, where that is not when the item was. */
+  revisedAt?: Date;
 }): Promise<{ itemId: KnowledgeItemId; revisionId: RevisionId }> {
   const workspace = options.workspace ?? workspaceId;
   const itemId = newId('kn') as KnowledgeItemId;
@@ -106,7 +113,7 @@ async function item(options: {
       workspaceId: workspace,
       slug: options.slug,
       markdownPath: `knowledge/_uncategorised/${options.slug}.md`,
-      type: 'fact',
+      type: options.type ?? 'fact',
       status: options.status ?? 'active',
       language: 'en',
       currentRevisionId: null,
@@ -114,7 +121,7 @@ async function item(options: {
       evidenceState: 'none',
       disputed: false,
       validFrom: null,
-      validUntil: null,
+      validUntil: options.validUntil ?? null,
       observedAt: null,
       sourceSystem: null,
       externalKey: null,
@@ -138,7 +145,7 @@ async function item(options: {
       frontmatter: {} as never,
       changeKind: 'create',
       createdByActorId: (await createActorRepository(handle.db).findSystemActor(workspace))!.id,
-      createdAt: options.createdAt,
+      createdAt: options.revisedAt ?? options.createdAt,
       operationId: newId('op'),
       reason: null,
     });
@@ -1208,5 +1215,316 @@ describe('the files kept for nothing', () => {
 
     expect((await gardening.orphanAttachments(here, 10)).found).toBe(0);
     expect((await gardening.orphanAttachments(elsewhere, 10)).found).toBe(1);
+  });
+});
+
+describe('the items that name no source', () => {
+  let here: WorkspaceId;
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+  });
+
+  /** One source reference, cited by that revision. */
+  async function cite(revisionId: RevisionId, uri: string): Promise<string> {
+    const id = newId('src');
+    await handle.db.insert(schema.sourceReferences).values({
+      id,
+      workspaceId: here,
+      sourceType: 'web_url',
+      uri,
+      externalSystem: null,
+      externalKey: null,
+      attachmentId: null,
+      sourceModifiedAt: null,
+      sourceContentHash: null,
+      confidence: null,
+      metadata: {},
+      createdAt: at(1),
+    });
+    await handle.db.insert(schema.revisionSources).values({
+      revisionId,
+      sourceReferenceId: id,
+      evidenceRole: 'primary',
+      position: 0,
+    });
+    return id;
+  }
+
+  it('counts what cites and returns what does not, oldest first', async () => {
+    const cited = await item({
+      slug: 'p-cited',
+      contentHash: 'sha256:a',
+      createdAt: at(1),
+      workspace: here,
+    });
+    await cite(cited.revisionId, 'https://example.test/a');
+    await item({
+      slug: 'p-bare-2',
+      contentHash: 'sha256:b',
+      createdAt: at(2),
+      workspace: here,
+      title: 'Second',
+    });
+    await item({
+      slug: 'p-bare-3',
+      contentHash: 'sha256:c',
+      createdAt: at(3),
+      workspace: here,
+      title: 'Third',
+    });
+
+    const scan = await gardening.weakProvenance(here, 10);
+    // Both numbers, because the finding is comparative: the rule weighs the
+    // items that name nothing against the workspace's habit of naming
+    // something, and neither number alone says anything.
+    expect(scan.examined).toBe(3);
+    expect(scan.cited).toBe(1);
+    expect(scan.items.map((row) => row.title)).toEqual(['Second', 'Third']);
+    expect(scan.items[0]).toMatchObject({ type: 'fact' });
+  });
+
+  it('reads the current revision and not the ones before it', async () => {
+    // An item whose first revision cited a page and whose current one dropped
+    // it asserts the thing without the page now. The history is where the page
+    // went.
+    const dropped = await item({
+      slug: 'p-dropped',
+      contentHash: 'sha256:d',
+      createdAt: at(1),
+      workspace: here,
+      title: 'Dropped its source',
+    });
+    await cite(dropped.revisionId, 'https://example.test/gone');
+    const second = newId('rev') as RevisionId;
+    await uow.run(async (tx) => {
+      await revisions.insert(tx, {
+        id: second,
+        knowledgeItemId: dropped.itemId,
+        workspaceId: here,
+        revisionNumber: 2,
+        contentHash: 'sha256:d2',
+        frontmatterHash: 'sha256:fm',
+        gitCommitHash: 'd'.repeat(40),
+        title: 'Dropped its source',
+        markdownPath: 'knowledge/_uncategorised/p-dropped.md',
+        frontmatter: {} as never,
+        changeKind: 'update',
+        createdByActorId: (await createActorRepository(handle.db).findSystemActor(here))!.id,
+        createdAt: at(2),
+        operationId: newId('op'),
+        reason: null,
+      });
+      await knowledge.update(tx, dropped.itemId, { currentRevisionId: second });
+    });
+
+    const scan = await gardening.weakProvenance(here, 10);
+    expect(scan.cited).toBe(0);
+    expect(scan.items.map((row) => row.title)).toEqual(['Dropped its source']);
+  });
+
+  it('is about what the workspace asserts, which is its active items', async () => {
+    await item({
+      slug: 'p-gone',
+      contentHash: 'sha256:e',
+      createdAt: at(1),
+      workspace: here,
+      status: 'deleted',
+    });
+    await item({
+      slug: 'p-old',
+      contentHash: 'sha256:f',
+      createdAt: at(2),
+      workspace: here,
+      status: 'superseded',
+    });
+
+    const scan = await gardening.weakProvenance(here, 10);
+    expect(scan.examined).toBe(0);
+    expect(scan.items).toEqual([]);
+  });
+
+  it('does not count an item between its insert and its first revision', async () => {
+    // A write in flight. Counting it would make the workspace's habit depend
+    // on a transaction that has not finished.
+    await uow.run(async (tx) =>
+      knowledge.insert(tx, {
+        id: newId('kn') as KnowledgeItemId,
+        workspaceId: here,
+        slug: 'p-midwrite',
+        markdownPath: 'knowledge/_uncategorised/p-midwrite.md',
+        type: 'fact',
+        status: 'active',
+        language: 'en',
+        currentRevisionId: null,
+        reviewState: 'unreviewed',
+        evidenceState: 'none',
+        disputed: false,
+        validFrom: null,
+        validUntil: null,
+        observedAt: null,
+        sourceSystem: null,
+        externalKey: null,
+        createdByActorId: (await createActorRepository(handle.db).findSystemActor(here))!.id,
+        createdAt: at(1),
+        updatedAt: at(1),
+        deletedAt: null,
+      }),
+    );
+
+    const scan = await gardening.weakProvenance(here, 10);
+    expect(scan.examined).toBe(0);
+    expect(scan.items).toEqual([]);
+  });
+
+  it('is asked of one workspace and answers about one', async () => {
+    const elsewhere = here;
+    await item({ slug: 'p-theirs', contentHash: 'sha256:g', createdAt: at(1), workspace: here });
+    here = await emptyWorkspace();
+    await item({ slug: 'p-ours', contentHash: 'sha256:h', createdAt: at(1), workspace: here });
+
+    expect((await gardening.weakProvenance(here, 10)).examined).toBe(1);
+    expect((await gardening.weakProvenance(elsewhere, 10)).examined).toBe(1);
+    expect((await gardening.weakProvenance(here, 10)).items[0]?.itemId).not.toBe(
+      (await gardening.weakProvenance(elsewhere, 10)).items[0]?.itemId,
+    );
+  });
+
+  it('returns at most the window it was asked for, and counts past it', async () => {
+    for (const hour of [3, 1, 2]) {
+      await item({
+        slug: `p-many-${hour}`,
+        contentHash: `sha256:m${hour}`,
+        createdAt: at(hour),
+        workspace: here,
+        title: `Item ${hour}`,
+      });
+    }
+
+    const scan = await gardening.weakProvenance(here, 2);
+    // How many there are comes from the counts rather than the window: three
+    // read, none citing, two listed.
+    expect(scan.examined).toBe(3);
+    expect(scan.cited).toBe(0);
+    expect(scan.items.map((row) => row.title)).toEqual(['Item 1', 'Item 2']);
+  });
+});
+
+describe('the standing orders that have run out', () => {
+  let here: WorkspaceId;
+  const NOW = new Date('2026-10-12T00:00:00Z');
+  const A_YEAR_AGO = new Date('2025-10-12T00:00:00Z');
+  const window = { now: NOW, untouchedBefore: A_YEAR_AGO };
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+  });
+
+  /** One instruction, as of whenever it was last written. */
+  const order = (
+    slug: string,
+    options: {
+      validUntil?: Date | null;
+      revisedAt: Date;
+      status?: 'active' | 'superseded' | 'deleted';
+      type?: ItemType;
+    },
+  ) =>
+    item({
+      slug,
+      contentHash: `sha256:${slug}`,
+      createdAt: new Date('2020-01-01T00:00:00Z'),
+      workspace: here,
+      title: slug,
+      type: options.type ?? 'instruction',
+      ...(options.status === undefined ? {} : { status: options.status }),
+      ...(options.validUntil === undefined ? {} : { validUntil: options.validUntil }),
+      revisedAt: options.revisedAt,
+    });
+
+  it('is the one past the date it gave itself, and the one nobody has touched', async () => {
+    await order('expired', {
+      validUntil: new Date('2026-06-01T00:00:00Z'),
+      revisedAt: new Date('2026-05-01T00:00:00Z'),
+    });
+    await order('untouched', { revisedAt: new Date('2024-01-01T00:00:00Z') });
+    // Current on both counts: the date is ahead and somebody changed it last
+    // month.
+    await order('current', {
+      validUntil: new Date('2027-01-01T00:00:00Z'),
+      revisedAt: new Date('2026-09-01T00:00:00Z'),
+    });
+
+    const scan = await gardening.staleInstructions(here, window, 10);
+    expect(scan.found).toBe(2);
+    expect(scan.instructions.map((row) => row.title).sort()).toEqual(['expired', 'untouched']);
+    // Every active instruction, which is what the rule read.
+    expect(scan.examined).toBe(3);
+  });
+
+  it('is about instructions and not about everything that carries a date', async () => {
+    // A fact records what was true and a decision what was decided. Both stay
+    // true of the moment they describe; an instruction is what an agent
+    // reading this workspace will follow today.
+    await order('old-fact', { type: 'fact', revisedAt: new Date('2020-01-01T00:00:00Z') });
+    await order('old-decision', { type: 'decision', revisedAt: new Date('2020-01-01T00:00:00Z') });
+
+    const scan = await gardening.staleInstructions(here, window, 10);
+    expect(scan.found).toBe(0);
+    expect(scan.examined).toBe(0);
+  });
+
+  it('is about what the workspace still asserts, which is its active items', async () => {
+    await order('deleted-order', {
+      status: 'deleted',
+      revisedAt: new Date('2020-01-01T00:00:00Z'),
+    });
+    await order('superseded-order', {
+      status: 'superseded',
+      revisedAt: new Date('2020-01-01T00:00:00Z'),
+    });
+
+    const scan = await gardening.staleInstructions(here, window, 10);
+    expect(scan.found).toBe(0);
+    expect(scan.examined).toBe(0);
+  });
+
+  it('carries both dates, so the rule can say which of them makes it stale', async () => {
+    await order('both', {
+      validUntil: new Date('2025-01-01T00:00:00Z'),
+      revisedAt: new Date('2023-02-03T00:00:00Z'),
+    });
+
+    const [row] = (await gardening.staleInstructions(here, window, 10)).instructions;
+    expect(row?.validUntil).toEqual(new Date('2025-01-01T00:00:00Z'));
+    expect(row?.revisedAt).toEqual(new Date('2023-02-03T00:00:00Z'));
+  });
+
+  it('counts what there is and returns the oldest neglect first', async () => {
+    await order('middle', { revisedAt: new Date('2024-01-01T00:00:00Z') });
+    await order('oldest', { revisedAt: new Date('2021-01-01T00:00:00Z') });
+    // Changed last week, and expired five years ago: the older of the two
+    // dates is what puts it in the queue, so it sorts by that.
+    await order('long-expired', {
+      validUntil: new Date('2020-06-01T00:00:00Z'),
+      revisedAt: new Date('2026-10-05T00:00:00Z'),
+    });
+
+    const scan = await gardening.staleInstructions(here, window, 2);
+    expect(scan.found).toBe(3);
+    expect(scan.instructions.map((row) => row.title)).toEqual(['long-expired', 'oldest']);
+  });
+
+  it('is asked of one workspace and answers about one', async () => {
+    const elsewhere = here;
+    await order('theirs', { revisedAt: new Date('2020-01-01T00:00:00Z') });
+    here = await emptyWorkspace();
+
+    expect((await gardening.staleInstructions(here, window, 10)).found).toBe(0);
+    expect((await gardening.staleInstructions(elsewhere, window, 10)).found).toBe(1);
+    // What it read is scoped too, or a workspace with no instructions at all
+    // would report somebody else's.
+    expect((await gardening.staleInstructions(here, window, 10)).examined).toBe(0);
+    expect((await gardening.staleInstructions(elsewhere, window, 10)).examined).toBe(1);
   });
 });

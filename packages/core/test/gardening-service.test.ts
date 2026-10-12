@@ -10,6 +10,9 @@ import {
   fold,
   orphanAttachmentRule,
   orphanSourceRule,
+  staleInstructionRule,
+  STALE_INSTRUCTION_DAYS,
+  weakProvenanceRule,
   type ActorContext,
   type GardeningFinding,
   type SupersedeFinding,
@@ -18,6 +21,7 @@ import {
   type GardeningRunRecord,
   type GardeningSettingsRecord,
   type ProposeSupersedeInput,
+  type StaleInstructionWindow,
   type Tx,
   type UnitOfWork,
 } from '../src/index.ts';
@@ -91,6 +95,12 @@ function repository(initial = defaults()): GardeningRepository & {
       throw new Error('a fake rule does not scan');
     },
     orphanAttachments: async () => {
+      throw new Error('a fake rule does not scan');
+    },
+    weakProvenance: async () => {
+      throw new Error('a fake rule does not scan');
+    },
+    staleInstructions: async () => {
       throw new Error('a fake rule does not scan');
     },
   };
@@ -771,5 +781,213 @@ describe('a run that both files and notices', () => {
     expect(run.rules[0]?.limited).toBe('rule_cap');
     expect(run.reachedCap).toBe(false);
     expect(run.findingsFiled).toBe(0);
+  });
+});
+
+describe('the items that name no source', () => {
+  const workspace = (examined: number, cited: number, uncited: string[] = []) => ({
+    weakProvenance: async () => ({
+      examined,
+      cited,
+      items: uncited.map((title, index) => ({
+        itemId: `kn_uncited${index}` as KnowledgeItemId,
+        title,
+        type: 'fact',
+        createdAt: new Date('2026-02-03T04:05:06Z'),
+      })),
+    }),
+  });
+
+  it('says nothing in a workspace that does not cite its sources', async () => {
+    // Every item would be a finding, which is a rule arguing with a decision
+    // somebody has already made — and in numbers that would bury the runs that
+    // matter.
+    const scan = await weakProvenanceRule(workspace(100, 40, ['A claim'])).scan(GARDENER, 10);
+    expect(scan.found).toBe(0);
+    expect(scan.findings).toEqual([]);
+    // Read all the same: "read 100, found 0" is the answer somebody wants, and
+    // it is not the same answer as a rule that never ran.
+    expect(scan.examined).toBe(100);
+  });
+
+  it('says nothing where exactly half of it cites, because mostly is more than half', async () => {
+    expect((await weakProvenanceRule(workspace(10, 5, ['A claim'])).scan(GARDENER, 10)).found).toBe(
+      0,
+    );
+  });
+
+  it('says nothing about a workspace too small to have a habit', async () => {
+    // Eight of nine items citing a source is a share and not a practice. A new
+    // workspace would otherwise be told off for its ninth item on the strength
+    // of its first eight.
+    const scan = await weakProvenanceRule(workspace(9, 8, ['A claim'])).scan(GARDENER, 10);
+    expect(scan.found).toBe(0);
+    expect(scan.findings).toEqual([]);
+    expect(scan.examined).toBe(9);
+  });
+
+  it('names the item, its type and the habit it stands against', async () => {
+    const scan = await weakProvenanceRule(workspace(50, 47, ['Rate limits'])).scan(GARDENER, 10);
+
+    // Every uncited item there is, not the three in the window: a capped run
+    // has to be able to say there is more of this than it listed.
+    expect(scan.found).toBe(3);
+    const [finding] = scan.findings;
+    expect(finding).toMatchObject({
+      kind: 'notice',
+      rule: 'weak_provenance',
+      subjectType: 'knowledge_item',
+      subjectId: 'kn_uncited0',
+    });
+    expect(finding?.reason).toContain('weak_provenance');
+    expect(finding?.reason).toContain('fact');
+    expect(finding?.reason).toContain('Rate limits');
+    // The comparison, because that is what makes this worth saying at all.
+    expect(finding?.reason).toContain('47 of the 50');
+  });
+
+  it('declares what it produces, so a rule that found nothing still has a kind', () => {
+    expect(weakProvenanceRule(workspace(0, 0)).produces).toBe('notices');
+  });
+});
+
+describe('the standing orders that have run out', () => {
+  const NOW = new Date('2026-10-12T00:00:00Z');
+  const clock = { now: () => NOW };
+
+  /** The rows a test hands the rule, and the window the rule asked for. */
+  function instructions(
+    found: number,
+    rows: { title: string; validUntil?: Date | null; revisedAt: Date }[],
+  ) {
+    const asked: StaleInstructionWindow[] = [];
+    return {
+      asked,
+      examined: 12,
+      staleInstructions: async (
+        _workspaceId: WorkspaceId,
+        window: StaleInstructionWindow,
+        _max: number,
+      ) => {
+        asked.push(window);
+        return {
+          examined: 12,
+          found,
+          instructions: rows.map((row, index) => ({
+            itemId: `kn_order${index}` as KnowledgeItemId,
+            title: row.title,
+            validUntil: row.validUntil ?? null,
+            revisedAt: row.revisedAt,
+          })),
+        };
+      },
+    };
+  }
+
+  it('asks for the instructions that ran out by now, or were untouched for a year', async () => {
+    const repository = instructions(0, []);
+    await staleInstructionRule(repository, clock).scan(GARDENER, 10);
+
+    const [window] = repository.asked;
+    expect(window?.now).toEqual(NOW);
+    // The clock is the service's, not the database's: how long is long enough
+    // is a domain decision, and a query that asked for `now()` could not be
+    // tested at a moment of its own choosing.
+    expect(window?.untouchedBefore).toEqual(
+      new Date(NOW.getTime() - STALE_INSTRUCTION_DAYS * 24 * 60 * 60 * 1000),
+    );
+  });
+
+  it('says the date an instruction gave itself, when that is what passed', async () => {
+    const scan = await staleInstructionRule(
+      instructions(1, [
+        {
+          title: 'Freeze releases',
+          validUntil: new Date('2026-01-02T03:04:05Z'),
+          revisedAt: new Date('2026-09-01T00:00:00Z'),
+        },
+      ]),
+      clock,
+    ).scan(GARDENER, 10);
+
+    expect(scan.examined).toBe(12);
+    const [finding] = scan.findings;
+    expect(finding).toMatchObject({
+      kind: 'notice',
+      rule: 'stale_instruction',
+      subjectType: 'knowledge_item',
+      subjectId: 'kn_order0',
+    });
+    expect(finding?.reason).toContain('Freeze releases');
+    expect(finding?.reason).toContain('stopped being valid on 2026-01-02T03:04:05');
+    // And not the other clause: this one was changed five weeks ago.
+    expect(finding?.reason).not.toContain('has not been changed');
+    // Why it matters that it is still active, which is the whole finding.
+    expect(finding?.reason).toContain('still told to follow it');
+  });
+
+  it('says how long it has been, when nobody has touched it', async () => {
+    const scan = await staleInstructionRule(
+      instructions(1, [
+        { title: 'Deploy on Fridays', revisedAt: new Date('2024-05-06T07:08:09Z') },
+      ]),
+      clock,
+    ).scan(GARDENER, 10);
+
+    const reason = scan.findings[0]?.reason;
+    expect(reason).toContain('has not been changed since 2024-05-06T07:08:09');
+    expect(reason).toContain('more than 365 days');
+    expect(reason).not.toContain('stopped being valid');
+  });
+
+  it('says both where both are true, because that is two facts', async () => {
+    const scan = await staleInstructionRule(
+      instructions(1, [
+        {
+          title: 'Ask before deploying',
+          validUntil: new Date('2025-01-01T00:00:00Z'),
+          revisedAt: new Date('2023-02-03T00:00:00Z'),
+        },
+      ]),
+      clock,
+    ).scan(GARDENER, 10);
+
+    const reason = scan.findings[0]?.reason;
+    expect(reason).toContain('stopped being valid on 2025-01-01');
+    expect(reason).toContain('and has not been changed since 2023-02-03');
+  });
+
+  it('drops a row whose dates say nothing, and does not call that a cap', async () => {
+    // A row the query should not have returned. The reason has to name what it
+    // rests on, so a rule that cannot say why has not found anything — and the
+    // count it reports must not make the run claim a cap stopped it.
+    const scan = await staleInstructionRule(
+      instructions(1, [
+        {
+          title: 'Still current',
+          validUntil: new Date('2027-01-01T00:00:00Z'),
+          revisedAt: new Date('2026-10-01T00:00:00Z'),
+        },
+      ]),
+      clock,
+    ).scan(GARDENER, 10);
+
+    expect(scan.findings).toEqual([]);
+    expect(scan.found).toBe(0);
+  });
+
+  it('counts the rows it never looked at as findings there are to report', async () => {
+    const scan = await staleInstructionRule(
+      instructions(9, [{ title: 'One of nine', revisedAt: new Date('2020-01-01T00:00:00Z') }]),
+      clock,
+    ).scan(GARDENER, 1);
+
+    // One described and eight unread, so the run can say there is more.
+    expect(scan.found).toBe(9);
+    expect(scan.findings).toHaveLength(1);
+  });
+
+  it('declares what it produces, so a rule that found nothing still has a kind', () => {
+    expect(staleInstructionRule(instructions(0, []), clock).produces).toBe('notices');
   });
 });

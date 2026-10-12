@@ -7,6 +7,7 @@ import type {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -311,9 +312,9 @@ function Runs({ runs }: { runs: GardeningRun[] }) {
 /**
  * What the run saw that names no write.
  *
- * Each one says what kind of thing it is about, because none of them has a
- * screen that fixes it: a reader has to know whether they are looking for a
- * file or a row before they can go and look.
+ * Each one says what kind of thing it is about, because a reader has to know
+ * what they are looking for before they can go and look — and because for some
+ * kinds there is a screen and for others there is not.
  */
 function Notices({ notices }: { notices: GardeningNotice[] }) {
   const { t } = useTranslation();
@@ -324,12 +325,34 @@ function Notices({ notices }: { notices: GardeningNotice[] }) {
       <ul className="grid gap-1">
         {notices.map((notice) => (
           <li key={`${notice.rule}:${notice.subject_id}`} className="text-sm">
-            <Badge variant="outline">{t(`gardening.subject.${notice.subject_type}`)}</Badge>{' '}
+            <Subject notice={notice} />{' '}
             <span className="text-muted-foreground">{notice.reason}</span>
           </li>
         ))}
       </ul>
     </div>
+  );
+}
+
+/**
+ * What the notice is about, and the way there where there is one.
+ *
+ * A knowledge item has a screen that can fix it, so the kind is the link to it:
+ * a notice nobody can act on from here is worth less than one that puts the
+ * item in front of them. A source row and a file have no screen of their own,
+ * and a link to nowhere would be worse than a word.
+ */
+function Subject({ notice }: { notice: GardeningNotice }) {
+  const { t } = useTranslation();
+  const label = t(`gardening.subject.${notice.subject_type}`);
+  if (notice.subject_type !== 'knowledge_item') return <Badge variant="outline">{label}</Badge>;
+  return (
+    <Link
+      to={`/knowledge?item=${encodeURIComponent(notice.subject_id)}`}
+      className="underline-offset-4 hover:underline"
+    >
+      <Badge variant="outline">{label}</Badge>
+    </Link>
   );
 }
 

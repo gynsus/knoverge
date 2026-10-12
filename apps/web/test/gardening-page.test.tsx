@@ -102,6 +102,8 @@ const OFF = {
     'duplicate_text' as const,
     'orphan_source' as const,
     'orphan_attachment' as const,
+    'weak_provenance' as const,
+    'stale_instruction' as const,
   ],
 };
 
@@ -141,6 +143,22 @@ const NOTICED = {
   ],
 };
 
+/** A notice about a knowledge item, which has a screen that can fix it. */
+const ABOUT_AN_ITEM = {
+  ...RUN,
+  findings_filed: 0,
+  rules: [{ rule: 'weak_provenance' as const, examined: 50, found: 3, filed: 3, limited: null }],
+  notices: [
+    {
+      rule: 'weak_provenance' as const,
+      subject_type: 'knowledge_item' as const,
+      subject_id: 'kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+      reason:
+        'gardening rule weak_provenance: this fact, "Rate limits", names no source at its current revision, where 47 of the 50 active items in this workspace name one.',
+    },
+  ],
+};
+
 function renderApp(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -165,6 +183,7 @@ describe('fixtures match the contract', () => {
     expect(() => GardeningSettingsResponse.parse({ settings: OFF })).not.toThrow();
     expect(() => GardeningRunsResponse.parse({ runs: [RUN] })).not.toThrow();
     expect(() => GardeningRunsResponse.parse({ runs: [NOTICED] })).not.toThrow();
+    expect(() => GardeningRunsResponse.parse({ runs: [ABOUT_AN_ITEM] })).not.toThrow();
   });
 });
 
@@ -355,6 +374,22 @@ describe('a run that saw something naming no write', () => {
     expect(screen.getByText(/nothing to approve and nothing to dismiss/i)).toBeInTheDocument();
     // And it is not counted as something left in the review queue.
     expect(within(screen.getByRole('table')).getByText('0')).toBeInTheDocument();
+  });
+
+  it('puts the item in front of a reader, for the kind that has a screen', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/gardening.settings': () => json({ settings: { ...OFF, enabled: true } }),
+      'GET /v1/admin/gardening.runs': () => json({ runs: [ABOUT_AN_ITEM] }),
+    });
+    renderApp('/gardening');
+
+    // A notice nobody can act on from here is worth less than one that opens
+    // the thing it is about. A source row and a file have no screen of their
+    // own; an item does, so the kind is the way there.
+    const link = await screen.findByRole('link', { name: 'item' });
+    expect(link).toHaveAttribute('href', '/knowledge?item=kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3');
+    expect(screen.getByText(/names no source at its current revision/i)).toBeInTheDocument();
   });
 
   it('says nothing about notices on a run that had none', async () => {
