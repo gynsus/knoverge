@@ -15,7 +15,7 @@ Milestones 11, 12 and 13 were taken ahead of 10 and shipped in **v0.5.0**;
 Milestone 10 followed in **v0.6.0**, verified against the Claude.ai connector on
 a live installation. Milestone 15 arrived in **v0.7.0** and was finished in
 **v0.8.0**, once a live installation had been moved off the sidecar. Milestone 14
-is what remains after it, and is under way: its frame and six of its rules are
+is what remains after it, and is under way: its frame and eight of its rules are
 built, and the rest arrive on that frame.
 
 ## Milestone 0 - repository scaffold
@@ -337,11 +337,11 @@ actor it would be told it may write. ADR 0043 decides what becomes of a finding
 that names no write: it is a notice on the run, because a review queue item
 nobody can approve is one that can never be cleared._
 
-The frame and six rules are built: the per-workspace setting, the caps, the
+The frame and eight rules are built: the per-workspace setting, the caps, the
 scheduled sweep, the run record a screen can read, duplicates by content hash
-and by text, the two kinds of orphan, knowledge that names no source and the
-standing order that has run out. The rules below arrive one or two at a time on
-the same frame.
+and by text, the two kinds of orphan, knowledge that names no source, the
+standing order that has run out, and the two halves of tidying the taxonomy.
+What is left of the core is stale summaries; the rest needs a provider.
 
 Deliver, with no provider configured:
 
@@ -380,8 +380,23 @@ Deliver, with no provider configured:
   write is imaginable and still refused: delete, re-date or rewrite is exactly
   the choice the installation cannot make, and gardening's one proposal kind is
   a supersession by an item the workspace already holds (ADR 0039);
-- taxonomy cleanup: a category with no items and no children, an alias pointing
-  nowhere;
+- **taxonomy cleanup** — built, as two rules, because they count different
+  things and a rule reports what it read. `empty_category` is an active category
+  holding no knowledge items with no category under it, a month or more after it
+  was made: a month because a taxonomy is often laid out before the knowledge
+  arrives, and no items at all rather than no active ones because the item key
+  is `restrict`, so a category whose only items are deleted cannot be removed
+  and calling it empty would ask for something the installation refuses
+  (ADR 0025). `dangling_alias` is an alias of a category that is archived or
+  merged away — not one whose row is missing, which the foreign key makes
+  impossible: an alias is unique across the workspace, so one left behind keeps
+  a name nothing can be filed under and refuses it to the category that wants
+  it next. A merge carries aliases over to the survivor on purpose, so these are
+  the ones no merge accounted for. Both are notices: a category created by
+  mistake may be deleted outright and one a project has finished with is
+  archived instead, and nothing recorded tells the two apart. The cutoff date
+  comes from the domain rather than from `now()` in SQL, as the stale
+  instruction's does, so the rule can be tested at a moment of its own choosing;
 - stale summaries: dependencies have moved and the summary has not.
 
 Deliver, only where a provider is assigned:

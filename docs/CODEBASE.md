@@ -1132,7 +1132,7 @@ it writes nothing, and it is handed the gardener's actor because what is worth
 finding depends on what has already been said to that actor. Two of the rules
 find the same thing said twice, and both keep the oldest member — the relations
 and sources that exist point at it, its history is the longer one, and the copy
-is the thing that happened afterwards. The other four find something that no
+is the thing that happened afterwards. The other six find something that no
 write would answer, and each of them says so in a sentence a person can act on
 without the product's help.
 
@@ -1241,6 +1241,39 @@ the installation cannot know. Gardening's one proposal kind is a supersession by
 an item the workspace already holds (ADR 0039), so a rule that guessed would be
 filing its guess into the review queue.
 
+`empty_category` and `dangling_alias` tidy the taxonomy, and they are two rules
+rather than one for the reason the two orphan rules are: they count different
+things, and a rule reports what it read — active categories for one, aliases for
+the other.
+
+`emptyCategories` asks for an active category with no row in
+`knowledge_item_categories` and no category whose parent it is. No items **at
+all** rather than no active ones, because the item key is `restrict`: a category
+whose only items are deleted cannot be removed, and a notice calling it empty
+would be asking for something the installation refuses. Children of any status,
+because a child row is a child — a category with an archived one under it is
+still a branch, and emptying the branch is what would have to happen first. The
+cutoff date is the caller's, as the stale instruction's two dates are: a taxonomy
+is often laid out before the knowledge arrives, so the rule waits a month, and a
+query that asked the database for the time could not be tested at a moment of its
+own choosing.
+
+`danglingAliases` asks for an alias whose category is neither active nor
+proposed. Pointing nowhere cannot mean a missing row — the foreign key forbids
+one — so it means pointing at a category nothing can be filed in, which is what
+archived and merged are. A merge carries the closed category's aliases over to
+the survivor and leaves it none, so an alias found on one came from somewhere
+else: a repository restored into the database, or an import. `proposed` is left
+out because that alias is reserved for a review waiting to happen. The subject of
+the notice is the alias and not its category, because two names left on one
+category are two names, each refused to whatever category wants it next, and one
+notice about the category would read as one finding.
+
+Both are notices, and this is the second place where a write is imaginable and
+not proposed: a category created by mistake may be deleted outright and one a
+project has finished with is archived instead (ADR 0025), and nothing recorded
+tells the two apart.
+
 ### Why it files instead of writing
 
 `ProposalService.fileSupersedeFinding` is a second entry point beside
@@ -1280,8 +1313,11 @@ The notices sit with the run that saw them rather than in a list of their own:
 there is nothing to approve and nothing to dismiss, so what a reader wants is
 what is true now, which is the newest run. Each says what kind of thing it is
 about, and where that kind has a screen the kind is the link to it — an item
-opens on the knowledge screen, while a source row and a file have none and a
-link to nowhere would be worse than a word.
+opens on the knowledge screen and a category on the taxonomy screen, which is
+why the taxonomy keeps the category it has open in the address. A source row, a
+file and an alias have no screen, and a link to nowhere would be worse than a
+word; the alias notice names its category in its reason, which is where somebody
+removes it.
 
 ## Letting a hosted connector in
 

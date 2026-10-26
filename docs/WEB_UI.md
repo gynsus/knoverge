@@ -61,6 +61,13 @@ glance. A proposal under review is not: it is work, somebody may have to be
 sent it, and it opens from `?proposal=<id>`. When in doubt, ask whether you
 would ever paste the link.
 
+Something inside the application asking to be sent there is the same answer.
+A gardening notice is about one knowledge item or one category, and a notice
+that cannot open the thing it describes is worth less than one that can, so the
+knowledge page opens an item from `?item=<id>` and the taxonomy opens a category
+from `?category=<id>`. Both replace the address rather than pushing it: picking
+through a tree is not a trail anybody wants to walk back out of.
+
 ## 2a. A list that outgrows one screen narrows on the server
 
 A filter applied in the browser filters the page that happens to be loaded,

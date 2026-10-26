@@ -12,6 +12,7 @@ import {
 import { parseLedgerKey } from '@knoverge/core';
 import { newId } from '@knoverge/core';
 import { runMigrations, schema } from '@knoverge/db';
+import { eq } from 'drizzle-orm';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { FastifyInstance, InjectOptions } from 'fastify';
 import pino from 'pino';
@@ -161,6 +162,8 @@ describe('a workspace nobody has configured', () => {
       'orphan_attachment',
       'weak_provenance',
       'stale_instruction',
+      'empty_category',
+      'dangling_alias',
     ]);
   });
 
@@ -220,6 +223,10 @@ describe('a run that finds the same thing twice', () => {
       { rule: 'weak_provenance', examined: 2, found: 0, filed: 0, limited: null },
       // And there is nothing here that an agent would be told to follow.
       { rule: 'stale_instruction', examined: 0, found: 0, filed: 0, limited: null },
+      // No taxonomy at all in this workspace, so both of the taxonomy rules
+      // read nothing — which they still say.
+      { rule: 'empty_category', examined: 0, found: 0, filed: 0, limited: null },
+      { rule: 'dangling_alias', examined: 0, found: 0, filed: 0, limited: null },
     ]);
     expect(result.run.notices).toEqual([]);
 
@@ -529,5 +536,104 @@ describe('a standing order that has run out', () => {
       after - before,
       'a notice is not a proposal, so only the duplicate rule may have filed',
     ).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('a taxonomy somebody laid out and left', () => {
+  beforeAll(async () => {
+    // The caps above left this workspace filing one finding per rule, and two
+    // names left on one category is exactly what the last of these is about.
+    const res = await admin.post('/v1/admin/gardening.save', {
+      enabled: true,
+      interval_hours: 12,
+      max_findings_per_run: 50,
+      max_findings_per_rule: 20,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+  });
+
+  /** One category, through the route a curator uses. */
+  async function category(name: string, aliases: string[] = []): Promise<string> {
+    const res = await admin.post('/v1/admin/taxonomy.create', { name, aliases });
+    expect(res.statusCode, res.body).toBe(200);
+    return (res.json() as { category: { id: string } }).category.id;
+  }
+
+  it('is a notice about the category, once it has been empty for a month', async () => {
+    const categoryId = await category('Retired experiments');
+
+    // Nothing is said about it yet: a taxonomy is often laid out before the
+    // knowledge arrives, and a rule that reported this the same afternoon
+    // would be arguing with the way the screen is meant to be used.
+    const fresh = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    expect(fresh.run.rules.find((rule) => rule.rule === 'empty_category')).toMatchObject({
+      // Read and left alone, which is not the same answer as never having run.
+      examined: 1,
+      found: 0,
+    });
+
+    // A month passing, which is the one thing a test cannot wait for. The
+    // column is what the rule compares against, so this is the state rather
+    // than a stand-in for it.
+    await services.database.db
+      .update(schema.categories)
+      .set({ createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.categories.id, categoryId));
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    const notice = result.run.notices.find((entry) => entry.rule === 'empty_category');
+    expect(notice).toMatchObject({ subject_type: 'category', subject_id: categoryId });
+    expect(notice?.reason).toContain('retired-experiments');
+    expect(notice?.reason).toContain('no category under it');
+  });
+
+  it('says nothing about a category knowledge is filed in', async () => {
+    const categoryId = await category('In use');
+    await services.database.db
+      .update(schema.categories)
+      .set({ createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000) })
+      .where(eq(schema.categories.id, categoryId));
+    const res = await admin.post('/v1/admin/knowledge.create', {
+      title: 'Where the audit log lives',
+      body: 'In PostgreSQL, hash-chained.\n',
+      type: 'fact',
+      categories: ['in-use'],
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    const notices = result.run.notices.filter(
+      (entry) => entry.rule === 'empty_category' && entry.subject_id === categoryId,
+    );
+    expect(notices).toEqual([]);
+  });
+
+  it('is a notice about the name left behind, once the category is archived', async () => {
+    const categoryId = await category('Pixel Brisbane', ['pixel', 'brisbane project']);
+    expect(
+      (await admin.post('/v1/admin/taxonomy.archive', { category_id: categoryId })).statusCode,
+    ).toBe(200);
+
+    const result = RunGardeningResponse.parse(
+      (await admin.post('/v1/admin/gardening.run', {})).json(),
+    );
+    const notices = result.run.notices.filter((entry) => entry.rule === 'dangling_alias');
+    // One per name, because two names left on one category are two names, and
+    // each is refused to whatever category wants it next.
+    expect(notices.map((entry) => entry.subject_type)).toEqual([
+      'category_alias',
+      'category_alias',
+    ]);
+    expect(notices.every((entry) => entry.subject_id.startsWith('alias_'))).toBe(true);
+    expect(notices.map((entry) => entry.reason).join(' ')).toContain('pixel-brisbane');
+    expect(notices.some((entry) => entry.reason.includes('"pixel"'))).toBe(true);
+    expect(notices.some((entry) => entry.reason.includes('"brisbane project"'))).toBe(true);
+    expect(notices.every((entry) => entry.reason.includes('archived'))).toBe(true);
   });
 });

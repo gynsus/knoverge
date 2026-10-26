@@ -104,6 +104,8 @@ const OFF = {
     'orphan_attachment' as const,
     'weak_provenance' as const,
     'stale_instruction' as const,
+    'empty_category' as const,
+    'dangling_alias' as const,
   ],
 };
 
@@ -159,6 +161,22 @@ const ABOUT_AN_ITEM = {
   ],
 };
 
+/** A notice about a category, which also has a screen that can fix it. */
+const ABOUT_A_CATEGORY = {
+  ...RUN,
+  findings_filed: 0,
+  rules: [{ rule: 'empty_category' as const, examined: 14, found: 1, filed: 1, limited: null }],
+  notices: [
+    {
+      rule: 'empty_category' as const,
+      subject_type: 'category' as const,
+      subject_id: 'cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3',
+      reason:
+        'gardening rule empty_category: projects/pixel-brisbane/retired ("Retired") was made on 2026-01-02T03:04:05.000Z and holds no knowledge items, with no category under it, so nothing in this workspace is filed there.',
+    },
+  ],
+};
+
 function renderApp(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -184,6 +202,7 @@ describe('fixtures match the contract', () => {
     expect(() => GardeningRunsResponse.parse({ runs: [RUN] })).not.toThrow();
     expect(() => GardeningRunsResponse.parse({ runs: [NOTICED] })).not.toThrow();
     expect(() => GardeningRunsResponse.parse({ runs: [ABOUT_AN_ITEM] })).not.toThrow();
+    expect(() => GardeningRunsResponse.parse({ runs: [ABOUT_A_CATEGORY] })).not.toThrow();
   });
 });
 
@@ -390,6 +409,22 @@ describe('a run that saw something naming no write', () => {
     const link = await screen.findByRole('link', { name: 'item' });
     expect(link).toHaveAttribute('href', '/knowledge?item=kn_01J8Z3M4Q9V0X7K2B5N6P8R1T3');
     expect(screen.getByText(/names no source at its current revision/i)).toBeInTheDocument();
+  });
+
+  it('opens the taxonomy on the category a notice is about', async () => {
+    mockApi({
+      ...signedIn(),
+      'GET /v1/admin/gardening.settings': () => json({ settings: { ...OFF, enabled: true } }),
+      'GET /v1/admin/gardening.runs': () => json({ runs: [ABOUT_A_CATEGORY] }),
+    });
+    renderApp('/gardening');
+
+    // The second kind with a screen, and the link is built from the kind
+    // rather than from a chain of comparisons: an alias has no page of its own
+    // and still has to render as a word.
+    const link = await screen.findByRole('link', { name: 'category' });
+    expect(link).toHaveAttribute('href', '/taxonomy?category=cat_01J8Z3M4Q9V0X7K2B5N6P8R1T3');
+    expect(screen.getByText(/nothing in this workspace is filed there/i)).toBeInTheDocument();
   });
 
   it('says nothing about notices on a run that had none', async () => {

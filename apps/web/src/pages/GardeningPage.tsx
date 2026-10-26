@@ -335,20 +335,32 @@ function Notices({ notices }: { notices: GardeningNotice[] }) {
 }
 
 /**
+ * Where a notice's subject is opened, for the kinds that have a screen.
+ *
+ * A knowledge item and a category each have one that can fix them. A source
+ * row, a file and an alias do not: a link to nowhere would be worse than a
+ * word, and the alias notice names its category in the reason, which is where
+ * somebody removes it.
+ */
+const SUBJECT_SCREENS: Partial<Record<GardeningNotice['subject_type'], string>> = {
+  knowledge_item: '/knowledge?item=',
+  category: '/taxonomy?category=',
+};
+
+/**
  * What the notice is about, and the way there where there is one.
  *
- * A knowledge item has a screen that can fix it, so the kind is the link to it:
- * a notice nobody can act on from here is worth less than one that puts the
- * item in front of them. A source row and a file have no screen of their own,
- * and a link to nowhere would be worse than a word.
+ * The kind is the link, where the kind has a screen: a notice nobody can act on
+ * from here is worth less than one that puts the thing in front of them.
  */
 function Subject({ notice }: { notice: GardeningNotice }) {
   const { t } = useTranslation();
   const label = t(`gardening.subject.${notice.subject_type}`);
-  if (notice.subject_type !== 'knowledge_item') return <Badge variant="outline">{label}</Badge>;
+  const screen = SUBJECT_SCREENS[notice.subject_type];
+  if (screen === undefined) return <Badge variant="outline">{label}</Badge>;
   return (
     <Link
-      to={`/knowledge?item=${encodeURIComponent(notice.subject_id)}`}
+      to={`${screen}${encodeURIComponent(notice.subject_id)}`}
       className="underline-offset-4 hover:underline"
     >
       <Badge variant="outline">{label}</Badge>

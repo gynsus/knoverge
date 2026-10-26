@@ -1554,6 +1554,36 @@ describe('choosing a category', () => {
     }
   });
 
+  it('opens the one the address names, so a notice elsewhere can link here', async () => {
+    // A gardening notice about a category nothing is filed in is only worth
+    // reading if it can put that category in front of the reader (ADR 0043).
+    mockApi({
+      ...SIGNED_IN,
+      'GET /v1/taxonomy.list?include_archived=true': () => json(CATEGORIES),
+    });
+    renderApp(`/taxonomy?category=${CATEGORY.id}`);
+
+    expect(await screen.findByRole('heading', { name: 'Projects', level: 3 })).toBeVisible();
+  });
+
+  it('opens that sheet for a link, where there is no column to open instead', async () => {
+    const restore = widthOf(800);
+    try {
+      mockApi({
+        ...SIGNED_IN,
+        'GET /v1/taxonomy.list?include_archived=true': () => json(CATEGORIES),
+      });
+      renderApp(`/taxonomy?category=${CATEGORY.id}`);
+
+      // Arriving from a gardening notice on a phone: the panel is a sheet
+      // here, and one that stayed shut would show the tree and nothing else.
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(await screen.findByRole('heading', { name: 'Projects', level: 3 })).toBeVisible();
+    } finally {
+      restore();
+    }
+  });
+
   it('opens a sheet when there is no column for it', async () => {
     const restore = widthOf(800);
     try {

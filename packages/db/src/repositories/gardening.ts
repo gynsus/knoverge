@@ -1,5 +1,6 @@
 import type {
   ActorId,
+  CategoryId,
   GardeningRuleName,
   KnowledgeItemId,
   RevisionId,
@@ -26,7 +27,9 @@ import {
   type GardeningRuleResultRow,
 } from '../schema/gardening.ts';
 import { attachments } from '../schema/attachments.ts';
+import { categories, categoryAliases } from '../schema/categories.ts';
 import {
+  knowledgeItemCategories,
   knowledgeItems,
   knowledgeRevisions,
   revisionSources,
@@ -700,6 +703,116 @@ export function createGardeningRepository(db: Database): GardeningRepository {
         };
       });
       return { examined: counted?.examined ?? 0, found, instructions };
+    },
+
+    async emptyCategories(workspaceId: WorkspaceId, createdBefore: Date, max: number) {
+      // No items at all rather than no active ones: the item key is `restrict`,
+      // so a category whose only items are deleted cannot be removed, and a
+      // notice calling it empty would be asking for something the installation
+      // refuses (ADR 0025).
+      //
+      // Children of any status, because a child row is a child. A category with
+      // an archived one under it is still a branch.
+      const rows = await db.execute<{
+        found: string | number | null;
+        id: string;
+        path: string;
+        name: string;
+        created_at: Date;
+      }>(sql`
+        with candidate as (
+          select c.id as id, c.path as path, c.name as name, c.created_at as created_at
+          from ${categories} as c
+          where c.workspace_id = ${workspaceId}
+            and c.status = 'active'
+            and c.created_at < ${createdBefore}
+            and not exists (
+              select 1 from ${knowledgeItemCategories} as kic where kic.category_id = c.id
+            )
+            and not exists (
+              select 1 from ${categories} as child where child.parent_id = c.id
+            )
+        )
+        select (select count(*) from candidate) as found,
+               q.id, q.path, q.name, q.created_at
+        from candidate as q
+        order by q.created_at asc, q.id asc
+        limit ${max}
+      `);
+
+      // Every active category, which is what the rule read. The ones inside the
+      // grace period are read and left alone, and a workspace whose taxonomy is
+      // all a week old should still report what it looked at.
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(categories)
+        .where(and(eq(categories.workspaceId, workspaceId), eq(categories.status, 'active')));
+
+      let found = 0;
+      const empty = (rows.rows ?? []).map((row) => {
+        found = Number(row.found ?? 0);
+        return {
+          categoryId: row.id as CategoryId,
+          path: row.path,
+          name: row.name,
+          createdAt: new Date(row.created_at),
+        };
+      });
+      return { examined: counted?.examined ?? 0, found, categories: empty };
+    },
+
+    async danglingAliases(workspaceId: WorkspaceId, max: number) {
+      // Pointing nowhere means pointing at a category nothing can be filed in,
+      // because the foreign key makes a missing row impossible. `proposed` is
+      // left out: that alias is reserved for a review waiting to happen.
+      //
+      // The join is on the category id and the workspace both. The alias row
+      // carries its own workspace, and the two agreeing is what the scope rests
+      // on.
+      const rows = await db.execute<{
+        found: string | number | null;
+        id: string;
+        alias: string;
+        category_id: string;
+        path: string;
+        status: string;
+        created_at: Date;
+      }>(sql`
+        with candidate as (
+          select a.id as id, a.alias as alias, a.created_at as created_at,
+                 c.id as category_id, c.path as path, c.status as status
+          from ${categoryAliases} as a
+          join ${categories} as c
+            on c.id = a.category_id and c.workspace_id = a.workspace_id
+          where a.workspace_id = ${workspaceId}
+            and c.status not in ('active', 'proposed')
+        )
+        select (select count(*) from candidate) as found,
+               q.id, q.alias, q.category_id, q.path, q.status, q.created_at
+        from candidate as q
+        order by q.created_at asc, q.id asc
+        limit ${max}
+      `);
+
+      // Every alias in the workspace, which is what the rule read.
+      const [counted] = await db
+        .select({ examined: count() })
+        .from(categoryAliases)
+        .where(eq(categoryAliases.workspaceId, workspaceId));
+
+      let found = 0;
+      const dangling = (rows.rows ?? []).map((row) => {
+        found = Number(row.found ?? 0);
+        return {
+          aliasId: row.id,
+          alias: row.alias,
+          categoryId: row.category_id as CategoryId,
+          path: row.path,
+          status: row.status,
+          createdAt: new Date(row.created_at),
+        };
+      });
+      return { examined: counted?.examined ?? 0, found, aliases: dangling };
     },
   };
 }

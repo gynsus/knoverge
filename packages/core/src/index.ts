@@ -73,10 +73,14 @@ export {
   type TargetCheckView,
 } from './backups/service.ts';
 export type {
+  DanglingAlias,
+  DanglingAliasScan,
   DuplicateHashGroup,
   DuplicateHashScan,
   DuplicateTextPair,
   DuplicateTextScan,
+  EmptyCategory,
+  EmptyCategoryScan,
   GardeningItem,
   GardeningNoticeRecord,
   GardeningRepository,
@@ -97,8 +101,11 @@ export type {
 } from './gardening/repository.ts';
 export { fold } from './gardening/text.ts';
 export {
+  danglingAliasRule,
   duplicateContentHashRule,
   duplicateTextRule,
+  emptyCategoryRule,
+  EMPTY_CATEGORY_GRACE_DAYS,
   orphanAttachmentRule,
   orphanSourceRule,
   staleInstructionRule,

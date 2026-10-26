@@ -1,5 +1,6 @@
 import type {
   ActorId,
+  CategoryId,
   GardeningRuleName,
   KnowledgeItemId,
   RevisionId,
@@ -42,7 +43,7 @@ export interface GardeningRuleResultRecord {
  */
 export interface GardeningNoticeRecord {
   rule: GardeningRuleName;
-  subjectType: 'source_reference' | 'attachment' | 'knowledge_item';
+  subjectType: 'source_reference' | 'attachment' | 'knowledge_item' | 'category' | 'category_alias';
   subjectId: string;
   reason: string;
 }
@@ -214,6 +215,40 @@ export interface StaleInstructionWindow {
   untouchedBefore: Date;
 }
 
+/** A category nothing is filed in, with nothing under it. */
+export interface EmptyCategory {
+  categoryId: CategoryId;
+  /** The slug path, which is what a person recognises a category by. */
+  path: string;
+  name: string;
+  createdAt: Date;
+}
+
+export interface EmptyCategoryScan {
+  /** Active categories in the workspace, which is what the rule read. */
+  examined: number;
+  found: number;
+  categories: EmptyCategory[];
+}
+
+/** A name the workspace keeps for a category that is no longer active. */
+export interface DanglingAlias {
+  aliasId: string;
+  alias: string;
+  categoryId: CategoryId;
+  path: string;
+  /** What the category is instead of active: archived, or merged away. */
+  status: string;
+  createdAt: Date;
+}
+
+export interface DanglingAliasScan {
+  /** Aliases in the workspace, which is what the rule read. */
+  examined: number;
+  found: number;
+  aliases: DanglingAlias[];
+}
+
 export interface GardeningRepository {
   /**
    * This workspace's settings, or the defaults where it has no row.
@@ -352,4 +387,41 @@ export interface GardeningRepository {
     window: StaleInstructionWindow,
     max: number,
   ): Promise<StaleInstructionScan>;
+  /**
+   * Active categories nothing is filed in, with no category under them.
+   *
+   * No items at all rather than no active ones, which is the condition ADR 0025
+   * puts on deleting a category outright: the item key is `restrict`, so a
+   * category whose only items are deleted cannot be removed, and a notice
+   * saying it is empty would be telling an operator to do something the
+   * installation refuses.
+   *
+   * Children of any status, because a child row is a child: a category with an
+   * archived one under it is still a branch, and emptying the branch is what
+   * would have to happen first.
+   *
+   * `createdBefore` is the caller's, because how long a new category may stay
+   * empty is a domain decision — a taxonomy is often built before the knowledge
+   * arrives — and a query that asked the database for `now()` could not be
+   * tested at a moment of its own choosing.
+   */
+  emptyCategories(
+    workspaceId: WorkspaceId,
+    createdBefore: Date,
+    max: number,
+  ): Promise<EmptyCategoryScan>;
+  /**
+   * Aliases whose category is neither active nor proposed.
+   *
+   * Not an alias whose row is missing, which the foreign key makes impossible:
+   * pointing nowhere here means pointing at a category nothing can be filed in,
+   * which is what archived and merged are. A merge carries the closed
+   * category's aliases over to the survivor and leaves it none, so an alias
+   * left on one came from somewhere else — a repository restored into the
+   * database, or an import.
+   *
+   * `proposed` is left out: a category awaiting review is a review waiting to
+   * happen, and the alias is reserved for it rather than abandoned.
+   */
+  danglingAliases(workspaceId: WorkspaceId, max: number): Promise<DanglingAliasScan>;
 }

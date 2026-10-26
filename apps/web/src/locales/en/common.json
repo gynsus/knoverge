@@ -459,6 +459,14 @@
       "stale_instruction": {
         "title": "A standing order that has run out",
         "description": "An active instruction past the date it gave itself, or unchanged for more than a year. Instructions only: a fact records what was true and a decision what was decided, and both stay true of the moment they describe, while an instruction is what an agent reading this workspace will follow today. Nothing is proposed, because whether it should be deleted, re-dated or rewritten is exactly what the installation cannot know."
+      },
+      "empty_category": {
+        "title": "A category nothing is filed in",
+        "description": "An active category holding no knowledge items, with no category under it, a month or more after it was made. A taxonomy is often laid out before the knowledge arrives, which is why it waits a month. Nothing is proposed: a category created by mistake may be deleted outright, one a project has finished with is archived instead, and nothing recorded tells the two apart."
+      },
+      "dangling_alias": {
+        "title": "A name kept for a closed category",
+        "description": "An alias of a category that is archived or merged away. An alias is a name somebody recorded and it is unique across the workspace, so one left behind keeps a name nothing can be filed under and refuses it to the category that wants it next. A merge carries aliases over to the survivor on purpose; these are the ones no merge accounted for."
       }
     },
     "runs": "Runs",
@@ -487,7 +495,9 @@
     "subject": {
       "source_reference": "source",
       "attachment": "file",
-      "knowledge_item": "item"
+      "knowledge_item": "item",
+      "category": "category",
+      "category_alias": "alias"
     }
   },
   "home": {
