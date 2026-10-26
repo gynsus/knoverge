@@ -14,6 +14,8 @@ export const GardeningRuleName = z.enum([
   'orphan_attachment',
   'weak_provenance',
   'stale_instruction',
+  'empty_category',
+  'dangling_alias',
 ]);
 export type GardeningRuleName = z.infer<typeof GardeningRuleName>;
 
@@ -88,16 +90,24 @@ export type GardeningRuleResult = z.infer<typeof GardeningRuleResult>;
 /**
  * What kind of thing a notice is about, so a reader knows where to look.
  *
- * Three, because that is what the rules that exist can be about. The rules that
- * will notice a category or a summary are not built, and a name here would be a
- * promise rather than a thing the server can send — the same standard the rule
- * names are held to.
+ * Five, because that is what the rules that exist can be about. The rule that
+ * will notice a summary is not built, and a name here would be a promise rather
+ * than a thing the server can send — the same standard the rule names are held
+ * to.
  *
- * A knowledge item has a screen that can fix it and the other two do not. The
- * notice says which kind it is either way, because a reader has to know what
- * they are looking for before they can go and look (ADR 0043).
+ * A knowledge item and a category have a screen that can fix them and the other
+ * three do not. An alias is one of the three: it has no page of its own, and the
+ * category it answers for is where somebody removes it, which the notice names
+ * in its reason. The notice says which kind it is either way, because a reader
+ * has to know what they are looking for before they can go and look (ADR 0043).
  */
-export const GardeningNoticeSubject = z.enum(['source_reference', 'attachment', 'knowledge_item']);
+export const GardeningNoticeSubject = z.enum([
+  'source_reference',
+  'attachment',
+  'knowledge_item',
+  'category',
+  'category_alias',
+]);
 export type GardeningNoticeSubject = z.infer<typeof GardeningNoticeSubject>;
 
 /**
@@ -105,9 +115,10 @@ export type GardeningNoticeSubject = z.infer<typeof GardeningNoticeSubject>;
  *
  * A proposal is what a finding becomes when somebody could approve it. These
  * are the rest: a source reference no revision cites, an attachment whose every
- * item is gone, an item that cites nothing where the workspace cites. There is
- * nothing to approve and nothing to dismiss — a notice is true until the thing
- * it describes is fixed, and then it stops being reported.
+ * item is gone, an item that cites nothing where the workspace cites, a category
+ * nothing is filed in. There is nothing to approve and nothing to dismiss — a
+ * notice is true until the thing it describes is fixed, and then it stops being
+ * reported.
  */
 export const GardeningNotice = z.object({
   rule: GardeningRuleName,

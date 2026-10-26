@@ -1,8 +1,17 @@
-import type { ActorId, KnowledgeItemId, RevisionId, WorkspaceId } from '@knoverge/contracts';
+import type {
+  ActorId,
+  CategoryId,
+  KnowledgeItemId,
+  RevisionId,
+  WorkspaceId,
+} from '@knoverge/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
   DomainError,
+  danglingAliasRule,
+  emptyCategoryRule,
+  EMPTY_CATEGORY_GRACE_DAYS,
   GARDENER_CLIENT,
   GardeningService,
   duplicateContentHashRule,
@@ -101,6 +110,12 @@ function repository(initial = defaults()): GardeningRepository & {
       throw new Error('a fake rule does not scan');
     },
     staleInstructions: async () => {
+      throw new Error('a fake rule does not scan');
+    },
+    emptyCategories: async () => {
+      throw new Error('a fake rule does not scan');
+    },
+    danglingAliases: async () => {
       throw new Error('a fake rule does not scan');
     },
   };
@@ -989,5 +1004,176 @@ describe('the standing orders that have run out', () => {
 
   it('declares what it produces, so a rule that found nothing still has a kind', () => {
     expect(staleInstructionRule(instructions(0, []), clock).produces).toBe('notices');
+  });
+});
+
+describe('the categories nothing is filed in', () => {
+  const NOW = new Date('2026-10-12T00:00:00Z');
+  const clock = { now: () => NOW };
+
+  /** The rows a test hands the rule, and the cutoff the rule asked for. */
+  function taxonomy(
+    found: number,
+    rows: { path: string; name: string; createdAt: Date }[],
+    examined = 14,
+  ) {
+    const asked: Date[] = [];
+    return {
+      asked,
+      emptyCategories: async (_workspaceId: WorkspaceId, createdBefore: Date, _max: number) => {
+        asked.push(createdBefore);
+        return {
+          examined,
+          found,
+          categories: rows.map((row, index) => ({
+            categoryId: `cat_empty${index}` as CategoryId,
+            path: row.path,
+            name: row.name,
+            createdAt: row.createdAt,
+          })),
+        };
+      },
+    };
+  }
+
+  it('asks only about the categories that have been empty for a month', async () => {
+    const repository = taxonomy(0, []);
+    await emptyCategoryRule(repository, clock).scan(GARDENER, 10);
+
+    // The grace period is the rule's judgement, not the query's: a taxonomy is
+    // often laid out before the knowledge arrives, and the clock is the
+    // service's so it can be tested at a moment of its own choosing.
+    //
+    // The date written out rather than computed from the constant, which would
+    // make this agree with whatever the constant said. A month is the decision,
+    // and changing it should fail a test rather than only itself.
+    expect(repository.asked).toEqual([new Date('2026-09-12T00:00:00Z')]);
+    expect(EMPTY_CATEGORY_GRACE_DAYS).toBe(30);
+  });
+
+  it('names the category, where it sits and when it was made', async () => {
+    const scan = await emptyCategoryRule(
+      taxonomy(1, [
+        {
+          path: 'projects/pixel-brisbane/retired',
+          name: 'Retired',
+          createdAt: new Date('2026-01-02T03:04:05Z'),
+        },
+      ]),
+      clock,
+    ).scan(GARDENER, 10);
+
+    expect(scan.examined).toBe(14);
+    const [finding] = scan.findings;
+    expect(finding).toMatchObject({
+      kind: 'notice',
+      rule: 'empty_category',
+      subjectType: 'category',
+      subjectId: 'cat_empty0',
+    });
+    // The path, because that is what a person recognises a category by, and
+    // the date, because a month-old branch and a two-year-old one are
+    // different findings.
+    expect(finding?.reason).toContain('projects/pixel-brisbane/retired');
+    expect(finding?.reason).toContain('Retired');
+    expect(finding?.reason).toContain('2026-01-02T03:04:05');
+    expect(finding?.reason).toContain('no category under it');
+  });
+
+  it('reports every empty category there is, not the ones in the window', async () => {
+    const scan = await emptyCategoryRule(
+      taxonomy(9, [{ path: 'one', name: 'One', createdAt: new Date('2020-01-01T00:00:00Z') }]),
+      clock,
+    ).scan(GARDENER, 1);
+
+    // A capped run has to be able to say there is more of this than it listed.
+    expect(scan.found).toBe(9);
+    expect(scan.findings).toHaveLength(1);
+  });
+
+  it('reports what it read even where it found nothing', async () => {
+    const scan = await emptyCategoryRule(taxonomy(0, [], 31), clock).scan(GARDENER, 10);
+    // "Read 31, found 0" is the answer somebody wants, and it is not the same
+    // answer as a rule that never ran.
+    expect(scan).toEqual({ examined: 31, found: 0, findings: [] });
+  });
+
+  it('declares what it produces, so a rule that found nothing still has a kind', () => {
+    expect(emptyCategoryRule(taxonomy(0, []), clock).produces).toBe('notices');
+  });
+});
+
+describe('the names kept for a category that is closed', () => {
+  function aliases(
+    found: number,
+    rows: { alias: string; path: string; status: string }[],
+    examined = 6,
+  ) {
+    return {
+      danglingAliases: async () => ({
+        examined,
+        found,
+        aliases: rows.map((row, index) => ({
+          aliasId: `alias_${index}`,
+          alias: row.alias,
+          categoryId: `cat_closed${index}` as CategoryId,
+          path: row.path,
+          status: row.status,
+          createdAt: new Date('2026-02-03T04:05:06Z'),
+        })),
+      }),
+    };
+  }
+
+  it('names the alias, the category it answers for and what that category is', async () => {
+    const scan = await danglingAliasRule(
+      aliases(1, [
+        { alias: 'technical architecture', path: 'projects/old/architecture', status: 'archived' },
+      ]),
+    ).scan(GARDENER, 10);
+
+    expect(scan.examined).toBe(6);
+    const [finding] = scan.findings;
+    expect(finding).toMatchObject({
+      kind: 'notice',
+      rule: 'dangling_alias',
+      // The alias and not the category: two names left on one category are two
+      // findings, and one notice about the category would read as one.
+      subjectType: 'category_alias',
+      subjectId: 'alias_0',
+    });
+    expect(finding?.reason).toContain('technical architecture');
+    expect(finding?.reason).toContain('projects/old/architecture');
+    expect(finding?.reason).toContain('archived');
+    // Why it is worth saying at all: the name is unique across the workspace,
+    // so it is refused to whatever category wants it next.
+    expect(finding?.reason).toContain('no other category may take it');
+  });
+
+  it('is one finding per name, where a category kept several', async () => {
+    const scan = await danglingAliasRule(
+      aliases(2, [
+        { alias: 'old name', path: 'projects/old', status: 'merged' },
+        { alias: 'older name', path: 'projects/old', status: 'merged' },
+      ]),
+    ).scan(GARDENER, 10);
+
+    const subjects = scan.findings.flatMap((finding) =>
+      finding.kind === 'notice' ? [finding.subjectId] : [],
+    );
+    expect(subjects).toEqual(['alias_0', 'alias_1']);
+  });
+
+  it('reports every one there is, not the ones in the window', async () => {
+    const scan = await danglingAliasRule(
+      aliases(4, [{ alias: 'one of four', path: 'projects/old', status: 'archived' }]),
+    ).scan(GARDENER, 1);
+
+    expect(scan.found).toBe(4);
+    expect(scan.findings).toHaveLength(1);
+  });
+
+  it('declares what it produces, so a rule that found nothing still has a kind', () => {
+    expect(danglingAliasRule(aliases(0, [])).produces).toBe('notices');
   });
 });

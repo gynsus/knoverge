@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History, ListTree, Plus, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -57,9 +57,24 @@ export function TaxonomyPage() {
   const { t, i18n } = useTranslation();
   const client = useQueryClient();
   const workspaces = useWorkspaceContext();
+  const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState<Shown>('active');
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /**
+   * Which category is open, in the address.
+   *
+   * In the address because something else now links here: a gardening notice
+   * about a category nothing is filed in is only worth reading if it can put
+   * that category in front of the person reading it. The same reason the
+   * knowledge page keeps its open item there.
+   */
+  const selectedId = params.get('category');
+  const setSelectedId = (categoryId: string | null) => {
+    const next = new URLSearchParams(params);
+    if (categoryId === null) next.delete('category');
+    else next.set('category', categoryId);
+    setParams(next, { replace: true });
+  };
   // Null until somebody opens or closes something themselves; until then the
   // tree decides for itself, below.
   const [opened, setOpened] = useState<ReadonlySet<string> | null>(null);
@@ -71,7 +86,10 @@ export function TaxonomyPage() {
   const [deleting, setDeleting] = useState<CategorySummary | null>(null);
   const [archiving, setArchiving] = useState<CategorySummary | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  // Open from the start when the address named a category: on a narrow screen
+  // the panel is a sheet, and arriving from a link with it shut would show the
+  // tree and nothing else.
+  const [detailsOpen, setDetailsOpen] = useState(params.get('category') !== null);
   /** Which proposed category is open, when one is instead of a real one. */
   const [proposalId, setProposalId] = useState<string | null>(null);
   // Below `lg` the tree takes the whole width and the detail panel is a sheet;
@@ -236,7 +254,7 @@ export function TaxonomyPage() {
       // The only mutation here whose object is gone afterwards, so it is the
       // only one that has to let go of it: a panel describing a category the
       // tree no longer has is a panel about nothing.
-      setSelectedId((current) => (current === result.category.id ? null : current));
+      if (selectedId === result.category.id) setSelectedId(null);
       setDetailsOpen(false);
       setDeleting(null);
       done(t('taxonomy.deleted', { name: result.category.name }));

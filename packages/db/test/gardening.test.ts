@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 import type {
   ActorId,
+  CategoryId,
+  CategoryStatus,
   ItemType,
   KnowledgeItemId,
   ProposalId,
@@ -22,6 +24,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   schema,
   createActorRepository,
+  createCategoryRepository,
   createDatabase,
   createEventRepository,
   createGardeningRepository,
@@ -41,6 +44,7 @@ let container: StartedPostgreSqlContainer;
 let handle: DatabaseHandle;
 let uow: ReturnType<typeof createUnitOfWork>;
 let gardening: ReturnType<typeof createGardeningRepository>;
+let categoriesRepo: ReturnType<typeof createCategoryRepository>;
 let knowledge: ReturnType<typeof createKnowledgeRepository>;
 let revisions: ReturnType<typeof createRevisionRepository>;
 let proposals: ReturnType<typeof createProposalRepository>;
@@ -59,6 +63,7 @@ beforeAll(async () => {
   await runMigrations(handle.db, migrationsFolder);
   uow = createUnitOfWork(handle.db);
   gardening = createGardeningRepository(handle.db);
+  categoriesRepo = createCategoryRepository(handle.db);
   knowledge = createKnowledgeRepository(handle.db);
   revisions = createRevisionRepository(handle.db);
   proposals = createProposalRepository(handle.db);
@@ -1526,5 +1531,236 @@ describe('the standing orders that have run out', () => {
     // would report somebody else's.
     expect((await gardening.staleInstructions(here, window, 10)).examined).toBe(0);
     expect((await gardening.staleInstructions(elsewhere, window, 10)).examined).toBe(1);
+  });
+});
+
+describe('the categories nothing is filed in', () => {
+  let here: WorkspaceId;
+  /** Everything below is made before this, unless a test says otherwise. */
+  const MADE = new Date('2026-01-01T00:00:00Z');
+  /** A month before the run, which is the rule's grace period. */
+  const CUTOFF = new Date('2026-09-12T00:00:00Z');
+
+  beforeEach(async () => {
+    here = await emptyWorkspace();
+  });
+
+  /** One category, at `path`, with nothing in it until a test puts something. */
+  async function category(options: {
+    path: string;
+    status?: CategoryStatus;
+    parentId?: CategoryId;
+    createdAt?: Date;
+    workspace?: WorkspaceId;
+  }): Promise<CategoryId> {
+    const workspace = options.workspace ?? here;
+    const categoryId = newId('cat') as CategoryId;
+    const slug = options.path.split('/').at(-1) as string;
+    const createdBy = (await createActorRepository(handle.db).findSystemActor(workspace))!.id;
+    await uow.run((tx) =>
+      categoriesRepo.insert(tx, {
+        id: categoryId,
+        workspaceId: workspace,
+        parentId: options.parentId ?? null,
+        slug,
+        path: options.path,
+        name: slug,
+        description: null,
+        inclusionGuidance: [],
+        exclusionGuidance: [],
+        status: options.status ?? 'active',
+        mergedIntoCategoryId: null,
+        createdByActorId: createdBy,
+        approvedByActorId: null,
+        createdAt: options.createdAt ?? MADE,
+        updatedAt: options.createdAt ?? MADE,
+      }),
+    );
+    return categoryId;
+  }
+
+  /** Files an item in a category, which is what makes the category not empty. */
+  async function file(categoryId: CategoryId, itemId: KnowledgeItemId) {
+    await uow.run((tx) =>
+      knowledge.setCategories(tx, itemId, [
+        { knowledgeItemId: itemId, categoryId, isPrimary: true, position: 0 },
+      ]),
+    );
+  }
+
+  const empty = (slug: string, options: Partial<Parameters<typeof category>[0]> = {}) =>
+    category({ path: slug, ...options });
+
+  it('is the active category with nothing in it and nothing under it', async () => {
+    await empty('forgotten');
+    const used = await empty('used');
+    const { itemId } = await item({
+      slug: 'filed-here',
+      contentHash: 'sha256:filed',
+      createdAt: MADE,
+      workspace: here,
+    });
+    await file(used, itemId);
+    const branch = await empty('branch');
+    await category({ path: 'branch/leaf', parentId: branch });
+
+    const scan = await gardening.emptyCategories(here, CUTOFF, 10);
+    expect(scan.found).toBe(2);
+    // `branch/leaf` is empty too: a leaf with nothing in it is the finding, and
+    // its parent is a branch.
+    expect(scan.categories.map((row) => row.path).sort()).toEqual(['branch/leaf', 'forgotten']);
+    // Every active category, which is what the rule read.
+    expect(scan.examined).toBe(4);
+  });
+
+  it('is not a category whose only items have been deleted', async () => {
+    // The item key is `restrict`, so this category cannot be removed (ADR
+    // 0025). A notice calling it empty would be asking for something the
+    // installation refuses.
+    const used = await empty('held-deleted-knowledge');
+    const { itemId } = await item({
+      slug: 'deleted-item',
+      contentHash: 'sha256:gone',
+      createdAt: MADE,
+      workspace: here,
+      status: 'deleted',
+    });
+    await file(used, itemId);
+
+    expect((await gardening.emptyCategories(here, CUTOFF, 10)).found).toBe(0);
+  });
+
+  it('is a branch while anything sits under it, whatever that child is', async () => {
+    const branch = await empty('archived-branch');
+    await category({ path: 'archived-branch/old', parentId: branch, status: 'archived' });
+
+    const scan = await gardening.emptyCategories(here, CUTOFF, 10);
+    // A child row is a child: emptying the branch is what would have to happen
+    // first, and the archived leaf is not itself a finding.
+    expect(scan.found).toBe(0);
+  });
+
+  it('leaves alone a category made since the date the caller gave', async () => {
+    await empty('laid-out-last-week', { createdAt: new Date('2026-10-05T00:00:00Z') });
+
+    const scan = await gardening.emptyCategories(here, CUTOFF, 10);
+    expect(scan.found).toBe(0);
+    // Read all the same: a workspace whose taxonomy is all a week old has
+    // still been looked at.
+    expect(scan.examined).toBe(1);
+  });
+
+  it('is about what the taxonomy still offers, which is its active categories', async () => {
+    await empty('archived-empty', { status: 'archived' });
+    await empty('merged-empty', { status: 'merged' });
+
+    const scan = await gardening.emptyCategories(here, CUTOFF, 10);
+    expect(scan.found).toBe(0);
+    expect(scan.examined).toBe(0);
+  });
+
+  it('counts what there is and returns the oldest first', async () => {
+    await empty('newest', { createdAt: new Date('2026-03-01T00:00:00Z') });
+    await empty('oldest', { createdAt: new Date('2024-01-01T00:00:00Z') });
+    await empty('middle', { createdAt: new Date('2025-01-01T00:00:00Z') });
+
+    const scan = await gardening.emptyCategories(here, CUTOFF, 2);
+    expect(scan.found).toBe(3);
+    expect(scan.categories.map((row) => row.path)).toEqual(['oldest', 'middle']);
+  });
+
+  it('is asked of one workspace and answers about one', async () => {
+    const elsewhere = here;
+    await empty('theirs');
+    here = await emptyWorkspace();
+
+    expect((await gardening.emptyCategories(here, CUTOFF, 10)).found).toBe(0);
+    expect((await gardening.emptyCategories(elsewhere, CUTOFF, 10)).found).toBe(1);
+    // What it read is scoped too, or a workspace with no taxonomy at all would
+    // report somebody else's.
+    expect((await gardening.emptyCategories(here, CUTOFF, 10)).examined).toBe(0);
+    expect((await gardening.emptyCategories(elsewhere, CUTOFF, 10)).examined).toBe(1);
+  });
+
+  describe('and the names kept for a category that is closed', () => {
+    /**
+     * One alias of `categoryId`, as of when it was recorded.
+     *
+     * Written straight in rather than through the alias repository, which
+     * replaces a category's whole set: these tests need several names on one
+     * closed category, which is the state a notice per name is for.
+     */
+    async function alias(options: { categoryId: CategoryId; alias: string; createdAt?: Date }) {
+      await handle.db.insert(schema.categoryAliases).values({
+        id: newId('alias'),
+        categoryId: options.categoryId,
+        workspaceId: here,
+        alias: options.alias,
+        normalisedAlias: options.alias.toLowerCase(),
+        createdAt: options.createdAt ?? MADE,
+      });
+    }
+
+    it('is a name kept for a category that is archived or merged', async () => {
+      await alias({
+        categoryId: await empty('archived-one', { status: 'archived' }),
+        alias: 'old',
+      });
+      await alias({ categoryId: await empty('merged-one', { status: 'merged' }), alias: 'older' });
+      // A name of a category that is still there, which is what an alias is
+      // for: it answers for something.
+      await alias({ categoryId: await empty('live-one'), alias: 'current' });
+
+      const scan = await gardening.danglingAliases(here, 10);
+      expect(scan.found).toBe(2);
+      expect(scan.aliases.map((row) => row.alias).sort()).toEqual(['old', 'older']);
+      // Every alias in the workspace, which is what the rule read.
+      expect(scan.examined).toBe(3);
+    });
+
+    it('is not a name reserved for a category somebody has yet to review', async () => {
+      await alias({
+        categoryId: await empty('awaiting-review', { status: 'proposed' }),
+        alias: 'pending',
+      });
+
+      expect((await gardening.danglingAliases(here, 10)).found).toBe(0);
+    });
+
+    it('carries the category it answers for, and what that category is instead', async () => {
+      const closed = await empty('projects/retired', { status: 'archived' });
+      await alias({ categoryId: closed, alias: 'Retired Projects' });
+
+      const [row] = (await gardening.danglingAliases(here, 10)).aliases;
+      expect(row).toMatchObject({
+        alias: 'Retired Projects',
+        categoryId: closed,
+        path: 'projects/retired',
+        status: 'archived',
+      });
+    });
+
+    it('counts what there is and returns the oldest first', async () => {
+      const closed = await empty('closed', { status: 'archived' });
+      const on = (day: string) => new Date(`${day}T00:00:00Z`);
+      await alias({ categoryId: closed, alias: 'newest', createdAt: on('2026-03-01') });
+      await alias({ categoryId: closed, alias: 'oldest', createdAt: on('2024-01-01') });
+      await alias({ categoryId: closed, alias: 'middle', createdAt: on('2025-01-01') });
+
+      const scan = await gardening.danglingAliases(here, 2);
+      expect(scan.found).toBe(3);
+      expect(scan.aliases.map((row) => row.alias)).toEqual(['oldest', 'middle']);
+    });
+
+    it('is asked of one workspace and answers about one', async () => {
+      const elsewhere = here;
+      await alias({ categoryId: await empty('gone', { status: 'archived' }), alias: 'theirs' });
+      here = await emptyWorkspace();
+
+      expect((await gardening.danglingAliases(here, 10)).found).toBe(0);
+      expect((await gardening.danglingAliases(elsewhere, 10)).found).toBe(1);
+      expect((await gardening.danglingAliases(here, 10)).examined).toBe(0);
+      expect((await gardening.danglingAliases(elsewhere, 10)).examined).toBe(1);
+    });
   });
 });

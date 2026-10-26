@@ -36,6 +36,8 @@ import {
   orphanSourceRule,
   staleInstructionRule,
   weakProvenanceRule,
+  emptyCategoryRule,
+  danglingAliasRule,
   OauthService,
   AttachmentExtractor,
   AttachmentService,
@@ -574,12 +576,14 @@ export function createServices(config: ServicesConfig) {
         const result = await knowledge.get(actor, itemId);
         return result.body;
       }),
-      // These four name no write, so what they find is a notice on the run
+      // These six name no write, so what they find is a notice on the run
       // rather than a proposal in the review queue (ADR 0043).
       orphanSourceRule(repositories.gardening),
       orphanAttachmentRule(repositories.gardening),
       weakProvenanceRule(repositories.gardening),
       staleInstructionRule(repositories.gardening),
+      emptyCategoryRule(repositories.gardening),
+      danglingAliasRule(repositories.gardening),
     ],
   });
 

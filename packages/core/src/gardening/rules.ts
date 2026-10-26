@@ -49,7 +49,7 @@ export interface SupersedeFinding {
 export interface NoticeFinding {
   kind: 'notice';
   rule: GardeningRuleName;
-  subjectType: 'source_reference' | 'attachment' | 'knowledge_item';
+  subjectType: 'source_reference' | 'attachment' | 'knowledge_item' | 'category' | 'category_alias';
   subjectId: string;
   /** The rule and what it rested on, in one line, as a proposal's reason is. */
   reason: string;
@@ -483,6 +483,101 @@ function whyStale(instruction: StaleInstruction, now: Date, untouchedBefore: Dat
     );
   }
   return clauses.length === 0 ? null : clauses.join(' and ');
+}
+
+/**
+ * How long a category may stay empty before its being empty is worth saying.
+ *
+ * A month. A taxonomy is often built before the knowledge arrives — somebody
+ * lays out the branches they expect to fill — and a rule that reported those
+ * the next morning would be arguing with the way the screen is meant to be
+ * used. A month later, an empty branch is either one nobody needed or one
+ * somebody has forgotten.
+ */
+export const EMPTY_CATEGORY_GRACE_DAYS = 30;
+
+/**
+ * Categories nothing is filed in, with nothing under them.
+ *
+ * The taxonomy is what tells an agent where knowledge belongs (rule 13 reads
+ * it by id, and an agent reads it by path), so a branch that holds nothing is
+ * a place an agent may file something because it exists rather than because it
+ * fits. ADR 0025 already decided what may become of one: a category nothing
+ * has ever depended on may be deleted outright, and one that was used is
+ * archived instead.
+ *
+ * Which of those it should be is why this is a notice. Deleting is right for a
+ * category created by mistake and wrong for one a project has finished with,
+ * and nothing recorded tells the two apart. The screen refuses a delete that
+ * would break something and names what, so the reader has what they need the
+ * moment they arrive.
+ */
+export function emptyCategoryRule(
+  gardening: Pick<GardeningRepository, 'emptyCategories'>,
+  clock: Clock = systemClock,
+): GardeningRule {
+  return {
+    name: 'empty_category',
+    produces: 'notices',
+    async scan(actor, max) {
+      const createdBefore = new Date(clock.now().getTime() - EMPTY_CATEGORY_GRACE_DAYS * DAY_MS);
+      const scan = await gardening.emptyCategories(actor.workspaceId, createdBefore, max);
+      return {
+        examined: scan.examined,
+        found: scan.found,
+        findings: scan.categories.map((category) => ({
+          kind: 'notice' as const,
+          rule: 'empty_category' as const,
+          subjectType: 'category' as const,
+          subjectId: category.categoryId,
+          reason:
+            `gardening rule empty_category: ${category.path} ("${category.name}") was made on ` +
+            `${category.createdAt.toISOString()} and holds no knowledge items, with no category ` +
+            `under it, so nothing in this workspace is filed there.`,
+        })),
+      };
+    },
+  };
+}
+
+/**
+ * Aliases kept for a category that is no longer active.
+ *
+ * An alias is a name somebody recorded, and it is unique across the workspace:
+ * one left on an archived or merged category keeps a name nothing can be filed
+ * under and refuses it to the category that may want it next (CATEGORY_CONFLICT
+ * is what a curator sees). A merge carries them over to the survivor on
+ * purpose, so these are the ones no merge accounted for.
+ *
+ * A notice, and the subject is the alias rather than the category: two aliases
+ * left on one category are two names, and one notice naming the category would
+ * read as one finding. Removing them is an edit of the category, which the
+ * reason names so a reader knows where to go.
+ */
+export function danglingAliasRule(
+  gardening: Pick<GardeningRepository, 'danglingAliases'>,
+): GardeningRule {
+  return {
+    name: 'dangling_alias',
+    produces: 'notices',
+    async scan(actor, max) {
+      const scan = await gardening.danglingAliases(actor.workspaceId, max);
+      return {
+        examined: scan.examined,
+        found: scan.found,
+        findings: scan.aliases.map((alias) => ({
+          kind: 'notice' as const,
+          rule: 'dangling_alias' as const,
+          subjectType: 'category_alias' as const,
+          subjectId: alias.aliasId,
+          reason:
+            `gardening rule dangling_alias: "${alias.alias}" is an alias of ${alias.path}, ` +
+            `which is ${alias.status}, so the name is kept for a category nothing can be filed ` +
+            `in and no other category may take it.`,
+        })),
+      };
+    },
+  };
 }
 
 /** English, because the reason is English and a reviewer reads it. */
